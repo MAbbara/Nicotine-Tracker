@@ -1,0 +1,397 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Nicotine Tracker{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-6 lg:px-8">
+  <!-- Header + open-modal button -->
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Dashboard</h1>
+      <p class="text-sm text-gray-700 dark:text-gray-300">Overview of your nicotine intake and progress</p>
+    </div>
+    <button type="button"
+      class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+      , aria-haspopup="dialog" aria-expanded="false" aria-controls="addLogModal" data-hs-overlay="#addLogModal">
+      Add Log Entry
+    </button>
+  </div>
+
+  <div id="addLogModal"
+    class="hs-overlay hidden size-full fixed top-0 start-0 z-80 overflow-x-hidden overflow-y-auto pointer-events-none"
+    role="dialog" tabindex="-1" aria-labelledby="addLogModalLabel">
+    <div class="hs-overlay-animation-target
+           hs-overlay-open:scale-100 hs-overlay-open:opacity-100
+           scale-95 opacity-0 ease-in-out transition-all duration-200
+           sm:max-w-lg sm:w-full m-3 sm:mx-auto min-h-[calc(100%-56px)]
+           flex items-center">
+      <!-- form is the panel -->
+      <form id="addLogForm" method="POST" action="{{ url_for('logging.add_log') }}"
+        class="w-full flex flex-col bg-white border border-gray-200 shadow-2xs rounded-xl pointer-events-auto dark:bg-gray-800 dark:border-gray-700 dark:shadow-gray-700/70"
+        data-validate>
+        <!-- header -->
+        <div class="flex justify-between items-center py-3 px-4 border-b border-gray-200 dark:border-gray-700">
+          <h3 id="addLogModalLabel" class="font-bold text-gray-800 dark:text-white">
+            Add Log Entry
+          </h3>
+          <button type="button"
+            class="size-8 inline-flex justify-center items-center gap-x-2 rounded-full border border-transparent bg-gray-100 text-gray-800 hover:bg-gray-200 focus:outline-hidden focus:bg-gray-200 disabled:opacity-50 disabled:pointer-events-none dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-400 dark:focus:bg-gray-600"
+            aria-label="Close" data-hs-overlay="#hs-basic-modal">
+            <span class="sr-only">Close</span>
+            <svg class="shrink-0 size-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 6 6 18"></path>
+              <path d="m6 6 12 12"></path>
+            </svg>
+          </button>
+
+        </div>
+
+        <!-- body / inputs -->
+        <div class="p-4 overflow-y-auto space-y-4">
+          <!-- Date -->
+          <div>
+            <label for="log_date" class="block text-sm font-medium text-gray-900 dark:text-white">Date *</label>
+            <input type="date" name="log_date" id="log_date" required value="{{ date.today().isoformat() }}"
+              class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+          </div>
+
+          <!-- Time -->
+          <div>
+            <label for="log_time" class="block text-sm font-medium text-gray-900 dark:text-white">Time
+              (Optional)</label>
+            <input type="time" name="log_time" id="log_time"
+              class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+          </div>
+
+          <!-- Pouch -->
+          <div>
+            <label for="pouch_selection" class="block text-sm font-medium text-gray-900 dark:text-white">Pouch Type
+              *</label>
+            <select name="pouch_id" id="pouch_selection" required
+              class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+              <option value="">Select a pouch…</option>
+              {% if default_pouches %}
+              <optgroup label="Default Pouches">
+                {% for pouch in default_pouches %}
+                <option value="{{ pouch.id }}">{{ pouch.brand }} ({{ pouch.nicotine_mg }}mg)</option>
+                {% endfor %}
+              </optgroup>
+              {% endif %}
+              {% if user_pouches %}
+              <optgroup label="Your Custom Pouches">
+                {% for pouch in user_pouches %}
+                <option value="{{ pouch.id }}">{{ pouch.brand }} ({{ pouch.nicotine_mg }}mg) [Custom]</option>
+                {% endfor %}
+              </optgroup>
+              {% endif %}
+            </select>
+          </div>
+
+          <!-- Quantity -->
+          <div>
+            <label for="quantity" class="block text-sm font-medium text-gray-900 dark:text-white">Quantity *</label>
+            <div
+              class="py-2 px-3 w-full rounded-md border-0 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600"
+              data-hs-input-number="">
+              <div class="w-full flex justify-between items-center gap-x-5">
+                <div class="grow">
+                  <input
+                    class="w-full rounded-md shadow-none ring-0 border-0 bg-transparent p-0 px-2 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none text-gray-900 placeholder:text-gray-400 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white "
+                    style="-moz-appearance: textfield;" type="number" aria-roledescription="Number field"
+                    name="quantity" id="quantity" min="1" max="50" value="1" required data-hs-input-number-input="">
+                </div>
+                <div class="flex justify-end items-center gap-x-1.5">
+                  <button type="button"
+                    class="size-6 inline-flex justify-center items-center gap-x-2 text-sm font-medium rounded-md border ring-1 ring-inset border-gray-200 bg-white dark:bg-gray-900 text-gray-900 dark:text-white ring-gray-300 dark:ring-gray-500 hover:bg-gray-50 dark:hover:bg-gray-600 shadow-2xs focus:outline-hidden focus:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:border-neutral-500 dark:focus:bg-neutral-800"
+                    tabindex="-1" aria-label="Decrease" data-hs-input-number-decrement="">
+                    <svg class="shrink-0 size-3.5" xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                      viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                      stroke-linejoin="round">
+                      <path d="M5 12h14"></path>
+                    </svg>
+                  </button>
+                  <button type="button"
+                    class="size-6 inline-flex justify-center items-center gap-x-2 text-sm font-medium rounded-md border ring-1 ring-inset border-gray-200 bg-white dark:bg-gray-900 text-gray-900 dark:text-white ring-gray-300 dark:ring-gray-500 hover:bg-gray-50 dark:hover:bg-gray-600 shadow-2xs focus:outline-hidden focus:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:border-neutral-500 dark:focus:bg-neutral-800"
+                    tabindex="-1" aria-label="Increase" data-hs-input-number-increment="">
+                    <svg class="shrink-0 size-3.5" xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                      viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                      stroke-linejoin="round">
+                      <path d="M5 12h14"></path>
+                      <path d="M12 5v14"></path>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Notes -->
+          <div>
+            <label for="notes" class="block text-sm font-medium text-gray-900 dark:text-white">Notes (Optional)</label>
+            <textarea name="notes" id="notes" rows="3" placeholder="Add any notes…"
+              class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600"></textarea>
+          </div>
+        </div>
+
+        <!-- footer / actions -->
+        <div class="flex justify-end items-center gap-x-2 py-3 px-4 border-t border-gray-200 dark:border-gray-700">
+          <button type="button"
+            class="py-2 px-3 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-800 shadow-2xs hover:bg-gray-50 focus:outline-hidden focus:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:bg-gray-700 dark:focus:bg-gray-700"
+            data-hs-overlay="#addLogModal">
+            Cancel
+          </button>
+          <button type="submit"
+            class="py-2 px-3 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-transparent bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-hidden focus:bg-indigo-700 disabled:opacity-50 disabled:pointer-events-none">
+            Add Entry
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+
+
+  <!-- Goals Section -->
+  <div class="mt-8">
+    <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Your Goals</h2>
+    {% if active_goals %}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {% for goal in active_goals %}
+      <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+        <h3 class="text-md font-semibold text-gray-900 dark:text-white mb-2">
+          {{ goal.goal_type.replace('_', ' ').title() }}
+        </h3>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Target: {{ goal.target_value }}</p>
+        <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700 mb-2">
+          {% set progress_color = 'bg-green-600' if goal_progress[goal.id].percentage <= 80 else ('bg-yellow-600' if
+            goal_progress[goal.id].percentage <=100 else 'bg-red-600' ) %} <div
+            class="{{ progress_color }} h-2.5 rounded-full"
+            style="width: {{ min(goal_progress[goal.id].percentage, 100) }}%">
+        </div>
+      </div>
+      <p class="text-sm text-gray-900 dark:text-white font-semibold">
+        {{ goal_progress[goal.id].current }}/{{ goal_progress[goal.id].target }}
+        ({{ "%.1f"|format(goal_progress[goal.id].percentage) }}%)
+      </p>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">Current Streak: {{ goal.current_streak }}</p>
+      <p class="text-sm text-gray-500 dark:text-gray-400">Best Streak: {{ goal.best_streak }}</p>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="text-gray-500 dark:text-gray-400">
+    You have no active goals. Create one to start tracking your progress.
+  </p>
+  {% endif %}
+</div>
+
+<!-- Today's Summary -->
+<div class="mt-8">
+  <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Today's Summary</h2>
+  <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+    <!-- Total Pouches -->
+    <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+      <div class="p-5">
+        <div class="flex items-center">
+          <div class="flex-shrink-0">
+            <div class="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center">
+              <span class="text-white font-bold text-sm">📦</span>
+            </div>
+          </div>
+          <div class="ml-5 w-0 flex-1">
+            <dl>
+              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+                Total Pouches
+              </dt>
+              <dd class="text-lg font-medium text-gray-900 dark:text-white">
+                {{ today_intake.total_pouches if today_intake else 0 }}
+              </dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Total Nicotine -->
+    <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+      <div class="p-5">
+        <div class="flex items-center">
+          <div class="flex-shrink-0">
+            <div class="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
+              <span class="text-white font-bold text-sm">⚗️</span>
+            </div>
+          </div>
+          <div class="ml-5 w-0 flex-1">
+            <dl>
+              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+                Total Nicotine (mg)
+              </dt>
+              <dd class="text-lg font-medium text-gray-900 dark:text-white">
+                {{ today_intake.total_mg if today_intake else 0 }}
+              </dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sessions -->
+    <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+      <div class="p-5">
+        <div class="flex items-center">
+          <div class="flex-shrink-0">
+            <div class="w-8 h-8 bg-yellow-500 rounded-md flex items-center justify-center">
+              <span class="text-white font-bold text-sm">📊</span>
+            </div>
+          </div>
+          <div class="ml-5 w-0 flex-1">
+            <dl>
+              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+                Sessions
+              </dt>
+              <dd class="text-lg font-medium text-gray-900 dark:text-white">
+                {{ today_intake.sessions if today_intake else 0 }}
+              </dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Average per Hour -->
+    <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+      <div class="p-5">
+        <div class="flex items-center">
+          <div class="flex-shrink-0">
+            <div class="w-8 h-8 bg-purple-500 rounded-md flex items-center justify-center">
+              <span class="text-white font-bold text-sm">⏰</span>
+            </div>
+          </div>
+          <div class="ml-5 w-0 flex-1">
+            <dl>
+              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+                Avg/Hour
+              </dt>
+              <dd class="text-lg font-medium text-gray-900 dark:text-white">
+                {{ avg_pouches_per_hour if avg_pouches_per_hour else 0 }}
+              </dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Charts Section -->
+<div class="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+  <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Daily Intake (Last 30 Days)</h3>
+    <div id="dailyIntakeChart" class="h-64"></div>
+  </div>
+  <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Usage by Hour</h3>
+    <div id="hourlyChart" class="h-64"></div>
+  </div>
+</div>
+
+<!-- Recent Logs -->
+<div class="mt-8">
+  <div class="sm:flex sm:items-center">
+    <div class="sm:flex-auto">
+      <h2 class="text-lg font-medium text-gray-900 dark:text-white">Recent Logs</h2>
+      <p class="mt-1 text-sm text-gray-700 dark:text-gray-300">
+        Your latest nicotine intake entries
+      </p>
+    </div>
+    <div class="mt-4 sm:ml-16 sm:mt-0 sm:flex-none">
+      <a href="{{ url_for('logging.view_logs') }}"
+        class="block rounded-md bg-white dark:bg-gray-700 px-3 py-2 text-center text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600">
+        View All
+      </a>
+    </div>
+  </div>
+
+  {% if recent_logs %}
+  <div class="mt-4 flow-root">
+    <div class="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
+      <div class="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
+        <table class="min-w-full divide-y divide-gray-300 dark:divide-gray-700">
+          <thead>
+            <tr>
+              <th scope="col"
+                class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 dark:text-white sm:pl-0">
+                Date & Time
+              </th>
+              <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">
+                Brand
+              </th>
+              <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">
+                Quantity
+              </th>
+              <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">
+                Nicotine (mg)
+              </th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+            {% for log in recent_logs %}
+            <tr>
+              <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-gray-900 dark:text-white sm:pl-0">
+                {{ log.log_date.strftime('%m/%d') }}
+                {% if log.log_time %}
+                {{ log.log_time.strftime('%H:%M') }}
+                {% endif %}
+              </td>
+              <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
+                {{ log.get_brand_name() }}
+                {% if log.get_nicotine_content() %}
+                ({{ log.get_nicotine_content() }}mg)
+                {% endif %}
+              </td>
+              <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
+                {{ log.quantity }}
+              </td>
+              <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
+                {{ log.get_total_nicotine() }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="mt-4 text-center py-12">
+    <div class="text-gray-400 dark:text-gray-500 text-4xl mb-4">📝</div>
+    <h3 class="text-sm font-medium text-gray-900 dark:text-white">No logs yet</h3>
+    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      Start tracking your nicotine intake by adding your first log entry.
+    </p>
+    <div class="mt-6">
+      <a href="{{ url_for('logging.add_log') }}"
+        class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
+        Add First Log
+      </a>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Insights -->
+<div class="mt-8">
+  <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Insights</h2>
+  <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+    <div id="insights-content">
+      <div class="animate-pulse">
+        <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
+        <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2 mb-2"></div>
+        <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-2/3"></div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+{% endblock %}

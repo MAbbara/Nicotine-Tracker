@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+
+{% block title %}Add Log Entry - Nicotine Tracker{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-6 lg:px-8">
+  <!-- Header -->
+  <div class="sm:flex sm:items-center">
+    <div class="sm:flex-auto">
+      <h1 class="text-2xl font-semibold leading-6 text-gray-900 dark:text-white">Add Log Entry</h1>
+      <p class="mt-2 text-sm text-gray-700 dark:text-gray-300">
+        Record your nicotine intake for tracking and analysis
+      </p>
+    </div>
+  </div>
+
+  <!-- Form -->
+  <div class="mt-8 max-w-2xl">
+    <form method="POST" class="space-y-6" data-validate>
+      <!-- Date -->
+      <div>
+        <label for="log_date" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">
+          Date *
+        </label>
+        <div class="mt-2">
+          <input type="date" name="log_date" id="log_date" required value="{{ date.today().isoformat() }}"
+            class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+        </div>
+      </div>
+
+      <!-- Time (Optional) -->
+      <div>
+        <label for="log_time" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">
+          Time (Optional)
+        </label>
+        <div class="mt-2">
+          <input type="time" name="log_time" id="log_time"
+            class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+        </div>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          Leave empty if you don't want to track specific time
+        </p>
+      </div>
+
+      <!-- Pouch Selection -->
+      <div>
+        <label for="pouch_selection" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">
+          Pouch Type *
+        </label>
+        <div class="mt-2">
+          <select name="pouch_id" id="pouch_selection" required onchange="toggleCustomFields()"
+            class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+            <option value="">Select a pouch...</option>
+
+            {% if pouches %}
+            <optgroup label="Default Pouches">
+              {% for pouch in pouches %}
+              <option value="{{ pouch.id }}">{{ pouch.brand }} ({{ pouch.nicotine_mg }}mg)</option>
+              {% endfor %}
+            </optgroup>
+            {% endif %}
+
+            {% if user_pouches %}
+            <optgroup label="Your Custom Pouches">
+              {% for pouch in user_pouches %}
+              <option value="{{ pouch.id }}">{{ pouch.brand }} ({{ pouch.nicotine_mg }}mg) [Custom]
+              </option>
+              {% endfor %}
+            </optgroup>
+            {% endif %}
+
+            <option value="custom">Custom Entry...</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Custom Pouch Fields -->
+      <div id="custom_fields" class="hidden space-y-4">
+        <div>
+          <label for="custom_brand" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">
+            Custom Brand
+          </label>
+          <div class="mt-2">
+            <input type="text" name="custom_brand" id="custom_brand" placeholder="Enter brand name"
+              class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+          </div>
+        </div>
+
+        <div>
+          <label for="custom_nicotine_mg" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">
+            Nicotine Content (mg)
+          </label>
+          <div class="mt-2">
+            <input type="number" name="custom_nicotine_mg" id="custom_nicotine_mg" min="1" max="100"
+              placeholder="Enter nicotine content in mg"
+              class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+          </div>
+        </div>
+      </div>
+
+      <!-- Quantity -->
+      <div>
+
+        <label for="quantity" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">
+          Quantity *
+        </label>
+        <div
+          class="py-2 px-3 w-full rounded-md border-0 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600"
+          data-hs-input-number="">
+          <div class="w-full flex justify-between items-center gap-x-5">
+            <div class="grow">
+              <input
+                class="w-full rounded-md shadow-none ring-0 border-0 bg-transparent p-0 px-2 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none text-gray-900 placeholder:text-gray-400 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white "
+                style="-moz-appearance: textfield;" type="number" aria-roledescription="Number field" name="quantity"
+                id="quantity" min="1" max="50" value="1" required data-hs-input-number-input="">
+            </div>
+            <div class="flex justify-end items-center gap-x-1.5">
+              <button type="button"
+                class="size-6 inline-flex justify-center items-center gap-x-2 text-sm font-medium rounded-md border ring-1 ring-inset border-gray-200 bg-white dark:bg-gray-900 text-gray-900 dark:text-white ring-gray-300 dark:ring-gray-500 hover:bg-gray-50 dark:hover:bg-gray-600 shadow-2xs focus:outline-hidden focus:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:border-neutral-500 dark:focus:bg-neutral-800"
+                tabindex="-1" aria-label="Decrease" data-hs-input-number-decrement="">
+                <svg class="shrink-0 size-3.5" xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                  stroke-linejoin="round">
+                  <path d="M5 12h14"></path>
+                </svg>
+              </button>
+              <button type="button"
+                class="size-6 inline-flex justify-center items-center gap-x-2 text-sm font-medium rounded-md border ring-1 ring-inset border-gray-200 bg-white dark:bg-gray-900 text-gray-900 dark:text-white ring-gray-300 dark:ring-gray-500 hover:bg-gray-50 dark:hover:bg-gray-600 shadow-2xs focus:outline-hidden focus:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:border-neutral-500 dark:focus:bg-neutral-800"
+                tabindex="-1" aria-label="Increase" data-hs-input-number-increment="">
+                <svg class="shrink-0 size-3.5" xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                  stroke-linejoin="round">
+                  <path d="M5 12h14"></path>
+                  <path d="M12 5v14"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {# <div class="mt-2">
+          <input type="number" name="quantity" id="quantity" min="1" max="50" value="1" required
+            class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+        </div> #}
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          Number of pouches used
+        </p>
+      </div>
+
+      <!-- Notes -->
+      <div>
+        <label for="notes" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">
+          Notes (Optional)
+        </label>
+        <div class="mt-2">
+          <textarea name="notes" id="notes" rows="3" placeholder="Add any notes about this session..."
+            class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600"></textarea>
+        </div>
+      </div>
+
+      <!-- Submit Buttons -->
+      <div class="flex gap-3">
+        <button type="submit"
+          class="flex-1 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
+          Add Log Entry
+        </button>
+        <a href="{{ url_for('dashboard.index') }}"
+          class="rounded-md bg-white dark:bg-gray-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600">
+          Cancel
+        </a>
+      </div>
+    </form>
+  </div>
+
+  <!-- Quick Add Section -->
+  <div class="mt-12">
+    <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Quick Add</h2>
+    <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+      Quickly log common pouches with current time
+    </p>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {% for pouch in pouches[:6] %}
+      <button type="button" data-quick-add data-pouch-id="{{ pouch.id }}" data-quantity="1"
+        class="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg shadow hover:shadow-md transition-shadow border border-gray-200 dark:border-gray-700">
+        <div>
+          <div class="font-medium text-gray-900 dark:text-white">{{ pouch.brand }}</div>
+          <div class="text-sm text-gray-500 dark:text-gray-400">{{ pouch.nicotine_mg }}mg</div>
+        </div>
+        <div class="text-indigo-600 dark:text-indigo-400 font-semibold">+1</div>
+      </button>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<script>
+  function toggleCustomFields() {
+    const select = document.getElementById('pouch_selection');
+    const customFields = document.getElementById('custom_fields');
+    const customBrand = document.getElementById('custom_brand');
+    const customNicotine = document.getElementById('custom_nicotine_mg');
+
+    if (select.value === 'custom') {
+      customFields.classList.remove('hidden');
+      customBrand.required = true;
+      customNicotine.required = true;
+    } else {
+      customFields.classList.add('hidden');
+      customBrand.required = false;
+      customNicotine.required = false;
+      customBrand.value = '';
+      customNicotine.value = '';
+    }
+  }
+
+  // Form validation
+  document.querySelector('form').addEventListener('submit', function (e) {
+    const pouchSelect = document.getElementById('pouch_selection');
+    const customBrand = document.getElementById('custom_brand');
+    const customNicotine = document.getElementById('custom_nicotine_mg');
+
+    if (pouchSelect.value === 'custom') {
+      if (!customBrand.value.trim()) {
+        e.preventDefault();
+        alert('Please enter a custom brand name');
+        customBrand.focus();
+        return;
+      }
+
+      if (!customNicotine.value || customNicotine.value <= 0) {
+        e.preventDefault();
+        alert('Please enter a valid nicotine content');
+        customNicotine.focus();
+        return;
+      }
+    } else if (!pouchSelect.value) {
+      e.preventDefault();
+      alert('Please select a pouch type');
+      pouchSelect.focus();
+      return;
+    }
+  });
+</script>
+{% endblock %}

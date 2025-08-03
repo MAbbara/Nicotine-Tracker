@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Profile - Nicotine Tracker{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <h1 class="text-2xl font-semibold text-gray-900 dark:text-white mb-6">Your Profile</h1>
+    <form method="POST" class="space-y-6" data-validate>
+        <div>
+            <label for="age" class="block text-sm font-medium text-gray-900 dark:text-white">Age</label>
+            <input type="number" name="age" id="age" min="18" max="120" value="{{ user.age or '' }}" class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600" placeholder="Enter your age">
+        </div>
+        <div>
+            <label for="gender" class="block text-sm font-medium text-gray-900 dark:text-white">Gender</label>
+            <select name="gender" id="gender" class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                <option value="" {% if not user.gender %}selected{% endif %}>Select gender</option>
+                <option value="male" {% if user.gender == 'male' %}selected{% endif %}>Male</option>
+                <option value="female" {% if user.gender == 'female' %}selected{% endif %}>Female</option>
+                <option value="other" {% if user.gender == 'other' %}selected{% endif %}>Other</option>
+                <option value="prefer_not_to_say" {% if user.gender == 'prefer_not_to_say' %}selected{% endif %}>Prefer not to say</option>
+            </select>
+        </div>
+        <div>
+            <label for="weight" class="block text-sm font-medium text-gray-900 dark:text-white">Weight (kg)</label>
+            <input type="number" name="weight" id="weight" min="30" max="500" step="0.1" value="{{ user.weight or '' }}" class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600" placeholder="Enter your weight">
+        </div>
+        <div>
+            <label for="timezone" class="block text-sm font-medium text-gray-900 dark:text-white">Time Zone</label>
+            <input type="text" name="timezone" id="timezone" value="{{ user.timezone or 'UTC' }}" class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600" placeholder="Enter your time zone">
+        </div>
+        <div>
+            <label for="units_preference" class="block text-sm font-medium text-gray-900 dark:text-white">Units Preference</label>
+            <select name="units_preference" id="units_preference" class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                <option value="mg" {% if user.units_preference == 'mg' %}selected{% endif %}>Milligrams (mg)</option>
+                <option value="percentage" {% if user.units_preference == 'percentage' %}selected{% endif %}>Percentage of max dose</option>
+            </select>
+        </div>
+        <div>
+            <label for="preferred_brands" class="block text-sm font-medium text-gray-900 dark:text-white">Preferred Brands</label>
+            <select name="preferred_brands" id="preferred_brands" multiple class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                {% for brand in available_brands %}
+                <option value="{{ brand }}" {% if brand in preferred_brands %}selected{% endif %}>{{ brand }}</option>
+                {% endfor %}
+            </select>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Hold Ctrl (Cmd on Mac) to select multiple brands.</p>
+        </div>
+        <div class="flex gap-3">
+            <button type="submit" class="btn btn-primary flex-1">Save Profile</button>
+            <a href="{{ url_for('dashboard.index') }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

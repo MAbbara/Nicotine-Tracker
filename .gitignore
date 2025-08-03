@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.env
+.venv
+venv/
+env/
+
+# Flask
+instance/
+*.log
+logs/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+instance/
+
+# Node.js
+node_modules/
+npm-debug.log*
+package-lock.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Archive folders
+Archive/
+
+# Uploads
+uploads/
+upload/
+
+# Temporary files
+*.tmp
+*.bak
+*.zip

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Create Goal - Nicotine Tracker{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-6 lg:px-8 max-w-lg mx-auto">
+    <h1 class="text-2xl font-semibold leading-6 text-gray-900 dark:text-white mb-6">Create New Goal</h1>
+    
+    <form method="POST" class="space-y-6" data-validate>
+        <div>
+            <label for="goal_type" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">Goal Type</label>
+            <select name="goal_type" id="goal_type" required
+                    class="mt-2 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                <option value="">Select goal type</option>
+                <option value="daily_pouches">Limit to pouches per day</option>
+                <option value="daily_mg">Limit to nicotine mg per day</option>
+                <option value="weekly_reduction">Reduce by % per week</option>
+            </select>
+        </div>
+        
+        <div>
+            <label for="target_value" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">Target Value</label>
+            <input type="number" name="target_value" id="target_value" min="1" required
+                   class="mt-2 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600"
+                   placeholder="Enter target value">
+        </div>
+        
+        <div>
+            <label for="end_date" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">End Date (optional)</label>
+            <input type="date" name="end_date" id="end_date"
+                   class="mt-2 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+        </div>
+        
+        <div class="flex items-center gap-2">
+            <input type="checkbox" name="enable_notifications" id="enable_notifications" checked
+                   class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 dark:border-gray-600 dark:bg-gray-700">
+            <label for="enable_notifications" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">
+                Enable Notifications
+            </label>
+        </div>
+        
+        <div>
+            <label for="notification_threshold" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">Notification Threshold (%)</label>
+            <input type="number" name="notification_threshold" id="notification_threshold" min="1" max="100" value="80" required
+                   class="mt-2 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600"
+                   placeholder="Enter notification threshold">
+        </div>
+        
+        <div class="flex gap-3">
+            <button type="submit" class="btn btn-primary flex-1">Create Goal</button>
+            <a href="{{ url_for('goals.index') }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

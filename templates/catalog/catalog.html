@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Catalog - Nicotine Tracker{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-6 lg:px-8">
+    <h1 class="text-2xl font-semibold leading-6 text-gray-900 dark:text-white mb-6">Nicotine Pouch Catalog</h1>
+    
+    <div class="mb-6">
+        <a href="{{ url_for('catalog.add_pouch') }}" class="btn btn-primary">Add Custom Pouch</a>
+    </div>
+    
+    <h2 class="text-xl font-semibold text-gray-800 dark:text-white mb-4">Default Pouches</h2>
+    {% if default_brands %}
+        {% for brand, pouches in default_brands.items() %}
+            <div class="mb-6">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white">{{ brand }}</h3>
+                <ul class="list-disc list-inside text-gray-700 dark:text-gray-300">
+                    {% for pouch in pouches %}
+                    <li>{{ pouch.brand }} - {{ pouch.nicotine_mg }} mg</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endfor %}
+    {% else %}
+        <p class="text-gray-500 dark:text-gray-400">No default pouches available.</p>
+    {% endif %}
+    
+    <h2 class="text-xl font-semibold text-gray-800 dark:text-white mb-4">Your Custom Pouches</h2>
+    {% if custom_brands %}
+        {% for brand, pouches in custom_brands.items() %}
+            <div class="mb-6">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white">{{ brand }}</h3>
+                <ul class="list-disc list-inside text-gray-700 dark:text-gray-300">
+                    {% for pouch in pouches %}
+                    <li>
+                        {{ pouch.brand }} - {{ pouch.nicotine_mg }} mg
+                        <a href="{{ url_for('catalog.edit_pouch', pouch_id=pouch.id) }}" class="text-indigo-600 hover:text-indigo-900 ml-2">Edit</a>
+                        <form action="{{ url_for('catalog.delete_pouch', pouch_id=pouch.id) }}" method="POST" class="inline" onsubmit="return confirm('Are you sure you want to delete this pouch?');">
+                            <button type="submit" class="text-red-600 hover:text-red-900 ml-2">Delete</button>
+                        </form>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endfor %}
+    {% else %}
+        <p class="text-gray-500 dark:text-gray-400">You have not added any custom pouches yet.</p>
+    {% endif %}
+</div>
+{% endblock %}
