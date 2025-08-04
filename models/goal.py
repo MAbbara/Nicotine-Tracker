@@ -25,7 +25,7 @@ class Goal(db.Model):
     enable_notifications = db.Column(db.Boolean, default=True)
     notification_threshold = db.Column(db.Float, default=0.8)
 
-    def check_goal_progress(self, target_date: date | None = None) -> bool:
+    def check_goal_progress(self, target_date: date = None) -> bool:
         if target_date is None:
             target_date = date.today()
         intake = self.user.get_daily_intake(target_date)
@@ -35,7 +35,7 @@ class Goal(db.Model):
             return intake['total_mg'] <= self.target_value
         return False
 
-    def update_streak(self, target_date: date | None = None) -> None:
+    def update_streak(self, target_date: date = None) -> None:
         if self.check_goal_progress(target_date):
             self.current_streak += 1
             if self.current_streak > self.best_streak:

@@ -22,10 +22,66 @@ def init_default_pouches():
     from .pouch import Pouch
 
     default_pouches = [
+        # ZYN - Most popular brand
+        {"brand": "ZYN", "nicotine_mg": 1.5},
+        {"brand": "ZYN", "nicotine_mg": 3},
+        {"brand": "ZYN", "nicotine_mg": 6},
+        {"brand": "ZYN", "nicotine_mg": 9},
+        {"brand": "ZYN", "nicotine_mg": 11},
+        {"brand": "ZYN", "nicotine_mg": 14},
+        
+        # VELO - Second most popular
+        {"brand": "VELO", "nicotine_mg": 2},
+        {"brand": "VELO", "nicotine_mg": 4},
+        {"brand": "VELO", "nicotine_mg": 7},
+        
+        # ON! - Popular alternative
+        {"brand": "ON!", "nicotine_mg": 2},
+        {"brand": "ON!", "nicotine_mg": 4},
+        {"brand": "ON!", "nicotine_mg": 8},
+        
+        # Rogue - Growing brand
+        {"brand": "Rogue", "nicotine_mg": 3},
+        {"brand": "Rogue", "nicotine_mg": 6},
+        {"brand": "Rogue", "nicotine_mg": 12},
+        
+        # Lucy - Premium brand
+        {"brand": "Lucy", "nicotine_mg": 4},
+        {"brand": "Lucy", "nicotine_mg": 8},
+        {"brand": "Lucy", "nicotine_mg": 12},
+        
+        # DZRT - Original brand in the system
         {"brand": "DZRT", "nicotine_mg": 3},
         {"brand": "DZRT", "nicotine_mg": 6},
         {"brand": "DZRT", "nicotine_mg": 7},
         {"brand": "DZRT", "nicotine_mg": 10},
+        
+        # FRE - Popular tobacco-free option
+        {"brand": "FRE", "nicotine_mg": 3},
+        {"brand": "FRE", "nicotine_mg": 6},
+        {"brand": "FRE", "nicotine_mg": 9},
+        
+        # LOOP - European popular brand
+        {"brand": "LOOP", "nicotine_mg": 5},
+        {"brand": "LOOP", "nicotine_mg": 9},
+        {"brand": "LOOP", "nicotine_mg": 12},
+        
+        # KILLA - Strong option
+        {"brand": "KILLA", "nicotine_mg": 16},
+        {"brand": "KILLA", "nicotine_mg": 25},
+        
+        # PABLO - Extra strong
+        {"brand": "PABLO", "nicotine_mg": 30},
+        {"brand": "PABLO", "nicotine_mg": 50},
+        
+        # General - Traditional Swedish brand
+        {"brand": "General", "nicotine_mg": 8},
+        {"brand": "General", "nicotine_mg": 11},
+        
+        # Skruf - Another Swedish brand
+        {"brand": "Skruf", "nicotine_mg": 6},
+        {"brand": "Skruf", "nicotine_mg": 9},
+        {"brand": "Skruf", "nicotine_mg": 12},
     ]
 
     for pouch_data in default_pouches:
