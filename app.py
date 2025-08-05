@@ -1,13 +1,24 @@
 from flask import Flask, render_template
-from config import Config
+from config import get_config
 from extensions import db, migrate, bcrypt, mail
 import logging
 from logging.handlers import RotatingFileHandler
 import os
 
-def create_app():
+def create_app(config_name=None):
     app = Flask(__name__)
-    app.config.from_object(Config)
+    
+    # Get configuration based on environment or passed parameter
+    if config_name:
+        from config import config
+        app.config.from_object(config[config_name])
+    else:
+        app.config.from_object(get_config())
+    
+    # Initialize configuration-specific setup
+    config_class = app.config.__class__
+    if hasattr(config_class, 'init_app'):
+        config_class.init_app(app)
     
     # Initialize extensions
     db.init_app(app)
