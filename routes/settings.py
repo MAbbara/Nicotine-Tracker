@@ -1,9 +1,10 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, session
+from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, session, jsonify
 from models import User, Log, Pouch, Goal        # import models from the package
 from extensions import db
 from routes.auth import login_required, get_current_user
 from services.timezone_service import get_all_timezones_for_dropdown, get_common_timezones
 from services.user_preferences_service import UserPreferencesService
+from services.notification_service import NotificationService
 import json
 from datetime import datetime
 
@@ -26,12 +27,22 @@ def index():
             # Notification preferences
             email_notifications = request.form.get('email_notifications') == 'on'
             goal_notifications = request.form.get('goal_notifications') == 'on'
+            achievement_notifications = request.form.get('achievement_notifications') == 'on'
             daily_reminders = request.form.get('daily_reminders') == 'on'
+            weekly_reports = request.form.get('weekly_reports') == 'on'
             discord_webhook = request.form.get('discord_webhook', '').strip()
+            
+            # Notification timing
+            reminder_time = request.form.get('reminder_time', '').strip()
+            quiet_hours_start = request.form.get('quiet_hours_start', '').strip()
+            quiet_hours_end = request.form.get('quiet_hours_end', '').strip()
+            notification_frequency = request.form.get('notification_frequency', 'immediate').strip()
             
             # Validation
             if units_preference not in ['mg', 'percentage']:
                 flash('Please select a valid units preference.', 'error')
+            elif notification_frequency not in ['immediate', 'daily', 'weekly']:
+                flash('Please select a valid notification frequency.', 'error')
             else:
                 # Update user preferences
                 user.units_preference = units_preference
@@ -45,8 +56,14 @@ def index():
                     user.id,
                     email_notifications=email_notifications,
                     goal_notifications=goal_notifications,
+                    achievement_notifications=achievement_notifications,
                     daily_reminders=daily_reminders,
-                    discord_webhook=discord_webhook
+                    weekly_reports=weekly_reports,
+                    discord_webhook=discord_webhook,
+                    reminder_time=reminder_time if reminder_time else None,
+                    quiet_hours_start=quiet_hours_start if quiet_hours_start else None,
+                    quiet_hours_end=quiet_hours_end if quiet_hours_end else None,
+                    notification_frequency=notification_frequency
                 )
                 
                 if success:
@@ -60,15 +77,30 @@ def index():
         
         # GET request - load current preferences from database
         current_preferences = preferences_service.get_notification_settings(user.id)
+        webhook_settings = preferences_service.get_webhook_settings(user.id)
         
         if not current_preferences:
             # Fallback to defaults if service fails
             current_preferences = {
                 'email_notifications': True,
                 'goal_notifications': True,
+                'achievement_notifications': True,
                 'daily_reminders': False,
-                'discord_webhook': ''
+                'weekly_reports': False,
+                'reminder_time': None,
+                'quiet_hours_start': None,
+                'quiet_hours_end': None,
+                'notification_frequency': 'immediate'
             }
+        
+        if not webhook_settings:
+            webhook_settings = {
+                'discord_webhook': '',
+                'slack_webhook': ''
+            }
+        
+        # Merge webhook settings into preferences for template
+        current_preferences.update(webhook_settings)
         
         # Get timezone data for dropdown
         all_timezones = get_all_timezones_for_dropdown()
@@ -87,8 +119,14 @@ def index():
         default_preferences = {
             'email_notifications': True,
             'goal_notifications': True,
+            'achievement_notifications': True,
             'daily_reminders': False,
-            'discord_webhook': ''
+            'weekly_reports': False,
+            'discord_webhook': '',
+            'reminder_time': None,
+            'quiet_hours_start': None,
+            'quiet_hours_end': None,
+            'notification_frequency': 'immediate'
         }
         
         # Get timezone data for dropdown even on error
@@ -104,6 +142,43 @@ def index():
                              preferences=default_preferences,
                              all_timezones=all_timezones,
                              common_timezones=common_timezones)
+
+@settings_bp.route('/test-discord-webhook', methods=['POST'])
+@login_required
+def test_discord_webhook():
+    """Test Discord webhook endpoint"""
+    try:
+        data = request.get_json()
+        webhook_url = data.get('webhook_url', '').strip()
+        
+        if not webhook_url:
+            return jsonify({
+                'success': False,
+                'message': 'Please provide a webhook URL.'
+            }), 400
+        
+        # Validate URL format
+        if not webhook_url.startswith('https://discord.com/api/webhooks/'):
+            return jsonify({
+                'success': False,
+                'message': 'Please provide a valid Discord webhook URL.'
+            }), 400
+        
+        # Test the webhook
+        notification_service = NotificationService()
+        success, message = notification_service.test_discord_webhook(webhook_url)
+        
+        return jsonify({
+            'success': success,
+            'message': message
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f'Discord webhook test error: {e}')
+        return jsonify({
+            'success': False,
+            'message': 'An error occurred while testing the webhook.'
+        }), 500
 
 @settings_bp.route('/privacy', methods=['GET', 'POST'])
 @login_required
