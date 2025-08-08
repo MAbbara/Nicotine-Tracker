@@ -1,9 +1,3 @@
-"""User-related service functions.
-
-These helpers encapsulate the creation of users and any user-specific business
-logic. By separating these functions into a service layer, your route handlers
-can remain slim and focus on HTTP concerns.
-"""
 from datetime import datetime, date
 from extensions import db
 from services.timezone_service import (
@@ -14,7 +8,28 @@ from services.timezone_service import (
 )
 
 # Import the User model from the models package aggregator
-from models import User
+from models import User, Log
+from datetime import datetime as dt, time as dt_time
+
+def filter_logs_by_datetime_range(query, start_utc, end_utc):
+    """
+    Database-agnostic helper to filter logs by datetime range.
+    This avoids the SQLite vs MySQL datetime() function incompatibility.
+    """
+    # Get all logs from the query and filter in Python
+    all_logs = query.all()
+    filtered_logs = []
+    
+    for log in all_logs:
+        # Combine log_date and log_time to create a datetime
+        log_time = log.log_time if log.log_time else dt_time(12, 0, 0)  # Default to noon
+        log_datetime = dt.combine(log.log_date, log_time)
+        
+        # Check if this log falls within the UTC boundaries
+        if start_utc <= log_datetime <= end_utc:
+            filtered_logs.append(log)
+    
+    return filtered_logs
 
 def create_user(email: str, password: str, **profile_data) -> User:
     """Create a new user with the given email and password."""
@@ -40,25 +55,12 @@ def get_user_daily_intake(user: User, target_date=None, use_timezone=True):
         Dict with total_mg, total_pouches, and sessions
     """
     if target_date is None:
-        if use_timezone and user.timezone:
-            _, target_date, _ = get_current_user_time(user.timezone)
-        else:
-            target_date = date.today()
+        target_date = date.today()
     
-    if use_timezone and user.timezone:
-        # Get UTC boundaries for the target date in user's timezone
-        start_utc, end_utc = get_user_date_boundaries(user.timezone, target_date)
-        
-        # Filter logs by UTC datetime boundaries
-        daily_logs = user.logs.filter(
-            db.and_(
-                db.func.datetime(db.func.date(db.text('log_date')), db.func.coalesce(db.text('log_time'), '12:00:00')) >= start_utc,
-                db.func.datetime(db.func.date(db.text('log_date')), db.func.coalesce(db.text('log_time'), '12:00:00')) <= end_utc
-            )
-        ).all()
-    else:
-        # Use simple date filtering (legacy behavior)
-        daily_logs = user.logs.filter_by(log_date=target_date).all()
+    # Temporarily disable timezone functionality to avoid database compatibility issues
+    # TODO: Implement proper database-agnostic datetime handling for MySQL/MariaDB compatibility
+    # For now, fall back to simple date filtering to prevent production errors
+    daily_logs = user.logs.filter_by(log_date=target_date).all()
     
     total_mg = 0
     total_pouches = 0
