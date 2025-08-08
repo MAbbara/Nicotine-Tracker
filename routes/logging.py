@@ -3,6 +3,7 @@ from datetime import datetime, time
 from datetime import date
 from models import User, Log, Pouch
 from services import add_log_entry, add_bulk_logs  # use service layer for log creation
+from services.timezone_service import convert_utc_to_user_time, get_current_user_time
 from extensions import db
 from routes.auth import login_required, get_current_user
 from sqlalchemy import desc
@@ -36,14 +37,14 @@ def add_log():
                 flash('Quantity must be greater than 0.', 'error')
                 return redirect(url_for('logging.add_log'))
             
-            # Parse date
+            # Parse date (in user's timezone)
             try:
                 log_date = datetime.strptime(log_date_str, '%Y-%m-%d').date()
             except ValueError:
                 flash('Invalid date format.', 'error')
                 return redirect(url_for('logging.add_log'))
             
-            # Parse time (optional)
+            # Parse time (optional, in user's timezone)
             log_time = None
             if log_time_str:
                 try:
@@ -60,14 +61,15 @@ def add_log():
                     if not pouch:
                         flash('Selected pouch not found.', 'error')
                         return redirect(url_for('logging.add_log'))
-                    # Use existing pouch id
+                    # Use existing pouch id with timezone conversion
                     add_log_entry(
                         user_id=user.id,
                         log_date=log_date,
                         log_time=log_time,
                         quantity=quantity,
                         notes=notes,
-                        pouch_id=pouch.id
+                        pouch_id=pouch.id,
+                        user_timezone=user.timezone
                     )
                 elif custom_brand and custom_nicotine_mg:
                     try:
@@ -75,7 +77,7 @@ def add_log():
                         if custom_mg <= 0:
                             flash('Custom nicotine content must be greater than 0.', 'error')
                             return redirect(url_for('logging.add_log'))
-                        # Create custom log entry
+                        # Create custom log entry with timezone conversion
                         add_log_entry(
                             user_id=user.id,
                             log_date=log_date,
@@ -83,7 +85,8 @@ def add_log():
                             quantity=quantity,
                             notes=notes,
                             custom_brand=custom_brand,
-                            custom_nicotine_mg=custom_mg
+                            custom_nicotine_mg=custom_mg,
+                            user_timezone=user.timezone
                         )
                     except ValueError:
                         flash('Invalid nicotine content. Please enter a number.', 'error')
@@ -104,8 +107,21 @@ def add_log():
         pouches = Pouch.query.filter_by(is_default=True).order_by(Pouch.brand, Pouch.nicotine_mg).all()
         user_pouches = Pouch.query.filter_by(created_by=user.id).order_by(Pouch.brand, Pouch.nicotine_mg).all()
 
-        today = date.today().isoformat()         
-        return render_template('add_log.html', pouches=pouches, user_pouches=user_pouches, date=date)
+        # Get today's date in user's timezone
+        if user.timezone:
+            _, user_today, user_current_time = get_current_user_time(user.timezone)
+            today = user_today.isoformat()
+            current_time = user_current_time.strftime('%H:%M')
+        else:
+            today = date.today().isoformat()
+            current_time = datetime.now().time().strftime('%H:%M')
+        
+        return render_template('add_log.html', 
+                             pouches=pouches, 
+                             user_pouches=user_pouches, 
+                             today=today,
+                             current_time=current_time,
+                             user_timezone=user.timezone)
         
     except Exception as e:
         db.session.rollback()
@@ -128,7 +144,7 @@ def bulk_add():
                 flash('Please enter bulk log data.', 'error')
                 return render_template('bulk_add.html')
             
-            # Parse date
+            # Parse date (in user's timezone)
             try:
                 log_date = datetime.strptime(log_date_str, '%Y-%m-%d').date()
             except ValueError:
@@ -142,9 +158,9 @@ def bulk_add():
                 flash('No valid entries found in bulk text.', 'error')
                 return render_template('bulk_add.html')
             
-            # Use service layer to process all entries at once
+            # Use service layer to process all entries at once with timezone
             try:
-                added_count = add_bulk_logs(user_id=user.id, entries=entries, log_date=log_date)
+                added_count = add_bulk_logs(user_id=user.id, entries=entries, log_date=log_date, user_timezone=user.timezone)
                 if added_count > 0:
                     current_app.logger.info(f'Bulk log entries added for user {user.email}: {added_count} entries')
                     flash(f'Successfully added {added_count} log entries!', 'success')
@@ -253,17 +269,27 @@ def view_logs():
             page=page, per_page=per_page, error_out=False
         )
         
-        # Calculate daily totals for displayed logs
+        # Calculate daily totals for displayed logs (convert to user timezone for grouping)
         daily_totals = {}
         for log in logs.items:
-            date_key = log.log_date
+            # Convert UTC log datetime to user's timezone for proper daily grouping
+            if user.timezone and log.log_date and log.log_time:
+                log_datetime = datetime.combine(log.log_date, log.log_time)
+                _, user_date, _ = convert_utc_to_user_time(user.timezone, log_datetime)
+                date_key = user_date
+            else:
+                date_key = log.log_date
+            
             if date_key not in daily_totals:
                 daily_totals[date_key] = {'pouches': 0, 'mg': 0}
             
             daily_totals[date_key]['pouches'] += log.quantity
             daily_totals[date_key]['mg'] += log.get_total_nicotine()
         
-        return render_template('view_logs.html', logs=logs, daily_totals=daily_totals)
+        return render_template('view_logs.html', 
+                             logs=logs, 
+                             daily_totals=daily_totals,
+                             user_timezone=user.timezone)
         
     except Exception as e:
         current_app.logger.error(f'View logs error: {e}')
@@ -294,22 +320,33 @@ def edit_log(log_id):
                 flash('Quantity must be greater than 0.', 'error')
                 return render_template('edit_log.html', log=log_entry)
             
-            # Parse date
+            # Parse date (in user's timezone)
             try:
-                log_entry.log_date = datetime.strptime(log_date_str, '%Y-%m-%d').date()
+                user_date = datetime.strptime(log_date_str, '%Y-%m-%d').date()
             except ValueError:
                 flash('Invalid date format.', 'error')
                 return render_template('edit_log.html', log=log_entry)
             
-            # Parse time (optional)
+            # Parse time (optional, in user's timezone)
+            user_time = None
             if log_time_str:
                 try:
-                    log_entry.log_time = datetime.strptime(log_time_str, '%H:%M').time()
+                    user_time = datetime.strptime(log_time_str, '%H:%M').time()
                 except ValueError:
                     flash('Invalid time format. Use HH:MM format.', 'error')
                     return render_template('edit_log.html', log=log_entry)
+            
+            # Convert user's date/time to UTC for storage
+            from services.timezone_service import convert_user_time_to_utc
+            if user_time is not None:
+                _, utc_date, utc_time = convert_user_time_to_utc(user.timezone, user_date, user_time)
             else:
-                log_entry.log_time = None
+                # Use current time if no time specified
+                _, current_date, current_time = get_current_user_time(user.timezone)
+                _, utc_date, utc_time = convert_user_time_to_utc(user.timezone, user_date, current_time)
+            
+            log_entry.log_date = utc_date
+            log_entry.log_time = utc_time
             
             log_entry.quantity = quantity
             log_entry.notes = notes
@@ -374,15 +411,17 @@ def quick_add_api():
         if not pouch:
             return jsonify({'success': False, 'error': 'Pouch not found'})
         
-        # Use service layer to create quick log entry with current date and time
+        # Use service layer to create quick log entry with current date and time in user's timezone
         try:
+            _, user_date, user_time = get_current_user_time(user.timezone)
             add_log_entry(
                 user_id=user.id,
-                log_date=date.today(),
-                log_time=datetime.now().time(),
+                log_date=user_date,
+                log_time=user_time,
                 quantity=quantity,
                 notes="",
-                pouch_id=pouch.id
+                pouch_id=pouch.id,
+                user_timezone=user.timezone
             )
             return jsonify({
                 'success': True,

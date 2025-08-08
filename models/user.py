@@ -50,23 +50,6 @@ class User(db.Model):
         self.reset_token_expires = datetime.utcnow() + timedelta(hours=1)
         return self.reset_token
 
-    def get_daily_intake(self, target_date=None):
-        if target_date is None:
-            target_date = date.today()
-        daily_logs = self.logs.filter_by(log_date=target_date).all()
-        total_mg = 0
-        total_pouches = 0
-        for log in daily_logs:
-            if log.pouch:
-                total_mg += log.quantity * log.pouch.nicotine_mg
-            elif log.custom_nicotine_mg:
-                total_mg += log.quantity * log.custom_nicotine_mg
-            total_pouches += log.quantity
-        return {
-            'total_mg': total_mg,
-            'total_pouches': total_pouches,
-            'sessions': len(daily_logs)
-        }
 
     def to_dict(self):
         return {

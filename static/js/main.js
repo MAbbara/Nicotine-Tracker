@@ -215,8 +215,8 @@ function loadHourlyChart() {
       // use Tailwind’s green-500 in light, green-400 in dark
       const seriesColor = isDark ? '#4ADE80' : '#22C55E';
       // axis/grid colors
-      const axisColor   = isDark ? '#374151' : '#6B7280';  // gray-700 vs gray-500
-      const gridColor   = isDark ? '#4B5563' : '#E5E7EB';  // gray-600 vs gray-200
+      const axisColor   = isDark ? '#D1D5DB' : '#4B5563';  // gray-300 ↔ gray-600
+      const gridColor   = isDark ? '#374151' : '#E5E7EB';  // gray-600 vs gray-200
       // chart background
       const bgColor     = isDark ? '#1F2937' : '#FFFFFF';  // gray-800 vs white
 

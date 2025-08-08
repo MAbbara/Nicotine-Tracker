@@ -2,6 +2,12 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from datetime import date, datetime, timedelta
 from models import User, Goal, Log
 from services import create_goal
+from services.timezone_service import (
+    get_current_user_time, 
+    get_user_date_boundaries, 
+    get_user_week_boundaries,
+    convert_utc_to_user_time
+)
 from extensions import db
 from routes.auth import login_required, get_current_user
 from sqlalchemy import desc, func
@@ -24,8 +30,12 @@ def index():
         # Get completed/inactive goals
         inactive_goals = Goal.query.filter_by(user_id=user.id, is_active=False).order_by(desc(Goal.updated_at)).limit(5).all()
         
-        # Calculate progress for active goals
-        today = date.today()
+        # Calculate progress for active goals (using user's timezone)
+        if user.timezone:
+            _, today, _ = get_current_user_time(user.timezone)
+        else:
+            today = date.today()
+        
         goal_progress = {}
         
         for goal in active_goals:
@@ -243,9 +253,12 @@ def progress():
             flash('No active goals found. Create a goal to track your progress!', 'info')
             return redirect(url_for('goals.create_goal'))
         
-        # Calculate detailed progress for each goal
+        # Calculate detailed progress for each goal (using user's timezone)
         progress_data = {}
-        today = date.today()
+        if user.timezone:
+            _, today, _ = get_current_user_time(user.timezone)
+        else:
+            today = date.today()
         
         for goal in active_goals:
             # Get last 30 days of progress
@@ -310,7 +323,11 @@ def check_notifications():
     """API endpoint to check for goal notifications"""
     try:
         user = get_current_user()
-        today = date.today()
+        # Use user's timezone for notifications
+        if user.timezone:
+            _, today, _ = get_current_user_time(user.timezone)
+        else:
+            today = date.today()
         notifications = []
         
         # Get active goals with notifications enabled
@@ -352,46 +369,76 @@ def check_notifications():
         })
 
 def calculate_goal_progress(user, goal, target_date):
-    """Calculate progress for a specific goal and date"""
+    """Calculate progress for a specific goal and date using user's timezone"""
     try:
         if goal.goal_type == 'daily_pouches':
-            daily_intake = user.get_daily_intake(target_date)
+            # Use timezone-aware daily intake calculation
+            daily_intake = user.get_daily_intake(target_date, use_timezone=True)
             current = daily_intake['total_pouches']
             target = goal.target_value
             achieved = current <= target
             percentage = (current / target * 100) if target > 0 else 0
             
         elif goal.goal_type == 'daily_mg':
-            daily_intake = user.get_daily_intake(target_date)
+            # Use timezone-aware daily intake calculation
+            daily_intake = user.get_daily_intake(target_date, use_timezone=True)
             current = daily_intake['total_mg']
             target = goal.target_value
             achieved = current <= target
             percentage = (current / target * 100) if target > 0 else 0
             
         elif goal.goal_type == 'weekly_reduction':
-            # For weekly reduction, compare current week to previous week
-            week_start = target_date - timedelta(days=target_date.weekday())
-            week_end = week_start + timedelta(days=6)
-            
-            # Current week intake
-            current_week_logs = Log.query.filter(
-                Log.user_id == user.id,
-                Log.log_date >= week_start,
-                Log.log_date <= min(week_end, target_date)
-            ).all()
+            # For weekly reduction, compare current week to previous week using user's timezone
+            if user.timezone:
+                # Get week boundaries in user's timezone
+                week_start = target_date - timedelta(days=target_date.weekday())
+                week_end = min(week_start + timedelta(days=6), target_date)
+                
+                # Get UTC boundaries for current week
+                week_start_utc, _ = get_user_date_boundaries(user.timezone, week_start)
+                _, week_end_utc = get_user_date_boundaries(user.timezone, week_end)
+                
+                # Current week intake using UTC boundaries
+                current_week_logs = Log.query.filter(
+                    Log.user_id == user.id,
+                    func.datetime(Log.log_date, func.coalesce(Log.log_time, '12:00:00')) >= week_start_utc,
+                    func.datetime(Log.log_date, func.coalesce(Log.log_time, '12:00:00')) <= week_end_utc
+                ).all()
+                
+                # Previous week boundaries
+                prev_week_start = week_start - timedelta(days=7)
+                prev_week_end = prev_week_start + timedelta(days=6)
+                
+                prev_week_start_utc, _ = get_user_date_boundaries(user.timezone, prev_week_start)
+                _, prev_week_end_utc = get_user_date_boundaries(user.timezone, prev_week_end)
+                
+                # Previous week intake using UTC boundaries
+                prev_week_logs = Log.query.filter(
+                    Log.user_id == user.id,
+                    func.datetime(Log.log_date, func.coalesce(Log.log_time, '12:00:00')) >= prev_week_start_utc,
+                    func.datetime(Log.log_date, func.coalesce(Log.log_time, '12:00:00')) <= prev_week_end_utc
+                ).all()
+            else:
+                # Fallback to server timezone
+                week_start = target_date - timedelta(days=target_date.weekday())
+                week_end = week_start + timedelta(days=6)
+                
+                current_week_logs = Log.query.filter(
+                    Log.user_id == user.id,
+                    Log.log_date >= week_start,
+                    Log.log_date <= min(week_end, target_date)
+                ).all()
+                
+                prev_week_start = week_start - timedelta(days=7)
+                prev_week_end = prev_week_start + timedelta(days=6)
+                
+                prev_week_logs = Log.query.filter(
+                    Log.user_id == user.id,
+                    Log.log_date >= prev_week_start,
+                    Log.log_date <= prev_week_end
+                ).all()
             
             current_week_pouches = sum(log.quantity for log in current_week_logs)
-            
-            # Previous week intake
-            prev_week_start = week_start - timedelta(days=7)
-            prev_week_end = prev_week_start + timedelta(days=6)
-            
-            prev_week_logs = Log.query.filter(
-                Log.user_id == user.id,
-                Log.log_date >= prev_week_start,
-                Log.log_date <= prev_week_end
-            ).all()
-            
             prev_week_pouches = sum(log.quantity for log in prev_week_logs)
             
             if prev_week_pouches > 0:
