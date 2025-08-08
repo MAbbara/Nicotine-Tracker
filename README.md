@@ -14,6 +14,7 @@ NicotineTracker helps users monitor their nicotine pouch intake by providing det
 - **Pouch Catalog**: Manage default and custom nicotine pouch brands with varying strengths
 - **Goal Setting**: Set daily limits for pouches or nicotine content (mg)
 - **Analytics Dashboard**: Visual charts and insights about usage patterns
+- **Notification System**: Email and Discord webhook notifications for goals, achievements, and reminders
 
 ### Analytics & Insights
 - Daily intake tracking (pouches and nicotine mg)
@@ -22,48 +23,63 @@ NicotineTracker helps users monitor their nicotine pouch intake by providing det
 - Goal progress monitoring with streak tracking
 - Usage insights and comparisons
 
+### Notification Features
+- **Email Notifications**: Goal reminders, achievement alerts, daily/weekly reports
+- **Discord Integration**: Real-time notifications via Discord webhooks
+- **Customizable Timing**: Set daily reminder times and quiet hours
+- **Notification Preferences**: Granular control over notification types
+- **Background Processing**: Reliable delivery through queue-based system
+
 ## Project Structure
 
 ```
 NicotineTracker/
-├── app.py                 # Main Flask application
-├── config.py             # Configuration settings
-├── extensions.py         # Flask extensions initialization
-├── requirements.txt      # Python dependencies
-├── package.json          # Node.js dependencies (Tailwind CSS)
-├── models/               # Database models
-│   ├── user.py          # User model with authentication
-│   ├── pouch.py         # Nicotine pouch products
-│   ├── log.py           # Consumption logs
-│   └── goal.py          # User goals and targets
-├── routes/               # Application routes/blueprints
-│   ├── auth.py          # Authentication routes
-│   ├── dashboard.py     # Main dashboard and analytics
-│   ├── logging.py       # Consumption logging
-│   ├── catalog.py       # Pouch management
-│   ├── goals.py         # Goal setting and tracking
-│   ├── profile.py       # User profile management
-│   ├── settings.py      # Application settings
-│   └── import_export.py # Data import/export
-├── services/             # Business logic services
-│   ├── user_service.py  # User-related operations
-│   ├── pouch_service.py # Pouch management
-│   ├── log_service.py   # Logging operations
-│   └── goal_service.py  # Goal management
-├── templates/            # HTML templates
-│   ├── base.html        # Base template
-│   ├── index.html       # Landing page
-│   ├── auth/            # Authentication templates
-│   ├── dashboard/       # Dashboard templates
-│   ├── logging/         # Logging templates
-│   ├── catalog/         # Catalog templates
-│   ├── goals/           # Goal templates
-│   └── errors/          # Error pages
-├── static/               # Static assets
-│   ├── css/             # Stylesheets (Tailwind CSS)
-│   └── js/              # JavaScript files
-├── migrations/           # Database migrations
-└── instance/             # Instance-specific files (database)
+├── app.py                      # Main Flask application
+├── config.py                   # Configuration settings
+├── extensions.py               # Flask extensions initialization
+├── run_background_tasks.py     # Background notification processor
+├── requirements.txt            # Python dependencies
+├── package.json                # Node.js dependencies (Tailwind CSS)
+├── models/                     # Database models
+│   ├── user.py                # User model with authentication
+│   ├── pouch.py               # Nicotine pouch products
+│   ├── log.py                 # Consumption logs
+│   ├── goal.py                # User goals and targets
+│   ├── notification.py        # Notification queue and history
+│   ├── user_preferences.py    # User notification preferences
+│   └── user_settings.py       # User application settings
+├── routes/                     # Application routes/blueprints
+│   ├── auth.py                # Authentication routes
+│   ├── dashboard.py           # Main dashboard and analytics
+│   ├── logging.py             # Consumption logging
+│   ├── catalog.py             # Pouch management
+│   ├── goals.py               # Goal setting and tracking
+│   ├── profile.py             # User profile management
+│   ├── settings.py            # Application settings & notifications
+│   └── import_export.py       # Data import/export
+├── services/                   # Business logic services
+│   ├── user_service.py        # User-related operations
+│   ├── pouch_service.py       # Pouch management
+│   ├── log_service.py         # Logging operations
+│   ├── goal_service.py        # Goal management
+│   ├── notification_service.py # Email and webhook notifications
+│   ├── background_tasks.py    # Background task processing
+│   └── user_preferences_service.py # User preference management
+├── templates/                  # HTML templates
+│   ├── base.html              # Base template
+│   ├── index.html             # Landing page
+│   ├── auth/                  # Authentication templates
+│   ├── dashboard/             # Dashboard templates
+│   ├── logging/               # Logging templates
+│   ├── catalog/               # Catalog templates
+│   ├── goals/                 # Goal templates
+│   ├── settings/              # Settings templates (enhanced UI)
+│   └── errors/                # Error pages
+├── static/                     # Static assets
+│   ├── css/                   # Stylesheets (Tailwind CSS)
+│   └── js/                    # JavaScript files
+├── migrations/                 # Database migrations
+└── instance/                   # Instance-specific files (database)
 ```
 
 ## Technology Stack
@@ -346,6 +362,406 @@ This helps verify that the correct environment is being used.
 - Verify SMTP settings
 - Check firewall/network restrictions
 - Test with a simple SMTP client first
+
+## Notification System Setup
+
+The NicotineTracker includes a comprehensive notification system that supports email and Discord webhook notifications. This section covers how to set up and configure the background notification processing system.
+
+### Overview
+
+The notification system consists of:
+- **Notification Service**: Handles sending emails and Discord webhooks
+- **Background Task Processor**: Processes queued notifications
+- **User Preferences**: Granular control over notification types and timing
+- **Queue Management**: Reliable delivery with retry logic
+
+### Prerequisites
+
+#### For Email Notifications
+- SMTP server access (Gmail, SendGrid, etc.)
+- Email credentials configured in environment variables
+
+#### For Discord Notifications
+- Discord server with webhook permissions
+- Discord webhook URL from your server
+
+### Setting Up Email Notifications
+
+1. **Configure SMTP Settings**
+   
+   Add the following to your `.env` file:
+   ```env
+   # Email Configuration
+   MAIL_SERVER=smtp.gmail.com
+   MAIL_PORT=587
+   MAIL_USE_TLS=True
+   MAIL_USERNAME=your-email@gmail.com
+   MAIL_PASSWORD=your-app-password
+   MAIL_DEFAULT_SENDER=your-email@gmail.com
+   ```
+
+2. **Gmail Setup (Recommended)**
+   
+   For Gmail, you'll need an App Password:
+   ```bash
+   # 1. Enable 2-Factor Authentication on your Google account
+   # 2. Go to Google Account settings > Security > App passwords
+   # 3. Generate an app password for "Mail"
+   # 4. Use this password in MAIL_PASSWORD (not your regular password)
+   ```
+
+3. **Alternative SMTP Providers**
+   
+   **SendGrid:**
+   ```env
+   MAIL_SERVER=smtp.sendgrid.net
+   MAIL_PORT=587
+   MAIL_USERNAME=apikey
+   MAIL_PASSWORD=your-sendgrid-api-key
+   MAIL_DEFAULT_SENDER=your-verified-sender@domain.com
+   ```
+   
+   **Mailgun:**
+   ```env
+   MAIL_SERVER=smtp.mailgun.org
+   MAIL_PORT=587
+   MAIL_USERNAME=your-mailgun-username
+   MAIL_PASSWORD=your-mailgun-password
+   MAIL_DEFAULT_SENDER=your-verified-sender@domain.com
+   ```
+
+### Setting Up Discord Notifications
+
+1. **Create Discord Webhook**
+   
+   In your Discord server:
+   ```
+   1. Go to Server Settings > Integrations > Webhooks
+   2. Click "New Webhook"
+   3. Choose the channel for notifications
+   4. Copy the webhook URL
+   ```
+
+2. **Configure in Application**
+   
+   Users can add their Discord webhook URL in:
+   ```
+   Settings > Integrations > Discord > Discord Webhook URL
+   ```
+
+### Background Task Setup
+
+The notification system uses a background task processor to handle queued notifications reliably.
+
+#### Development Environment
+
+1. **Run Background Tasks Manually**
+   ```bash
+   # In a separate terminal, activate your virtual environment
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   
+   # Run the background task processor
+   python run_background_tasks.py
+   ```
+
+2. **Verify Background Tasks**
+   ```bash
+   # The processor will show output like:
+   # Starting background task processor...
+   # Processing notification queue...
+   # Processed 0 notifications
+   ```
+
+#### Production Environment
+
+For production, you should run the background task processor as a service.
+
+1. **Using systemd (Linux)**
+   
+   Create `/etc/systemd/system/nicotine-tracker-notifications.service`:
+   ```ini
+   [Unit]
+   Description=NicotineTracker Notification Processor
+   After=network.target
+   
+   [Service]
+   Type=simple
+   User=your-app-user
+   WorkingDirectory=/path/to/NicotineTracker
+   Environment=PATH=/path/to/NicotineTracker/venv/bin
+   Environment=FLASK_ENV=production
+   ExecStart=/path/to/NicotineTracker/venv/bin/python run_background_tasks.py
+   Restart=always
+   RestartSec=10
+   
+   [Install]
+   WantedBy=multi-user.target
+   ```
+   
+   Enable and start the service:
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl enable nicotine-tracker-notifications
+   sudo systemctl start nicotine-tracker-notifications
+   sudo systemctl status nicotine-tracker-notifications
+   ```
+
+2. **Using Docker**
+   
+   Add to your `docker-compose.yml`:
+   ```yaml
+   version: '3.8'
+   services:
+     web:
+       # Your main app service
+       
+     notifications:
+       build: .
+       command: python run_background_tasks.py
+       environment:
+         - FLASK_ENV=production
+         - DATABASE_URL=${DATABASE_URL}
+         - MAIL_SERVER=${MAIL_SERVER}
+         - MAIL_USERNAME=${MAIL_USERNAME}
+         - MAIL_PASSWORD=${MAIL_PASSWORD}
+       depends_on:
+         - db
+       restart: unless-stopped
+   ```
+
+3. **Using Supervisor**
+   
+   Create `/etc/supervisor/conf.d/nicotine-tracker-notifications.conf`:
+   ```ini
+   [program:nicotine-tracker-notifications]
+   command=/path/to/NicotineTracker/venv/bin/python run_background_tasks.py
+   directory=/path/to/NicotineTracker
+   user=your-app-user
+   autostart=true
+   autorestart=true
+   redirect_stderr=true
+   stdout_logfile=/var/log/nicotine-tracker-notifications.log
+   environment=FLASK_ENV=production
+   ```
+   
+   Update supervisor:
+   ```bash
+   sudo supervisorctl reread
+   sudo supervisorctl update
+   sudo supervisorctl start nicotine-tracker-notifications
+   ```
+
+4. **Using PM2 (Node.js Process Manager)**
+   ```bash
+   # Install PM2
+   npm install -g pm2
+   
+   # Create ecosystem file
+   cat > ecosystem.config.js << EOF
+   module.exports = {
+     apps: [{
+       name: 'nicotine-tracker-notifications',
+       script: 'run_background_tasks.py',
+       interpreter: '/path/to/venv/bin/python',
+       cwd: '/path/to/NicotineTracker',
+       env: {
+         FLASK_ENV: 'production'
+       },
+       restart_delay: 10000,
+       max_restarts: 10
+     }]
+   }
+   EOF
+   
+   # Start the process
+   pm2 start ecosystem.config.js
+   pm2 save
+   pm2 startup
+   ```
+
+### Configuration Options
+
+#### Background Task Settings
+
+You can configure the background task processor by setting these environment variables:
+
+```env
+# Notification processing interval (seconds)
+NOTIFICATION_PROCESS_INTERVAL=30
+
+# Maximum retry attempts for failed notifications
+NOTIFICATION_MAX_RETRIES=3
+
+# Batch size for processing notifications
+NOTIFICATION_BATCH_SIZE=10
+
+# Enable debug logging for notifications
+NOTIFICATION_DEBUG=False
+```
+
+#### Notification Types
+
+The system supports these notification types:
+- `goal_reminder` - When approaching daily limits
+- `achievement` - When goals are completed
+- `daily_reminder` - Daily usage reminders
+- `weekly_report` - Weekly summary reports
+
+### Testing Notifications
+
+1. **Test Email Configuration**
+   ```bash
+   # Run a quick test
+   python -c "
+   from services.notification_service import NotificationService
+   service = NotificationService()
+   service.send_test_email('your-email@example.com')
+   "
+   ```
+
+2. **Test Discord Webhook**
+   
+   Use the built-in test feature:
+   ```
+   1. Go to Settings > Integrations > Discord
+   2. Enter your webhook URL
+   3. Click "Test" button
+   4. Check your Discord channel for the test message
+   ```
+
+3. **Test Background Processing**
+   ```bash
+   # Queue a test notification
+   python -c "
+   from services.notification_service import NotificationService
+   service = NotificationService()
+   service.queue_notification(
+       user_id=1,
+       notification_type='email',
+       category='test',
+       subject='Test Notification',
+       message='This is a test notification',
+       recipient='your-email@example.com'
+   )
+   "
+   
+   # Check if it gets processed by the background task
+   ```
+
+### Monitoring and Logging
+
+1. **Check Notification Queue**
+   ```sql
+   -- View pending notifications
+   SELECT * FROM notification_queue WHERE status = 'pending';
+   
+   -- View failed notifications
+   SELECT * FROM notification_queue WHERE status = 'failed';
+   ```
+
+2. **Check Notification History**
+   ```sql
+   -- View recent notification history
+   SELECT * FROM notification_history 
+   ORDER BY sent_at DESC 
+   LIMIT 10;
+   ```
+
+3. **Application Logs**
+   
+   The notification system logs to the main application log:
+   ```bash
+   # View recent notification logs
+   tail -f logs/app.log | grep -i notification
+   ```
+
+### Troubleshooting
+
+#### Common Issues
+
+1. **Background Tasks Not Running**
+   ```bash
+   # Check if the process is running
+   ps aux | grep run_background_tasks.py
+   
+   # Check system service status
+   sudo systemctl status nicotine-tracker-notifications
+   ```
+
+2. **Email Not Sending**
+   ```bash
+   # Test SMTP connection
+   python -c "
+   import smtplib
+   from email.mime.text import MIMEText
+   
+   server = smtplib.SMTP('smtp.gmail.com', 587)
+   server.starttls()
+   server.login('your-email@gmail.com', 'your-app-password')
+   print('SMTP connection successful')
+   server.quit()
+   "
+   ```
+
+3. **Discord Webhook Failing**
+   ```bash
+   # Test webhook URL
+   curl -X POST "YOUR_WEBHOOK_URL" \
+        -H "Content-Type: application/json" \
+        -d '{"content": "Test message from NicotineTracker"}'
+   ```
+
+4. **Database Connection Issues**
+   ```bash
+   # Check database connectivity
+   python -c "
+   from extensions import db
+   from app import create_app
+   
+   app = create_app()
+   with app.app_context():
+       db.engine.execute('SELECT 1')
+       print('Database connection successful')
+   "
+   ```
+
+#### Performance Optimization
+
+1. **Adjust Processing Interval**
+   ```env
+   # Process notifications every 60 seconds instead of 30
+   NOTIFICATION_PROCESS_INTERVAL=60
+   ```
+
+2. **Increase Batch Size**
+   ```env
+   # Process more notifications per batch
+   NOTIFICATION_BATCH_SIZE=25
+   ```
+
+3. **Database Indexing**
+   ```sql
+   -- Add indexes for better performance
+   CREATE INDEX idx_notification_queue_status ON notification_queue(status);
+   CREATE INDEX idx_notification_queue_scheduled ON notification_queue(scheduled_for);
+   ```
+
+### Security Considerations
+
+1. **Protect Webhook URLs**
+   - Store Discord webhook URLs securely
+   - Validate webhook URLs before saving
+   - Use HTTPS for all webhook communications
+
+2. **Email Security**
+   - Use app passwords instead of regular passwords
+   - Enable TLS for SMTP connections
+   - Validate email addresses before sending
+
+3. **Rate Limiting**
+   - The system includes built-in rate limiting
+   - Discord webhooks are limited to prevent spam
+   - Email sending respects SMTP server limits
 
 ## Usage Guide
 
