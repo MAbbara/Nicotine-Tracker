@@ -398,45 +398,25 @@ def calculate_goal_progress(user, goal, target_date):
                 week_start_utc, _ = get_user_date_boundaries(user.timezone, week_start)
                 _, week_end_utc = get_user_date_boundaries(user.timezone, week_end)
                 
-                # Current week intake using UTC boundaries
-                current_week_logs = Log.query.filter(
-                    Log.user_id == user.id,
-                    func.datetime(Log.log_date, func.coalesce(Log.log_time, '12:00:00')) >= week_start_utc,
-                    func.datetime(Log.log_date, func.coalesce(Log.log_time, '12:00:00')) <= week_end_utc
-                ).all()
-                
-                # Previous week boundaries
-                prev_week_start = week_start - timedelta(days=7)
-                prev_week_end = prev_week_start + timedelta(days=6)
-                
-                prev_week_start_utc, _ = get_user_date_boundaries(user.timezone, prev_week_start)
-                _, prev_week_end_utc = get_user_date_boundaries(user.timezone, prev_week_end)
-                
-                # Previous week intake using UTC boundaries
-                prev_week_logs = Log.query.filter(
-                    Log.user_id == user.id,
-                    func.datetime(Log.log_date, func.coalesce(Log.log_time, '12:00:00')) >= prev_week_start_utc,
-                    func.datetime(Log.log_date, func.coalesce(Log.log_time, '12:00:00')) <= prev_week_end_utc
-                ).all()
-            else:
-                # Fallback to server timezone
-                week_start = target_date - timedelta(days=target_date.weekday())
-                week_end = week_start + timedelta(days=6)
-                
-                current_week_logs = Log.query.filter(
-                    Log.user_id == user.id,
-                    Log.log_date >= week_start,
-                    Log.log_date <= min(week_end, target_date)
-                ).all()
-                
-                prev_week_start = week_start - timedelta(days=7)
-                prev_week_end = prev_week_start + timedelta(days=6)
-                
-                prev_week_logs = Log.query.filter(
-                    Log.user_id == user.id,
-                    Log.log_date >= prev_week_start,
-                    Log.log_date <= prev_week_end
-                ).all()
+            # Temporarily disable timezone functionality to avoid database compatibility issues
+            # Use simple date filtering
+            week_start = target_date - timedelta(days=target_date.weekday())
+            week_end = week_start + timedelta(days=6)
+            
+            current_week_logs = Log.query.filter(
+                Log.user_id == user.id,
+                Log.log_date >= week_start,
+                Log.log_date <= min(week_end, target_date)
+            ).all()
+            
+            prev_week_start = week_start - timedelta(days=7)
+            prev_week_end = prev_week_start + timedelta(days=6)
+            
+            prev_week_logs = Log.query.filter(
+                Log.user_id == user.id,
+                Log.log_date >= prev_week_start,
+                Log.log_date <= prev_week_end
+            ).all()
             
             current_week_pouches = sum(log.quantity for log in current_week_logs)
             prev_week_pouches = sum(log.quantity for log in prev_week_logs)
