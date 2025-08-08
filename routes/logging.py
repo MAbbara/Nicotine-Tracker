@@ -37,21 +37,35 @@ def add_log():
                 flash('Quantity must be greater than 0.', 'error')
                 return redirect(url_for('logging.add_log'))
             
-            # Parse date (in user's timezone)
-            try:
-                log_date = datetime.strptime(log_date_str, '%Y-%m-%d').date()
-            except ValueError:
-                flash('Invalid date format.', 'error')
-                return redirect(url_for('logging.add_log'))
+            # Check if we have UTC values from timezone-aware frontend
+            utc_log_date_str = request.form.get('utc_log_date')
+            utc_log_time_str = request.form.get('utc_log_time')
+            frontend_timezone = request.form.get('user_timezone')
             
-            # Parse time (optional, in user's timezone)
-            log_time = None
-            if log_time_str:
+            if utc_log_date_str and utc_log_time_str and frontend_timezone:
+                # Use UTC values from timezone-aware frontend
                 try:
-                    log_time = datetime.strptime(log_time_str, '%H:%M').time()
+                    log_date = datetime.strptime(utc_log_date_str, '%Y-%m-%d').date()
+                    log_time = datetime.strptime(utc_log_time_str, '%H:%M').time()
                 except ValueError:
-                    flash('Invalid time format. Use HH:MM format.', 'error')
+                    flash('Invalid date/time format from timezone conversion.', 'error')
                     return redirect(url_for('logging.add_log'))
+            else:
+                # Fallback to server-side timezone conversion
+                try:
+                    log_date = datetime.strptime(log_date_str, '%Y-%m-%d').date()
+                except ValueError:
+                    flash('Invalid date format.', 'error')
+                    return redirect(url_for('logging.add_log'))
+                
+                # Parse time (optional, in user's timezone)
+                log_time = None
+                if log_time_str:
+                    try:
+                        log_time = datetime.strptime(log_time_str, '%H:%M').time()
+                    except ValueError:
+                        flash('Invalid time format. Use HH:MM format.', 'error')
+                        return redirect(url_for('logging.add_log'))
             
             # Use service layer to create log entry
             try:
@@ -61,33 +75,60 @@ def add_log():
                     if not pouch:
                         flash('Selected pouch not found.', 'error')
                         return redirect(url_for('logging.add_log'))
-                    # Use existing pouch id with timezone conversion
-                    add_log_entry(
-                        user_id=user.id,
-                        log_date=log_date,
-                        log_time=log_time,
-                        quantity=quantity,
-                        notes=notes,
-                        pouch_id=pouch.id,
-                        user_timezone=user.timezone
-                    )
-                elif custom_brand and custom_nicotine_mg:
-                    try:
-                        custom_mg = int(custom_nicotine_mg)
-                        if custom_mg <= 0:
-                            flash('Custom nicotine content must be greater than 0.', 'error')
-                            return redirect(url_for('logging.add_log'))
-                        # Create custom log entry with timezone conversion
+                    # Use existing pouch id
+                    if utc_log_date_str and utc_log_time_str:
+                        # Direct UTC storage (already converted by frontend)
                         add_log_entry(
                             user_id=user.id,
                             log_date=log_date,
                             log_time=log_time,
                             quantity=quantity,
                             notes=notes,
-                            custom_brand=custom_brand,
-                            custom_nicotine_mg=custom_mg,
+                            pouch_id=pouch.id,
+                            user_timezone=None  # Skip server-side conversion
+                        )
+                    else:
+                        # Server-side timezone conversion
+                        add_log_entry(
+                            user_id=user.id,
+                            log_date=log_date,
+                            log_time=log_time,
+                            quantity=quantity,
+                            notes=notes,
+                            pouch_id=pouch.id,
                             user_timezone=user.timezone
                         )
+                elif custom_brand and custom_nicotine_mg:
+                    try:
+                        custom_mg = int(custom_nicotine_mg)
+                        if custom_mg <= 0:
+                            flash('Custom nicotine content must be greater than 0.', 'error')
+                            return redirect(url_for('logging.add_log'))
+                        # Create custom log entry
+                        if utc_log_date_str and utc_log_time_str:
+                            # Direct UTC storage (already converted by frontend)
+                            add_log_entry(
+                                user_id=user.id,
+                                log_date=log_date,
+                                log_time=log_time,
+                                quantity=quantity,
+                                notes=notes,
+                                custom_brand=custom_brand,
+                                custom_nicotine_mg=custom_mg,
+                                user_timezone=None  # Skip server-side conversion
+                            )
+                        else:
+                            # Server-side timezone conversion
+                            add_log_entry(
+                                user_id=user.id,
+                                log_date=log_date,
+                                log_time=log_time,
+                                quantity=quantity,
+                                notes=notes,
+                                custom_brand=custom_brand,
+                                custom_nicotine_mg=custom_mg,
+                                user_timezone=user.timezone
+                            )
                     except ValueError:
                         flash('Invalid nicotine content. Please enter a number.', 'error')
                         return redirect(url_for('logging.add_log'))

@@ -32,6 +32,32 @@ class Log(db.Model):
             return self.pouch.brand
         return self.custom_brand or 'Unknown'
 
+    def get_user_date(self, user_timezone: str) -> date:
+        """Get the log date in user's timezone."""
+        if not user_timezone or not self.log_date or not self.log_time:
+            return self.log_date
+        
+        try:
+            from services.timezone_service import convert_utc_to_user_time
+            utc_datetime = datetime.combine(self.log_date, self.log_time)
+            _, user_date, _ = convert_utc_to_user_time(user_timezone, utc_datetime)
+            return user_date
+        except Exception:
+            return self.log_date
+    
+    def get_user_time(self, user_timezone: str) -> datetime.time:
+        """Get the log time in user's timezone."""
+        if not user_timezone or not self.log_date or not self.log_time:
+            return self.log_time
+        
+        try:
+            from services.timezone_service import convert_utc_to_user_time
+            utc_datetime = datetime.combine(self.log_date, self.log_time)
+            _, _, user_time = convert_utc_to_user_time(user_timezone, utc_datetime)
+            return user_time
+        except Exception:
+            return self.log_time
+
     def to_dict(self) -> dict:
         return {
             'id': self.id,

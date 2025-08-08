@@ -27,26 +27,31 @@ def add_log_entry(user_id: int,
     
     Args:
         user_id: ID of the user creating the log
-        log_date: Date in user's timezone
-        log_time: Time in user's timezone (optional)
+        log_date: Date (UTC if user_timezone is None, user timezone otherwise)
+        log_time: Time (UTC if user_timezone is None, user timezone otherwise)
         quantity: Number of pouches
         notes: Optional notes
         pouch_id: ID of existing pouch (optional)
         custom_brand: Custom brand name (optional)
         custom_nicotine_mg: Custom nicotine content (optional)
-        user_timezone: User's timezone for conversion
+        user_timezone: User's timezone for conversion (None to skip conversion)
     
     Returns:
         Created Log entry
     """
-    # Convert user's local time to UTC for storage
-    if log_time is not None:
-        utc_datetime, utc_date, utc_time = convert_user_time_to_utc(user_timezone, log_date, log_time)
+    if user_timezone is None:
+        # Values are already in UTC, use them directly
+        utc_date = log_date
+        utc_time = log_time or datetime.now().time()
     else:
-        # If no time provided, use current time in user's timezone
-        from services.timezone_service import get_current_user_time
-        _, current_date, current_time = get_current_user_time(user_timezone)
-        utc_datetime, utc_date, utc_time = convert_user_time_to_utc(user_timezone, log_date, current_time)
+        # Convert user's local time to UTC for storage
+        if log_time is not None:
+            utc_datetime, utc_date, utc_time = convert_user_time_to_utc(user_timezone, log_date, log_time)
+        else:
+            # If no time provided, use current time in user's timezone
+            from services.timezone_service import get_current_user_time
+            _, current_date, current_time = get_current_user_time(user_timezone)
+            utc_datetime, utc_date, utc_time = convert_user_time_to_utc(user_timezone, log_date, current_time)
     
     log_entry = Log(
         user_id=user_id,

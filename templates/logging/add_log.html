@@ -2,7 +2,12 @@
 
 {% block title %}Add Log Entry - Nicotine Tracker{% endblock %}
 
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/timezone-handler.js') }}"></script>
+{% endblock %}
+
 {% block content %}
+<div data-user-timezone="{{ user_timezone or 'UTC' }}">
 <div class="px-4 sm:px-6 lg:px-8">
   <!-- Header -->
   <div class="sm:flex sm:items-center">
@@ -16,7 +21,7 @@
 
   <!-- Form -->
   <div class="mt-8 max-w-2xl">
-    <form method="POST" class="space-y-6" data-validate>
+    <form method="POST" class="space-y-6" id="add-log-form" data-validate>
       <!-- Date -->
       <div>
         <label for="log_date" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">
@@ -34,11 +39,11 @@
           Time (Optional)
         </label>
         <div class="mt-2">
-          <input type="time" name="log_time" id="log_time"
+          <input type="time" name="log_time" id="log_time" value="{{ current_time or '' }}"
             class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
         </div>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Leave empty if you don't want to track specific time
+          Leave empty if you don't want to track specific time. Time is shown in your timezone: {{ user_timezone or 'UTC' }}
         </p>
       </div>
 
@@ -192,6 +197,7 @@
       {% endfor %}
     </div>
   </div>
+</div>
 </div>
 
 <script>
