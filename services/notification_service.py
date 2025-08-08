@@ -462,3 +462,61 @@ class NotificationService:
         except Exception as e:
             current_app.logger.error(f'Error getting notification history: {e}')
             return []
+    
+    def send_test_email(self, recipient_email):
+        """Send a test email to verify SMTP configuration"""
+        try:
+            # Skip email sending in development mode
+            if current_app.config.get('FLASK_ENV') == 'development' or current_app.debug:
+                current_app.logger.info(f'Development mode: Test email would be sent to {recipient_email}')
+                current_app.logger.info('Subject: 🧪 Email Configuration Test')
+                current_app.logger.info('Content: This is a test email from Nicotine Tracker to verify your email configuration is working correctly.')
+                print(f"✅ Test email simulation successful for {recipient_email}")
+                return True
+            
+            if not current_app.config.get('MAIL_USERNAME'):
+                current_app.logger.warning('Email not configured, cannot send test email')
+                print("❌ Email not configured. Please set MAIL_USERNAME and other email settings.")
+                return False
+            
+            msg = Message(
+                subject='🧪 Email Configuration Test',
+                sender=current_app.config['MAIL_DEFAULT_SENDER'],
+                recipients=[recipient_email]
+            )
+            
+            msg.body = """
+This is a test email from Nicotine Tracker to verify your email configuration is working correctly.
+
+If you received this email, your SMTP settings are properly configured!
+
+Best regards,
+Nicotine Tracker Team
+            """
+            
+            msg.html = """
+            <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                    <div style="background-color: #4f46e5; color: white; padding: 20px; text-align: center;">
+                        <h1>🧪 Email Configuration Test</h1>
+                    </div>
+                    <div style="padding: 20px; background-color: #f9fafb;">
+                        <p>This is a test email from <strong>Nicotine Tracker</strong> to verify your email configuration is working correctly.</p>
+                        <p>If you received this email, your SMTP settings are properly configured! ✅</p>
+                        <p>Best regards,<br>Nicotine Tracker Team</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            """
+            
+            mail.send(msg)
+            current_app.logger.info(f'Test email sent successfully to {recipient_email}')
+            print(f"✅ Test email sent successfully to {recipient_email}")
+            return True
+            
+        except Exception as e:
+            current_app.logger.error(f'Failed to send test email: {e}')
+            print(f"❌ Failed to send test email: {e}")
+            return False
