@@ -35,6 +35,9 @@ def index():
                 user.units_preference = units_preference
                 user.timezone = timezone
                 
+                # Update session timezone for immediate effect
+                session['user_timezone'] = timezone
+                
                 # Store additional preferences in session
                 preferences_data = {
                     'email_notifications': email_notifications,
@@ -296,6 +299,9 @@ def profile():
             user.weight = weight
             user.timezone = timezone
             user.units_preference = units_preference
+            
+            # Update session timezone for immediate effect
+            session['user_timezone'] = timezone
             
             # Store preferred brands as JSON
             if preferred_brands:

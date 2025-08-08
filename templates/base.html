@@ -214,8 +214,20 @@
   <script src="{{ url_for('static', filename='js/lodash.min.js') }}"></script>
   <script src="{{ url_for('static', filename='js/apexcharts.min.js') }}"></script>
   <script src="{{ url_for('static', filename='js/helper-apexcharts.js') }}"></script>
+  <!-- Timezone Handler -->
+  {% if session.user_id %}
+  <script src="{{ url_for('static', filename='js/timezone-handler.js') }}"></script>
+  <script>
+    // Set user timezone globally for timezone handler
+    document.documentElement.setAttribute('data-user-timezone', '{{ session.user_timezone or "UTC" }}');
+  </script>
+  {% endif %}
+  
   <!-- Your custom JS -->
   <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  
+  {% block extra_js %}{% endblock %}
+  
   <script>
     window.HSStaticMethods.autoInit();
   </script>

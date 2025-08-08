@@ -128,6 +128,7 @@ def login():
             if user and user.check_password(password):
                 session['user_id'] = user.id
                 session['user_email'] = user.email
+                session['user_timezone'] = user.timezone or 'UTC'
                 session.permanent = remember_me
                 
                 current_app.logger.info(f'User {email} logged in successfully')
