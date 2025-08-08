@@ -37,7 +37,7 @@ class NotificationService:
                 # Schedule for after quiet hours
                 preferences = self.preferences_service.get_or_create_preferences(user_id)
                 if preferences and preferences.quiet_hours_end:
-                    from datetime import datetime, time, timedelta
+                    from datetime import time
                     now = datetime.now()
                     quiet_end = datetime.combine(now.date(), preferences.quiet_hours_end)
                     if quiet_end < now:
