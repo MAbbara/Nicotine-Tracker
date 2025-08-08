@@ -8,6 +8,7 @@ from services.timezone_service import (
     get_user_week_boundaries,
     convert_utc_to_user_time
 )
+from services.notification_service import NotificationService
 from extensions import db
 from routes.auth import login_required, get_current_user
 from sqlalchemy import desc, func
@@ -298,6 +299,24 @@ def progress():
             # Update goal streaks
             goal.current_streak = current_streak
             goal.best_streak = max(goal.best_streak, best_streak)
+            
+            # Check for achievements and send notifications
+            if goal.enable_notifications:
+                notification_service = NotificationService()
+                
+                # Check if user achieved a new streak milestone
+                if current_streak > 0 and current_streak % 7 == 0:  # Weekly milestone
+                    notification_service.send_goal_achievement_notification(
+                        user.id, goal, "milestone"
+                    )
+                
+                # Check if user completed their goal (reached end date with good progress)
+                if goal.end_date and goal.end_date <= today:
+                    success_rate = sum(1 for day in progress_history if day['achieved']) / len(progress_history) * 100
+                    if success_rate >= 80:  # 80% success rate considered completion
+                        notification_service.send_goal_achievement_notification(
+                            user.id, goal, "completed"
+                        )
             
             progress_data[goal.id] = {
                 'goal': goal,
