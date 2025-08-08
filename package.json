@@ -2,6 +2,7 @@
   "dependencies": {
     "@preline/input-number": "^3.2.0",
     "@preline/overlay": "^3.2.0",
+    "@preline/select": "^3.2.3",
     "@tailwindcss/cli": "^4.1.11",
     "lodash": "^4.17.21",
     "preline": "^3.2.0",

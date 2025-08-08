@@ -3,6 +3,13 @@ from datetime import date, datetime, timedelta
 from models import User, Log, Pouch, Goal
 from extensions import db
 from routes.auth import login_required, get_current_user
+from services.timezone_service import (
+    get_current_user_time, 
+    get_user_date_boundaries, 
+    get_user_week_boundaries,
+    convert_utc_to_user_time
+)
+from services import get_user_daily_intake, get_user_current_time_info
 from sqlalchemy import func, desc
 import json
 
@@ -23,15 +30,27 @@ def index():
         
         default_pouches, user_pouches = get_all_pouches(user.id)
         
-        # Get today's summary
-        today_intake = user.get_daily_intake(today)
+        # Get today's summary (using user's timezone)
+        today_intake = get_user_daily_intake(user, today, use_timezone=True)
         
-        # Get recent logs (last 7 days)
-        week_ago = today - timedelta(days=7)
-        recent_logs = Log.query.filter(
-            Log.user_id == user.id,
-            Log.log_date >= week_ago
-        ).order_by(desc(Log.log_date), desc(Log.log_time)).limit(10).all()
+        # Get recent logs (last 7 days in user's timezone)
+        if user.timezone:
+            # Get 7 days ago in user's timezone
+            _, user_today, _ = get_current_user_time(user.timezone)
+            week_ago_date = user_today - timedelta(days=7)
+            week_ago_utc, _ = get_user_date_boundaries(user.timezone, week_ago_date)
+            
+            recent_logs = Log.query.filter(
+                Log.user_id == user.id,
+                Log.created_at >= week_ago_utc
+            ).order_by(desc(Log.log_date), desc(Log.log_time)).limit(10).all()
+        else:
+            # Fallback to server timezone
+            week_ago = today - timedelta(days=7)
+            recent_logs = Log.query.filter(
+                Log.user_id == user.id,
+                Log.log_date >= week_ago
+            ).order_by(desc(Log.log_date), desc(Log.log_time)).limit(10).all()
         
         # Get active goal
         active_goal = Goal.query.filter_by(user_id=user.id, is_active=True).first()
@@ -53,10 +72,15 @@ def index():
                     'type': 'mg'
                 }
         
-        # Calculate average pouches per hour (for today)
+        # Calculate average pouches per hour (for today in user's timezone)
         avg_pouches_per_hour = 0
         if today_intake['total_pouches'] > 0:
-            current_hour = datetime.now().hour
+            if user.timezone:
+                _, _, current_time = get_current_user_time(user.timezone)
+                current_hour = current_time.hour
+            else:
+                current_hour = datetime.now().hour
+            
             if current_hour > 0:
                 avg_pouches_per_hour = round(today_intake['total_pouches'] / current_hour, 1)
         
@@ -85,33 +109,63 @@ def daily_intake_chart():
             return jsonify({'success': False, 'error': 'User not authenticated'})
         days = request.args.get('days', 30, type=int)
         
-        end_date = date.today()
-        start_date = end_date - timedelta(days=days-1)
+        # Use user's timezone for date boundaries
+        if user.timezone:
+            _, end_date, _ = get_current_user_time(user.timezone)
+            start_date = end_date - timedelta(days=days-1)
+            
+            # Get UTC boundaries for the date range
+            start_utc, _ = get_user_date_boundaries(user.timezone, start_date)
+            _, end_utc = get_user_date_boundaries(user.timezone, end_date)
+            
+            # Query logs within UTC boundaries
+            daily_data = db.session.query(
+                Log.log_date,
+                Log.log_time,
+                func.sum(Log.quantity).label('total_pouches'),
+                func.sum(Log.quantity * Pouch.nicotine_mg).label('total_mg_from_pouches'),
+                func.sum(Log.quantity * Log.custom_nicotine_mg).label('total_mg_from_custom')
+            ).outerjoin(Pouch).filter(
+                Log.user_id == user.id,
+                func.datetime(Log.log_date, func.coalesce(Log.log_time, '12:00:00')) >= start_utc,
+                func.datetime(Log.log_date, func.coalesce(Log.log_time, '12:00:00')) <= end_utc
+            ).group_by(Log.log_date).all()
+        else:
+            # Fallback to server timezone
+            end_date = date.today()
+            start_date = end_date - timedelta(days=days-1)
+            
+            daily_data = db.session.query(
+                Log.log_date,
+                func.sum(Log.quantity).label('total_pouches'),
+                func.sum(Log.quantity * Pouch.nicotine_mg).label('total_mg_from_pouches'),
+                func.sum(Log.quantity * Log.custom_nicotine_mg).label('total_mg_from_custom')
+            ).outerjoin(Pouch).filter(
+                Log.user_id == user.id,
+                Log.log_date >= start_date,
+                Log.log_date <= end_date
+            ).group_by(Log.log_date).all()
         
-        # Get daily totals
-        daily_data = db.session.query(
-            Log.log_date,
-            func.sum(Log.quantity).label('total_pouches'),
-            func.sum(Log.quantity * Pouch.nicotine_mg).label('total_mg_from_pouches'),
-            func.sum(Log.quantity * Log.custom_nicotine_mg).label('total_mg_from_custom')
-        ).outerjoin(Pouch).filter(
-            Log.user_id == user.id,
-            Log.log_date >= start_date,
-            Log.log_date <= end_date
-        ).group_by(Log.log_date).all()
-        
-        # Create complete date range
+        # Create complete date range and convert to user's timezone for display
         chart_data = []
         current_date = start_date
         
         # Convert query results to dict for easy lookup
         data_dict = {}
         for row in daily_data:
+            # Convert UTC log date to user's date for proper grouping
+            if user.timezone and hasattr(row, 'log_time') and row.log_time:
+                log_datetime = datetime.combine(row.log_date, row.log_time)
+                _, user_date, _ = convert_utc_to_user_time(user.timezone, log_datetime)
+                date_key = user_date
+            else:
+                date_key = row.log_date
+            
             total_mg = (row.total_mg_from_pouches or 0) + (row.total_mg_from_custom or 0)
-            data_dict[row.log_date] = {
-                'pouches': int(row.total_pouches or 0),
-                'mg': int(total_mg)
-            }
+            if date_key not in data_dict:
+                data_dict[date_key] = {'pouches': 0, 'mg': 0}
+            data_dict[date_key]['pouches'] += int(row.total_pouches or 0)
+            data_dict[date_key]['mg'] += int(total_mg)
         
         while current_date <= end_date:
             day_data = data_dict.get(current_date, {'pouches': 0, 'mg': 0})
@@ -139,8 +193,13 @@ def weekly_averages():
         user = get_current_user()
         weeks = request.args.get('weeks', 8, type=int)
         
-        end_date = date.today()
-        start_date = end_date - timedelta(weeks=weeks)
+        # Use user's timezone for week boundaries
+        if user.timezone:
+            _, end_date, _ = get_current_user_time(user.timezone)
+            start_date = end_date - timedelta(weeks=weeks)
+        else:
+            end_date = date.today()
+            start_date = end_date - timedelta(weeks=weeks)
         
         # Get weekly data
         weekly_data = []
@@ -149,16 +208,32 @@ def weekly_averages():
         while current_date <= end_date:
             week_end = min(current_date + timedelta(days=6), end_date)
             
-            # Get logs for this week
-            week_logs = db.session.query(
-                func.sum(Log.quantity).label('total_pouches'),
-                func.sum(Log.quantity * Pouch.nicotine_mg).label('total_mg_from_pouches'),
-                func.sum(Log.quantity * Log.custom_nicotine_mg).label('total_mg_from_custom')
-            ).outerjoin(Pouch).filter(
-                Log.user_id == user.id,
-                Log.log_date >= current_date,
-                Log.log_date <= week_end
-            ).first()
+            if user.timezone:
+                # Get UTC boundaries for this week
+                week_start_utc, _ = get_user_date_boundaries(user.timezone, current_date)
+                _, week_end_utc = get_user_date_boundaries(user.timezone, week_end)
+                
+                # Get logs for this week using UTC boundaries
+                week_logs = db.session.query(
+                    func.sum(Log.quantity).label('total_pouches'),
+                    func.sum(Log.quantity * Pouch.nicotine_mg).label('total_mg_from_pouches'),
+                    func.sum(Log.quantity * Log.custom_nicotine_mg).label('total_mg_from_custom')
+                ).outerjoin(Pouch).filter(
+                    Log.user_id == user.id,
+                    func.datetime(Log.log_date, func.coalesce(Log.log_time, '12:00:00')) >= week_start_utc,
+                    func.datetime(Log.log_date, func.coalesce(Log.log_time, '12:00:00')) <= week_end_utc
+                ).first()
+            else:
+                # Fallback to server timezone
+                week_logs = db.session.query(
+                    func.sum(Log.quantity).label('total_pouches'),
+                    func.sum(Log.quantity * Pouch.nicotine_mg).label('total_mg_from_pouches'),
+                    func.sum(Log.quantity * Log.custom_nicotine_mg).label('total_mg_from_custom')
+                ).outerjoin(Pouch).filter(
+                    Log.user_id == user.id,
+                    Log.log_date >= current_date,
+                    Log.log_date <= week_end
+                ).first()
             
             total_pouches = int(week_logs.total_pouches or 0)
             total_mg = int((week_logs.total_mg_from_pouches or 0) + (week_logs.total_mg_from_custom or 0))
@@ -196,25 +271,50 @@ def hourly_distribution():
         user = get_current_user()
         days = request.args.get('days', 30, type=int)
         
-        end_date = date.today()
-        start_date = end_date - timedelta(days=days-1)
-        
-        # Get hourly distribution
-        hourly_data = db.session.query(
-            func.extract('hour', Log.log_time).label('hour'),
-            func.sum(Log.quantity).label('total_pouches')
-        ).filter(
-            Log.user_id == user.id,
-            Log.log_date >= start_date,
-            Log.log_date <= end_date,
-            Log.log_time.isnot(None)
-        ).group_by(func.extract('hour', Log.log_time)).all()
-        
-        # Create 24-hour distribution
-        distribution = [0] * 24
-        for row in hourly_data:
-            hour = int(row.hour)
-            distribution[hour] = int(row.total_pouches)
+        # Use user's timezone for date boundaries
+        if user.timezone:
+            _, end_date, _ = get_current_user_time(user.timezone)
+            start_date = end_date - timedelta(days=days-1)
+            
+            # Get UTC boundaries
+            start_utc, _ = get_user_date_boundaries(user.timezone, start_date)
+            _, end_utc = get_user_date_boundaries(user.timezone, end_date)
+            
+            # Get logs within date range
+            logs = Log.query.filter(
+                Log.user_id == user.id,
+                func.datetime(Log.log_date, func.coalesce(Log.log_time, '12:00:00')) >= start_utc,
+                func.datetime(Log.log_date, func.coalesce(Log.log_time, '12:00:00')) <= end_utc,
+                Log.log_time.isnot(None)
+            ).all()
+            
+            # Convert each log time to user's timezone and group by hour
+            distribution = [0] * 24
+            for log in logs:
+                if log.log_time:
+                    log_datetime = datetime.combine(log.log_date, log.log_time)
+                    _, _, user_time = convert_utc_to_user_time(user.timezone, log_datetime)
+                    hour = user_time.hour
+                    distribution[hour] += log.quantity
+        else:
+            # Fallback to server timezone
+            end_date = date.today()
+            start_date = end_date - timedelta(days=days-1)
+            
+            hourly_data = db.session.query(
+                func.extract('hour', Log.log_time).label('hour'),
+                func.sum(Log.quantity).label('total_pouches')
+            ).filter(
+                Log.user_id == user.id,
+                Log.log_date >= start_date,
+                Log.log_date <= end_date,
+                Log.log_time.isnot(None)
+            ).group_by(func.extract('hour', Log.log_time)).all()
+            
+            distribution = [0] * 24
+            for row in hourly_data:
+                hour = int(row.hour)
+                distribution[hour] = int(row.total_pouches)
         
         chart_data = []
         for hour in range(24):
@@ -238,34 +338,67 @@ def insights():
     """API endpoint for usage insights and trends"""
     try:
         user = get_current_user()
-        today = date.today()
+        # Use user's timezone for week calculations
+        if user.timezone:
+            _, today, _ = get_current_user_time(user.timezone)
+        else:
+            today = date.today()
         
-        # Get this week vs last week comparison
+        # Get this week vs last week comparison using user's timezone
         this_week_start = today - timedelta(days=today.weekday())
         last_week_start = this_week_start - timedelta(days=7)
         last_week_end = this_week_start - timedelta(days=1)
         
-        # This week data
-        this_week_data = db.session.query(
-            func.sum(Log.quantity).label('total_pouches'),
-            func.sum(Log.quantity * Pouch.nicotine_mg).label('total_mg_from_pouches'),
-            func.sum(Log.quantity * Log.custom_nicotine_mg).label('total_mg_from_custom')
-        ).outerjoin(Pouch).filter(
-            Log.user_id == user.id,
-            Log.log_date >= this_week_start,
-            Log.log_date <= today
-        ).first()
-        
-        # Last week data
-        last_week_data = db.session.query(
-            func.sum(Log.quantity).label('total_pouches'),
-            func.sum(Log.quantity * Pouch.nicotine_mg).label('total_mg_from_pouches'),
-            func.sum(Log.quantity * Log.custom_nicotine_mg).label('total_mg_from_custom')
-        ).outerjoin(Pouch).filter(
-            Log.user_id == user.id,
-            Log.log_date >= last_week_start,
-            Log.log_date <= last_week_end
-        ).first()
+        if user.timezone:
+            # Get UTC boundaries for weeks
+            this_week_start_utc, _ = get_user_date_boundaries(user.timezone, this_week_start)
+            _, today_end_utc = get_user_date_boundaries(user.timezone, today)
+            
+            last_week_start_utc, _ = get_user_date_boundaries(user.timezone, last_week_start)
+            _, last_week_end_utc = get_user_date_boundaries(user.timezone, last_week_end)
+            
+            # This week data
+            this_week_data = db.session.query(
+                func.sum(Log.quantity).label('total_pouches'),
+                func.sum(Log.quantity * Pouch.nicotine_mg).label('total_mg_from_pouches'),
+                func.sum(Log.quantity * Log.custom_nicotine_mg).label('total_mg_from_custom')
+            ).outerjoin(Pouch).filter(
+                Log.user_id == user.id,
+                func.datetime(Log.log_date, func.coalesce(Log.log_time, '12:00:00')) >= this_week_start_utc,
+                func.datetime(Log.log_date, func.coalesce(Log.log_time, '12:00:00')) <= today_end_utc
+            ).first()
+            
+            # Last week data
+            last_week_data = db.session.query(
+                func.sum(Log.quantity).label('total_pouches'),
+                func.sum(Log.quantity * Pouch.nicotine_mg).label('total_mg_from_pouches'),
+                func.sum(Log.quantity * Log.custom_nicotine_mg).label('total_mg_from_custom')
+            ).outerjoin(Pouch).filter(
+                Log.user_id == user.id,
+                func.datetime(Log.log_date, func.coalesce(Log.log_time, '12:00:00')) >= last_week_start_utc,
+                func.datetime(Log.log_date, func.coalesce(Log.log_time, '12:00:00')) <= last_week_end_utc
+            ).first()
+        else:
+            # Fallback to server timezone
+            this_week_data = db.session.query(
+                func.sum(Log.quantity).label('total_pouches'),
+                func.sum(Log.quantity * Pouch.nicotine_mg).label('total_mg_from_pouches'),
+                func.sum(Log.quantity * Log.custom_nicotine_mg).label('total_mg_from_custom')
+            ).outerjoin(Pouch).filter(
+                Log.user_id == user.id,
+                Log.log_date >= this_week_start,
+                Log.log_date <= today
+            ).first()
+            
+            last_week_data = db.session.query(
+                func.sum(Log.quantity).label('total_pouches'),
+                func.sum(Log.quantity * Pouch.nicotine_mg).label('total_mg_from_pouches'),
+                func.sum(Log.quantity * Log.custom_nicotine_mg).label('total_mg_from_custom')
+            ).outerjoin(Pouch).filter(
+                Log.user_id == user.id,
+                Log.log_date >= last_week_start,
+                Log.log_date <= last_week_end
+            ).first()
         
         insights = []
         
@@ -288,19 +421,46 @@ def insights():
             daily_avg = round(this_week_pouches / days_this_week, 1)
             insights.append(f"Your daily average this week: {daily_avg} pouches")
         
-        # Most active hour
-        most_active_hour = db.session.query(
-            func.extract('hour', Log.log_time).label('hour'),
-            func.sum(Log.quantity).label('total_pouches')
-        ).filter(
-            Log.user_id == user.id,
-            Log.log_date >= today - timedelta(days=30),
-            Log.log_time.isnot(None)
-        ).group_by(func.extract('hour', Log.log_time)).order_by(desc('total_pouches')).first()
-        
-        if most_active_hour:
-            hour = int(most_active_hour.hour)
-            insights.append(f"Your most active hour: {hour:02d}:00")
+        # Most active hour (in user's timezone)
+        if user.timezone:
+            # Get logs from last 30 days
+            thirty_days_ago = today - timedelta(days=30)
+            start_utc, _ = get_user_date_boundaries(user.timezone, thirty_days_ago)
+            _, end_utc = get_user_date_boundaries(user.timezone, today)
+            
+            logs = Log.query.filter(
+                Log.user_id == user.id,
+                func.datetime(Log.log_date, func.coalesce(Log.log_time, '12:00:00')) >= start_utc,
+                func.datetime(Log.log_date, func.coalesce(Log.log_time, '12:00:00')) <= end_utc,
+                Log.log_time.isnot(None)
+            ).all()
+            
+            # Convert to user timezone and find most active hour
+            hourly_totals = {}
+            for log in logs:
+                if log.log_time:
+                    log_datetime = datetime.combine(log.log_date, log.log_time)
+                    _, _, user_time = convert_utc_to_user_time(user.timezone, log_datetime)
+                    hour = user_time.hour
+                    hourly_totals[hour] = hourly_totals.get(hour, 0) + log.quantity
+            
+            if hourly_totals:
+                most_active_hour = max(hourly_totals.items(), key=lambda x: x[1])
+                insights.append(f"Your most active hour: {most_active_hour[0]:02d}:00")
+        else:
+            # Fallback to server timezone
+            most_active_hour = db.session.query(
+                func.extract('hour', Log.log_time).label('hour'),
+                func.sum(Log.quantity).label('total_pouches')
+            ).filter(
+                Log.user_id == user.id,
+                Log.log_date >= today - timedelta(days=30),
+                Log.log_time.isnot(None)
+            ).group_by(func.extract('hour', Log.log_time)).order_by(desc('total_pouches')).first()
+            
+            if most_active_hour:
+                hour = int(most_active_hour.hour)
+                insights.append(f"Your most active hour: {hour:02d}:00")
         
         return jsonify({
             'success': True,

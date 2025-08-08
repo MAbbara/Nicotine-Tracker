@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Account Settings - Nicotine Tracker{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <h1 class="text-2xl font-semibold text-gray-900 dark:text-white mb-6">Account Settings</h1>
+    
+    <!-- Account Information -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
+        <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Account Information</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Email Address</label>
+                <div class="mt-1 flex items-center">
+                    <span class="text-gray-900 dark:text-white">{{ user.email }}</span>
+                    {% if user.email_verified %}
+                        <span class="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                            Verified
+                        </span>
+                    {% else %}
+                        <span class="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
+                            Unverified
+                        </span>
+                    {% endif %}
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Member Since</label>
+                <div class="mt-1 text-gray-900 dark:text-white">{{ account_stats.member_since }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Account Statistics -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
+        <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Your Activity</h2>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="text-center">
+                <div class="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{{ account_stats.total_logs }}</div>
+                <div class="text-sm text-gray-600 dark:text-gray-400">Total Logs</div>
+            </div>
+            <div class="text-center">
+                <div class="text-2xl font-bold text-green-600 dark:text-green-400">{{ account_stats.total_pouches_logged }}</div>
+                <div class="text-sm text-gray-600 dark:text-gray-400">Pouches Logged</div>
+            </div>
+            <div class="text-center">
+                <div class="text-2xl font-bold text-blue-600 dark:text-blue-400">{{ account_stats.custom_pouches_created }}</div>
+                <div class="text-sm text-gray-600 dark:text-gray-400">Custom Pouches</div>
+            </div>
+            <div class="text-center">
+                <div class="text-2xl font-bold text-purple-600 dark:text-purple-400">{{ account_stats.goals_created }}</div>
+                <div class="text-sm text-gray-600 dark:text-gray-400">Goals Created</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Account Actions -->
+    <div class="space-y-6">
+        <!-- Update Email -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Update Email Address</h3>
+            <p class="text-gray-600 dark:text-gray-400 mb-4">Change your email address. You'll need to verify the new email address.</p>
+            <form method="POST" class="space-y-4">
+                <input type="hidden" name="action" value="update_email">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="new_email" class="block text-sm font-medium text-gray-700 dark:text-gray-300">New Email Address</label>
+                        <input type="email" name="new_email" id="new_email" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    </div>
+                    <div>
+                        <label for="password" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Current Password</label>
+                        <input type="password" name="password" id="password" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    </div>
+                </div>
+                <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    Update Email
+                </button>
+            </form>
+        </div>
+
+        <!-- Download Data -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Download Your Data</h3>
+            <p class="text-gray-600 dark:text-gray-400 mb-4">Download all your account data including logs, goals, and preferences in JSON format.</p>
+            <form method="POST" class="inline">
+                <input type="hidden" name="action" value="download_data">
+                <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500">
+                    Download Data
+                </button>
+            </form>
+        </div>
+
+        <!-- Delete Account -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border-l-4 border-red-500">
+            <h3 class="text-lg font-medium text-red-600 dark:text-red-400 mb-2">Danger Zone</h3>
+            <p class="text-gray-600 dark:text-gray-400 mb-4">Permanently delete your account and all associated data. This action cannot be undone.</p>
+            <form method="POST" class="inline">
+                <input type="hidden" name="action" value="delete_account">
+                <button type="submit" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500" onclick="return confirm('Are you absolutely sure you want to delete your account? This action cannot be undone and will permanently delete all your data.')">
+                    Delete Account
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    <div class="mt-8 flex gap-3">
+        <a href="{{ url_for('settings.index') }}" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500">
+            Back to Settings
+        </a>
+    </div>
+</div>
+{% endblock %}

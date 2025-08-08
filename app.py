@@ -43,21 +43,17 @@ def create_app(config_name=None):
     
     # Register blueprints
     from routes.auth import auth_bp
-    from routes.profile import profile_bp
     from routes.catalog import catalog_bp
     from routes.logging import logging_bp
     from routes.dashboard import dashboard_bp
     from routes.goals import goals_bp
-    from routes.import_export import import_export_bp
     from routes.settings import settings_bp
     
     app.register_blueprint(auth_bp, url_prefix='/auth')
-    app.register_blueprint(profile_bp, url_prefix='/profile')
     app.register_blueprint(catalog_bp, url_prefix='/catalog')
     app.register_blueprint(logging_bp, url_prefix='/log')
     app.register_blueprint(dashboard_bp, url_prefix='/dashboard')
     app.register_blueprint(goals_bp, url_prefix='/goals')
-    app.register_blueprint(import_export_bp, url_prefix='/data')
     app.register_blueprint(settings_bp, url_prefix='/settings')
     
     # Main route
