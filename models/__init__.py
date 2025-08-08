@@ -11,8 +11,17 @@ from .user import User  # noqa: F401
 from .pouch import Pouch  # noqa: F401
 from .log import Log  # noqa: F401
 from .goal import Goal  # noqa: F401
+from .password_reset import PasswordReset  # noqa: F401
+from .user_preferences import UserPreferences  # noqa: F401
+from .user_settings import UserSettings  # noqa: F401
+from .notification import NotificationQueue, NotificationHistory  # noqa: F401
+from .user_activity import UserActivity  # noqa: F401
 
-__all__ = ["User", "Pouch", "Log", "Goal", "init_default_pouches"]
+__all__ = [
+    "User", "Pouch", "Log", "Goal", "PasswordReset", "UserPreferences", 
+    "UserSettings", "NotificationQueue", "NotificationHistory", "UserActivity",
+    "init_default_pouches"
+]
 
 def init_default_pouches():
     """
