@@ -341,7 +341,7 @@ This helps verify that the correct environment is being used.
 ### Security Notes
 
 1. **Never commit `.env` files** - They're already in `.gitignore`
-2. **Use strong secret keys in production** - Generate with `python -c "import secrets; print(secrets.token_hex(32))"`
+2. **Use strong secret keys in production** - Generate with `python3 -c "import secrets; print(secrets.token_hex(32))"`
 3. **Use production databases** - PostgreSQL or MySQL recommended over SQLite
 4. **Enable HTTPS in production** - Required for secure cookies
 5. **Set up proper email configuration** - Required for password resets and notifications
@@ -611,41 +611,122 @@ The system supports these notification types:
 
 1. **Test Email Configuration**
    ```bash
-   # Run a quick test
-   python -c "
+   # Test email configuration with Flask app context
+   python3 -c "
+   from app import create_app
    from services.notification_service import NotificationService
-   service = NotificationService()
-   service.send_test_email('your-email@example.com')
+   
+   app = create_app()
+   with app.app_context():
+       service = NotificationService()
+       success = service.send_test_email('your-email@example.com')
+       if success:
+           print('✅ Email test completed successfully!')
+       else:
+           print('❌ Email test failed. Check your SMTP configuration.')
    "
    ```
 
 2. **Test Discord Webhook**
    
-   Use the built-in test feature:
+   Use the built-in test feature in the web interface:
    ```
    1. Go to Settings > Integrations > Discord
    2. Enter your webhook URL
    3. Click "Test" button
    4. Check your Discord channel for the test message
    ```
+   
+   Or test programmatically:
+   ```bash
+   # Test Discord webhook with Flask app context
+   python3 -c "
+   from app import create_app
+   from services.notification_service import NotificationService
+   
+   app = create_app()
+   with app.app_context():
+       service = NotificationService()
+       success, message = service.test_discord_webhook('YOUR_WEBHOOK_URL_HERE')
+       print(f'Discord test: {message}')
+   "
+   ```
 
 3. **Test Background Processing**
    ```bash
-   # Queue a test notification
-   python -c "
+   # Queue a test notification with Flask app context
+   python3 -c "
+   from app import create_app
    from services.notification_service import NotificationService
-   service = NotificationService()
-   service.queue_notification(
-       user_id=1,
-       notification_type='email',
-       category='test',
-       subject='Test Notification',
-       message='This is a test notification',
-       recipient='your-email@example.com'
-   )
-   "
    
-   # Check if it gets processed by the background task
+   app = create_app()
+   with app.app_context():
+       service = NotificationService()
+       success = service.queue_notification(
+           user_id=1,
+           notification_type='email',
+           category='test',
+           subject='Test Notification',
+           message='This is a test notification from the queue system',
+           recipient='your-email@example.com'
+       )
+       if success:
+           print('✅ Test notification queued successfully!')
+           print('Run the background processor to send it: python run_background_tasks.py')
+       else:
+           print('❌ Failed to queue test notification. Check user_id and database.')
+   "
+   ```
+
+4. **Test SMTP Connection**
+   ```bash
+   # Test raw SMTP connection
+   python3 -c "
+   import smtplib
+   from email.mime.text import MIMEText
+   
+   try:
+       server = smtplib.SMTP('smtp.gmail.com', 587)
+       server.starttls()
+       server.login('your-email@gmail.com', 'your-app-password')
+       print('✅ SMTP connection successful!')
+       server.quit()
+   except Exception as e:
+       print(f'❌ SMTP connection failed: {e}')
+   "
+   ```
+
+5. **Test Complete Notification Flow**
+   ```bash
+   # Test the complete flow: queue -> process -> send
+   python3 -c "
+   from app import create_app
+   from services.notification_service import NotificationService
+   from services.background_tasks import BackgroundTaskService
+   
+   app = create_app()
+   with app.app_context():
+       # Queue a notification
+       notification_service = NotificationService()
+       success = notification_service.queue_notification(
+           user_id=1,
+           notification_type='email',
+           category='test',
+           subject='Complete Flow Test',
+           message='Testing the complete notification flow',
+           recipient='your-email@example.com'
+       )
+       
+       if success:
+           print('✅ Notification queued')
+           
+           # Process the queue
+           background_service = BackgroundTaskService()
+           processed = background_service.process_notifications()
+           print(f'✅ Processed {processed} notifications')
+       else:
+           print('❌ Failed to queue notification')
+   "
    ```
 
 ### Monitoring and Logging
@@ -691,7 +772,7 @@ The system supports these notification types:
 2. **Email Not Sending**
    ```bash
    # Test SMTP connection
-   python -c "
+   python3 -c "
    import smtplib
    from email.mime.text import MIMEText
    
@@ -714,7 +795,7 @@ The system supports these notification types:
 4. **Database Connection Issues**
    ```bash
    # Check database connectivity
-   python -c "
+   python3 -c "
    from extensions import db
    from app import create_app
    
