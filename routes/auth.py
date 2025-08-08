@@ -3,6 +3,7 @@ from werkzeug.security import generate_password_hash, check_password_hash  # sti
 from flask_mail import Message
 from models import User
 from services import create_user              # new import
+from services.password_reset_service import PasswordResetService
 from extensions import db, mail
 import re
 from datetime import datetime, timedelta
@@ -47,7 +48,7 @@ def send_verification_email(user):
     except Exception as e:
         current_app.logger.error(f'Failed to send verification email: {e}')
 
-def send_reset_email(user):
+def send_reset_email(user, reset_token):
     """Send password reset email (placeholder implementation)"""
     try:
         if current_app.config['MAIL_USERNAME']:
@@ -60,7 +61,7 @@ def send_reset_email(user):
             Hi {user.email},
             
             You requested a password reset. Click the link below to reset your password:
-            {url_for('auth.reset_password', token=user.reset_token, _external=True)}
+            {url_for('auth.reset_password', token=reset_token.token, _external=True)}
             
             This link will expire in 1 hour.
             
@@ -72,7 +73,7 @@ def send_reset_email(user):
             mail.send(msg)
             current_app.logger.info(f'Password reset email sent to {user.email}')
         else:
-            current_app.logger.info(f'Email not configured. Reset token for {user.email}: {user.reset_token}')
+            current_app.logger.info(f'Email not configured. Reset token for {user.email}: {reset_token.token}')
     except Exception as e:
         current_app.logger.error(f'Failed to send reset email: {e}')
 
@@ -189,9 +190,17 @@ def forgot_password():
             user = User.query.filter_by(email=email).first()
             
             if user:
-                user.generate_reset_token()
-                db.session.commit()
-                send_reset_email(user)
+                # Check rate limiting
+                reset_service = PasswordResetService()
+                recent_attempts = reset_service.get_recent_attempts(user.id, hours=1)
+                
+                if recent_attempts >= 3:
+                    flash('Too many password reset attempts. Please try again later.', 'error')
+                    return render_template('forgot_password.html')
+                
+                # Create reset token using service
+                reset_token = reset_service.create_reset_token(user.id)
+                send_reset_email(user, reset_token)
                 current_app.logger.info(f'Password reset requested for {email}')
             
             # Always show success message for security
@@ -208,10 +217,13 @@ def forgot_password():
 @auth_bp.route('/reset_password/<token>', methods=['GET', 'POST'])
 def reset_password(token):
     try:
-        user = User.query.filter_by(reset_token=token).first()
+        reset_service = PasswordResetService()
         
-        if not user or not user.reset_token_expires or user.reset_token_expires < datetime.utcnow():
-            flash('Invalid or expired reset token.', 'error')
+        # Validate token using service
+        reset_token, error = reset_service.validate_reset_token(token)
+        
+        if error:
+            flash(error, 'error')
             return redirect(url_for('auth.forgot_password'))
         
         if request.method == 'POST':
@@ -226,19 +238,19 @@ def reset_password(token):
                 flash('Passwords do not match.', 'error')
                 return render_template('reset_password.html', token=token)
             
-            user.set_password(password)
-            user.reset_token = None
-            user.reset_token_expires = None
-            db.session.commit()
+            # Use reset token via service
+            success, message = reset_service.use_reset_token(token, password)
             
-            current_app.logger.info(f'Password reset completed for {user.email}')
-            flash('Password reset successful! You can now log in with your new password.', 'success')
-            return redirect(url_for('auth.login'))
+            if success:
+                flash(message, 'success')
+                return redirect(url_for('auth.login'))
+            else:
+                flash(message, 'error')
+                return render_template('reset_password.html', token=token)
         
         return render_template('reset_password.html', token=token)
         
     except Exception as e:
-        db.session.rollback()
         current_app.logger.error(f'Password reset error: {e}')
         flash('An error occurred during password reset.', 'error')
         return redirect(url_for('auth.forgot_password'))

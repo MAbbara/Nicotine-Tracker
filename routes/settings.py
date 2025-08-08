@@ -3,6 +3,7 @@ from models import User, Log, Pouch, Goal        # import models from the packag
 from extensions import db
 from routes.auth import login_required, get_current_user
 from services.timezone_service import get_all_timezones_for_dropdown, get_common_timezones
+from services.user_preferences_service import UserPreferencesService
 import json
 from datetime import datetime
 
@@ -15,6 +16,7 @@ def index():
     """Settings main page"""
     try:
         user = get_current_user()
+        preferences_service = UserPreferencesService()
         
         if request.method == 'POST':
             # Handle form submission
@@ -38,39 +40,39 @@ def index():
                 # Update session timezone for immediate effect
                 session['user_timezone'] = timezone
                 
-                # Store additional preferences in session
-                preferences_data = {
-                    'email_notifications': email_notifications,
-                    'goal_notifications': goal_notifications,
-                    'daily_reminders': daily_reminders,
-                    'discord_webhook': discord_webhook,
-                }
-                session['user_preferences'] = preferences_data
+                # Update preferences using service
+                success, message = preferences_service.update_preferences(
+                    user.id,
+                    email_notifications=email_notifications,
+                    goal_notifications=goal_notifications,
+                    daily_reminders=daily_reminders,
+                    discord_webhook=discord_webhook
+                )
                 
-                db.session.commit()
+                if success:
+                    db.session.commit()
+                    current_app.logger.info(f'Settings updated for user {user.email}')
+                    flash('Settings updated successfully!', 'success')
+                else:
+                    flash(f'Error updating preferences: {message}', 'error')
                 
-                current_app.logger.info(f'Settings updated for user {user.email}')
-                flash('Settings updated successfully!', 'success')
                 return redirect(url_for('settings.index'))
         
-        # GET request or after POST - load current preferences
-        current_preferences = session.get('user_preferences', {
-            'email_notifications': True,
-            'goal_notifications': True,
-            'daily_reminders': False,
-            'discord_webhook': '',
-            'default_view': 'dashboard',
-            'chart_theme': 'light',
-            'logs_per_page': 20
-        })
+        # GET request - load current preferences from database
+        current_preferences = preferences_service.get_notification_settings(user.id)
+        
+        if not current_preferences:
+            # Fallback to defaults if service fails
+            current_preferences = {
+                'email_notifications': True,
+                'goal_notifications': True,
+                'daily_reminders': False,
+                'discord_webhook': ''
+            }
         
         # Get timezone data for dropdown
         all_timezones = get_all_timezones_for_dropdown()
         common_timezones = get_common_timezones()
-        
-        # Debug logging
-        current_app.logger.info(f'Passing {len(common_timezones)} common timezones and {len(all_timezones)} all timezones to template')
-        current_app.logger.info(f'First common timezone: {common_timezones[0] if common_timezones else "None"}')
         
         return render_template('settings.html', 
                              user=user, 
@@ -86,10 +88,7 @@ def index():
             'email_notifications': True,
             'goal_notifications': True,
             'daily_reminders': False,
-            'discord_webhook': '',
-            'default_view': 'dashboard',
-            'chart_theme': 'light',
-            'logs_per_page': 20
+            'discord_webhook': ''
         }
         
         # Get timezone data for dropdown even on error

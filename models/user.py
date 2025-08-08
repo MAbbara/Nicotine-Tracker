@@ -21,10 +21,6 @@ class User(db.Model):
     email_verified = db.Column(db.Boolean, default=False)
     verification_token = db.Column(db.String(100))
 
-    # Password reset
-    reset_token = db.Column(db.String(100))
-    reset_token_expires = db.Column(db.DateTime)
-
     # Preferences
     preferred_brands = db.Column(db.Text)  # JSON string of preferred brands
     timezone = db.Column(db.String(50), default='UTC')
@@ -44,12 +40,6 @@ class User(db.Model):
     def generate_verification_token(self):
         self.verification_token = secrets.token_urlsafe(32)
         return self.verification_token
-
-    def generate_reset_token(self):
-        self.reset_token = secrets.token_urlsafe(32)
-        self.reset_token_expires = datetime.utcnow() + timedelta(hours=1)
-        return self.reset_token
-
 
     def to_dict(self):
         return {
