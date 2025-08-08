@@ -22,6 +22,7 @@
 </head>
 <body class="bg-gray-50 dark:bg-gray-900">
   {% if session.user_id %}
+  {% set current_endpoint = request.endpoint %}
 <nav class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="flex justify-between h-16">
@@ -35,23 +36,23 @@
         </div>
         <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
           <a href="{{ url_for('dashboard.index') }}"
-             class="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+             class="{% if current_endpoint == 'dashboard.index' %}border-indigo-500 text-gray-900 dark:text-white{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white{% endif %} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
             Dashboard
           </a>
           <a href="{{ url_for('logging.add_log') }}"
-             class="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+             class="{% if current_endpoint == 'logging.add_log' %}border-indigo-500 text-gray-900 dark:text-white{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white{% endif %} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
             Add Log
           </a>
           <a href="{{ url_for('logging.view_logs') }}"
-             class="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+             class="{% if current_endpoint == 'logging.view_logs' %}border-indigo-500 text-gray-900 dark:text-white{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white{% endif %} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
             View Logs
           </a>
           <a href="{{ url_for('catalog.index') }}"
-             class="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+             class="{% if current_endpoint == 'catalog.index' %}border-indigo-500 text-gray-900 dark:text-white{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white{% endif %} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
             Catalog
           </a>
           <a href="{{ url_for('goals.index') }}"
-             class="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+             class="{% if current_endpoint == 'goals.index' %}border-indigo-500 text-gray-900 dark:text-white{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white{% endif %} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
             Goals
           </a>
         </div>
@@ -110,23 +111,23 @@
   <div id="hs-navbar" class="hidden hs-collapse overflow-hidden transition-all duration-300 basis-full grow sm:hidden" aria-labelledby="hs-navbar-collapse">
     <div class="pt-2 pb-3 space-y-1">
       <a href="{{ url_for('dashboard.index') }}"
-         class="bg-indigo-50 border-indigo-500 text-indigo-700 block pl-3 pr-4 py-2 border-l-4 text-base font-medium dark:bg-gray-700 dark:border-indigo-500 dark:text-indigo-300">
+         class="{% if current_endpoint == 'dashboard.index' %}bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-gray-700 dark:border-indigo-500 dark:text-indigo-300{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">
         Dashboard
       </a>
       <a href="{{ url_for('logging.add_log') }}"
-         class="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50 block pl-3 pr-4 py-2 border-l-4 text-base font-medium dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700">
+         class="{% if current_endpoint == 'logging.add_log' %}bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-gray-700 dark:border-indigo-500 dark:text-indigo-300{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">
         Add Log
       </a>
       <a href="{{ url_for('logging.view_logs') }}"
-         class="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50 block pl-3 pr-4 py-2 border-l-4 text-base font-medium dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700">
+         class="{% if current_endpoint == 'logging.view_logs' %}bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-gray-700 dark:border-indigo-500 dark:text-indigo-300{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">
         View Logs
       </a>
       <a href="{{ url_for('catalog.index') }}"
-         class="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50 block pl-3 pr-4 py-2 border-l-4 text-base font-medium dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700">
+         class="{% if current_endpoint == 'catalog.index' %}bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-gray-700 dark:border-indigo-500 dark:text-indigo-300{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">
         Catalog
       </a>
       <a href="{{ url_for('goals.index') }}"
-         class="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50 block pl-3 pr-4 py-2 border-l-4 text-base font-medium dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700">
+         class="{% if current_endpoint == 'goals.index' %}bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-gray-700 dark:border-indigo-500 dark:text-indigo-300{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">
         Goals
       </a>
     </div>
