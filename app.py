@@ -27,7 +27,7 @@ def create_app(config_name=None):
     mail.init_app(app)
     
     # Import models to register them with SQLAlchemy
-    from models import User, Pouch, Log, Goal
+    from models import User, Pouch, Log, Goal, EmailVerification
     
     # Setup error logging to file
     if not app.debug:

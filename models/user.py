@@ -19,7 +19,6 @@ class User(db.Model):
 
     # Email verification
     email_verified = db.Column(db.Boolean, default=False)
-    verification_token = db.Column(db.String(100))
 
     # Preferences
     preferred_brands = db.Column(db.Text)  # JSON string of preferred brands
@@ -37,9 +36,6 @@ class User(db.Model):
     def check_password(self, password):
         return bcrypt.check_password_hash(self.password_hash, password)
 
-    def generate_verification_token(self):
-        self.verification_token = secrets.token_urlsafe(32)
-        return self.verification_token
 
     def to_dict(self):
         return {
