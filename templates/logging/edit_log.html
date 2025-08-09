@@ -3,21 +3,21 @@
 {% block title %}Edit Log - Nicotine Tracker{% endblock %}
 
 {% block content %}
-<div class="px-4 sm:px-6 lg:px-8">
+<div class="px-4 sm:px-6 lg:px-8 mx-auto">
     <h1 class="text-2xl font-semibold leading-6 text-gray-900 dark:text-white mb-6">Edit Log Entry</h1>
     
-    <form method="POST" class="max-w-md mx-auto">
+    <form method="POST" class="max-w-xl">
         <div class="mb-4">
             <label for="log_date" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Date</label>
             <input type="date" id="log_date" name="log_date" 
-                   value="{{ log.get_user_date(user_timezone).strftime('%Y-%m-%d') if user_timezone else log.log_time.date().strftime('%Y-%m-%d') }}"
+                   value="{% if user_timezone and log.log_time %}{{ log.get_user_date(user_timezone).strftime('%Y-%m-%d') }}{% elif log.log_time %}{{ log.log_time.date().strftime('%Y-%m-%d') }}{% else %}{{ log.log_date.strftime('%Y-%m-%d') }}{% endif %}"
                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" required>
         </div>
         
         <div class="mb-4">
             <label for="log_time" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Time</label>
             <input type="time" id="log_time" name="log_time" 
-                   value="{{ log.get_user_time(user_timezone).strftime('%H:%M') if user_timezone else log.log_time.time().strftime('%H:%M') }}"
+                   value="{% if user_timezone and log.log_time %}{{ log.get_user_time(user_timezone).strftime('%H:%M') }}{% elif log.log_time %}{{ log.log_time.time().strftime('%H:%M') }}{% endif %}"
                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
         </div>
         
@@ -33,13 +33,13 @@
                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">{{ log.notes or '' }}</textarea>
         </div>
         
-        <div class="flex justify-between">
+        <div class="flex space-x-2">
             <a href="{{ url_for('logging.view_logs') }}" 
-               class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">
+               class="py-2 px-4 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-800 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500 disabled:opacity-50 disabled:pointer-events-none dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:bg-gray-700 dark:focus:ring-gray-600">
                 Cancel
             </a>
             <button type="submit" 
-                    class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                    class="py-2 px-4 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-transparent bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-600 disabled:opacity-50 disabled:pointer-events-none">
                 Update Log
             </button>
         </div>
