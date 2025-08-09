@@ -18,7 +18,18 @@ depends_on = None
 
 
 def upgrade():
-    # SQLite doesn't support ALTER COLUMN, so we need to recreate the table
+    connection = op.get_bind()
+    
+    # Check if we're using SQLite or MySQL/MariaDB
+    is_sqlite = connection.dialect.name == 'sqlite'
+    
+    # Clean up any existing log_new table from previous failed attempts
+    try:
+        op.drop_table('log_new')
+    except Exception:
+        # Table doesn't exist, which is fine
+        pass
+    
     # Create a new table with the updated schema
     op.create_table('log_new',
         sa.Column('id', sa.Integer(), nullable=False),
@@ -36,17 +47,25 @@ def upgrade():
         sa.PrimaryKeyConstraint('id')
     )
     
-    # Copy data from old table to new table, using created_at as the UTC datetime for all records
-    connection = op.get_bind()
-    
-    # Copy all records, setting log_time to created_at (which is already UTC)
-    connection.execute(text("""
-        INSERT INTO log_new (id, user_id, log_date, log_time, created_at, pouch_id, custom_brand, custom_nicotine_mg, quantity, notes)
-        SELECT id, user_id, log_date, 
-               COALESCE(created_at, datetime('now')) as log_time,
-               created_at, pouch_id, custom_brand, custom_nicotine_mg, quantity, notes
-        FROM log
-    """))
+    # Copy data from old table to new table with database-specific datetime handling
+    if is_sqlite:
+        # SQLite version - use datetime('now') for null created_at values
+        connection.execute(text("""
+            INSERT INTO log_new (id, user_id, log_date, log_time, created_at, pouch_id, custom_brand, custom_nicotine_mg, quantity, notes)
+            SELECT id, user_id, log_date, 
+                   COALESCE(created_at, datetime('now')) as log_time,
+                   created_at, pouch_id, custom_brand, custom_nicotine_mg, quantity, notes
+            FROM log
+        """))
+    else:
+        # MySQL/MariaDB version - use NOW() for null created_at values
+        connection.execute(text("""
+            INSERT INTO log_new (id, user_id, log_date, log_time, created_at, pouch_id, custom_brand, custom_nicotine_mg, quantity, notes)
+            SELECT id, user_id, log_date, 
+                   COALESCE(created_at, NOW()) as log_time,
+                   created_at, pouch_id, custom_brand, custom_nicotine_mg, quantity, notes
+            FROM log
+        """))
     
     # Drop the old table
     op.drop_table('log')
@@ -56,23 +75,54 @@ def upgrade():
 
 
 def downgrade():
-    # Convert DateTime back to Time
-    # This is a lossy operation - we'll extract just the time portion
-    op.alter_column('log', 'log_time', nullable=True)
-    
-    # Create temporary time column
-    op.add_column('log', sa.Column('log_time_temp', sa.Time(), nullable=True))
-    
-    # Extract time portion from datetime
     connection = op.get_bind()
-    connection.execute(text("""
-        UPDATE log 
-        SET log_time_temp = time(log_time)
-        WHERE log_time IS NOT NULL
-    """))
+    is_sqlite = connection.dialect.name == 'sqlite'
     
-    # Drop the datetime column
-    op.drop_column('log', 'log_time')
-    
-    # Rename temp column back to log_time
-    op.alter_column('log', 'log_time_temp', new_column_name='log_time')
+    if is_sqlite:
+        # SQLite doesn't support ALTER COLUMN, so we need to recreate the table
+        # Create temporary table with Time column
+        op.create_table('log_temp',
+            sa.Column('id', sa.Integer(), nullable=False),
+            sa.Column('user_id', sa.Integer(), nullable=False),
+            sa.Column('log_date', sa.Date(), nullable=False),
+            sa.Column('log_time', sa.Time(), nullable=True),  # Back to Time
+            sa.Column('created_at', sa.DateTime(), nullable=True),
+            sa.Column('pouch_id', sa.Integer(), nullable=True),
+            sa.Column('custom_brand', sa.String(length=80), nullable=True),
+            sa.Column('custom_nicotine_mg', sa.Integer(), nullable=True),
+            sa.Column('quantity', sa.Integer(), nullable=False),
+            sa.Column('notes', sa.Text(), nullable=True),
+            sa.ForeignKeyConstraint(['pouch_id'], ['pouch.id'], ),
+            sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),
+            sa.PrimaryKeyConstraint('id')
+        )
+        
+        # Copy data back, extracting time portion from datetime
+        connection.execute(text("""
+            INSERT INTO log_temp (id, user_id, log_date, log_time, created_at, pouch_id, custom_brand, custom_nicotine_mg, quantity, notes)
+            SELECT id, user_id, log_date, 
+                   time(log_time) as log_time,
+                   created_at, pouch_id, custom_brand, custom_nicotine_mg, quantity, notes
+            FROM log
+        """))
+        
+        # Replace the table
+        op.drop_table('log')
+        op.rename_table('log_temp', 'log')
+    else:
+        # MySQL/MariaDB version - can use ALTER COLUMN
+        with op.batch_alter_table('log', schema=None) as batch_op:
+            # Add temporary time column
+            batch_op.add_column(sa.Column('log_time_temp', sa.Time(), nullable=True))
+        
+        # Extract time portion from datetime
+        connection.execute(text("""
+            UPDATE log 
+            SET log_time_temp = TIME(log_time)
+            WHERE log_time IS NOT NULL
+        """))
+        
+        # Drop the datetime column and rename temp column
+        with op.batch_alter_table('log', schema=None) as batch_op:
+            batch_op.drop_column('log_time')
+            batch_op.alter_column('log_time_temp', new_column_name='log_time')
