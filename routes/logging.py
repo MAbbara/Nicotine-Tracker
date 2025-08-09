@@ -362,14 +362,14 @@ def edit_log(log_id):
             # Validation
             if quantity <= 0:
                 flash('Quantity must be greater than 0.', 'error')
-                return render_template('edit_log.html', log=log_entry)
+                return render_template('edit_log.html', log=log_entry, user_timezone=user.timezone)
             
             # Parse date (in user's timezone)
             try:
                 user_date = datetime.strptime(log_date_str, '%Y-%m-%d').date()
             except ValueError:
                 flash('Invalid date format.', 'error')
-                return render_template('edit_log.html', log=log_entry)
+                return render_template('edit_log.html', log=log_entry, user_timezone=user.timezone)
             
             # Parse time (optional, in user's timezone)
             user_time = None
@@ -378,7 +378,7 @@ def edit_log(log_id):
                     user_time = datetime.strptime(log_time_str, '%H:%M').time()
                 except ValueError:
                     flash('Invalid time format. Use HH:MM format.', 'error')
-                    return render_template('edit_log.html', log=log_entry)
+                    return render_template('edit_log.html', log=log_entry, user_timezone=user.timezone)
             
             # Convert user's date/time to UTC for storage
             from services.timezone_service import convert_user_time_to_utc
@@ -401,7 +401,7 @@ def edit_log(log_id):
             flash('Log entry updated successfully!', 'success')
             return redirect(url_for('logging.view_logs'))
         
-        return render_template('edit_log.html', log=log_entry)
+        return render_template('edit_log.html', log=log_entry, user_timezone=user.timezone)
         
     except Exception as e:
         db.session.rollback()
