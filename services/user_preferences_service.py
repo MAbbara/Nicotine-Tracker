@@ -60,14 +60,14 @@ class UserPreferencesService:
                 'email_notifications', 'goal_notifications', 'daily_reminders',
                 'weekly_reports', 'achievement_notifications', 'discord_webhook',
                 'slack_webhook', 'reminder_time', 'quiet_hours_start',
-                'quiet_hours_end', 'notification_frequency'
+                'quiet_hours_end', 'notification_frequency', 'daily_reset_time'
             ]
             
             updated_fields = []
             for field, value in kwargs.items():
                 if field in allowed_fields and hasattr(preferences, field):
                     # Handle time fields specially
-                    if field in ['reminder_time', 'quiet_hours_start', 'quiet_hours_end']:
+                    if field in ['reminder_time', 'quiet_hours_start', 'quiet_hours_end', 'daily_reset_time']:
                         if isinstance(value, str) and value:
                             try:
                                 # Parse time string (HH:MM format)
@@ -110,7 +110,8 @@ class UserPreferencesService:
                 'notification_frequency': preferences.notification_frequency,
                 'reminder_time': preferences.reminder_time.strftime('%H:%M') if preferences.reminder_time else None,
                 'quiet_hours_start': preferences.quiet_hours_start.strftime('%H:%M') if preferences.quiet_hours_start else None,
-                'quiet_hours_end': preferences.quiet_hours_end.strftime('%H:%M') if preferences.quiet_hours_end else None
+                'quiet_hours_end': preferences.quiet_hours_end.strftime('%H:%M') if preferences.quiet_hours_end else None,
+                'daily_reset_time': preferences.daily_reset_time.strftime('%H:%M') if preferences.daily_reset_time else None
             }
             
         except Exception as e:

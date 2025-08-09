@@ -4,6 +4,8 @@ from services.timezone_service import (
     convert_utc_to_user_time, 
     get_current_user_time, 
     get_user_date_boundaries,
+    get_user_day_boundaries,
+    get_current_user_day,
     format_time_for_user
 )
 
@@ -25,6 +27,12 @@ def filter_logs_by_datetime_range(query, start_utc, end_utc):
         log_time = log.log_time if log.log_time else dt_time(12, 0, 0)  # Default to noon
         log_datetime = dt.combine(log.log_date, log_time)
         
+        # Ensure all datetimes are timezone-naive for comparison
+        if hasattr(start_utc, 'tzinfo') and start_utc.tzinfo is not None:
+            start_utc = start_utc.replace(tzinfo=None)
+        if hasattr(end_utc, 'tzinfo') and end_utc.tzinfo is not None:
+            end_utc = end_utc.replace(tzinfo=None)
+        
         # Check if this log falls within the UTC boundaries
         if start_utc <= log_datetime <= end_utc:
             filtered_logs.append(log)
@@ -44,23 +52,40 @@ def create_user(email: str, password: str, **profile_data) -> User:
 
 def get_user_daily_intake(user: User, target_date=None, use_timezone=True):
     """
-    Get daily intake for a specific date with timezone support.
+    Get daily intake for a specific date with timezone and custom reset time support.
     
     Args:
         user: User instance
-        target_date: Date to get intake for (defaults to today in user's timezone)
-        use_timezone: Whether to use user's timezone for date boundaries
+        target_date: Date to get intake for (defaults to current user day)
+        use_timezone: Whether to use user's timezone and custom reset time for date boundaries
     
     Returns:
         Dict with total_mg, total_pouches, and sessions
     """
-    if target_date is None:
-        target_date = date.today()
-    
-    # Temporarily disable timezone functionality to avoid database compatibility issues
-    # TODO: Implement proper database-agnostic datetime handling for MySQL/MariaDB compatibility
-    # For now, fall back to simple date filtering to prevent production errors
-    daily_logs = user.logs.filter_by(log_date=target_date).all()
+    if not use_timezone or not user.timezone:
+        # Fallback to simple date filtering
+        if target_date is None:
+            target_date = date.today()
+        daily_logs = user.logs.filter_by(log_date=target_date).all()
+    else:
+        # Use timezone-aware custom day boundaries
+        if target_date is None:
+            # Get user's current day based on their reset time
+            reset_time = None
+            if user.preferences and user.preferences.daily_reset_time:
+                reset_time = user.preferences.daily_reset_time
+            target_date = get_current_user_day(user.timezone, reset_time)
+        
+        # Get custom day boundaries
+        reset_time = None
+        if user.preferences and user.preferences.daily_reset_time:
+            reset_time = user.preferences.daily_reset_time
+        
+        start_utc, end_utc = get_user_day_boundaries(user.timezone, target_date, reset_time)
+        
+        # Filter logs using the custom day boundaries
+        all_user_logs = user.logs.all()
+        daily_logs = filter_logs_by_datetime_range(user.logs, start_utc, end_utc)
     
     total_mg = 0
     total_pouches = 0

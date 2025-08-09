@@ -38,6 +38,9 @@ def index():
             quiet_hours_end = request.form.get('quiet_hours_end', '').strip()
             notification_frequency = request.form.get('notification_frequency', 'immediate').strip()
             
+            # Daily reset time
+            daily_reset_time = request.form.get('daily_reset_time', '').strip()
+            
             # Validation
             if units_preference not in ['mg', 'percentage']:
                 flash('Please select a valid units preference.', 'error')
@@ -63,7 +66,8 @@ def index():
                     reminder_time=reminder_time if reminder_time else None,
                     quiet_hours_start=quiet_hours_start if quiet_hours_start else None,
                     quiet_hours_end=quiet_hours_end if quiet_hours_end else None,
-                    notification_frequency=notification_frequency
+                    notification_frequency=notification_frequency,
+                    daily_reset_time=daily_reset_time if daily_reset_time else None
                 )
                 
                 if success:

@@ -220,6 +220,91 @@ def get_common_timezones() -> list:
     return common_timezones
 
 
+def get_user_day_boundaries(user_timezone: str, target_date: date, reset_time: time = None) -> Tuple[datetime, datetime]:
+    """
+    Get the UTC datetime boundaries for a user's custom day based on their reset time.
+    
+    Args:
+        user_timezone: User's timezone string
+        target_date: The date in user's timezone
+        reset_time: Time when the day resets (defaults to midnight)
+    
+    Returns:
+        Tuple of (day_start_utc, day_end_utc)
+    """
+    if reset_time is None:
+        reset_time = time(0, 0)  # Default to midnight
+    
+    user_tz = get_timezone_object(user_timezone)
+    
+    # Start of user's day (at reset time)
+    day_start_naive = datetime.combine(target_date, reset_time)
+    day_start_localized = user_tz.localize(day_start_naive)
+    day_start_utc = day_start_localized.astimezone(pytz.UTC)
+    
+    # End of user's day (just before next reset time)
+    next_day = target_date + timedelta(days=1)
+    day_end_naive = datetime.combine(next_day, reset_time) - timedelta(microseconds=1)
+    day_end_localized = user_tz.localize(day_end_naive)
+    day_end_utc = day_end_localized.astimezone(pytz.UTC)
+    
+    return day_start_utc, day_end_utc
+
+
+def get_current_user_day(user_timezone: str, reset_time: time = None) -> date:
+    """
+    Get the current user day based on their timezone and reset time.
+    
+    Args:
+        user_timezone: User's timezone string
+        reset_time: Time when the day resets (defaults to midnight)
+    
+    Returns:
+        Current user day as date
+    """
+    if reset_time is None:
+        reset_time = time(0, 0)  # Default to midnight
+    
+    # Get current time in user's timezone
+    user_tz = get_timezone_object(user_timezone)
+    now_utc = datetime.now(pytz.UTC)
+    now_local = now_utc.astimezone(user_tz)
+    
+    # If current time is before reset time, we're still in the previous day
+    if now_local.time() < reset_time:
+        return (now_local.date() - timedelta(days=1))
+    else:
+        return now_local.date()
+
+
+def get_user_week_boundaries_with_reset(user_timezone: str, target_date: date, reset_time: time = None) -> Tuple[datetime, datetime]:
+    """
+    Get the UTC datetime boundaries for the week containing target_date, 
+    using custom daily reset time.
+    
+    Args:
+        user_timezone: User's timezone string
+        target_date: A date within the target week
+        reset_time: Time when days reset (defaults to midnight)
+    
+    Returns:
+        Tuple of (week_start_utc, week_end_utc)
+    """
+    if reset_time is None:
+        reset_time = time(0, 0)  # Default to midnight
+    
+    # Find Monday of the week containing target_date
+    days_since_monday = target_date.weekday()
+    week_start_date = target_date - timedelta(days=days_since_monday)
+    week_end_date = week_start_date + timedelta(days=6)
+    
+    # Get boundaries for the week using custom reset time
+    week_start_utc, _ = get_user_day_boundaries(user_timezone, week_start_date, reset_time)
+    _, week_end_utc = get_user_day_boundaries(user_timezone, week_end_date, reset_time)
+    
+    return week_start_utc, week_end_utc
+
+
 def get_all_timezones_for_dropdown() -> list:
     """
     Get all available timezones formatted for dropdown selection.
