@@ -2,7 +2,12 @@
 
 {% block title %}Dashboard - Nicotine Tracker{% endblock %}
 
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/timezone-handler.js') }}"></script>
+{% endblock %}
+
 {% block content %}
+<div data-user-timezone="{{ user.timezone or 'UTC' }}">
 <div class="px-4 sm:px-6 lg:px-8">
   <!-- Header + open-modal button -->
   <div class="flex items-center justify-between">
@@ -26,7 +31,7 @@
            sm:max-w-lg sm:w-full m-3 sm:mx-auto min-h-[calc(100%-56px)]
            flex items-center">
       <!-- form is the panel -->
-      <form id="addLogForm" method="POST" action="{{ url_for('logging.add_log') }}"
+      <form id="add-log-form" method="POST" action="{{ url_for('logging.add_log') }}"
         class="w-full flex flex-col bg-white border border-gray-200 shadow-2xs rounded-xl pointer-events-auto dark:bg-gray-800 dark:border-gray-700 dark:shadow-gray-700/70"
         data-validate>
         <!-- header -->
@@ -52,7 +57,7 @@
           <!-- Date -->
           <div>
             <label for="log_date" class="block text-sm font-medium text-gray-900 dark:text-white">Date *</label>
-            <input type="date" name="log_date" id="log_date" required value="{{ date.today().isoformat() }}"
+            <input type="date" name="log_date" id="log_date" required value="{{ today or date.today().isoformat() }}"
               class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
           </div>
 
@@ -60,8 +65,11 @@
           <div>
             <label for="log_time" class="block text-sm font-medium text-gray-900 dark:text-white">Time
               (Optional)</label>
-            <input type="time" name="log_time" id="log_time"
+            <input type="time" name="log_time" id="log_time" value="{{ current_time or '' }}"
               class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Time is shown in your timezone: {{ user.timezone or 'UTC' }}
+            </p>
           </div>
 
           <!-- Pouch -->
@@ -392,6 +400,7 @@
       </div>
     </div>
   </div>
+</div>
 </div>
 </div>
 {% endblock %}

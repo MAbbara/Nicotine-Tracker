@@ -4,6 +4,7 @@ from models import User, Log, Pouch, Goal
 from extensions import db
 from routes.auth import login_required, get_current_user
 from services import get_user_daily_intake, get_user_current_time_info
+from services.timezone_service import get_current_user_time
 from sqlalchemy import func, desc
 import json
 
@@ -61,6 +62,15 @@ def index():
             if current_hour > 0:
                 avg_pouches_per_hour = round(today_intake['total_pouches'] / current_hour, 1)
         
+        # Get timezone-aware date and time for modal
+        if user.timezone:
+            _, user_today, user_current_time = get_current_user_time(user.timezone)
+            today_str = user_today.isoformat()
+            current_time_str = user_current_time.strftime('%H:%M')
+        else:
+            today_str = date.today().isoformat()
+            current_time_str = datetime.now().time().strftime('%H:%M')
+        
         return render_template('dashboard.html',
                              date=date,
                              today_intake=today_intake,
@@ -69,7 +79,10 @@ def index():
                              goal_progress=goal_progress,
                              avg_pouches_per_hour=avg_pouches_per_hour,
                              default_pouches=default_pouches,
-                             user_pouches=user_pouches)
+                             user_pouches=user_pouches,
+                             today=today_str,
+                             current_time=current_time_str,
+                             user=user)
         
     except Exception as e:
         current_app.logger.error(f'Dashboard error: {e}')
