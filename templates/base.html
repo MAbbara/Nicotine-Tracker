@@ -270,14 +270,14 @@
       
       // Check if we should show timezone update prompt (only if user hasn't cancelled this session)
       const hasDeclinedThisSession = sessionStorage.getItem('timezone_declined');
-      sessionStorage.removeItem("timezone_declined")
+
       // Debug logging
-      console.log('=== TIMEZONE MODAL DEBUG ===');
-      console.log('Stored timezone:', storedTimezone);
-      console.log('Detected timezone:', detectedTimezone);
-      console.log('Has declined this session:', hasDeclinedThisSession);
-      console.log('Timezone mismatch?', detectedTimezone !== storedTimezone);
-      console.log('Should show modal?', detectedTimezone !== storedTimezone && !hasDeclinedThisSession);
+      // console.log('=== TIMEZONE MODAL DEBUG ===');
+      // console.log('Stored timezone:', storedTimezone);
+      // console.log('Detected timezone:', detectedTimezone);
+      // console.log('Has declined this session:', hasDeclinedThisSession);
+      // console.log('Timezone mismatch?', detectedTimezone !== storedTimezone);
+      // console.log('Should show modal?', detectedTimezone !== storedTimezone && !hasDeclinedThisSession);
       
       // If detected timezone differs from stored timezone and user hasn't declined this session
       if (detectedTimezone !== storedTimezone && !hasDeclinedThisSession) {

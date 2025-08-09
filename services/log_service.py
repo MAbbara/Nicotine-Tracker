@@ -40,23 +40,25 @@ def add_log_entry(user_id: int,
         Created Log entry
     """
     if user_timezone is None:
-        # Values are already in UTC, use them directly
-        utc_date = log_date
-        utc_time = log_time or datetime.now().time()
+        # Values are already in UTC, create datetime directly
+        if log_time is not None:
+            utc_datetime = datetime.combine(log_date, log_time)
+        else:
+            utc_datetime = datetime.combine(log_date, datetime.now().time())
     else:
         # Convert user's local time to UTC for storage
         if log_time is not None:
-            utc_datetime, utc_date, utc_time = convert_user_time_to_utc(user_timezone, log_date, log_time)
+            utc_datetime, _, _ = convert_user_time_to_utc(user_timezone, log_date, log_time)
         else:
             # If no time provided, use current time in user's timezone
             from services.timezone_service import get_current_user_time
             _, current_date, current_time = get_current_user_time(user_timezone)
-            utc_datetime, utc_date, utc_time = convert_user_time_to_utc(user_timezone, log_date, current_time)
+            utc_datetime, _, _ = convert_user_time_to_utc(user_timezone, log_date, current_time)
     
     log_entry = Log(
         user_id=user_id,
-        log_date=utc_date,
-        log_time=utc_time,
+        log_date=utc_datetime.date(),  # Keep for backward compatibility
+        log_time=utc_datetime,  # Store complete UTC datetime
         quantity=quantity,
         notes=notes
     )
@@ -89,15 +91,15 @@ def add_bulk_logs(user_id: int, entries: Iterable[Dict[str, Any]], log_date: dat
         # Convert time to UTC if provided
         entry_time = entry.get("time")
         if entry_time is not None:
-            utc_datetime, utc_date, utc_time = convert_user_time_to_utc(user_timezone, log_date, entry_time)
+            utc_datetime, _, _ = convert_user_time_to_utc(user_timezone, log_date, entry_time)
         else:
             # Use noon in user's timezone as default
-            utc_datetime, utc_date, utc_time = convert_user_time_to_utc(user_timezone, log_date, time(12, 0))
+            utc_datetime, _, _ = convert_user_time_to_utc(user_timezone, log_date, time(12, 0))
         
         log_entry = Log(
             user_id=user_id,
-            log_date=utc_date,
-            log_time=utc_time,
+            log_date=utc_datetime.date(),  # Keep for backward compatibility
+            log_time=utc_datetime,  # Store complete UTC datetime
             quantity=entry["quantity"]
         )
         

@@ -23,15 +23,16 @@ def filter_logs_by_datetime_range(query, start_utc, end_utc):
     filtered_logs = []
     
     for log in all_logs:
-        # Combine log_date and log_time to create a datetime
-        log_time = log.log_time if log.log_time else dt_time(12, 0, 0)  # Default to noon
-        log_datetime = dt.combine(log.log_date, log_time)
+        # Use the UTC datetime stored in log_time field (now a DateTime field)
+        log_datetime = log.log_time if log.log_time else log.created_at
         
         # Ensure all datetimes are timezone-naive for comparison
         if hasattr(start_utc, 'tzinfo') and start_utc.tzinfo is not None:
             start_utc = start_utc.replace(tzinfo=None)
         if hasattr(end_utc, 'tzinfo') and end_utc.tzinfo is not None:
             end_utc = end_utc.replace(tzinfo=None)
+        if hasattr(log_datetime, 'tzinfo') and log_datetime.tzinfo is not None:
+            log_datetime = log_datetime.replace(tzinfo=None)
         
         # Check if this log falls within the UTC boundaries
         if start_utc <= log_datetime <= end_utc:
