@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, jsonify, session
 from datetime import datetime, time
 from datetime import date
 from models import User, Log, Pouch
@@ -23,6 +23,10 @@ def add_log():
             return redirect(url_for('auth.login'))
         
         if request.method == 'POST':
+
+            current_app.logger.debug(f"Form data: {request.form.to_dict()}")
+            current_app.logger.debug(f"User timezone: {user.timezone}")
+            current_app.logger.debug(f"Session timezone: {session.get('user_timezone')}")
             # Get form data
             log_date_str = request.form.get('log_date', date.today().isoformat())
             log_time_str = request.form.get('log_time', '')

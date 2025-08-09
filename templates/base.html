@@ -231,6 +231,288 @@
   <script>
     // Set user timezone globally for timezone handler
     document.documentElement.setAttribute('data-user-timezone', '{{ session.user_timezone or "UTC" }}');
+    
+    // Function to clear all client-side storage
+    function clearClientStorage() {
+      try {
+        // Clear localStorage
+        localStorage.clear();
+        
+        // Clear sessionStorage
+        sessionStorage.clear();
+        
+        // Clear IndexedDB (if any)
+        if ('indexedDB' in window) {
+          indexedDB.databases().then(databases => {
+            databases.forEach(db => {
+              indexedDB.deleteDatabase(db.name);
+            });
+          }).catch(console.warn);
+        }
+        
+        console.log('Client-side storage cleared');
+      } catch (error) {
+        console.warn('Error clearing client-side storage:', error);
+      }
+    }
+    
+    // Check for timezone mismatch and show modal prompt after page loads
+    document.addEventListener('DOMContentLoaded', () => {
+      const storedTimezone = '{{ session.user_timezone or "UTC" }}';
+      let detectedTimezone;
+      
+      try {
+        detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      } catch (error) {
+        console.warn('Error detecting timezone:', error);
+        detectedTimezone = 'UTC';
+      }
+      
+      // Check if we should show timezone update prompt (only if user hasn't cancelled this session)
+      const hasDeclinedThisSession = sessionStorage.getItem('timezone_declined');
+      sessionStorage.removeItem("timezone_declined")
+      // Debug logging
+      console.log('=== TIMEZONE MODAL DEBUG ===');
+      console.log('Stored timezone:', storedTimezone);
+      console.log('Detected timezone:', detectedTimezone);
+      console.log('Has declined this session:', hasDeclinedThisSession);
+      console.log('Timezone mismatch?', detectedTimezone !== storedTimezone);
+      console.log('Should show modal?', detectedTimezone !== storedTimezone && !hasDeclinedThisSession);
+      
+      // If detected timezone differs from stored timezone and user hasn't declined this session
+      if (detectedTimezone !== storedTimezone && !hasDeclinedThisSession) {
+        console.log('Showing timezone modal');
+        // Show modal after a short delay to ensure page is fully loaded
+        setTimeout(() => {
+          showTimezoneUpdateModal(storedTimezone, detectedTimezone);
+        }, 1000);
+      } else {
+        console.log('Not showing timezone modal - conditions not met');
+      }
+    });
+    
+    function showTimezoneUpdateModal(currentTimezone, detectedTimezone) {
+      // Create modal HTML with website theme colors (indigo primary, gray backgrounds)
+      const modalHTML = `
+        <div id="timezone-modal" class="hs-overlay hidden size-full fixed top-0 start-0 z-[80] overflow-x-hidden overflow-y-auto" role="dialog" tabindex="-1" aria-labelledby="timezone-modal-label">
+          <div class="hs-overlay-open:mt-7 hs-overlay-open:opacity-100 hs-overlay-open:duration-500 mt-0 opacity-0 ease-out transition-all sm:max-w-lg sm:w-full m-3 sm:mx-auto">
+            <div class="flex flex-col bg-white border shadow-sm rounded-xl pointer-events-auto dark:bg-gray-800 dark:border-gray-700 dark:shadow-slate-700/[.7]">
+              <div class="flex justify-between items-center py-3 px-4 border-b dark:border-gray-700">
+                <h3 id="timezone-modal-label" class="font-bold text-gray-800 dark:text-white">
+                  <div class="flex items-center gap-3">
+                    <div class="flex justify-center items-center size-10 bg-indigo-100 rounded-lg dark:bg-indigo-900/50">
+                      <svg class="shrink-0 size-5 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    Update Your Timezone?
+                  </div>
+                </h3>
+                <button type="button" class="flex justify-center items-center size-7 text-sm font-semibold rounded-full border border-transparent text-gray-800 hover:bg-gray-100 disabled:opacity-50 disabled:pointer-events-none dark:text-white dark:hover:bg-gray-700 dark:focus:outline-none dark:focus:ring-1 dark:focus:ring-gray-600" data-hs-overlay="#timezone-modal">
+                  <span class="sr-only">Close</span>
+                  <svg class="flex-shrink-0 size-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m18 6-12 12"></path>
+                    <path d="m6 6 12 12"></path>
+                  </svg>
+                </button>
+              </div>
+              <div class="p-4 overflow-y-auto">
+                <div class="space-y-4">
+                  <p class="text-gray-600 dark:text-gray-300">
+                    We detected that your current timezone is <strong class="text-gray-900 dark:text-white font-medium">${detectedTimezone}</strong>, but your account is set to <strong class="text-gray-900 dark:text-white font-medium">${currentTimezone}</strong>.
+                  </p>
+                  <p class="text-gray-600 dark:text-gray-300">
+                    Would you like to update your timezone setting for more accurate logging and time tracking?
+                  </p>
+                  <div class="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-4 border border-indigo-200 dark:border-indigo-800">
+                    <div class="flex items-center gap-2 text-sm text-indigo-700 dark:text-indigo-300">
+                      <svg class="size-4 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      This will help ensure your logs are recorded at the correct times.
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex justify-end items-center gap-x-2 py-3 px-4 border-t dark:border-gray-700">
+                <button type="button" id="keep-timezone-btn" class="py-2 px-3 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-800 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:border-gray-500 dark:focus:ring-offset-gray-800" data-hs-overlay="#timezone-modal">
+                  Keep Current
+                </button>
+                <button type="button" id="update-timezone-btn" class="py-2 px-3 inline-flex items-center gap-x-2 text-sm font-semibold rounded-lg border border-transparent bg-indigo-600 text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none dark:focus:ring-offset-gray-800">
+                  Update Timezone
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      // Add modal to page
+      document.body.insertAdjacentHTML('beforeend', modalHTML);
+      
+      // Use Preline's API to show the modal
+      const modal = document.getElementById('timezone-modal');
+      const HSOverlay = window.HSOverlay;
+      
+      if (HSOverlay) {
+        const overlayInstance = HSOverlay.getInstance(modal, true) || new HSOverlay(modal);
+        overlayInstance.open();
+      } else {
+        // Fallback if HSOverlay is not available
+        modal.classList.remove('hidden');
+        modal.classList.add('hs-overlay-open');
+      }
+      
+      // Add event listeners
+      document.getElementById('update-timezone-btn').addEventListener('click', () => {
+        updateUserTimezone(detectedTimezone);
+      });
+      
+      document.getElementById('keep-timezone-btn').addEventListener('click', () => {
+        // Set declined flag so modal won't show again this session
+        sessionStorage.setItem('timezone_declined', 'true');
+        closeTimezoneModal();
+      });
+    }
+    
+    function updateUserTimezone(newTimezone) {
+      fetch('/auth/api/update-timezone', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          timezone: newTimezone
+        })
+      }).then(response => {
+        if (response.ok) {
+          console.log('Timezone updated to:', newTimezone);
+          // Update the session timezone for this page load
+          document.documentElement.setAttribute('data-user-timezone', newTimezone);
+          closeTimezoneModal();
+          // Show success message
+          showTimezoneSuccessMessage(newTimezone);
+        } else {
+          console.error('Failed to update timezone');
+          showTimezoneErrorMessage();
+        }
+      }).catch(error => {
+        console.warn('Failed to update timezone:', error);
+        showTimezoneErrorMessage();
+      });
+    }
+    
+    function closeTimezoneModal() {
+      const modal = document.getElementById('timezone-modal');
+      if (modal) {
+        const HSOverlay = window.HSOverlay;
+        
+        if (HSOverlay) {
+          const overlayInstance = HSOverlay.getInstance(modal, true);
+          if (overlayInstance && typeof overlayInstance.hide === 'function') {
+            overlayInstance.hide();
+            // Remove modal after close animation
+            setTimeout(() => {
+              modal.remove();
+            }, 300);
+          } else {
+            // Fallback: manually hide the modal
+            modal.classList.add('hidden');
+            modal.classList.remove('hs-overlay-open');
+            setTimeout(() => {
+              modal.remove();
+            }, 200);
+          }
+        } else {
+          // Fallback if HSOverlay is not available
+          modal.classList.add('hidden');
+          modal.classList.remove('hs-overlay-open');
+          setTimeout(() => {
+            modal.remove();
+          }, 200);
+        }
+      }
+    }
+    
+    function showTimezoneSuccessMessage(timezone) {
+      const messageHTML = `
+        <div id="timezone-success" class="fixed top-4 right-4 z-50 max-w-sm bg-indigo-900 border border-indigo-700 rounded-xl shadow-lg dark:bg-indigo-900 dark:border-indigo-800 transform translate-x-full opacity-0 transition-all duration-300">
+          <div class="flex items-center p-4">
+            <div class="flex-shrink-0">
+              <div class="flex justify-center items-center size-8 bg-indigo-100 rounded-lg dark:bg-indigo-900/50">
+                <svg class="size-4 text-indigo-600 dark:text-indigo-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                </svg>
+              </div>
+            </div>
+            <div class="ms-3">
+              <p class="text-sm font-medium text-indigo-900 dark:text-indigo-100">
+                Timezone Updated
+              </p>
+              <p class="text-xs text-indigo-600 dark:text-indigo-300">
+                Set to ${timezone}
+              </p>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.insertAdjacentHTML('beforeend', messageHTML);
+      
+      // Trigger slide-in animation
+      const message = document.getElementById('timezone-success');
+      setTimeout(() => {
+        message.classList.remove('translate-x-full', 'opacity-0');
+        message.classList.add('translate-x-0', 'opacity-100');
+      }, 50);
+      
+      // Remove message after 4 seconds
+      setTimeout(() => {
+        if (message) {
+          message.classList.add('translate-x-full', 'opacity-0');
+          setTimeout(() => message.remove(), 300);
+        }
+      }, 4000);
+    }
+    
+    function showTimezoneErrorMessage() {
+      const messageHTML = `
+        <div id="timezone-error" class="fixed top-4 right-4 z-50 max-w-sm bg-indigo-900 border border-indigo-700 rounded-xl shadow-lg dark:bg-indigo-900 dark:border-indigo-800 transform translate-x-full opacity-0 transition-all duration-300">
+          <div class="flex items-center p-4">
+            <div class="flex-shrink-0">
+              <div class="flex justify-center items-center size-8 bg-indigo-100 rounded-lg dark:bg-indigo-900/50">
+                <svg class="size-4 text-indigo-600 dark:text-indigo-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+                </svg>
+              </div>
+            </div>
+            <div class="ms-3">
+              <p class="text-sm font-medium text-indigo-900 dark:text-indigo-100">
+                Update Failed
+              </p>
+              <p class="text-xs text-indigo-600 dark:text-indigo-300">
+                Please try again later
+              </p>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.insertAdjacentHTML('beforeend', messageHTML);
+      
+      // Trigger slide-in animation
+      const message = document.getElementById('timezone-error');
+      setTimeout(() => {
+        message.classList.remove('translate-x-full', 'opacity-0');
+        message.classList.add('translate-x-0', 'opacity-100');
+      }, 50);
+      
+      // Remove message after 4 seconds
+      setTimeout(() => {
+        if (message) {
+          message.classList.add('translate-x-full', 'opacity-0');
+          setTimeout(() => message.remove(), 300);
+        }
+      }, 4000);
+    }
   </script>
   {% endif %}
   

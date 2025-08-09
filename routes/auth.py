@@ -1,9 +1,10 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash  # still imported if you need them elsewhere
 from flask_mail import Message
 from models import User
 from services import create_user              # new import
 from services.password_reset_service import PasswordResetService
+from services.timezone_service import validate_timezone
 from extensions import db, mail
 import re
 from datetime import datetime, timedelta
@@ -153,7 +154,18 @@ def logout():
     session.clear()
     current_app.logger.info(f'User {user_email} logged out')
     flash('You have been logged out successfully.', 'info')
-    return redirect(url_for('index'))
+    
+    # Create response and clear cookies
+    response = redirect(url_for('index'))
+    
+    # Clear all session-related cookies
+    response.set_cookie('session', '', expires=0, path='/')
+    response.set_cookie('remember_token', '', expires=0, path='/')
+    
+    # Add JavaScript to clear client-side storage
+    response.headers['Clear-Site-Data'] = '"cache", "cookies", "storage"'
+    
+    return response
 
 @auth_bp.route('/verify_email/<token>')
 def verify_email(token):
@@ -273,3 +285,38 @@ def get_current_user():
     if 'user_id' in session:
         return User.query.get(session['user_id'])
     return None
+
+@auth_bp.route('/api/update-timezone', methods=['POST'])
+@login_required
+def update_timezone():
+    """API endpoint to update user's timezone"""
+    try:
+        data = request.get_json()
+        if not data or 'timezone' not in data:
+            return jsonify({'success': False, 'error': 'Timezone not provided'}), 400
+        
+        new_timezone = data['timezone']
+        
+        # Validate timezone
+        if not validate_timezone(new_timezone):
+            return jsonify({'success': False, 'error': 'Invalid timezone'}), 400
+        
+        # Get current user
+        user = get_current_user()
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+        
+        # Update user's timezone
+        user.timezone = new_timezone
+        db.session.commit()
+        
+        # Update session
+        session['user_timezone'] = new_timezone
+        
+        current_app.logger.info(f'Timezone updated for user {user.email}: {new_timezone}')
+        return jsonify({'success': True, 'timezone': new_timezone})
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Update timezone error: {e}')
+        return jsonify({'success': False, 'error': 'Server error'}), 500

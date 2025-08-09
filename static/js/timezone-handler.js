@@ -10,6 +10,20 @@ class TimezoneHandler {
         if (timezoneElement) {
             this.userTimezone = timezoneElement.getAttribute('data-user-timezone');
         }
+
+        // If userTimezone is not set or is 'UTC', try to detect automatically
+        if (!this.userTimezone || this.userTimezone === 'UTC') {
+            try {
+                this.userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+                // Update the DOM attribute to reflect detected timezone
+                if (timezoneElement) {
+                    timezoneElement.setAttribute('data-user-timezone', this.userTimezone);
+                }
+            } catch (error) {
+                console.warn('Error detecting user timezone:', error);
+                this.userTimezone = 'UTC';
+            }
+        }
         
         // Initialize form handlers
         this.initializeFormHandlers();
