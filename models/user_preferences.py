@@ -31,6 +31,9 @@ class UserPreferences(db.Model):
     # Frequency preferences
     notification_frequency = db.Column(db.String(20), default='immediate', nullable=False)  # immediate, daily, weekly
     
+    # Daily reset time preference (defaults to midnight)
+    daily_reset_time = db.Column(db.Time, nullable=True)  # Time when daily statistics reset
+    
     # Relationships
     user = db.relationship('User', backref=db.backref('preferences', uselist=False, cascade='all, delete-orphan'))
     
@@ -49,6 +52,7 @@ class UserPreferences(db.Model):
             'quiet_hours_start': self.quiet_hours_start.isoformat() if self.quiet_hours_start else None,
             'quiet_hours_end': self.quiet_hours_end.isoformat() if self.quiet_hours_end else None,
             'notification_frequency': self.notification_frequency,
+            'daily_reset_time': self.daily_reset_time.isoformat() if self.daily_reset_time else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

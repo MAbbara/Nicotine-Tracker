@@ -65,6 +65,12 @@
                             </select>
                         </div>
                     </div>
+                    
+                    <div>
+                        <label for="daily_reset_time" class="block text-sm font-medium text-gray-900 dark:text-white mb-2">Daily Reset Time</label>
+                        <input type="time" name="daily_reset_time" id="daily_reset_time" value="{{ preferences.daily_reset_time or '00:00' }}" class="block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Select the time of day when your daily statistics reset (default is midnight).</p>
+                    </div>
                 </div>
             </div>
         </div>
