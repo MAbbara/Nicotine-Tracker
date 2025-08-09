@@ -4,6 +4,7 @@ from flask_mail import Message
 from models import User
 from services import create_user              # new import
 from services.password_reset_service import PasswordResetService
+from services.email_verification_service import EmailVerificationService
 from services.timezone_service import validate_timezone
 from extensions import db, mail
 import re
@@ -86,7 +87,18 @@ def register():
             password = request.form.get('password', '')
             confirm_password = request.form.get('confirm_password', '')
 
-            # …validation omitted for brevity…
+            # Basic validation
+            if not email or not is_valid_email(email):
+                flash('Please enter a valid email address.', 'error')
+                return render_template('register.html')
+            
+            if len(password) < 6:
+                flash('Password must be at least 6 characters long.', 'error')
+                return render_template('register.html')
+            
+            if password != confirm_password:
+                flash('Passwords do not match.', 'error')
+                return render_template('register.html')
 
             existing_user = User.query.filter_by(email=email).first()
             if existing_user:
@@ -96,14 +108,15 @@ def register():
             # Create the user via the service layer
             user = create_user(email=email, password=password)
 
-            # Generate verification token and persist it
-            user.generate_verification_token()
-            db.session.commit()
-
-            # Send verification email
-            send_verification_email(user)
-
-            flash('Registration successful! Please check your email to verify your account.', 'success')
+            # Send verification email using the new service
+            verification_service = EmailVerificationService()
+            success, message = verification_service.send_verification_email(user.id)
+            
+            if success:
+                flash('Registration successful! Please check your email to verify your account.', 'success')
+            else:
+                flash(f'Registration successful, but there was an issue sending the verification email: {message}', 'warning')
+            
             return redirect(url_for('auth.login'))
 
         except Exception as e:
@@ -170,24 +183,52 @@ def logout():
 @auth_bp.route('/verify_email/<token>')
 def verify_email(token):
     try:
-        user = User.query.filter_by(verification_token=token).first()
+        verification_service = EmailVerificationService()
+        success, message = verification_service.verify_email_with_token(token)
         
-        if user:
-            user.email_verified = True
-            user.verification_token = None
-            db.session.commit()
-            
-            current_app.logger.info(f'Email verified for user {user.email}')
-            flash('Email verified successfully! You can now log in.', 'success')
+        if success:
+            flash(message, 'success')
         else:
-            flash('Invalid or expired verification token.', 'error')
+            flash(message, 'error')
             
     except Exception as e:
-        db.session.rollback()
         current_app.logger.error(f'Email verification error: {e}')
         flash('An error occurred during email verification.', 'error')
     
     return redirect(url_for('auth.login'))
+
+@auth_bp.route('/resend_verification', methods=['POST'])
+def resend_verification():
+    """Resend verification email for logged in user"""
+    try:
+        if 'user_id' not in session:
+            flash('Please log in to resend verification email.', 'error')
+            return redirect(url_for('auth.login'))
+        
+        user_id = session['user_id']
+        user = User.query.get(user_id)
+        
+        if not user:
+            flash('User not found.', 'error')
+            return redirect(url_for('auth.login'))
+        
+        if user.email_verified:
+            flash('Your email is already verified.', 'info')
+            return redirect(url_for('dashboard.index'))
+        
+        verification_service = EmailVerificationService()
+        success, message = verification_service.send_verification_email(user_id)
+        
+        if success:
+            flash('Verification email sent! Please check your inbox.', 'success')
+        else:
+            flash(f'Failed to send verification email: {message}', 'error')
+            
+    except Exception as e:
+        current_app.logger.error(f'Resend verification error: {e}')
+        flash('An error occurred while sending verification email.', 'error')
+    
+    return redirect(request.referrer or url_for('dashboard.index'))
 
 @auth_bp.route('/forgot_password', methods=['GET', 'POST'])
 def forgot_password():

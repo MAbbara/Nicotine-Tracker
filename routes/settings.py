@@ -5,6 +5,7 @@ from routes.auth import login_required, get_current_user
 from services.timezone_service import get_all_timezones_for_dropdown, get_common_timezones
 from services.user_preferences_service import UserPreferencesService
 from services.notification_service import NotificationService
+from services.email_verification_service import EmailVerificationService
 import json
 from datetime import datetime
 
@@ -458,9 +459,12 @@ def account():
                 old_email = user.email
                 user.email = new_email
                 user.email_verified = False  # Require re-verification
-                user.generate_verification_token()
                 
                 db.session.commit()
+                
+                # Send verification email for new address
+                verification_service = EmailVerificationService()
+                verification_service.send_verification_email(user.id)
                 
                 current_app.logger.info(f'Email changed from {old_email} to {new_email}')
                 flash('Email updated successfully! Please verify your new email address.', 'success')
@@ -501,6 +505,21 @@ def account():
             elif action == 'download_data':
                 # Export user data directly
                 return export_user_data(user)
+                
+            elif action == 'resend_verification':
+                # Resend email verification
+                if user.email_verified:
+                    flash('Your email is already verified.', 'info')
+                else:
+                    verification_service = EmailVerificationService()
+                    success, message = verification_service.send_verification_email(user.id)
+                    
+                    if success:
+                        flash('Verification email sent successfully! Please check your inbox.', 'success')
+                        current_app.logger.info(f'Verification email resent for user {user.email}')
+                    else:
+                        flash(f'Failed to send verification email: {message}', 'error')
+                        current_app.logger.error(f'Failed to resend verification email for user {user.email}: {message}')
                 
             elif action == 'delete_account':
                 password = request.form.get('password', '')

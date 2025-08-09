@@ -10,6 +10,7 @@ from models.user import User
 from models.goal import Goal
 from services.notification_service import NotificationService
 from services.user_preferences_service import UserPreferencesService
+from services.email_verification_service import EmailVerificationService
 
 
 class BackgroundTaskProcessor:
@@ -18,6 +19,7 @@ class BackgroundTaskProcessor:
         self.app = app
         self.notification_service = NotificationService()
         self.preferences_service = UserPreferencesService()
+        self.verification_service = EmailVerificationService()
         
         if app:
             self.init_app(app)
@@ -31,6 +33,7 @@ class BackgroundTaskProcessor:
         schedule.every().day.at("09:00").do(self.send_daily_reminders)
         schedule.every().monday.at("10:00").do(self.send_weekly_reports)
         schedule.every(30).minutes.do(self.check_goal_thresholds)
+        schedule.every().day.at("02:00").do(self.cleanup_expired_tokens)
     
     def run_scheduler(self):
         """Run the background scheduler (should be called in a separate process/thread)"""
@@ -268,6 +271,16 @@ class BackgroundTaskProcessor:
             return diff
         except:
             return 999  # Return large number if parsing fails
+    
+    def cleanup_expired_tokens(self):
+        """Clean up expired email verification tokens"""
+        try:
+            with self.app.app_context():
+                cleaned = self.verification_service.cleanup_expired_tokens()
+                if cleaned > 0:
+                    current_app.logger.info(f"Cleaned up {cleaned} expired email verification tokens")
+        except Exception as e:
+            current_app.logger.error(f"Error cleaning up expired tokens: {e}")
     
     def _recently_notified(self, user_id, goal_id, notification_type):
         """Check if user was recently notified about this goal"""
