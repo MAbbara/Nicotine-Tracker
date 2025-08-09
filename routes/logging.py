@@ -318,12 +318,11 @@ def view_logs():
         daily_totals = {}
         for log in logs.items:
             # Convert UTC log datetime to user's timezone for proper daily grouping
-            if user.timezone and log.log_date and log.log_time:
-                log_datetime = datetime.combine(log.log_date, log.log_time)
-                _, user_date, _ = convert_utc_to_user_time(user.timezone, log_datetime)
+            if user.timezone and log.log_time:
+                _, user_date, _ = convert_utc_to_user_time(user.timezone, log.log_time)
                 date_key = user_date
             else:
-                date_key = log.log_date
+                date_key = log.log_time.date() if log.log_time else log.log_date
             
             if date_key not in daily_totals:
                 daily_totals[date_key] = {'pouches': 0, 'mg': 0}
@@ -384,14 +383,14 @@ def edit_log(log_id):
             # Convert user's date/time to UTC for storage
             from services.timezone_service import convert_user_time_to_utc
             if user_time is not None:
-                _, utc_date, utc_time = convert_user_time_to_utc(user.timezone, user_date, user_time)
+                utc_datetime, _, _ = convert_user_time_to_utc(user.timezone, user_date, user_time)
             else:
                 # Use current time if no time specified
                 _, current_date, current_time = get_current_user_time(user.timezone)
-                _, utc_date, utc_time = convert_user_time_to_utc(user.timezone, user_date, current_time)
+                utc_datetime, _, _ = convert_user_time_to_utc(user.timezone, user_date, current_time)
             
-            log_entry.log_date = utc_date
-            log_entry.log_time = utc_time
+            log_entry.log_date = utc_datetime.date()  # Keep for backward compatibility
+            log_entry.log_time = utc_datetime  # Store complete UTC datetime
             
             log_entry.quantity = quantity
             log_entry.notes = notes

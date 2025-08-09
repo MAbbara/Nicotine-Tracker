@@ -347,9 +347,9 @@
             {% for log in recent_logs %}
             <tr>
               <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-gray-900 dark:text-white sm:pl-0">
-                {{ log.log_date.strftime('%m/%d') }}
+                {{ log.get_user_date(user.timezone).strftime('%m/%d') if user.timezone else log.log_time.date().strftime('%m/%d') }}
                 {% if log.log_time %}
-                {{ log.log_time.strftime('%H:%M') }}
+                {{ log.get_user_time(user.timezone).strftime('%H:%M') if user.timezone else log.log_time.time().strftime('%H:%M') }}
                 {% endif %}
               </td>
               <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
