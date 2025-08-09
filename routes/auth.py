@@ -327,6 +327,12 @@ def get_current_user():
         return User.query.get(session['user_id'])
     return None
 
+# Make current user available in all templates
+@auth_bp.app_context_processor
+def inject_current_user():
+    """Inject current user into template context"""
+    return dict(current_user=get_current_user())
+
 @auth_bp.route('/api/update-timezone', methods=['POST'])
 @login_required
 def update_timezone():
