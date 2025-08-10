@@ -41,35 +41,29 @@ def add_log():
                 flash('Quantity must be greater than 0.', 'error')
                 return redirect(url_for('logging.add_log'))
             
-            # Check if we have UTC values from timezone-aware frontend
-            utc_log_date_str = request.form.get('utc_log_date')
-            utc_log_time_str = request.form.get('utc_log_time')
+            # Get timezone info from frontend (if available)
             frontend_timezone = request.form.get('user_timezone')
             
-            if utc_log_date_str and utc_log_time_str and frontend_timezone:
-                # Use UTC values from timezone-aware frontend
+            # Always use server-side timezone conversion for consistency
+            try:
+                log_date = datetime.strptime(log_date_str, '%Y-%m-%d').date()
+            except ValueError:
+                flash('Invalid date format.', 'error')
+                return redirect(url_for('logging.add_log'))
+            
+            # Parse time (optional, in user's timezone)
+            log_time = None
+            if log_time_str:
                 try:
-                    log_date = datetime.strptime(utc_log_date_str, '%Y-%m-%d').date()
-                    log_time = datetime.strptime(utc_log_time_str, '%H:%M').time()
+                    log_time = datetime.strptime(log_time_str, '%H:%M').time()
                 except ValueError:
-                    flash('Invalid date/time format from timezone conversion.', 'error')
+                    flash('Invalid time format. Use HH:MM format.', 'error')
                     return redirect(url_for('logging.add_log'))
-            else:
-                # Fallback to server-side timezone conversion
-                try:
-                    log_date = datetime.strptime(log_date_str, '%Y-%m-%d').date()
-                except ValueError:
-                    flash('Invalid date format.', 'error')
-                    return redirect(url_for('logging.add_log'))
-                
-                # Parse time (optional, in user's timezone)
-                log_time = None
-                if log_time_str:
-                    try:
-                        log_time = datetime.strptime(log_time_str, '%H:%M').time()
-                    except ValueError:
-                        flash('Invalid time format. Use HH:MM format.', 'error')
-                        return redirect(url_for('logging.add_log'))
+            
+            # Use the frontend timezone if provided, otherwise fall back to user's configured timezone
+            effective_timezone = frontend_timezone if frontend_timezone else user.timezone
+            
+            current_app.logger.debug(f"Using timezone: {effective_timezone} (frontend: {frontend_timezone}, user: {user.timezone})")
             
             # Use service layer to create log entry
             try:
@@ -79,60 +73,33 @@ def add_log():
                     if not pouch:
                         flash('Selected pouch not found.', 'error')
                         return redirect(url_for('logging.add_log'))
-                    # Use existing pouch id
-                    if utc_log_date_str and utc_log_time_str:
-                        # Direct UTC storage (already converted by frontend)
-                        add_log_entry(
-                            user_id=user.id,
-                            log_date=log_date,
-                            log_time=log_time,
-                            quantity=quantity,
-                            notes=notes,
-                            pouch_id=pouch.id,
-                            user_timezone=None  # Skip server-side conversion
-                        )
-                    else:
-                        # Server-side timezone conversion
-                        add_log_entry(
-                            user_id=user.id,
-                            log_date=log_date,
-                            log_time=log_time,
-                            quantity=quantity,
-                            notes=notes,
-                            pouch_id=pouch.id,
-                            user_timezone=user.timezone
-                        )
+                    # Always use server-side timezone conversion
+                    add_log_entry(
+                        user_id=user.id,
+                        log_date=log_date,
+                        log_time=log_time,
+                        quantity=quantity,
+                        notes=notes,
+                        pouch_id=pouch.id,
+                        user_timezone=effective_timezone
+                    )
                 elif custom_brand and custom_nicotine_mg:
                     try:
                         custom_mg = int(custom_nicotine_mg)
                         if custom_mg <= 0:
                             flash('Custom nicotine content must be greater than 0.', 'error')
                             return redirect(url_for('logging.add_log'))
-                        # Create custom log entry
-                        if utc_log_date_str and utc_log_time_str:
-                            # Direct UTC storage (already converted by frontend)
-                            add_log_entry(
-                                user_id=user.id,
-                                log_date=log_date,
-                                log_time=log_time,
-                                quantity=quantity,
-                                notes=notes,
-                                custom_brand=custom_brand,
-                                custom_nicotine_mg=custom_mg,
-                                user_timezone=None  # Skip server-side conversion
-                            )
-                        else:
-                            # Server-side timezone conversion
-                            add_log_entry(
-                                user_id=user.id,
-                                log_date=log_date,
-                                log_time=log_time,
-                                quantity=quantity,
-                                notes=notes,
-                                custom_brand=custom_brand,
-                                custom_nicotine_mg=custom_mg,
-                                user_timezone=user.timezone
-                            )
+                        # Always use server-side timezone conversion
+                        add_log_entry(
+                            user_id=user.id,
+                            log_date=log_date,
+                            log_time=log_time,
+                            quantity=quantity,
+                            notes=notes,
+                            custom_brand=custom_brand,
+                            custom_nicotine_mg=custom_mg,
+                            user_timezone=effective_timezone
+                        )
                     except ValueError:
                         flash('Invalid nicotine content. Please enter a number.', 'error')
                         return redirect(url_for('logging.add_log'))
@@ -152,12 +119,13 @@ def add_log():
         pouches = Pouch.query.filter_by(is_default=True).order_by(Pouch.brand, Pouch.nicotine_mg).all()
         user_pouches = Pouch.query.filter_by(created_by=user.id).order_by(Pouch.brand, Pouch.nicotine_mg).all()
 
-        # Get today's date in user's timezone
+        # Get today's date and current time in user's timezone
         if user.timezone:
             _, user_today, user_current_time = get_current_user_time(user.timezone)
             today = user_today.isoformat()
             current_time = user_current_time.strftime('%H:%M')
         else:
+            # Fallback to server local time if no timezone is set
             today = date.today().isoformat()
             current_time = datetime.now().time().strftime('%H:%M')
         

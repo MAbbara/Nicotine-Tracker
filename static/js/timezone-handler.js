@@ -11,18 +11,17 @@ class TimezoneHandler {
             this.userTimezone = timezoneElement.getAttribute('data-user-timezone');
         }
 
-        // If userTimezone is not set or is 'UTC', try to detect automatically
+        // Only use browser timezone if user hasn't set a preference
         if (!this.userTimezone || this.userTimezone === 'UTC') {
             try {
                 this.userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-                // Update the DOM attribute to reflect detected timezone
-                if (timezoneElement) {
-                    timezoneElement.setAttribute('data-user-timezone', this.userTimezone);
-                }
+                console.log('Detected browser timezone:', this.userTimezone);
             } catch (error) {
                 console.warn('Error detecting user timezone:', error);
                 this.userTimezone = 'UTC';
             }
+        } else {
+            console.log('Using user-configured timezone:', this.userTimezone);
         }
         
         // Initialize form handlers
@@ -47,8 +46,11 @@ class TimezoneHandler {
         
         if (!dateInput || !timeInput) return;
 
-        // Set default values in user's timezone
-        this.setDefaultDateTime(dateInput, timeInput);
+        // Only set default time if it's empty and user has a configured timezone
+        // The server already provides the correct time in user's timezone
+        if (!timeInput.value && this.userTimezone && this.userTimezone !== 'UTC') {
+            this.setDefaultTime(timeInput);
+        }
 
         // Add timezone conversion on form submission
         form.addEventListener('submit', (e) => {
@@ -62,125 +64,74 @@ class TimezoneHandler {
         
         if (!dateInput || !timeInput) return;
 
-        // Convert existing UTC values to user timezone for editing
-        this.convertExistingValues(dateInput, timeInput);
-
         // Add timezone conversion on form submission
         form.addEventListener('submit', (e) => {
             this.handleFormSubmission(e, form, dateInput, timeInput);
         });
     }
 
-    setDefaultDateTime(dateInput, timeInput) {
-        if (!this.userTimezone) return;
+    setDefaultTime(timeInput) {
+        if (!this.userTimezone || timeInput.value) return;
 
         try {
-            // Get current time in user's timezone
+            // Get current time in user's configured timezone (not browser timezone)
             const now = new Date();
-            const userTime = this.convertToUserTimezone(now);
+            const userTime = new Date(now.toLocaleString('en-US', {timeZone: this.userTimezone}));
             
-            // Set default date
-            if (!dateInput.value) {
-                dateInput.value = userTime.toISOString().split('T')[0];
-            }
-            
-            // Set default time
-            if (!timeInput.value) {
-                const hours = userTime.getHours().toString().padStart(2, '0');
-                const minutes = userTime.getMinutes().toString().padStart(2, '0');
-                timeInput.value = `${hours}:${minutes}`;
-            }
-        } catch (error) {
-            console.warn('Error setting default timezone values:', error);
-        }
-    }
-
-    convertExistingValues(dateInput, timeInput) {
-        if (!this.userTimezone || !dateInput.value || !timeInput.value) return;
-
-        try {
-            // Parse the existing UTC values
-            const utcDateStr = dateInput.value;
-            const utcTimeStr = timeInput.value;
-            
-            // Create UTC datetime
-            const utcDateTime = new Date(`${utcDateStr}T${utcTimeStr}:00.000Z`);
-            
-            // Convert to user timezone
-            const userDateTime = this.convertToUserTimezone(utcDateTime);
-            
-            // Update form fields
-            dateInput.value = userDateTime.toISOString().split('T')[0];
-            const hours = userDateTime.getHours().toString().padStart(2, '0');
-            const minutes = userDateTime.getMinutes().toString().padStart(2, '0');
+            const hours = userTime.getHours().toString().padStart(2, '0');
+            const minutes = userTime.getMinutes().toString().padStart(2, '0');
             timeInput.value = `${hours}:${minutes}`;
+            
+            console.log(`Set default time to ${timeInput.value} in timezone ${this.userTimezone}`);
         } catch (error) {
-            console.warn('Error converting existing timezone values:', error);
+            console.warn('Error setting default timezone time:', error);
         }
     }
 
     handleFormSubmission(event, form, dateInput, timeInput) {
-        if (!this.userTimezone) return;
+        // Disable frontend timezone conversion - let server handle it properly
+        console.log('Frontend timezone conversion disabled - server will handle timezone conversion');
+        
+        // Just add the timezone info for the server to use
+        this.addTimezoneInfo(form);
+    }
 
+    createDateInTimezone(dateStr, timeStr, timezone) {
+        // Simplified approach: Let the server handle timezone conversion
+        // We'll just pass the user's input and timezone info to the server
+        // This avoids complex JavaScript timezone calculations
+        
         try {
-            // Get the user's input values
-            const userDate = dateInput.value;
-            const userTime = timeInput.value;
+            // For now, just create a simple date object
+            // The server will handle the proper timezone conversion
+            const dateTime = new Date(`${dateStr}T${timeStr}:00`);
             
-            if (!userDate || !userTime) return;
-
-            // Convert user's local input to UTC
-            const userDateTime = new Date(`${userDate}T${userTime}:00`);
-            const utcDateTime = this.convertToUTC(userDateTime);
+            console.log(`User input: ${dateStr} ${timeStr} (${timezone})`);
+            console.log(`Will be processed server-side for timezone conversion`);
             
-            // Create hidden fields with UTC values
-            this.addHiddenTimezoneFields(form, utcDateTime);
+            return dateTime;
             
         } catch (error) {
-            console.warn('Error handling timezone conversion on form submission:', error);
+            console.error('Error in createDateInTimezone:', error);
+            // Fallback to simple date creation
+            return new Date(`${dateStr}T${timeStr}:00`);
         }
     }
 
-    convertToUserTimezone(utcDate) {
-        if (!this.userTimezone) return utcDate;
+    addTimezoneInfo(form) {
+        // Remove existing timezone fields
+        const existingFields = form.querySelectorAll('.timezone-info-field');
+        existingFields.forEach(field => field.remove());
         
-        // Use Intl.DateTimeFormat to convert to user's timezone
-        const formatter = new Intl.DateTimeFormat('en-CA', {
-            timeZone: this.userTimezone,
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false
-        });
+        // Add timezone info field for server-side processing
+        const timezoneField = document.createElement('input');
+        timezoneField.type = 'hidden';
+        timezoneField.name = 'user_timezone';
+        timezoneField.value = this.userTimezone;
+        timezoneField.className = 'timezone-info-field';
+        form.appendChild(timezoneField);
         
-        const parts = formatter.formatToParts(utcDate);
-        const year = parts.find(p => p.type === 'year').value;
-        const month = parts.find(p => p.type === 'month').value;
-        const day = parts.find(p => p.type === 'day').value;
-        const hour = parts.find(p => p.type === 'hour').value;
-        const minute = parts.find(p => p.type === 'minute').value;
-        const second = parts.find(p => p.type === 'second').value;
-        
-        return new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}`);
-    }
-
-    convertToUTC(userDateTime) {
-        if (!this.userTimezone) return userDateTime;
-        
-        // Create a date in the user's timezone
-        const tempDate = new Date(userDateTime.toLocaleString('en-US', {timeZone: 'UTC'}));
-        const userOffset = userDateTime.getTime() - tempDate.getTime();
-        
-        // Get the timezone offset for the user's timezone
-        const userTzDate = new Date(userDateTime.toLocaleString('en-US', {timeZone: this.userTimezone}));
-        const utcDate = new Date(userDateTime.toLocaleString('en-US', {timeZone: 'UTC'}));
-        const tzOffset = userTzDate.getTime() - utcDate.getTime();
-        
-        // Apply the offset to get UTC time
-        return new Date(userDateTime.getTime() - tzOffset);
+        console.log(`Added timezone info: ${this.userTimezone}`);
     }
 
     addHiddenTimezoneFields(form, utcDateTime) {
@@ -213,6 +164,8 @@ class TimezoneHandler {
         timezoneField.value = this.userTimezone;
         timezoneField.className = 'timezone-converted-field';
         form.appendChild(timezoneField);
+        
+        console.log(`Added hidden fields: UTC date=${utcDateField.value}, UTC time=${utcTimeField.value}, timezone=${this.userTimezone}`);
     }
 }
 
