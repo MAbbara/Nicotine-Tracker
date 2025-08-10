@@ -1,0 +1,48 @@
+{% extends "emails/base_email.html" %}
+
+{% block title %}Weekly Report - Nicotine Tracker{% endblock %}
+
+{% block email_title %}📊 Your Weekly Progress Report{% endblock %}
+
+{% block email_content %}
+<p>Hi there,</p>
+
+<p>Here's your weekly summary of nicotine tracking progress. Keep up the great work!</p>
+
+<div class="button-center">
+    <a href="{{ dashboard_url }}" class="button">📈 View Full Dashboard</a>
+</div>
+
+<p><strong>This Week's Highlights:</strong></p>
+<ul>
+    <li>📝 <strong>Total Logs:</strong> {{ total_logs }} entries</li>
+    <li>📊 <strong>Daily Average:</strong> {{ daily_average }} pouches</li>
+    <li>🎯 <strong>Goals Progress:</strong> {{ goals_on_track }} goals on track</li>
+    <li>🔥 <strong>Active Streaks:</strong> {{ active_streaks }} ongoing</li>
+</ul>
+
+{% if achievements %}
+<div class="success">
+    <div class="success-text">
+        🏆 <strong>New Achievements:</strong> You unlocked {{ achievements|length }} achievement(s) this week!
+    </div>
+</div>
+{% endif %}
+
+{% if recommendations %}
+<div class="info">
+    <div class="info-text">
+        💡 <strong>Recommendations:</strong>
+        <ul style="margin: 10px 0 0 20px;">
+        {% for recommendation in recommendations %}
+            <li>{{ recommendation }}</li>
+        {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endif %}
+
+<p>Keep tracking consistently to maintain your progress momentum!</p>
+{% endblock %}
+
+{% block footer_message %}You're receiving this weekly report because you have weekly reports enabled in your notification settings.{% endblock %}

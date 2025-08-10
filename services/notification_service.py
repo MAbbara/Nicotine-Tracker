@@ -100,9 +100,17 @@ class NotificationService:
                 recipients=[notification.recipient]
             )
             
-            # Use HTML template for better formatting
-            msg.html = self._format_email_html(notification)
-            msg.body = notification.message
+            # Check if message is already HTML (for email verification and other custom templates)
+            if notification.message.strip().startswith('<!DOCTYPE html>') or notification.message.strip().startswith('<html'):
+                # Message is already HTML, use it directly
+                msg.html = notification.message
+                # Create a plain text version by stripping HTML tags (basic)
+                import re
+                msg.body = re.sub('<[^<]+?>', '', notification.message).strip()
+            else:
+                # Use HTML template for better formatting
+                msg.html = self._format_email_html(notification)
+                msg.body = notification.message
             
             mail.send(msg)
             current_app.logger.info(f'Email sent successfully to {notification.recipient}')
@@ -227,48 +235,54 @@ class NotificationService:
             current_app.logger.error(f'Error creating history record: {e}')
     
     def _format_email_html(self, notification):
-        """Format email notification as HTML"""
-        template = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="utf-8">
-            <title>{{ subject }}</title>
-            <style>
-                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                .header { background-color: #4f46e5; color: white; padding: 20px; text-align: center; }
-                .content { padding: 20px; background-color: #f9fafb; }
-                .footer { padding: 10px; text-align: center; font-size: 12px; color: #666; }
-                .button { display: inline-block; padding: 10px 20px; background-color: #4f46e5; color: white; text-decoration: none; border-radius: 5px; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>Nicotine Tracker</h1>
-                </div>
-                <div class="content">
-                    <h2>{{ subject }}</h2>
-                    <div>{{ message | safe }}</div>
-                    {% if extra_data and extra_data.action_url %}
-                    <p><a href="{{ extra_data.action_url }}" class="button">View Details</a></p>
-                    {% endif %}
-                </div>
-                <div class="footer">
-                    <p>You received this email because you have notifications enabled in your Nicotine Tracker settings.</p>
-                    <p><a href="{{ unsubscribe_url }}">Manage notification preferences</a></p>
-                </div>
-            </div>
-        </body>
-        </html>
-        """
+        """Format email notification as HTML using appropriate template"""
+        from flask import render_template, url_for
         
-        return render_template_string(template, 
-                                    subject=notification.subject,
-                                    message=notification.message,
-                                    extra_data=notification.extra_data,
-                                    unsubscribe_url="#")  # TODO: Add actual unsubscribe URL
+        try:
+            # Map notification categories to specific templates
+            template_map = {
+                'daily_reminder': 'emails/daily_reminder.html',
+                'goal_achievement': 'emails/goal_achievement.html', 
+                'achievement': 'emails/goal_achievement.html',
+                'weekly_report': 'emails/weekly_report.html',
+                'test_email': 'emails/test_email.html'
+            }
+            
+            template_name = template_map.get(notification.category, 'emails/generic_notification.html')
+            
+            # Prepare template context
+            context = {
+                'subject': notification.subject,
+                'message': notification.message,
+                'extra_data': notification.extra_data,
+                'dashboard_url': url_for('dashboard.index', _external=True) if hasattr(notification, 'user_id') else '#'
+            }
+            
+            # Add specific context for goal achievements
+            if notification.category in ['goal_achievement', 'achievement'] and notification.extra_data:
+                context['achievement_type'] = notification.extra_data.get('achievement_type', 'milestone')
+                # Create a mock goal object for template compatibility
+                if 'goal_type' in notification.extra_data:
+                    context['goal'] = type('Goal', (), {
+                        'goal_type': notification.extra_data.get('goal_type', ''),
+                        'target_value': notification.extra_data.get('target_value', 0),
+                        'current_streak': notification.extra_data.get('current_streak', 0),
+                        'best_streak': notification.extra_data.get('best_streak', 0)
+                    })()
+            
+            # Add action URL if available
+            if notification.extra_data and 'action_url' in notification.extra_data:
+                context['action_url'] = notification.extra_data['action_url']
+            
+            return render_template(template_name, **context)
+            
+        except Exception as e:
+            current_app.logger.error(f'Error rendering email template: {e}')
+            # Fallback to generic template
+            return render_template('emails/generic_notification.html',
+                                 subject=notification.subject,
+                                 message=notification.message,
+                                 extra_data=notification.extra_data)
     
     def _format_discord_embed(self, notification):
         """Format notification as Discord embed"""
@@ -464,7 +478,7 @@ class NotificationService:
             return []
     
     def send_test_email(self, recipient_email):
-        """Send a test email to verify SMTP configuration"""
+        """Send a test email to verify SMTP configuration using template"""
         try:
             # Skip email sending in development mode
             if current_app.config.get('FLASK_ENV') == 'development' or current_app.debug:
@@ -479,12 +493,18 @@ class NotificationService:
                 print("❌ Email not configured. Please set MAIL_USERNAME and other email settings.")
                 return False
             
+            from flask import render_template
+            
             msg = Message(
                 subject='🧪 Email Configuration Test',
                 sender=current_app.config['MAIL_DEFAULT_SENDER'],
                 recipients=[recipient_email]
             )
             
+            # Use the test email template
+            msg.html = render_template('emails/test_email.html')
+            
+            # Plain text fallback
             msg.body = """
 This is a test email from Nicotine Tracker to verify your email configuration is working correctly.
 
@@ -492,23 +512,6 @@ If you received this email, your SMTP settings are properly configured!
 
 Best regards,
 Nicotine Tracker Team
-            """
-            
-            msg.html = """
-            <html>
-            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-                <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-                    <div style="background-color: #4f46e5; color: white; padding: 20px; text-align: center;">
-                        <h1>🧪 Email Configuration Test</h1>
-                    </div>
-                    <div style="padding: 20px; background-color: #f9fafb;">
-                        <p>This is a test email from <strong>Nicotine Tracker</strong> to verify your email configuration is working correctly.</p>
-                        <p>If you received this email, your SMTP settings are properly configured! ✅</p>
-                        <p>Best regards,<br>Nicotine Tracker Team</p>
-                    </div>
-                </div>
-            </body>
-            </html>
             """
             
             mail.send(msg)

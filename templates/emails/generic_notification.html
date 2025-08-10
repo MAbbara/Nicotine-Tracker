@@ -1,0 +1,39 @@
+{% extends "emails/base_email.html" %}
+
+{% block title %}{{ subject }} - Nicotine Tracker{% endblock %}
+
+{% block email_title %}{{ subject }}{% endblock %}
+
+{% block email_content %}
+{{ message|safe }}
+
+{% if action_url %}
+<div class="button-center">
+    <a href="{{ action_url }}" class="button">View Details</a>
+</div>
+{% endif %}
+
+{% if extra_data %}
+    {% if extra_data.progress %}
+    <div class="info">
+        <div class="info-text">
+            📊 <strong>Progress:</strong> {{ extra_data.progress }}%
+        </div>
+    </div>
+    {% endif %}
+
+    {% if extra_data.streak %}
+    <div class="success">
+        <div class="success-text">
+            🔥 <strong>Current Streak:</strong> {{ extra_data.streak }} days
+        </div>
+    </div>
+    {% endif %}
+
+    {% if extra_data.goal_type %}
+    <p><strong>Goal Type:</strong> {{ extra_data.goal_type|replace('_', ' ')|title }}</p>
+    {% endif %}
+{% endif %}
+{% endblock %}
+
+{% block footer_message %}You received this notification because you have notifications enabled in your Nicotine Tracker settings.{% endblock %}

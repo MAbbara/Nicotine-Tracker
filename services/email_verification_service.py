@@ -257,18 +257,30 @@ class EmailVerificationService:
             return 0
     
     def _create_verification_email_content(self, user, verification_url):
-        """Create email verification content"""
-        return f"""
+        """Create email verification content using template"""
+        from flask import render_template
+        
+        try:
+            # Render the HTML template
+            html_content = render_template('emails/email_verification.html', 
+                                         user=user, 
+                                         verification_url=verification_url)
+            return html_content
+            
+        except Exception as e:
+            current_app.logger.error(f'Error rendering email template: {e}')
+            # Fallback to simple text content
+            return f"""
 Hi {user.email},
 
 Welcome to Nicotine Tracker! Please verify your email address by clicking the link below:
 
 {verification_url}
 
-This link will expire in 24 hours.
+This link will expire in 24 hours for security reasons.
 
 If you didn't create this account, please ignore this email.
 
 Best regards,
 Nicotine Tracker Team
-        """.strip()
+            """.strip()

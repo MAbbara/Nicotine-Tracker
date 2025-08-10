@@ -1,0 +1,25 @@
+{% extends "emails/base_email.html" %}
+
+{% block title %}Email Configuration Test - Nicotine Tracker{% endblock %}
+
+{% block email_title %}🧪 Email Configuration Test{% endblock %}
+
+{% block email_content %}
+<p>This is a test email from <strong>Nicotine Tracker</strong> to verify your email configuration is working correctly.</p>
+
+<div class="success">
+    <div class="success-text">
+        ✅ <strong>Success!</strong> If you received this email, your SMTP settings are properly configured!
+    </div>
+</div>
+
+<p>Your email system is ready to send:</p>
+<ul>
+    <li>📧 Account verification emails</li>
+    <li>🔑 Password reset notifications</li>
+    <li>📊 Progress reports and reminders</li>
+    <li>🎯 Goal achievement notifications</li>
+</ul>
+{% endblock %}
+
+{% block footer_message %}This is an automated test email from your Nicotine Tracker configuration.{% endblock %}

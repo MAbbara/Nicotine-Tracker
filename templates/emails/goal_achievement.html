@@ -1,0 +1,50 @@
+{% extends "emails/base_email.html" %}
+
+{% block title %}Goal Achievement - Nicotine Tracker{% endblock %}
+
+{% block email_title %}
+{% if achievement_type == "milestone" %}🎯 Goal Milestone Reached!
+{% elif achievement_type == "completed" %}🏆 Goal Completed!
+{% else %}📈 Goal Progress Update
+{% endif %}
+{% endblock %}
+
+{% block email_content %}
+<p>Hi there,</p>
+
+{% if achievement_type == "milestone" %}
+<p>Congratulations! You've reached an important milestone in your <strong>{{ goal.goal_type|replace('_', ' ')|title }}</strong> goal.</p>
+{% elif achievement_type == "completed" %}
+<p>Amazing work! You've successfully completed your <strong>{{ goal.goal_type|replace('_', ' ')|title }}</strong> goal!</p>
+{% else %}
+<p>Great progress on your <strong>{{ goal.goal_type|replace('_', ' ')|title }}</strong> goal!</p>
+{% endif %}
+
+<div class="success">
+    <div class="success-text">
+        🎉 <strong>Achievement Unlocked!</strong> Your dedication to tracking and improving is paying off.
+    </div>
+</div>
+
+<div class="button-center">
+    <a href="{{ dashboard_url }}" class="button">📊 View Your Progress</a>
+</div>
+
+<p><strong>Goal Details:</strong></p>
+<ul>
+    <li>🎯 <strong>Goal Type:</strong> {{ goal.goal_type|replace('_', ' ')|title }}</li>
+    <li>📈 <strong>Target:</strong> {{ goal.target_value }}</li>
+    <li>🔥 <strong>Current Streak:</strong> {{ goal.current_streak }} days</li>
+    <li>🏅 <strong>Best Streak:</strong> {{ goal.best_streak }} days</li>
+</ul>
+
+{% if achievement_type == "completed" %}
+<div class="info">
+    <div class="info-text">
+        💪 <strong>Keep Going!</strong> Consider setting a new goal to continue your progress journey.
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block footer_message %}You're receiving this notification because you have achievement notifications enabled.{% endblock %}
