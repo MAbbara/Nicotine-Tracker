@@ -81,20 +81,21 @@
                 <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Notification Preferences</h3>
                 
                 <div class="space-y-6">
-                    <!-- Master Email Toggle -->
-                    <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                        <div>
-                            <h4 class="text-sm font-medium text-gray-900 dark:text-white">Email Notifications</h4>
-                            <p class="text-sm text-gray-500 dark:text-gray-400">Receive notifications via email</p>
-                        </div>
-                        <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" name="email_notifications" id="email_notifications" {% if preferences.email_notifications %}checked{% endif %} class="sr-only peer">
-                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 dark:peer-focus:ring-indigo-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-indigo-600"></div>
-                        </label>
+                    <!-- General Notification Settings -->
+                    <div>
+                        <label for="notification_channel" class="block text-sm font-medium text-gray-900 dark:text-white">Notification Channel</label>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">Choose how you want to receive notifications.</p>
+                        <select name="notification_channel" id="notification_channel" class="mt-2 block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                            <option value="none" {% if preferences.notification_channel == 'none' %}selected{% endif %}>None</option>
+                            <option value="email" {% if preferences.notification_channel == 'email' %}selected{% endif %}>Email Only</option>
+                            <option value="discord" {% if preferences.notification_channel == 'discord' %}selected{% endif %}>Discord Only</option>
+                            <option value="both" {% if preferences.notification_channel == 'both' %}selected{% endif %}>Email & Discord</option>
+                        </select>
                     </div>
 
                     <!-- Specific Notification Types -->
-                    <div class="space-y-4" id="email-notification-options">
+                    <div class="space-y-4">
+
                         <div class="flex items-center justify-between">
                             <div>
                                 <label for="goal_notifications" class="text-sm font-medium text-gray-900 dark:text-white">Goal Notifications</label>
@@ -249,21 +250,6 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById(tabName + '-tab').classList.remove('hidden');
         });
     });
-    
-    // Email notifications master toggle
-    const emailToggle = document.getElementById('email_notifications');
-    const emailOptions = document.getElementById('email-notification-options');
-    
-    function toggleEmailOptions() {
-        if (emailToggle.checked) {
-            emailOptions.classList.remove('opacity-50', 'pointer-events-none');
-        } else {
-            emailOptions.classList.add('opacity-50', 'pointer-events-none');
-        }
-    }
-    
-    emailToggle.addEventListener('change', toggleEmailOptions);
-    toggleEmailOptions(); // Initial state
     
     // Discord webhook test functionality
     const testButton = document.getElementById('test-discord-webhook');

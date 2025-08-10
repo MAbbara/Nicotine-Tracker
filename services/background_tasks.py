@@ -8,9 +8,12 @@ from flask import current_app
 from extensions import db
 from models.user import User
 from models.goal import Goal
+from models.user_preferences import UserPreferences
 from services.notification_service import NotificationService
 from services.user_preferences_service import UserPreferencesService
 from services.email_verification_service import EmailVerificationService
+from services.timezone_service import TimezoneService
+
 
 
 class BackgroundTaskProcessor:
@@ -30,8 +33,9 @@ class BackgroundTaskProcessor:
         
         # Schedule tasks
         schedule.every(5).minutes.do(self.process_notification_queue)
-        schedule.every().day.at("09:00").do(self.send_daily_reminders)
+        schedule.every().minute.do(self.send_daily_reminders)
         schedule.every().monday.at("10:00").do(self.send_weekly_reports)
+
         schedule.every(30).minutes.do(self.check_goal_thresholds)
         schedule.every().day.at("02:00").do(self.cleanup_expired_tokens)
     
@@ -59,35 +63,33 @@ class BackgroundTaskProcessor:
             current_app.logger.error(f"Error processing notification queue: {e}")
     
     def send_daily_reminders(self):
-        """Send daily reminders to users who have them enabled"""
+        """Send daily reminders to users who have them enabled at their preferred time."""
         try:
             with self.app.app_context():
-                # Get users with daily reminders enabled
-                users_with_reminders = db.session.query(User).join(
-                    User.preferences
-                ).filter(
-                    User.preferences.has(daily_reminders=True),
-                    User.preferences.has(email_notifications=True)
+                users_to_remind = db.session.query(User).join(UserPreferences).filter(
+                    UserPreferences.daily_reminders == True,
+                    UserPreferences.notification_channel != 'none'
                 ).all()
                 
                 sent_count = 0
-                for user in users_with_reminders:
-                    # Check if it's the right time for this user
-                    preferences = self.preferences_service.get_notification_settings(user.id)
+                for user in users_to_remind:
+                    # Determine the target time for the reminder, falling back to daily reset time
+                    preferences = self.preferences_service.get_or_create_preferences(user.id)
+                    target_time = preferences.reminder_time or preferences.daily_reset_time
+
+                    if not target_time:
+                        continue
                     
-                    if preferences and preferences.get('reminder_time'):
-                        reminder_time = preferences['reminder_time']
-                        current_time = datetime.now().strftime('%H:%M')
-                        
-                        # Only send if it's within 30 minutes of their preferred time
-                        if abs(self._time_diff_minutes(current_time, reminder_time)) <= 30:
-                            success = self.notification_service.send_daily_reminder(user.id)
-                            if success:
-                                sent_count += 1
-                    else:
-                        # Send at default time if no preference set
-                        success = self.notification_service.send_daily_reminder(user.id)
-                        if success:
+                    # Get user's local time to ensure reminder is sent at the correct local time
+                    user_local_time = TimezoneService.get_user_local_time(user.id)
+                    if not user_local_time:
+                        continue
+
+                    # Check if it's the user's reminder time (minute precision)
+                    if user_local_time.hour == target_time.hour and user_local_time.minute == target_time.minute:
+                        # Check if a reminder was already sent in the last 23 hours to prevent duplicates
+                        if not self._recently_notified(user.id, 'daily_reminder', hours=23):
+                            self.notification_service.send_daily_reminder(user.id)
                             sent_count += 1
                 
                 if sent_count > 0:
@@ -95,18 +97,18 @@ class BackgroundTaskProcessor:
                     
         except Exception as e:
             current_app.logger.error(f"Error sending daily reminders: {e}")
+
     
     def send_weekly_reports(self):
         """Send weekly progress reports to users who have them enabled"""
         try:
             with self.app.app_context():
                 # Get users with weekly reports enabled
-                users_with_reports = db.session.query(User).join(
-                    User.preferences
-                ).filter(
-                    User.preferences.has(weekly_reports=True),
-                    User.preferences.has(email_notifications=True)
+                users_with_reports = db.session.query(User).join(UserPreferences).filter(
+                    UserPreferences.weekly_reports == True,
+                    UserPreferences.notification_channel != 'none'
                 ).all()
+
                 
                 sent_count = 0
                 for user in users_with_reports:
@@ -146,7 +148,7 @@ class BackgroundTaskProcessor:
                         progress['percentage'] <= 100):
                         
                         # Check if we haven't sent a notification recently
-                        if not self._recently_notified(user.id, goal.id, 'threshold_warning'):
+                        if not self._recently_notified(user.id, 'goal_reminder', hours=4):
                             subject = f"⚠️ Goal Threshold Alert"
                             message = f"You're at {progress['percentage']:.0f}% of your {goal.goal_type.replace('_', ' ')} goal ({progress['current']}/{progress['target']}). Stay mindful of your usage!"
                             
@@ -157,8 +159,8 @@ class BackgroundTaskProcessor:
                                 'target': progress['target']
                             }
                             
-                            # Queue notification
-                            success = self.notification_service.queue_notification(
+                            # Queue notifications for both channels. The service will filter based on user prefs.
+                            self.notification_service.queue_notification(
                                 user_id=user.id,
                                 notification_type='email',
                                 category='goal_reminder',
@@ -167,15 +169,23 @@ class BackgroundTaskProcessor:
                                 priority=2,
                                 extra_data=extra_data
                             )
-                            
-                            if success:
-                                notifications_sent += 1
+                            self.notification_service.queue_notification(
+                                user_id=user.id,
+                                notification_type='discord',
+                                category='goal_reminder',
+                                subject=subject,
+                                message=message,
+                                priority=2,
+                                extra_data=extra_data
+                            )
+                            notifications_sent += 1
                 
                 if notifications_sent > 0:
-                    current_app.logger.info(f"Sent {notifications_sent} goal threshold notifications")
+                    current_app.logger.info(f"Sent goal threshold notifications for {notifications_sent} goal(s)")
                     
         except Exception as e:
             current_app.logger.error(f"Error checking goal thresholds: {e}")
+
     
     def _send_weekly_report(self, user):
         """Send weekly progress report to a user"""
@@ -261,18 +271,8 @@ class BackgroundTaskProcessor:
             current_app.logger.error(f"Error creating weekly report for user {user.id}: {e}")
             return False
     
-    def _time_diff_minutes(self, time1_str, time2_str):
-        """Calculate difference in minutes between two time strings (HH:MM format)"""
-        try:
-            from datetime import datetime
-            time1 = datetime.strptime(time1_str, '%H:%M')
-            time2 = datetime.strptime(time2_str, '%H:%M')
-            diff = abs((time1 - time2).total_seconds() / 60)
-            return diff
-        except:
-            return 999  # Return large number if parsing fails
-    
     def cleanup_expired_tokens(self):
+
         """Clean up expired email verification tokens"""
         try:
             with self.app.app_context():
@@ -282,25 +282,24 @@ class BackgroundTaskProcessor:
         except Exception as e:
             current_app.logger.error(f"Error cleaning up expired tokens: {e}")
     
-    def _recently_notified(self, user_id, goal_id, notification_type):
-        """Check if user was recently notified about this goal"""
+    def _recently_notified(self, user_id, category, hours):
+        """Check if a notification of a certain category was sent to a user recently."""
         try:
             from models.notification import NotificationHistory
             
-            # Check if notification was sent in the last 4 hours
-            cutoff_time = datetime.utcnow() - timedelta(hours=4)
+            cutoff_time = datetime.utcnow() - timedelta(hours=hours)
             
             recent_notification = NotificationHistory.query.filter(
                 NotificationHistory.user_id == user_id,
-                NotificationHistory.category == notification_type,
+                NotificationHistory.category == category,
                 NotificationHistory.sent_at >= cutoff_time
             ).first()
             
             return recent_notification is not None
-            
         except Exception as e:
             current_app.logger.error(f"Error checking recent notifications: {e}")
             return False
+
 
 
 # Standalone function to run the background processor
