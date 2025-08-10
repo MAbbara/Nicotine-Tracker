@@ -51,29 +51,35 @@ def send_verification_email(user):
         current_app.logger.error(f'Failed to send verification email: {e}')
 
 def send_reset_email(user, reset_token):
-    """Send password reset email (placeholder implementation)"""
+    """Send password reset email using template"""
     try:
         if current_app.config['MAIL_USERNAME']:
-            msg = Message(
-                'Password Reset - Nicotine Tracker',
-                sender=current_app.config['MAIL_DEFAULT_SENDER'],
-                recipients=[user.email]
+            reset_url = url_for('auth.reset_password', token=reset_token.token, _external=True)
+            
+            # Use notification service to send templated email
+            from services.notification_service import NotificationService
+            notification_service = NotificationService()
+            
+            subject = "🔑 Password Reset - Nicotine Tracker"
+            message = render_template('emails/password_reset.html', 
+                                    user=user, 
+                                    reset_url=reset_url)
+            
+            # Queue the email
+            success = notification_service.queue_notification(
+                user_id=user.id,
+                notification_type='email',
+                category='password_reset',
+                subject=subject,
+                message=message,
+                priority=1,  # High priority
+                extra_data={'reset_url': reset_url}
             )
-            msg.body = f'''
-            Hi {user.email},
             
-            You requested a password reset. Click the link below to reset your password:
-            {url_for('auth.reset_password', token=reset_token.token, _external=True)}
-            
-            This link will expire in 1 hour.
-            
-            If you didn't request this reset, please ignore this email.
-            
-            Best regards,
-            Nicotine Tracker Team
-            '''
-            mail.send(msg)
-            current_app.logger.info(f'Password reset email sent to {user.email}')
+            if success:
+                current_app.logger.info(f'Password reset email queued for {user.email}')
+            else:
+                current_app.logger.error(f'Failed to queue password reset email for {user.email}')
         else:
             current_app.logger.info(f'Email not configured. Reset token for {user.email}: {reset_token.token}')
     except Exception as e:
