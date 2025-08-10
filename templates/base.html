@@ -72,8 +72,9 @@
       <!-- Right side: user dropdown -->
       <div class="hidden sm:ml-6 sm:flex sm:items-center">
         <div class="hs-dropdown [--strategy:static] sm:[--strategy:fixed] [--adaptive:none] sm:[--adaptive:adaptive] relative">
-          <button id="hs-navbar-dropdown" type="button" class="hs-dropdown-toggle inline-flex items-center gap-x-2 text-sm font-semibold rounded-lg border border-transparent text-gray-800 px-2 hover:bg-gray-100 hover:px-2 focus:outline-hidden focus:bg-gray-100 disabled:opacity-50 disabled:pointer-events-none dark:text-white dark:hover:bg-gray-700 dark:focus:bg-gray-700" aria-haspopup="menu" aria-expanded="false" aria-label="User Menu">
-            <span class="text-gray-600 dark:text-gray-400">{{ session.user_email }}</span>
+          <button id="hs-navbar-dropdown" type="button" class="hs-dropdown-toggle inline-flex items-center gap-x-2 text-sm font-semibold rounded-lg border border-transparent text-gray-800 px-2 hover:bg-gray-100 hover:px-2 focus:outline-hidden focus:bg-gray-100 disabled:opacity-50 disabled:pointer-events-none dark:text-white dark:hover:bg-gray-700 dark:focus:bg-gray-700 {% if request.endpoint.startswith('settings.') %}bg-gray-100 dark:bg-gray-700{% endif %}" aria-haspopup="menu" aria-expanded="false" aria-label="User Menu">
+            <span class="{% if request.endpoint.startswith('settings.') %}text-gray-800 dark:text-white{% else %}text-gray-600 dark:text-gray-400{% endif %}">{{ session.user_email }}</span>
+
             <svg class="hs-dropdown-open:rotate-180 duration-300 w-4 h-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
           </button>
 
@@ -83,21 +84,22 @@
               <p class="text-sm font-medium text-gray-800 dark:text-gray-300 break-all">{{ session.user_email }}</p>
             </div>
             <div class="mt-2 py-2 first:pt-0 last:pb-0">
-              <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:bg-gray-700 dark:focus:text-gray-300" href="{{ url_for('settings.profile') }}">
+              <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:bg-gray-700 dark:focus:text-gray-300 {% if current_endpoint == 'settings.profile' %}bg-gray-100 dark:bg-gray-700{% endif %}" href="{{ url_for('settings.profile') }}">
                 Profile
               </a>
-              <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:bg-gray-700 dark:focus:text-gray-300" href="{{ url_for('settings.index') }}">
+              <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:bg-gray-700 dark:focus:text-gray-300 {% if current_endpoint == 'settings.index' %}bg-gray-100 dark:bg-gray-700{% endif %}" href="{{ url_for('settings.index') }}">
                 Settings
               </a>
-              <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:bg-gray-700 dark:focus:text-gray-300" href="{{ url_for('settings.privacy') }}">
+              <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:bg-gray-700 dark:focus:text-gray-300 {% if current_endpoint == 'settings.privacy' %}bg-gray-100 dark:bg-gray-700{% endif %}" href="{{ url_for('settings.privacy') }}">
                 Privacy Settings
               </a>
-              <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:bg-gray-700 dark:focus:text-gray-300" href="{{ url_for('settings.data_management') }}">
+              <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:bg-gray-700 dark:focus:text-gray-300 {% if current_endpoint == 'settings.data_management' %}bg-gray-100 dark:bg-gray-700{% endif %}" href="{{ url_for('settings.data_management') }}">
                 Data Management
               </a>
-              <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:bg-gray-700 dark:focus:text-gray-300" href="{{ url_for('settings.account') }}">
+              <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:bg-gray-700 dark:focus:text-gray-300 {% if current_endpoint == 'settings.account' %}bg-gray-100 dark:bg-gray-700{% endif %}" href="{{ url_for('settings.account') }}">
                 Account Settings
               </a>
+
               <div class="border-t border-gray-200 dark:border-gray-700 my-2"></div>
               <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:bg-gray-700 dark:focus:text-gray-300" href="{{ url_for('auth.logout') }}">
                 Sign out
@@ -144,7 +146,8 @@
     </div>
     <div class="pt-4 pb-3 border-t border-gray-200 dark:border-gray-700">
       <div class="hs-dropdown [--strategy:static] [--adaptive:none] relative px-4">
-        <button id="hs-mobile-dropdown" type="button" class="hs-dropdown-toggle w-full flex justify-between items-center text-base font-medium text-gray-800 hover:bg-gray-100 hover:px-6 hover:my-1 focus:outline-hidden focus:bg-gray-100 py-2 px-4 rounded-lg dark:text-white dark:hover:bg-gray-700 dark:focus:bg-gray-700" aria-haspopup="menu" aria-expanded="false" aria-label="User Menu">
+        <button id="hs-mobile-dropdown" type="button" class="hs-dropdown-toggle w-full flex justify-between items-center text-base font-medium text-gray-800 hover:bg-gray-100 hover:px-6 hover:my-1 focus:outline-hidden focus:bg-gray-100 py-2 px-4 rounded-lg dark:text-white dark:hover:bg-gray-700 dark:focus:bg-gray-700 {% if request.endpoint.startswith('settings.') %}bg-gray-100 dark:bg-gray-700{% endif %}" aria-haspopup="menu" aria-expanded="false" aria-label="User Menu">
+
           {{ session.user_email }}
           <svg class="hs-dropdown-open:-rotate-180 duration-500 ease-in-out w-4 h-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
         </button>
@@ -152,25 +155,26 @@
         <div class="hs-dropdown-menu transition-all ease-in-out duration-500 hs-dropdown-open:opacity-100 hs-dropdown-open:translate-y-0 opacity-0 -translate-y-2 w-full hidden" role="menu" aria-orientation="vertical" aria-labelledby="hs-mobile-dropdown">
           <div class="mt-3 space-y-1">
             <a href="{{ url_for('settings.profile') }}"
-               class="block px-4 py-2 text-base font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700">
+               class="block px-4 py-2 text-base font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700 {% if current_endpoint == 'settings.profile' %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-white{% endif %}">
               Profile
             </a>
             <a href="{{ url_for('settings.index') }}"
-               class="block px-4 py-2 text-base font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700">
+               class="block px-4 py-2 text-base font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700 {% if current_endpoint == 'settings.index' %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-white{% endif %}">
               Settings
             </a>
             <a href="{{ url_for('settings.privacy') }}"
-               class="block px-4 py-2 text-base font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700">
+               class="block px-4 py-2 text-base font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700 {% if current_endpoint == 'settings.privacy' %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-white{% endif %}">
               Privacy Settings
             </a>
             <a href="{{ url_for('settings.data_management') }}"
-               class="block px-4 py-2 text-base font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700">
+               class="block px-4 py-2 text-base font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700 {% if current_endpoint == 'settings.data_management' %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-white{% endif %}">
               Data Management
             </a>
             <a href="{{ url_for('settings.account') }}"
-               class="block px-4 py-2 text-base font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700">
+               class="block px-4 py-2 text-base font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700 {% if current_endpoint == 'settings.account' %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-white{% endif %}">
               Account Settings
             </a>
+
             <a href="{{ url_for('auth.logout') }}"
                class="block px-4 py-2 text-base font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700">
               Sign out
