@@ -2,10 +2,6 @@
 
 {% block title %}Add Log Entry - Nicotine Tracker{% endblock %}
 
-{% block extra_js %}
-<script src="{{ url_for('static', filename='js/timezone-handler.js') }}"></script>
-{% endblock %}
-
 {% block content %}
 <div data-user-timezone="{{ user_timezone or 'UTC' }}">
 <div class="px-4 sm:px-6 lg:px-8">
