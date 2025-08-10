@@ -27,10 +27,11 @@ class NotificationService:
                 current_app.logger.error(f'User {user_id} not found for notification')
                 return False
             
-            # Check if user wants this type of notification
-            if not self.preferences_service.should_send_notification(user_id, category):
-                current_app.logger.info(f'User {user_id} has disabled {category} notifications')
+            # Check if user wants this type of notification for this channel
+            if not self.preferences_service.should_send_notification(user_id, category, notification_type):
+                current_app.logger.info(f'User {user_id} has disabled {category} notifications for channel {notification_type}')
                 return False
+
             
             # Check quiet hours
             if self.preferences_service.is_quiet_hours(user_id):
@@ -392,38 +393,33 @@ class NotificationService:
                 'best_streak': goal.best_streak
             }
             
-            # Queue both email and Discord notifications if configured
-            preferences = self.preferences_service.get_notification_settings(user_id)
-            webhook_settings = self.preferences_service.get_webhook_settings(user_id)
+            # Attempt to queue for both email and Discord. `queue_notification` will check preferences.
+            self.queue_notification(
+                user_id=user_id,
+                notification_type='email',
+                category='achievement',
+                subject=subject,
+                message=message,
+                priority=3,
+                extra_data=extra_data
+            )
             
-            if preferences and preferences.get('achievement_notifications'):
-                if preferences.get('email_notifications'):
-                    self.queue_notification(
-                        user_id=user_id,
-                        notification_type='email',
-                        category='achievement',
-                        subject=subject,
-                        message=message,
-                        priority=3,
-                        extra_data=extra_data
-                    )
-                
-                if webhook_settings and webhook_settings.get('discord_webhook'):
-                    self.queue_notification(
-                        user_id=user_id,
-                        notification_type='discord',
-                        category='achievement',
-                        subject=subject,
-                        message=message,
-                        priority=3,
-                        extra_data=extra_data
-                    )
+            self.queue_notification(
+                user_id=user_id,
+                notification_type='discord',
+                category='achievement',
+                subject=subject,
+                message=message,
+                priority=3,
+                extra_data=extra_data
+            )
             
             return True
             
         except Exception as e:
             current_app.logger.error(f'Error sending goal achievement notification: {e}')
             return False
+
     
     def send_daily_reminder(self, user_id):
         """Send daily reminder notification"""
@@ -431,36 +427,31 @@ class NotificationService:
             subject = "📝 Daily Nicotine Tracking Reminder"
             message = "Don't forget to log your nicotine usage today! Consistent tracking helps you stay on top of your goals."
             
-            # Queue both email and Discord notifications if configured
-            preferences = self.preferences_service.get_notification_settings(user_id)
-            webhook_settings = self.preferences_service.get_webhook_settings(user_id)
+            # Attempt to queue for both email and Discord. `queue_notification` will check preferences.
+            self.queue_notification(
+                user_id=user_id,
+                notification_type='email',
+                category='daily_reminder',
+                subject=subject,
+                message=message,
+                priority=4
+            )
             
-            if preferences and preferences.get('daily_reminders'):
-                if preferences.get('email_notifications'):
-                    self.queue_notification(
-                        user_id=user_id,
-                        notification_type='email',
-                        category='daily_reminder',
-                        subject=subject,
-                        message=message,
-                        priority=4
-                    )
-                
-                if webhook_settings and webhook_settings.get('discord_webhook'):
-                    self.queue_notification(
-                        user_id=user_id,
-                        notification_type='discord',
-                        category='daily_reminder',
-                        subject=subject,
-                        message=message,
-                        priority=4
-                    )
+            self.queue_notification(
+                user_id=user_id,
+                notification_type='discord',
+                category='daily_reminder',
+                subject=subject,
+                message=message,
+                priority=4
+            )
             
             return True
             
         except Exception as e:
             current_app.logger.error(f'Error sending daily reminder: {e}')
             return False
+
     
     def get_notification_history(self, user_id, limit=50):
         """Get notification history for a user"""

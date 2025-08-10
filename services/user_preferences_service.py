@@ -28,13 +28,13 @@ class UserPreferencesService:
         try:
             preferences = UserPreferences(
                 user_id=user_id,
-                email_notifications=True,
                 goal_notifications=True,
                 daily_reminders=False,
                 weekly_reports=False,
                 achievement_notifications=True,
                 notification_frequency='immediate'
             )
+
             
             db.session.add(preferences)
             db.session.commit()
@@ -57,11 +57,12 @@ class UserPreferencesService:
             
             # Update allowed fields
             allowed_fields = [
-                'email_notifications', 'goal_notifications', 'daily_reminders',
+                'notification_channel', 'goal_notifications', 'daily_reminders',
                 'weekly_reports', 'achievement_notifications', 'discord_webhook',
                 'slack_webhook', 'reminder_time', 'quiet_hours_start',
                 'quiet_hours_end', 'notification_frequency', 'daily_reset_time'
             ]
+
             
             updated_fields = []
             for field, value in kwargs.items():
@@ -102,8 +103,9 @@ class UserPreferencesService:
                 return None
             
             return {
-                'email_notifications': preferences.email_notifications,
+                'notification_channel': preferences.notification_channel,
                 'goal_notifications': preferences.goal_notifications,
+
                 'daily_reminders': preferences.daily_reminders,
                 'weekly_reports': preferences.weekly_reports,
                 'achievement_notifications': preferences.achievement_notifications,
@@ -135,31 +137,38 @@ class UserPreferencesService:
             current_app.logger.error(f'Error getting webhook settings: {e}')
             return None
     
-    def should_send_notification(self, user_id, notification_type):
-        """Check if a notification should be sent based on user preferences"""
+    def should_send_notification(self, user_id, category, channel_type):
+        """Check if a notification should be sent based on user preferences and channel."""
         try:
             preferences = self.get_or_create_preferences(user_id)
             
             if not preferences:
                 return False
-            
-            # Check general email notifications
-            if not preferences.email_notifications:
+
+            # 1. Check if the channel is enabled for the user
+            channel = preferences.notification_channel
+            if channel == 'none':
                 return False
-            
-            # Check specific notification type
-            type_mapping = {
+            if channel_type == 'email' and channel not in ['email', 'both']:
+                return False
+            if channel_type == 'discord' and channel not in ['discord', 'both']:
+                return False
+
+            # 2. Check if the specific notification category is enabled
+            category_mapping = {
                 'goal_reminder': preferences.goal_notifications,
                 'daily_reminder': preferences.daily_reminders,
                 'weekly_report': preferences.weekly_reports,
                 'achievement': preferences.achievement_notifications
             }
             
-            return type_mapping.get(notification_type, True)
+            # For categories not in the map (like email verification), assume they are always allowed if channel is on.
+            return category_mapping.get(category, True)
             
         except Exception as e:
             current_app.logger.error(f'Error checking notification permission: {e}')
             return False
+
     
     def is_quiet_hours(self, user_id):
         """Check if current time is within user's quiet hours"""
@@ -191,7 +200,7 @@ class UserPreferencesService:
             
             # Map session keys to database fields
             field_mapping = {
-                'email_notifications': 'email_notifications',
+                'email_notifications': 'notification_channel',
                 'goal_notifications': 'goal_notifications',
                 'daily_reminders': 'daily_reminders',
                 'discord_webhook': 'discord_webhook'
@@ -200,13 +209,18 @@ class UserPreferencesService:
             update_data = {}
             for session_key, db_field in field_mapping.items():
                 if session_key in session_preferences:
-                    update_data[db_field] = session_preferences[session_key]
+                    value = session_preferences[session_key]
+                    if session_key == 'email_notifications':
+                        update_data[db_field] = 'email' if value else 'none'
+                    else:
+                        update_data[db_field] = value
             
             if update_data:
                 success, message = self.update_preferences(user_id, **update_data)
                 if success:
                     current_app.logger.info(f'Migrated session preferences for user {user_id}')
                 return success, message
+
             
             return True, "No preferences to migrate"
             
