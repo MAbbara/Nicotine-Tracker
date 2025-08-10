@@ -12,3 +12,9 @@ email-validator==2.0.0
 pytz==2023.3
 requests==2.31.0
 schedule==1.2.0
+pytest==8.4.1
+locust==2.34.0
+bandit==1.8.6
+hypothesis==6.137.1
+axe-selenium-python==2.1.6
+axe-selenium-python==2.1.6

@@ -1,5 +1,4 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, jsonify
-from werkzeug.security import generate_password_hash, check_password_hash  # still imported if you need them elsewhere
 from flask_mail import Message
 from models import User
 from services import create_user              # new import
