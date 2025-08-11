@@ -51,7 +51,8 @@ def create_app(config_name=None):
     from routes.api import api_bp
     from routes.insights import insights_bp
     from routes.cravings import cravings_bp
-
+    from routes.health_impact import health_impact_bp
+    from routes.flexible_goals import flexible_goals_bp
 
     
     app.register_blueprint(auth_bp, url_prefix='/auth')
@@ -59,11 +60,12 @@ def create_app(config_name=None):
     app.register_blueprint(logging_bp, url_prefix='/log')
     app.register_blueprint(dashboard_bp, url_prefix='/dashboard')
     app.register_blueprint(goals_bp, url_prefix='/goals')
-
     app.register_blueprint(settings_bp, url_prefix='/settings')
     app.register_blueprint(api_bp, url_prefix='/api')
     app.register_blueprint(insights_bp, url_prefix='/insights')
     app.register_blueprint(cravings_bp, url_prefix='/cravings')
+    app.register_blueprint(health_impact_bp, url_prefix='/health-impact')
+    app.register_blueprint(flexible_goals_bp, url_prefix='/flexible-goals')
 
 
     
