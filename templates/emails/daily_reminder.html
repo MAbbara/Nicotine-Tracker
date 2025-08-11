@@ -2,30 +2,20 @@
 
 {% block title %}Daily Reminder - Nicotine Tracker{% endblock %}
 
-{% block email_title %}📝 Daily Tracking Reminder{% endblock %}
-
 {% block email_content %}
+<p style="font-size: 20px; font-weight: 600; color: #1f2937; margin-bottom: 20px; text-align: center;">📝 Daily Tracking Reminder</p>
 <p>Hi there,</p>
 
-<p>Don't forget to log your nicotine usage today! Consistent tracking helps you stay on top of your goals and monitor your progress effectively.</p>
+<p>This is your friendly reminder to log your nicotine usage for today. Staying consistent is key to achieving your goals!</p>
 
 <div class="button-center">
     <a href="{{ dashboard_url }}" class="button">📊 Log Your Usage</a>
 </div>
 
 <div class="info">
-    <div class="info-text">
-        💡 <strong>Tip:</strong> Regular logging helps you identify patterns and make informed decisions about your nicotine consumption.
-    </div>
+    💡 <strong>Tip:</strong> Regular logging helps you spot trends and stay in control.
 </div>
-
-<p>Quick actions you can take:</p>
-<ul>
-    <li>📝 Add today's nicotine logs</li>
-    <li>📈 Check your progress toward goals</li>
-    <li>🎯 Review your current streaks</li>
-    <li>📊 View your usage patterns</li>
-</ul>
 {% endblock %}
+
 
 {% block footer_message %}You're receiving this reminder because you have daily reminders enabled in your notification settings.{% endblock %}
