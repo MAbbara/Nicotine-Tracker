@@ -53,6 +53,7 @@ def create_app(config_name=None):
     from routes.cravings import cravings_bp
     from routes.health_impact import health_impact_bp
     from routes.flexible_goals import flexible_goals_bp
+    from routes.predictions import predictions_bp
 
     
     app.register_blueprint(auth_bp, url_prefix='/auth')
@@ -66,6 +67,7 @@ def create_app(config_name=None):
     app.register_blueprint(cravings_bp, url_prefix='/cravings')
     app.register_blueprint(health_impact_bp, url_prefix='/health_impact')
     app.register_blueprint(flexible_goals_bp, url_prefix='/flexible_goals')
+    app.register_blueprint(predictions_bp, url_prefix='/predictions')
 
 
     
