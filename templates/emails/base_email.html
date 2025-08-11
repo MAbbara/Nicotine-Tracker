@@ -30,12 +30,7 @@
             color: #4f46e5;
             margin-bottom: 10px;
         }
-        .title {
-            font-size: 20px;
-            font-weight: 600;
-            color: #1f2937;
-            margin-bottom: 20px;
-        }
+
         .content {
             margin-bottom: 30px;
         }
@@ -97,33 +92,30 @@
             border-radius: 6px;
             padding: 12px;
             margin: 20px 0;
-        }
-        .warning-text {
             color: #92400e;
             font-size: 14px;
         }
+
         .info {
             background-color: #dbeafe;
             border: 1px solid #3b82f6;
             border-radius: 6px;
             padding: 12px;
             margin: 20px 0;
-        }
-        .info-text {
             color: #1e40af;
             font-size: 14px;
         }
+
         .success {
             background-color: #d1fae5;
             border: 1px solid #10b981;
             border-radius: 6px;
             padding: 12px;
             margin: 20px 0;
-        }
-        .success-text {
             color: #065f46;
             font-size: 14px;
         }
+
         @media (max-width: 600px) {
             body {
                 padding: 10px;
@@ -144,8 +136,8 @@
     <div class="container">
         <div class="header">
             <div class="logo">🚭 Nicotine Tracker</div>
-            <h1 class="title">{% block email_title %}{% endblock %}</h1>
         </div>
+
         
         <div class="content">
             {% block email_content %}{% endblock %}

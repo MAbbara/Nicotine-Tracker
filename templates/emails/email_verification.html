@@ -2,36 +2,29 @@
 
 {% block title %}Verify Your Email - Nicotine Tracker{% endblock %}
 
-{% block email_title %}Verify Your Email Address{% endblock %}
-
 {% block email_content %}
+<p style="font-size: 20px; font-weight: 600; color: #1f2937; margin-bottom: 20px; text-align: center;">Verify Your Email Address</p>
 <p>Hi <strong>{{ user.email }}</strong>,</p>
 
-<p>Welcome to Nicotine Tracker! To complete your account setup and secure your data, please verify your email address.</p>
+<p>Welcome to Nicotine Tracker! Please click the button below to verify your email address and activate your account.</p>
 
 <div class="button-center">
     <a href="{{ verification_url }}" class="button">✅ Verify Email Address</a>
 </div>
 
-<div class="manual-link">
-    <div class="manual-link-title">Can't click the button? Copy this link:</div>
-    <div class="link-text">{{ verification_url }}</div>
-    <div class="copy-instruction">Copy and paste this link into your browser's address bar</div>
-</div>
-
 <div class="warning">
-    <div class="warning-text">
-        ⏰ <strong>Important:</strong> This verification link will expire in 24 hours for security reasons.
-    </div>
+    ⏰ <strong>Important:</strong> This link expires in 24 hours.
 </div>
 
-<p>Once verified, you'll be able to:</p>
-<ul>
-    <li>✨ Access all features of Nicotine Tracker</li>
-    <li>🔒 Secure your account and data</li>
-    <li>📧 Receive important notifications</li>
-    <li>📊 Track your progress effectively</li>
-</ul>
+<p>If you didn't create this account, you can safely ignore this email.</p>
+
+<hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+
+<div style="font-size: 12px; color: #6b7280; text-align: center;">
+    <p>If the button above doesn't work, copy and paste this link into your browser:</p>
+    <p style="word-break: break-all;">{{ verification_url }}</p>
+</div>
 {% endblock %}
+
 
 {% block footer_message %}If you didn't create this account, you can safely ignore this email.{% endblock %}
