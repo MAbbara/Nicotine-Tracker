@@ -30,7 +30,6 @@ from services.predictive_service import (
 )
 from services.health_impact_service import HealthImpactService
 from services.unified_goal_service import UnifiedGoalService
-from services.enhanced_insights_service import EnhancedInsightsService
 
 __all__ = [
     "create_user", 
@@ -53,5 +52,4 @@ __all__ = [
     "analyze_user_patterns",
     "HealthImpactService",
     "UnifiedGoalService",
-    "EnhancedInsightsService"
 ]
