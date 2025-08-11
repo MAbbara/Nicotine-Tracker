@@ -70,23 +70,23 @@ def get_enhanced_insights(user_id: int, days: int = 30):
             'ai_insights': []
         }
 
-    # Basic metrics
-    total_pouches = df['quantity'].sum()
-    daily_average = total_pouches / days
-    total_nicotine = (df['quantity'] * df['nicotine_mg'].fillna(0)).sum()
+    # Basic metrics - convert numpy types to Python native types
+    total_pouches = int(df['quantity'].sum())
+    daily_average = float(total_pouches / days)
+    total_nicotine = float((df['quantity'] * df['nicotine_mg'].fillna(0)).sum())
     
     # Daily aggregation
     df['date'] = df['user_time'].dt.date
     daily_consumption = df.groupby('date')['quantity'].sum()
     
-    peak_day = daily_consumption.max() if not daily_consumption.empty else 0
-    best_day = daily_consumption.min() if not daily_consumption.empty else 0
+    peak_day = int(daily_consumption.max()) if not daily_consumption.empty else 0
+    best_day = int(daily_consumption.min()) if not daily_consumption.empty else 0
     
     # Consistency score (inverse of coefficient of variation)
-    consistency_score = 0
+    consistency_score = 0.0
     if len(daily_consumption) > 1 and daily_consumption.std() > 0:
         cv = daily_consumption.std() / daily_consumption.mean()
-        consistency_score = max(0, 100 - (cv * 100))
+        consistency_score = float(max(0, 100 - (cv * 100)))
 
     # Trend analysis
     trend_direction = calculate_trend_direction(daily_consumption)
@@ -111,12 +111,12 @@ def get_enhanced_insights(user_id: int, days: int = 30):
     avg_time_between = get_average_time_between_pouches_enhanced(df)
 
     return {
-        'total_pouches': int(total_pouches),
+        'total_pouches': total_pouches,
         'daily_average': round(daily_average, 1),
-        'peak_day': int(peak_day),
+        'peak_day': peak_day,
         'average_time_between_pouches': avg_time_between,
         'total_nicotine': round(total_nicotine, 1),
-        'best_day': int(best_day),
+        'best_day': best_day,
         'consistency_score': round(consistency_score, 1),
         'trend_direction': trend_direction,
         'consumption_by_time_of_day': consumption_by_time,
@@ -140,7 +140,7 @@ def get_consumption_by_time_of_day_enhanced(df):
     df['time_of_day'] = pd.cut(df['hour'], bins=bins, labels=labels, right=False)
     
     consumption_by_time = df.groupby('time_of_day', observed=False)['quantity'].sum().to_dict()
-    return {str(k): int(v) for k, v in consumption_by_time.items() if pd.notna(k)}
+    return {str(k): int(v) if pd.notna(v) else 0 for k, v in consumption_by_time.items() if pd.notna(k)}
 
 def get_consumption_by_day_of_week_enhanced(df):
     """Enhanced day of week analysis"""
@@ -152,7 +152,7 @@ def get_consumption_by_day_of_week_enhanced(df):
         'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
     ]).fillna(0).to_dict()
 
-    return {k: int(v) for k, v in consumption_by_day.items()}
+    return {k: int(v) if pd.notna(v) else 0 for k, v in consumption_by_day.items()}
 
 def get_brand_analysis(df):
     """Analyze brand preferences"""
@@ -160,7 +160,7 @@ def get_brand_analysis(df):
         return {}
     
     brand_consumption = df.groupby('brand')['quantity'].sum().sort_values(ascending=False)
-    return {str(k): int(v) for k, v in brand_consumption.head(5).items() if pd.notna(k)}
+    return {str(k): int(v) if pd.notna(v) else 0 for k, v in brand_consumption.head(5).items() if pd.notna(k)}
 
 def get_consumption_trend(daily_consumption):
     """Get consumption trend data for charts"""
@@ -171,7 +171,7 @@ def get_consumption_trend(daily_consumption):
     for date, value in daily_consumption.items():
         trend_data.append({
             'date': date.isoformat(),
-            'value': int(value)
+            'value': int(value) if pd.notna(value) else 0
         })
     
     return trend_data
@@ -194,7 +194,7 @@ def get_consumption_heatmap(df):
         hourly_data = []
         for hour in range(24):
             value = day_data[day_data['hour'] == hour]['quantity'].sum()
-            hourly_data.append(int(value))
+            hourly_data.append(int(value) if pd.notna(value) else 0)
         heatmap_data.append({
             'name': day,
             'data': hourly_data
@@ -211,7 +211,7 @@ def calculate_trend_direction(daily_consumption):
     x = np.arange(len(daily_consumption))
     y = daily_consumption.values
     
-    slope = np.polyfit(x, y, 1)[0]
+    slope = float(np.polyfit(x, y, 1)[0])
     
     if slope > 0.1:
         return '📈 Increasing'
@@ -234,7 +234,7 @@ def get_average_time_between_pouches_enhanced(df):
     if valid_diffs.empty:
         return 'Not enough data'
     
-    avg_seconds = valid_diffs.mean()
+    avg_seconds = float(valid_diffs.mean())
     hours, remainder = divmod(avg_seconds, 3600)
     minutes, _ = divmod(remainder, 60)
     
@@ -249,7 +249,7 @@ def generate_ai_insights(df, daily_consumption, user_timezone):
     
     # Peak time insight
     if not df.empty:
-        peak_hour = df.groupby(df['user_time'].dt.hour)['quantity'].sum().idxmax()
+        peak_hour = int(df.groupby(df['user_time'].dt.hour)['quantity'].sum().idxmax())
         insights.append({
             'icon': '⏰',
             'title': 'Peak Consumption Time',
@@ -259,8 +259,8 @@ def generate_ai_insights(df, daily_consumption, user_timezone):
     
     # Weekend vs weekday pattern
     df['is_weekend'] = df['user_time'].dt.dayofweek >= 5
-    weekend_avg = df[df['is_weekend']]['quantity'].sum() / max(1, df[df['is_weekend']]['user_time'].dt.date.nunique())
-    weekday_avg = df[~df['is_weekend']]['quantity'].sum() / max(1, df[~df['is_weekend']]['user_time'].dt.date.nunique())
+    weekend_avg = float(df[df['is_weekend']]['quantity'].sum()) / max(1, df[df['is_weekend']]['user_time'].dt.date.nunique())
+    weekday_avg = float(df[~df['is_weekend']]['quantity'].sum()) / max(1, df[~df['is_weekend']]['user_time'].dt.date.nunique())
     
     if weekend_avg > weekday_avg * 1.2:
         insights.append({
@@ -276,8 +276,8 @@ def generate_ai_insights(df, daily_consumption, user_timezone):
         previous_week = daily_consumption.tail(14).head(7)
         
         if not recent_week.empty and not previous_week.empty:
-            recent_avg = recent_week.mean()
-            previous_avg = previous_week.mean()
+            recent_avg = float(recent_week.mean())
+            previous_avg = float(previous_week.mean())
             
             if recent_avg < previous_avg * 0.9:
                 insights.append({
@@ -296,7 +296,7 @@ def generate_ai_insights(df, daily_consumption, user_timezone):
     
     # Brand diversity insight
     if 'brand' in df.columns:
-        unique_brands = df['brand'].nunique()
+        unique_brands = int(df['brand'].nunique())
         if unique_brands == 1:
             insights.append({
                 'icon': '🏷️',
