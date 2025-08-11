@@ -43,15 +43,26 @@ def test_register_login_logout(client):
     assert b'Dashboard' in response.data or b'Nicotine Tracker' in response.data
 
     # Logout
-    response = client.get('/auth/logout', follow_redirects=True)
+    client.get('/auth/logout', follow_redirects=True)
+    # After logout, accessing a protected route should redirect to login
+    response = client.get('/dashboard/', follow_redirects=True)
     assert b'Sign in' in response.data or b'Login' in response.data
 
 def test_add_log_entry(client, app):
+    # Register a user to ensure it exists for this test
+    client.post('/auth/register', data={
+        'email': 'testuser@example.com',
+        'password': 'password123',
+        'confirm_password': 'password123',
+        'terms': 'on'
+    }, follow_redirects=True)
+
     with app.app_context():
         user = User.query.filter_by(email='testuser@example.com').first()
         assert user is not None
 
     # Login first
+
     client.post('/auth/login', data={
         'email': 'testuser@example.com',
         'password': 'password123'

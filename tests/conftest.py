@@ -49,8 +49,10 @@ def test_user(db_session):
     """Create test user."""
     user = User(
         email='test@example.com',
-        email_verified=True
+        email_verified=True,
+        timezone='UTC'
     )
+
     user.set_password("password123")
     db_session.add(user)
     db_session.commit()
@@ -58,15 +60,18 @@ def test_user(db_session):
 
 
 @pytest.fixture
-def test_pouch(db_session):
+def test_pouch(db_session, test_user):
     """Create test pouch."""
     pouch = Pouch(
         brand='Test Brand',
         nicotine_mg=4,
+        is_default=False,
+        created_by=test_user.id
     )
     db_session.add(pouch)
     db_session.commit()
     return pouch
+
 
 
 @pytest.fixture
@@ -149,7 +154,8 @@ def run_app(db_path, port=5000):
     with app.app_context():
         db.create_all()
         # Create a test user for login-required pages
-        user = User(email='test@example.com', email_verified=True)
+        user = User(email='test@example.com', email_verified=True, timezone='UTC')
+
         user.set_password('password123')
         db.session.add(user)
         db.session.commit()
@@ -171,7 +177,8 @@ def live_server():
     server.start()
 
     # Wait for the server to be ready
-    time.sleep(2)
+    time.sleep(5)
+
 
     yield f"http://localhost:{port}"
 

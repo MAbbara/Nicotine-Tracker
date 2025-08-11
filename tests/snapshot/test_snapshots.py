@@ -3,12 +3,15 @@ Snapshot tests for API responses and rendered HTML to detect unintended changes.
 """
 import pytest
 import json
+import re
+
 
 class TestSnapshots:
     """A collection of snapshot tests for API and UI."""
 
-    @pytest.fixture(autouse=True)
+    @pytest.fixture
     def logged_in_client(self, client, test_user):
+
         """Fixture to log in the test user for all tests in this class."""
         with client.session_transaction() as sess:
             sess['user_id'] = test_user.id
@@ -44,5 +47,7 @@ class TestSnapshots:
         
         assert response.status_code == 200
         html_content = response.data.decode('utf-8')
+        # Replace dynamic time value in quick add form
+        html_content = re.sub(r'name="log_time" value="\d{2}:\d{2}"', 'name="log_time" value="[TIME]"', html_content)
         
         snapshot.assert_match(html_content, 'dashboard_page_snapshot.html')

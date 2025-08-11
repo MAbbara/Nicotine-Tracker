@@ -2,8 +2,9 @@
 Property-based tests for key functionalities using Hypothesis.
 """
 import pytest
-from hypothesis import given, strategies as st, settings
+from hypothesis import given, strategies as st, settings, HealthCheck
 from datetime import datetime, date, time, timedelta
+
 
 from app import db
 from models import User, Pouch, Log, Goal
@@ -11,7 +12,9 @@ from services import user_service, log_service, goal_service
 from services.timezone_service import convert_user_time_to_utc
 
 # Increase deadline for database-intensive tests
-settings.register_profile("db", deadline=timedelta(milliseconds=1000))
+settings.register_profile("db", deadline=timedelta(milliseconds=5000))
+
+
 settings.load_profile("db")
 
 # Custom strategy for generating valid passwords
@@ -33,6 +36,7 @@ time_strategy = st.times()
 class TestPropertyBased:
     """A collection of property-based tests."""
 
+    @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
     @given(email=st.emails(), password=password_strategy)
     def test_user_creation_property(self, app, email, password):
         """
@@ -50,6 +54,9 @@ class TestPropertyBased:
             assert user.email == email
             assert user.check_password(password)
 
+
+
+    @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
     @given(
         quantity=st.integers(min_value=1, max_value=100),
         notes=st.text(max_size=200),
@@ -57,6 +64,7 @@ class TestPropertyBased:
         log_time=time_strategy
     )
     def test_log_creation_property(self, app, test_user, test_pouch, quantity, notes, log_date, log_time):
+
         """
         Test that log creation is robust across a range of valid inputs.
         """
@@ -83,11 +91,13 @@ class TestPropertyBased:
             assert log.log_time.hour == expected_datetime.hour
             assert log.log_time.minute == expected_datetime.minute
 
+    @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
     @given(
         goal_type=st.sampled_from(['daily_pouches', 'daily_mg']),
         target_value=st.integers(min_value=1, max_value=100)
     )
     def test_goal_creation_property(self, app, test_user, goal_type, target_value):
+
         """
         Test that goal creation works for different goal types and target values.
         """

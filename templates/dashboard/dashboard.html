@@ -376,8 +376,12 @@
               <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">
                 Nicotine (mg)
               </th>
+              <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">
+                Notes
+              </th>
             </tr>
           </thead>
+
           <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
             {% for log in recent_logs %}
             <tr>
@@ -399,7 +403,11 @@
               <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
                 {{ log.get_total_nicotine() }}
               </td>
+              <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
+                {{ log.notes or '' }}
+              </td>
             </tr>
+
             {% endfor %}
           </tbody>
         </table>

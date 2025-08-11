@@ -2,8 +2,10 @@
 Regression tests to ensure previously fixed bugs do not re-emerge.
 """
 import pytest
+from flask import session
 from app import db
 from models import User, Log, Pouch
+
 
 class TestRegressionSuite:
     """A collection of regression tests."""
@@ -26,9 +28,10 @@ class TestRegressionSuite:
         db_session.commit()
         
         # Step 2: Update another profile field (e.g., age)
-        logged_in_client.post('/settings', data={
+        logged_in_client.post('/settings/profile', data={
+            'timezone': 'America/New_York',
             'age': '30',
-            'gender': 'Male',
+            'gender': 'male',
             'weight': '150'
         }, follow_redirects=True)
         
@@ -36,8 +39,10 @@ class TestRegressionSuite:
         db_session.refresh(test_user)
         assert test_user.timezone == 'America/New_York'
         assert test_user.age == 30
+        assert test_user.gender == 'male'
 
     def test_deleting_pouch_with_logs(self, logged_in_client, test_user, test_pouch, db_session):
+
         """
         Regression Test: Ensures that deleting a pouch that has associated logs
         does not delete the logs themselves. Instead, it should warn the user.
@@ -49,12 +54,19 @@ class TestRegressionSuite:
         log_id = log.id
 
         # Step 2: Attempt to delete the pouch
-        response = logged_in_client.post(f'/catalog/delete/{test_pouch.id}', follow_redirects=True)
+        response = logged_in_client.post(f'/catalog/delete/{test_pouch.id}')
 
         # Step 3: Verify that the pouch was NOT deleted and a warning was shown
-        assert response.status_code == 200
-        assert b'Cannot delete this pouch as it is used in' in response.data
-        
+        assert response.status_code == 302
+        with logged_in_client.session_transaction() as sess:
+            flashed_messages = sess.get('_flashes', [])
+            assert len(flashed_messages) == 1
+            category, message = flashed_messages[0]
+            assert category == 'warning'
+
+
+            assert 'Cannot delete this pouch as it is used in 1 log entries' in message
+
         pouch_exists = Pouch.query.get(test_pouch.id)
         assert pouch_exists is not None
 

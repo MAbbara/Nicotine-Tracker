@@ -11,7 +11,8 @@ class TestUserModel:
 
     def test_user_creation(self, db_session):
         """Test basic user creation and password hashing."""
-        user = User(email='test@example.com')
+        user = User(email='test@example.com', timezone='UTC')
+
         user.set_password('password123')
         db_session.add(user)
         db_session.commit()
@@ -66,7 +67,8 @@ class TestLogModel:
 
     def test_log_creation(self, db_session, test_user, test_pouch):
         """Test creating a new log entry."""
-        log_time = datetime.now(timezone.utc)
+        log_time = datetime.utcnow()
+
         log = Log(
             user_id=test_user.id,
             pouch_id=test_pouch.id,
