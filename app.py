@@ -50,6 +50,8 @@ def create_app(config_name=None):
     from routes.settings import settings_bp
     from routes.api import api_bp
     from routes.insights import insights_bp
+    from routes.cravings import cravings_bp
+
 
     
     app.register_blueprint(auth_bp, url_prefix='/auth')
@@ -61,6 +63,8 @@ def create_app(config_name=None):
     app.register_blueprint(settings_bp, url_prefix='/settings')
     app.register_blueprint(api_bp, url_prefix='/api')
     app.register_blueprint(insights_bp, url_prefix='/insights')
+    app.register_blueprint(cravings_bp, url_prefix='/cravings')
+
 
     
     # Main route

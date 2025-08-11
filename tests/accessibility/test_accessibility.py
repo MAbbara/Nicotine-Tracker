@@ -6,26 +6,22 @@ Make sure to have ChromeDriver installed and available in your PATH.
 """
 import pytest
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service as ChromeService
-from webdriver_manager.chrome import ChromeDriverManager
+
 from axe_selenium_python import Axe
 import json
 
 @pytest.fixture(scope="class")
-
 def driver():
     """
     Pytest fixture to set up and tear down the Selenium WebDriver.
-    This uses webdriver-manager to automatically download the correct ChromeDriver.
     """
     options = webdriver.ChromeOptions()
     options.add_argument("--headless")  # Run in headless mode for CI environments
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     
-    # Use webdriver-manager to handle the driver
-    service = ChromeService(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=options)
+    driver = webdriver.Chrome(options=options)
+
     
     yield driver
     

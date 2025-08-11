@@ -31,9 +31,10 @@ def get_consumption_by_time_of_day(user_id: int, user_timezone: str):
     df['time_of_day'] = pd.cut(df['hour'], bins=bins, labels=labels, right=False)
     
     # Sum consumption for each time of day
-    consumption_by_time = df.groupby('time_of_day')['quantity'].sum().to_dict()
+    consumption_by_time = df.groupby('time_of_day', observed=False)['quantity'].sum().to_dict()
 
     return consumption_by_time
+
 
 def get_consumption_by_day_of_week(user_id: int, user_timezone: str):
     df = get_user_logs_df(user_id, user_timezone)
@@ -68,9 +69,10 @@ def get_average_time_between_pouches(user_id: int, user_timezone: str):
     return f"{int(hours)}h {int(minutes)}m"
 
 def get_all_insights(user_id: int):
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if not user:
         return None
+
     
     user_timezone = user.timezone
     

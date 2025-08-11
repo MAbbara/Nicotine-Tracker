@@ -54,3 +54,4 @@ upload/
 .pytest_cache/
 axe_*.json
 .hypothesis
+tests/snapshot/

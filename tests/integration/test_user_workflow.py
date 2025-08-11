@@ -103,7 +103,8 @@ class TestCoreFunctionality:
         # Check if the goal appears on the goals page
         goals_page_response = client.get('/goals/')
 
-        assert b'daily_pouches' in goals_page_response.data
+        assert b'Daily Pouches' in goals_page_response.data
+
         assert b'5' in goals_page_response.data
 
     def test_add_and_view_custom_pouch(self, client, db_session, test_user):
@@ -131,7 +132,7 @@ class TestCoreFunctionality:
         settings_response = client.post('/settings/profile', data={
             'timezone': new_timezone,
             'age': new_age,
-            'gender': 'Male',
+            'gender': 'male',
             'weight': '80'
         }, follow_redirects=True)
 
@@ -140,11 +141,13 @@ class TestCoreFunctionality:
 
 
         # Verify the changes in the database
-        db_session.refresh(test_user)
-        assert test_user.timezone == new_timezone
-        assert test_user.age == 35
-        assert test_user.gender == 'Male'
-        assert test_user.weight == 80.0
+        updated_user = db.session.get(User, test_user.id)
+        assert updated_user.timezone == new_timezone
+        assert updated_user.age == 35
+        assert updated_user.gender == 'male'
+        assert updated_user.weight == 80.0
+
+
 
 class TestErrorHandlingWorkflow:
     """Test various error and edge case scenarios."""
