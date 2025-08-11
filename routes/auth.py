@@ -86,7 +86,10 @@ def send_reset_email(user, reset_token):
 
 @auth_bp.route('/register', methods=['GET', 'POST'])
 def register():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard.index'))
     if request.method == 'POST':
+
         try:
             email = request.form.get('email', '').strip().lower()
             password = request.form.get('password', '')
@@ -133,7 +136,10 @@ def register():
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard.index'))
     if request.method == 'POST':
+
         try:
             email = request.form.get('email', '').strip().lower()
             password = request.form.get('password', '')
