@@ -1,61 +1,404 @@
 {% extends "base.html" %}
 
-{% block title %}
-Analytics & Insights - Nicotine Tracker
-{% endblock %}
+{% block title %}Advanced Analytics & Insights - Nicotine Tracker{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-8">
-    <h1 class="text-3xl font-bold mb-6">Analytics & Insights</h1>
-
-    <!-- Consumption by Time of Day -->
-    <div class="bg-white p-6 rounded-lg shadow-md mb-8">
-        <h2 class="text-2xl font-semibold mb-4">Consumption by Time of Day</h2>
-        <div id="time-of-day-chart"></div>
+<div class="px-4 sm:px-6 lg:px-8">
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Advanced Analytics & Insights</h1>
+            <p class="text-sm text-gray-700 dark:text-gray-300">Comprehensive analysis of your nicotine consumption patterns</p>
+        </div>
+        <div class="flex space-x-3">
+            <select id="time-range" class="rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                <option value="7">Last 7 days</option>
+                <option value="30" selected>Last 30 days</option>
+                <option value="90">Last 90 days</option>
+                <option value="365">Last year</option>
+            </select>
+            <button id="export-data" class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
+                Export Data
+            </button>
+        </div>
     </div>
 
-    <!-- Consumption by Day of Week -->
-    <div class="bg-white p-6 rounded-lg shadow-md mb-8">
-        <h2 class="text-2xl font-semibold mb-4">Consumption by Day of Week</h2>
-        <div id="day-of-week-chart"></div>
+    <!-- Key Metrics Cards -->
+    <div class="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <!-- Total Consumption -->
+        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center">
+                            <span class="text-white font-bold text-sm">📊</span>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+                                Total Pouches
+                            </dt>
+                            <dd class="text-lg font-medium text-gray-900 dark:text-white" id="total-pouches">
+                                --
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Daily Average -->
+        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
+                            <span class="text-white font-bold text-sm">📈</span>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+                                Daily Average
+                            </dt>
+                            <dd class="text-lg font-medium text-gray-900 dark:text-white" id="daily-average">
+                                --
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Peak Day -->
+        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 bg-orange-500 rounded-md flex items-center justify-center">
+                            <span class="text-white font-bold text-sm">⚡</span>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+                                Peak Day
+                            </dt>
+                            <dd class="text-lg font-medium text-gray-900 dark:text-white" id="peak-day">
+                                --
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Avg Time Between -->
+        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 bg-purple-500 rounded-md flex items-center justify-center">
+                            <span class="text-white font-bold text-sm">⏱️</span>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+                                Avg Time Between
+                            </dt>
+                            <dd class="text-lg font-medium text-gray-900 dark:text-white" id="avg-time-between">
+                                --
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <!-- Average Time Between Pouches -->
-    <div class="bg-white p-6 rounded-lg shadow-md">
-        <h2 class="text-2xl font-semibold mb-4">Average Time Between Pouches</h2>
-        <p id="avg-time-between" class="text-xl"></p>
+    <!-- Charts Grid -->
+    <div class="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <!-- Consumption Trend -->
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white">Consumption Trend</h3>
+                <div class="flex space-x-2">
+                    <button class="trend-toggle active px-2 py-1 text-xs rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300" data-type="daily">Daily</button>
+                    <button class="trend-toggle px-2 py-1 text-xs rounded text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" data-type="weekly">Weekly</button>
+                </div>
+            </div>
+            <div id="consumption-trend-chart" class="h-64"></div>
+        </div>
+
+        <!-- Time of Day Distribution -->
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Time of Day Distribution</h3>
+            <div id="time-of-day-chart" class="h-64"></div>
+        </div>
+
+        <!-- Day of Week Pattern -->
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Weekly Pattern</h3>
+            <div id="day-of-week-chart" class="h-64"></div>
+        </div>
+
+        <!-- Brand Analysis -->
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Brand Preferences</h3>
+            <div id="brand-chart" class="h-64"></div>
+        </div>
+    </div>
+
+    <!-- Advanced Analytics -->
+    <div class="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <!-- Consumption Heatmap -->
+        <div class="lg:col-span-2 bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Consumption Heatmap</h3>
+            <div id="heatmap-chart" class="h-80"></div>
+        </div>
+
+        <!-- Insights & Recommendations -->
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">AI Insights</h3>
+            <div id="ai-insights" class="space-y-4">
+                <div class="text-center py-8">
+                    <div class="text-gray-400 dark:text-gray-500 text-4xl mb-4">🤖</div>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Analyzing patterns...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detailed Statistics -->
+    <div class="mt-8">
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Detailed Statistics</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="text-center">
+                    <div class="text-2xl font-bold text-blue-600 dark:text-blue-400" id="total-nicotine">--</div>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Total Nicotine (mg)</p>
+                </div>
+                <div class="text-center">
+                    <div class="text-2xl font-bold text-green-600 dark:text-green-400" id="best-day">--</div>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Best Day (Lowest)</p>
+                </div>
+                <div class="text-center">
+                    <div class="text-2xl font-bold text-orange-600 dark:text-orange-400" id="consistency-score">--%</div>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Consistency Score</p>
+                </div>
+                <div class="text-center">
+                    <div class="text-2xl font-bold text-purple-600 dark:text-purple-400" id="trend-direction">--</div>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Trend Direction</p>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    fetch('/api/insights')
-        .then(response => response.json())
-        .then(data => {
-            // Time of Day Chart
-            const timeOfDayData = data.consumption_by_time_of_day;
-            const timeOfDayOptions = {
-                chart: { type: 'donut' },
-                series: Object.values(timeOfDayData),
-                labels: Object.keys(timeOfDayData),
-                title: { text: 'Consumption by Time of Day' }
-            };
-            new ApexCharts(document.querySelector("#time-of-day-chart"), timeOfDayOptions).render();
+    let currentTimeRange = 30;
+    let charts = {};
 
-            // Day of Week Chart
-            const dayOfWeekData = data.consumption_by_day_of_week;
-            const dayOfWeekOptions = {
-                chart: { type: 'bar' },
-                series: [{ name: 'Pouches', data: Object.values(dayOfWeekData) }],
-                xaxis: { categories: Object.keys(dayOfWeekData) },
-                title: { text: 'Consumption by Day of Week' }
-            };
-            new ApexCharts(document.querySelector("#day-of-week-chart"), dayOfWeekOptions).render();
-            
-            // Average Time Between Pouches
-            const avgTime = data.average_time_between_pouches;
-            document.getElementById('avg-time-between').innerText = avgTime ? avgTime : 'Not enough data';
+    // Initialize charts
+    function initializeCharts() {
+        // Consumption Trend Chart
+        charts.trendChart = new ApexCharts(document.querySelector("#consumption-trend-chart"), {
+            chart: { type: 'line', height: 250, toolbar: { show: false } },
+            series: [{ name: 'Pouches', data: [] }],
+            xaxis: { type: 'datetime' },
+            stroke: { curve: 'smooth', width: 3 },
+            colors: ['#3B82F6'],
+            theme: { mode: document.documentElement.classList.contains('dark') ? 'dark' : 'light' }
         });
+        charts.trendChart.render();
+
+        // Time of Day Chart
+        charts.timeChart = new ApexCharts(document.querySelector("#time-of-day-chart"), {
+            chart: { type: 'donut', height: 250 },
+            series: [],
+            labels: [],
+            colors: ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6'],
+            theme: { mode: document.documentElement.classList.contains('dark') ? 'dark' : 'light' }
+        });
+        charts.timeChart.render();
+
+        // Day of Week Chart
+        charts.dayChart = new ApexCharts(document.querySelector("#day-of-week-chart"), {
+            chart: { type: 'bar', height: 250, toolbar: { show: false } },
+            series: [{ name: 'Pouches', data: [] }],
+            xaxis: { categories: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] },
+            colors: ['#3B82F6'],
+            theme: { mode: document.documentElement.classList.contains('dark') ? 'dark' : 'light' }
+        });
+        charts.dayChart.render();
+
+        // Brand Chart
+        charts.brandChart = new ApexCharts(document.querySelector("#brand-chart"), {
+            chart: { type: 'pie', height: 250 },
+            series: [],
+            labels: [],
+            colors: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'],
+            theme: { mode: document.documentElement.classList.contains('dark') ? 'dark' : 'light' }
+        });
+        charts.brandChart.render();
+
+        // Heatmap Chart
+        charts.heatmapChart = new ApexCharts(document.querySelector("#heatmap-chart"), {
+            chart: { type: 'heatmap', height: 320 },
+            series: [],
+            xaxis: { type: 'category' },
+            colors: ['#3B82F6'],
+            theme: { mode: document.documentElement.classList.contains('dark') ? 'dark' : 'light' }
+        });
+        charts.heatmapChart.render();
+    }
+
+    // Load insights data
+    function loadInsights() {
+        fetch(`/insights/api/insights?days=${currentTimeRange}`)
+            .then(response => response.json())
+            .then(data => {
+                updateMetrics(data);
+                updateCharts(data);
+                updateAIInsights(data);
+            })
+            .catch(error => {
+                console.error('Error loading insights:', error);
+                showErrorState();
+            });
+    }
+
+    // Update metric cards
+    function updateMetrics(data) {
+        document.getElementById('total-pouches').textContent = data.total_pouches || 0;
+        document.getElementById('daily-average').textContent = data.daily_average ? data.daily_average.toFixed(1) : '--';
+        document.getElementById('peak-day').textContent = data.peak_day || '--';
+        document.getElementById('avg-time-between').textContent = data.average_time_between_pouches || '--';
+        document.getElementById('total-nicotine').textContent = data.total_nicotine ? data.total_nicotine.toFixed(1) : '--';
+        document.getElementById('best-day').textContent = data.best_day || '--';
+        document.getElementById('consistency-score').textContent = data.consistency_score ? data.consistency_score.toFixed(0) + '%' : '--%';
+        document.getElementById('trend-direction').textContent = data.trend_direction || '--';
+    }
+
+    // Update all charts
+    function updateCharts(data) {
+        // Update trend chart
+        if (data.consumption_trend) {
+            charts.trendChart.updateSeries([{
+                name: 'Pouches',
+                data: data.consumption_trend.map(point => ({
+                    x: new Date(point.date).getTime(),
+                    y: point.value
+                }))
+            }]);
+        }
+
+        // Update time of day chart
+        if (data.consumption_by_time_of_day) {
+            const timeData = data.consumption_by_time_of_day;
+            charts.timeChart.updateSeries(Object.values(timeData));
+            charts.timeChart.updateOptions({ labels: Object.keys(timeData) });
+        }
+
+        // Update day of week chart
+        if (data.consumption_by_day_of_week) {
+            const dayData = data.consumption_by_day_of_week;
+            const orderedDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+            const orderedValues = orderedDays.map(day => dayData[day] || 0);
+            charts.dayChart.updateSeries([{ name: 'Pouches', data: orderedValues }]);
+        }
+
+        // Update brand chart
+        if (data.brand_analysis) {
+            const brandData = data.brand_analysis;
+            charts.brandChart.updateSeries(Object.values(brandData));
+            charts.brandChart.updateOptions({ labels: Object.keys(brandData) });
+        }
+
+        // Update heatmap
+        if (data.heatmap_data) {
+            charts.heatmapChart.updateSeries(data.heatmap_data);
+        }
+    }
+
+    // Update AI insights
+    function updateAIInsights(data) {
+        const insightsContainer = document.getElementById('ai-insights');
+        insightsContainer.innerHTML = '';
+
+        if (data.ai_insights && data.ai_insights.length > 0) {
+            data.ai_insights.forEach(insight => {
+                const div = document.createElement('div');
+                div.className = 'p-3 border border-gray-200 dark:border-gray-700 rounded-lg';
+                div.innerHTML = `
+                    <div class="flex items-start">
+                        <div class="flex-shrink-0">
+                            <span class="text-lg">${insight.icon || '💡'}</span>
+                        </div>
+                        <div class="ml-3">
+                            <h4 class="text-sm font-medium text-gray-900 dark:text-white">${insight.title}</h4>
+                            <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">${insight.description}</p>
+                            ${insight.recommendation ? `<p class="text-xs text-indigo-600 dark:text-indigo-400 mt-2">${insight.recommendation}</p>` : ''}
+                        </div>
+                    </div>
+                `;
+                insightsContainer.appendChild(div);
+            });
+        } else {
+            insightsContainer.innerHTML = `
+                <div class="text-center py-8">
+                    <div class="text-gray-400 dark:text-gray-500 text-4xl mb-4">🤖</div>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">No insights available yet. Keep tracking to see patterns!</p>
+                </div>
+            `;
+        }
+    }
+
+    // Show error state
+    function showErrorState() {
+        document.querySelectorAll('[id$="-chart"]').forEach(chart => {
+            chart.innerHTML = `
+                <div class="flex items-center justify-center h-full">
+                    <div class="text-center">
+                        <div class="text-gray-400 dark:text-gray-500 text-4xl mb-4">⚠️</div>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">Error loading data</p>
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    // Event listeners
+    document.getElementById('time-range').addEventListener('change', function() {
+        currentTimeRange = parseInt(this.value);
+        loadInsights();
+    });
+
+    document.getElementById('export-data').addEventListener('click', function() {
+        window.open(`/insights/api/export?days=${currentTimeRange}`, '_blank');
+    });
+
+    // Trend toggle buttons
+    document.querySelectorAll('.trend-toggle').forEach(button => {
+        button.addEventListener('click', function() {
+            document.querySelectorAll('.trend-toggle').forEach(b => {
+                b.classList.remove('active', 'bg-indigo-100', 'text-indigo-700', 'dark:bg-indigo-900', 'dark:text-indigo-300');
+                b.classList.add('text-gray-500', 'hover:bg-gray-100', 'dark:hover:bg-gray-700');
+            });
+            this.classList.add('active', 'bg-indigo-100', 'text-indigo-700', 'dark:bg-indigo-900', 'dark:text-indigo-300');
+            this.classList.remove('text-gray-500', 'hover:bg-gray-100', 'dark:hover:bg-gray-700');
+            
+            // TODO: Update chart based on selection
+            const type = this.dataset.type;
+            // Implement trend type switching logic
+        });
+    });
+
+    // Initialize
+    initializeCharts();
+    loadInsights();
 });
 </script>
 {% endblock %}

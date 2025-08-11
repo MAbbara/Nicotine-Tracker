@@ -1,173 +1,211 @@
 {% extends "base.html" %}
 
-{% block title %}
-Enhanced Craving Tracker - Nicotine Tracker
-{% endblock %}
+{% block title %}Cravings Analytics - Nicotine Tracker{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-8">
-    <h1 class="text-3xl font-bold mb-6">Enhanced Craving Tracker</h1>
+<div class="px-4 sm:px-6 lg:px-8">
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Cravings Analytics</h1>
+            <p class="text-sm text-gray-700 dark:text-gray-300">Track and analyze your nicotine cravings patterns</p>
+        </div>
+    </div>
 
     <!-- Risk Alerts -->
     {% if risk_alerts %}
-    <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-        <h3 class="text-lg font-semibold text-red-800 mb-2">⚠️ High Risk Periods Ahead</h3>
-        {% for alert in risk_alerts %}
-        <div class="mb-2">
-            <span class="font-medium">{{ alert.time.strftime('%I:%M %p') }}</span> - 
-            <span class="text-red-600">{{ alert.risk_level }} Risk</span>
-            <p class="text-sm text-gray-600">{{ alert.recommendations[0] if alert.recommendations else 'Stay mindful of your consumption.' }}</p>
+    <div class="mt-8">
+        <div class="rounded-md bg-red-50 dark:bg-red-900/20 p-4 border border-red-200 dark:border-red-800">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <div class="w-8 h-8 bg-red-500 rounded-md flex items-center justify-center">
+                        <span class="text-white font-bold text-sm">⚠️</span>
+                    </div>
+                </div>
+                <div class="ml-3">
+                    <h3 class="text-sm font-medium text-red-800 dark:text-red-200">High Risk Periods Ahead</h3>
+                    <div class="mt-2 text-sm text-red-700 dark:text-red-300">
+                        {% for alert in risk_alerts %}
+                        <div class="mb-2">
+                            <span class="font-medium">{{ alert.time.strftime('%I:%M %p') }}</span> - 
+                            <span class="text-red-600 dark:text-red-400">{{ alert.risk_level }} Risk</span>
+                            <p class="text-sm text-gray-600 dark:text-gray-400">{{ alert.recommendations[0] if alert.recommendations else 'Stay mindful of your consumption.' }}</p>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
         </div>
-        {% endfor %}
     </div>
     {% endif %}
 
     <!-- Analytics Dashboard -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+    <div class="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <!-- Time Patterns -->
-        <div class="bg-white p-6 rounded-lg shadow-md">
-            <h3 class="text-lg font-semibold mb-4">Time Patterns</h3>
-            <div id="time-patterns-chart" class="h-48"></div>
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Time Patterns</h3>
+            <div id="time-patterns-chart" class="h-48">
+                <div class="flex items-center justify-center h-full">
+                    <div class="text-center">
+                        <div class="text-gray-400 dark:text-gray-500 text-4xl mb-4">⏰</div>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">Pattern data will appear here</p>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Trigger Analysis -->
-        <div class="bg-white p-6 rounded-lg shadow-md">
-            <h3 class="text-lg font-semibold mb-4">Top Triggers</h3>
-            <div id="trigger-analysis" class="space-y-2"></div>
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Top Triggers</h3>
+            <div id="trigger-analysis" class="space-y-2">
+                <div class="text-center py-8">
+                    <div class="text-gray-400 dark:text-gray-500 text-4xl mb-4">🎯</div>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Loading trigger data...</p>
+                </div>
+            </div>
         </div>
 
         <!-- Success Rate -->
-        <div class="bg-white p-6 rounded-lg shadow-md">
-            <h3 class="text-lg font-semibold mb-4">Resistance Rate</h3>
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Resistance Rate</h3>
             <div class="text-center">
-                <div class="text-3xl font-bold text-green-600" id="resistance-rate">--%</div>
-                <p class="text-sm text-gray-600">Cravings resisted</p>
+                <div class="text-3xl font-bold text-green-600 dark:text-green-400" id="resistance-rate">--%</div>
+                <p class="text-sm text-gray-500 dark:text-gray-400">Cravings resisted</p>
             </div>
         </div>
     </div>
 
     <!-- Enhanced Log Craving Form -->
-    <div class="bg-white p-6 rounded-lg shadow-md mb-8">
-        <h2 class="text-2xl font-semibold mb-4">Log a Craving</h2>
-        <form id="craving-form" class="space-y-4">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <!-- Basic Fields -->
-                <div>
-                    <label for="intensity" class="block text-sm font-medium text-gray-700">Intensity (1-10) *</label>
-                    <input type="number" id="intensity" name="intensity" min="1" max="10" required
-                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+    <div class="mt-8">
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+            <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Log a Craving</h2>
+            <form id="craving-form" class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Basic Fields -->
+                    <div>
+                        <label for="intensity" class="block text-sm font-medium text-gray-900 dark:text-white">Intensity (1-10) *</label>
+                        <input type="number" id="intensity" name="intensity" min="1" max="10" required
+                               class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                    </div>
+                    <div>
+                        <label for="trigger" class="block text-sm font-medium text-gray-900 dark:text-white">Trigger</label>
+                        <select id="trigger" name="trigger"
+                                class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                            <option value="">Select a trigger</option>
+                            <option value="stress">Stress</option>
+                            <option value="boredom">Boredom</option>
+                            <option value="social">Social situation</option>
+                            <option value="habit">Habit/routine</option>
+                            <option value="anxiety">Anxiety</option>
+                            <option value="work">Work pressure</option>
+                            <option value="alcohol">Alcohol/drinking</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
                 </div>
-                <div>
-                    <label for="trigger" class="block text-sm font-medium text-gray-700">Trigger</label>
-                    <select id="trigger" name="trigger"
-                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
-                        <option value="">Select a trigger</option>
-                        <option value="stress">Stress</option>
-                        <option value="boredom">Boredom</option>
-                        <option value="social">Social situation</option>
-                        <option value="habit">Habit/routine</option>
-                        <option value="anxiety">Anxiety</option>
-                        <option value="work">Work pressure</option>
-                        <option value="alcohol">Alcohol/drinking</option>
-                        <option value="other">Other</option>
-                    </select>
-                </div>
-            </div>
 
-            <!-- Enhanced Fields -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- Enhanced Fields -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label for="mood_before" class="block text-sm font-medium text-gray-900 dark:text-white">Mood Before (1-10)</label>
+                        <input type="number" id="mood_before" name="mood_before" min="1" max="10"
+                               class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                    </div>
+                    <div>
+                        <label for="stress_level" class="block text-sm font-medium text-gray-900 dark:text-white">Stress Level (1-10)</label>
+                        <input type="number" id="stress_level" name="stress_level" min="1" max="10"
+                               class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                    </div>
+                    <div>
+                        <label for="duration_minutes" class="block text-sm font-medium text-gray-900 dark:text-white">Duration (minutes)</label>
+                        <input type="number" id="duration_minutes" name="duration_minutes" min="0" max="1440"
+                               class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                    </div>
+                </div>
+
+                <!-- Physical Symptoms -->
                 <div>
-                    <label for="mood_before" class="block text-sm font-medium text-gray-700">Mood Before (1-10)</label>
-                    <input type="number" id="mood_before" name="mood_before" min="1" max="10"
-                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                    <label class="block text-sm font-medium text-gray-900 dark:text-white mb-2">Physical Symptoms</label>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <label class="flex items-center">
+                            <input type="checkbox" name="physical_symptoms" value="restlessness" class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 dark:bg-gray-700 dark:border-gray-600">
+                            <span class="ml-2 text-sm text-gray-900 dark:text-white">Restlessness</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="checkbox" name="physical_symptoms" value="irritability" class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 dark:bg-gray-700 dark:border-gray-600">
+                            <span class="ml-2 text-sm text-gray-900 dark:text-white">Irritability</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="checkbox" name="physical_symptoms" value="difficulty_concentrating" class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 dark:bg-gray-700 dark:border-gray-600">
+                            <span class="ml-2 text-sm text-gray-900 dark:text-white">Difficulty concentrating</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="checkbox" name="physical_symptoms" value="increased_appetite" class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 dark:bg-gray-700 dark:border-gray-600">
+                            <span class="ml-2 text-sm text-gray-900 dark:text-white">Increased appetite</span>
+                        </label>
+                    </div>
                 </div>
+
+                <!-- Situation Context -->
                 <div>
-                    <label for="stress_level" class="block text-sm font-medium text-gray-700">Stress Level (1-10)</label>
-                    <input type="number" id="stress_level" name="stress_level" min="1" max="10"
-                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                    <label for="situation_context" class="block text-sm font-medium text-gray-900 dark:text-white">Situation Context</label>
+                    <textarea id="situation_context" name="situation_context" rows="2" placeholder="Where were you? Who were you with? What were you doing?"
+                              class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600"></textarea>
                 </div>
+
+                <!-- Outcome -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="outcome" class="block text-sm font-medium text-gray-900 dark:text-white">Outcome</label>
+                        <select id="outcome" name="outcome"
+                                class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                            <option value="">Select outcome</option>
+                            <option value="resisted">Resisted the craving</option>
+                            <option value="used_nicotine">Used nicotine</option>
+                            <option value="used_alternative">Used alternative (gum, etc.)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="mood_after" class="block text-sm font-medium text-gray-900 dark:text-white">Mood After (1-10)</label>
+                        <input type="number" id="mood_after" name="mood_after" min="1" max="10"
+                               class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                    </div>
+                </div>
+
+                <!-- Notes -->
                 <div>
-                    <label for="duration_minutes" class="block text-sm font-medium text-gray-700">Duration (minutes)</label>
-                    <input type="number" id="duration_minutes" name="duration_minutes" min="0" max="1440"
-                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                    <label for="notes" class="block text-sm font-medium text-gray-900 dark:text-white">Notes</label>
+                    <textarea id="notes" name="notes" rows="3" placeholder="Additional notes about this craving..."
+                              class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600"></textarea>
                 </div>
-            </div>
 
-            <!-- Physical Symptoms -->
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Physical Symptoms</label>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-                    <label class="flex items-center">
-                        <input type="checkbox" name="physical_symptoms" value="restlessness" class="mr-2">
-                        <span class="text-sm">Restlessness</span>
-                    </label>
-                    <label class="flex items-center">
-                        <input type="checkbox" name="physical_symptoms" value="irritability" class="mr-2">
-                        <span class="text-sm">Irritability</span>
-                    </label>
-                    <label class="flex items-center">
-                        <input type="checkbox" name="physical_symptoms" value="difficulty_concentrating" class="mr-2">
-                        <span class="text-sm">Difficulty concentrating</span>
-                    </label>
-                    <label class="flex items-center">
-                        <input type="checkbox" name="physical_symptoms" value="increased_appetite" class="mr-2">
-                        <span class="text-sm">Increased appetite</span>
-                    </label>
-                </div>
-            </div>
-
-            <!-- Situation Context -->
-            <div>
-                <label for="situation_context" class="block text-sm font-medium text-gray-700">Situation Context</label>
-                <textarea id="situation_context" name="situation_context" rows="2" placeholder="Where were you? Who were you with? What were you doing?"
-                          class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"></textarea>
-            </div>
-
-            <!-- Outcome -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                    <label for="outcome" class="block text-sm font-medium text-gray-700">Outcome</label>
-                    <select id="outcome" name="outcome"
-                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
-                        <option value="">Select outcome</option>
-                        <option value="resisted">Resisted the craving</option>
-                        <option value="used_nicotine">Used nicotine</option>
-                        <option value="used_alternative">Used alternative (gum, etc.)</option>
-                    </select>
+                    <label for="outcome_notes" class="block text-sm font-medium text-gray-900 dark:text-white">What did you do instead? How do you feel now?</label>
+                    <textarea id="outcome_notes" name="outcome_notes" rows="2"
+                              class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600"></textarea>
                 </div>
-                <div>
-                    <label for="mood_after" class="block text-sm font-medium text-gray-700">Mood After (1-10)</label>
-                    <input type="number" id="mood_after" name="mood_after" min="1" max="10"
-                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+
+                <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <button type="submit"
+                            class="rounded-md bg-indigo-600 px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
+                        Log Enhanced Craving
+                    </button>
                 </div>
-            </div>
-
-            <!-- Notes -->
-            <div>
-                <label for="notes" class="block text-sm font-medium text-gray-700">Notes</label>
-                <textarea id="notes" name="notes" rows="3" placeholder="Additional notes about this craving..."
-                          class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"></textarea>
-            </div>
-
-            <div>
-                <label for="outcome_notes" class="block text-sm font-medium text-gray-700">What did you do instead? How do you feel now?</label>
-                <textarea id="outcome_notes" name="outcome_notes" rows="2"
-                          class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"></textarea>
-            </div>
-
-            <button type="submit"
-                    class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                Log Enhanced Craving
-            </button>
-        </form>
+            </form>
+        </div>
     </div>
 
     <!-- Cravings List -->
-    <div class="bg-white p-6 rounded-lg shadow-md">
-        <h2 class="text-2xl font-semibold mb-4">Recent Cravings</h2>
-        <ul id="cravings-list" class="space-y-4">
-            <!-- Cravings will be loaded here -->
-        </ul>
+    <div class="mt-8">
+        <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Recent Cravings</h2>
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+            <ul id="cravings-list" class="space-y-4">
+                <!-- Cravings will be loaded here -->
+                <div class="text-center py-8">
+                    <div class="text-gray-400 dark:text-gray-500 text-4xl mb-4">🧠</div>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Loading recent cravings...</p>
+                </div>
+            </ul>
+        </div>
     </div>
 </div>
 
@@ -189,29 +227,51 @@ document.addEventListener('DOMContentLoaded', function() {
                 const triggerAnalysis = document.getElementById('trigger-analysis');
                 triggerAnalysis.innerHTML = '';
                 const triggers = data.trigger_analysis || {};
-                Object.entries(triggers).slice(0, 5).forEach(([trigger, analysis]) => {
-                    const div = document.createElement('div');
-                    div.className = 'flex justify-between items-center';
-                    div.innerHTML = `
-                        <span class="text-sm font-medium">${trigger}</span>
-                        <span class="text-sm text-gray-600">${analysis.count} times</span>
+                
+                if (Object.keys(triggers).length === 0) {
+                    triggerAnalysis.innerHTML = `
+                        <div class="text-center py-8">
+                            <div class="text-gray-400 dark:text-gray-500 text-4xl mb-4">🎯</div>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">No trigger data yet. Start logging cravings!</p>
+                        </div>
                     `;
-                    triggerAnalysis.appendChild(div);
-                });
+                } else {
+                    Object.entries(triggers).slice(0, 5).forEach(([trigger, analysis]) => {
+                        const div = document.createElement('div');
+                        div.className = 'flex justify-between items-center p-2 border-b border-gray-200 dark:border-gray-700 last:border-b-0';
+                        div.innerHTML = `
+                            <span class="text-sm font-medium text-gray-900 dark:text-white">${trigger}</span>
+                            <span class="text-sm text-gray-500 dark:text-gray-400">${analysis.count} times</span>
+                        `;
+                        triggerAnalysis.appendChild(div);
+                    });
+                }
 
                 // Update time patterns (simple display)
                 const timePatterns = document.getElementById('time-patterns-chart');
                 timePatterns.innerHTML = '';
                 const patterns = data.time_patterns || {};
-                Object.entries(patterns).forEach(([period, count]) => {
-                    const div = document.createElement('div');
-                    div.className = 'flex justify-between items-center mb-2';
-                    div.innerHTML = `
-                        <span class="text-sm">${period}</span>
-                        <span class="text-sm font-medium">${count}</span>
+                
+                if (Object.keys(patterns).length === 0) {
+                    timePatterns.innerHTML = `
+                        <div class="flex items-center justify-center h-full">
+                            <div class="text-center">
+                                <div class="text-gray-400 dark:text-gray-500 text-4xl mb-4">⏰</div>
+                                <p class="text-sm text-gray-500 dark:text-gray-400">Pattern data will appear here</p>
+                            </div>
+                        </div>
                     `;
-                    timePatterns.appendChild(div);
-                });
+                } else {
+                    Object.entries(patterns).forEach(([period, count]) => {
+                        const div = document.createElement('div');
+                        div.className = 'flex justify-between items-center mb-2 p-2 border-b border-gray-200 dark:border-gray-700 last:border-b-0';
+                        div.innerHTML = `
+                            <span class="text-sm text-gray-900 dark:text-white">${period}</span>
+                            <span class="text-sm font-medium text-gray-900 dark:text-white">${count}</span>
+                        `;
+                        timePatterns.appendChild(div);
+                    });
+                }
             })
             .catch(error => console.error('Analytics error:', error));
     }
@@ -222,22 +282,32 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(response => response.json())
             .then(data => {
                 cravingsList.innerHTML = '';
-                data.slice(0, 10).forEach(craving => {
-                    const li = document.createElement('li');
-                    li.className = 'p-4 border rounded-md';
-                    li.innerHTML = `
-                        <div class="flex justify-between mb-2">
-                            <span class="font-semibold">Intensity: ${craving.intensity}/10</span>
-                            <span class="text-sm text-gray-500">${new Date(craving.craving_time).toLocaleString()}</span>
+                
+                if (data.length === 0) {
+                    cravingsList.innerHTML = `
+                        <div class="text-center py-8">
+                            <div class="text-gray-400 dark:text-gray-500 text-4xl mb-4">🧠</div>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">No cravings logged yet. Start tracking to see patterns!</p>
                         </div>
-                        ${craving.trigger ? `<p class="text-sm"><strong>Trigger:</strong> ${craving.trigger}</p>` : ''}
-                        ${craving.outcome ? `<p class="text-sm"><strong>Outcome:</strong> ${craving.outcome.replace('_', ' ')}</p>` : ''}
-                        ${craving.mood_before ? `<p class="text-sm"><strong>Mood Before:</strong> ${craving.mood_before}/10</p>` : ''}
-                        ${craving.duration_minutes ? `<p class="text-sm"><strong>Duration:</strong> ${craving.duration_minutes} minutes</p>` : ''}
-                        ${craving.notes ? `<p class="text-sm mt-2"><strong>Notes:</strong> ${craving.notes}</p>` : ''}
                     `;
-                    cravingsList.appendChild(li);
-                });
+                } else {
+                    data.slice(0, 10).forEach(craving => {
+                        const li = document.createElement('li');
+                        li.className = 'p-4 border border-gray-200 dark:border-gray-700 rounded-lg';
+                        li.innerHTML = `
+                            <div class="flex justify-between mb-2">
+                                <span class="font-semibold text-gray-900 dark:text-white">Intensity: ${craving.intensity}/10</span>
+                                <span class="text-sm text-gray-500 dark:text-gray-400">${new Date(craving.craving_time).toLocaleString()}</span>
+                            </div>
+                            ${craving.trigger ? `<p class="text-sm text-gray-700 dark:text-gray-300"><strong>Trigger:</strong> ${craving.trigger}</p>` : ''}
+                            ${craving.outcome ? `<p class="text-sm text-gray-700 dark:text-gray-300"><strong>Outcome:</strong> ${craving.outcome.replace('_', ' ')}</p>` : ''}
+                            ${craving.mood_before ? `<p class="text-sm text-gray-700 dark:text-gray-300"><strong>Mood Before:</strong> ${craving.mood_before}/10</p>` : ''}
+                            ${craving.duration_minutes ? `<p class="text-sm text-gray-700 dark:text-gray-300"><strong>Duration:</strong> ${craving.duration_minutes} minutes</p>` : ''}
+                            ${craving.notes ? `<p class="text-sm mt-2 text-gray-700 dark:text-gray-300"><strong>Notes:</strong> ${craving.notes}</p>` : ''}
+                        `;
+                        cravingsList.appendChild(li);
+                    });
+                }
             })
             .catch(error => console.error('Cravings error:', error));
     }

@@ -75,22 +75,18 @@ class BackgroundTaskProcessor:
                     UserPreferences.notification_channel != 'none'
                 ).all()
 
-                current_app.logger.debug(users_to_remind)
-                
                 sent_count = 0
                 for user in users_to_remind:
                     # Determine the target time for the reminder, falling back to daily reset time
                     preferences = self.preferences_service.get_or_create_preferences(user.id)
                     target_time = preferences.reminder_time or preferences.daily_reset_time
 
-                    current_app.logger.info(target_time)
                     if not target_time:
                         continue
                     
                     
                     # Get user's local time to ensure reminder is sent at the correct local time
                     user_local_time, _, _ = tz_service.get_current_user_time(user.timezone)
-                    current_app.logger.info(user_local_time)
                     if not user_local_time:
                         continue
 

@@ -1,29 +1,32 @@
 {% extends "base.html" %}
 
-{% block title %}
-Create Flexible Goal - Nicotine Tracker
-{% endblock %}
+{% block title %}Create Smart Goal - Nicotine Tracker{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-8">
+<div class="px-4 sm:px-6 lg:px-8">
     <div class="max-w-2xl mx-auto">
-        <h1 class="text-3xl font-bold mb-6">Create New Flexible Goal</h1>
+        <div class="flex items-center justify-between mb-6">
+            <div>
+                <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Create New Smart Goal</h1>
+                <p class="text-sm text-gray-700 dark:text-gray-300">Set up an AI-powered flexible goal with gradual reduction</p>
+            </div>
+        </div>
 
-        <div class="bg-white p-6 rounded-lg shadow-md">
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
             <form id="create-goal-form" class="space-y-6">
                 <!-- Basic Information -->
                 <div>
-                    <label for="name" class="block text-sm font-medium text-gray-700">Goal Name *</label>
+                    <label for="name" class="block text-sm font-medium text-gray-900 dark:text-white">Goal Name *</label>
                     <input type="text" id="name" name="name" required
-                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                           class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600"
                            placeholder="e.g., Reduce to 5 pouches per day">
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                        <label for="goal_type" class="block text-sm font-medium text-gray-700">Goal Type *</label>
+                        <label for="goal_type" class="block text-sm font-medium text-gray-900 dark:text-white">Goal Type *</label>
                         <select id="goal_type" name="goal_type" required
-                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                                class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
                             <option value="">Select goal type</option>
                             <option value="daily_pouches">Daily Pouches Limit</option>
                             <option value="daily_mg">Daily Nicotine (mg) Limit</option>
@@ -34,32 +37,32 @@ Create Flexible Goal - Nicotine Tracker
                     </div>
 
                     <div>
-                        <label for="target_value" class="block text-sm font-medium text-gray-700">Target Value *</label>
+                        <label for="target_value" class="block text-sm font-medium text-gray-900 dark:text-white">Target Value *</label>
                         <input type="number" id="target_value" name="target_value" step="0.1" min="0" required
-                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                               class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
                     </div>
                 </div>
 
                 <!-- Date Range -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                        <label for="start_date" class="block text-sm font-medium text-gray-700">Start Date</label>
+                        <label for="start_date" class="block text-sm font-medium text-gray-900 dark:text-white">Start Date</label>
                         <input type="date" id="start_date" name="start_date"
-                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                               class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
                     </div>
 
                     <div>
-                        <label for="end_date" class="block text-sm font-medium text-gray-700">End Date (Optional)</label>
+                        <label for="end_date" class="block text-sm font-medium text-gray-900 dark:text-white">End Date (Optional)</label>
                         <input type="date" id="end_date" name="end_date"
-                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                               class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
                     </div>
                 </div>
 
                 <!-- Frequency -->
                 <div>
-                    <label for="frequency" class="block text-sm font-medium text-gray-700">Frequency</label>
+                    <label for="frequency" class="block text-sm font-medium text-gray-900 dark:text-white">Frequency</label>
                     <select id="frequency" name="frequency"
-                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                            class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
                         <option value="daily">Daily</option>
                         <option value="weekly">Weekly</option>
                         <option value="monthly">Monthly</option>
@@ -68,39 +71,41 @@ Create Flexible Goal - Nicotine Tracker
 
                 <!-- Gradual Reduction Fields (hidden by default) -->
                 <div id="gradual-reduction-fields" class="hidden space-y-4">
-                    <h3 class="text-lg font-semibold text-gray-800">Gradual Reduction Settings</h3>
-                    
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label for="initial_target" class="block text-sm font-medium text-gray-700">Starting Amount</label>
-                            <input type="number" id="initial_target" name="initial_target" step="0.1" min="0"
-                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                    <div class="rounded-md bg-blue-50 dark:bg-blue-900/20 p-4 border border-blue-200 dark:border-blue-800">
+                        <h3 class="text-sm font-medium text-blue-800 dark:text-blue-200 mb-4">Gradual Reduction Settings</h3>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label for="initial_target" class="block text-sm font-medium text-gray-900 dark:text-white">Starting Amount</label>
+                                <input type="number" id="initial_target" name="initial_target" step="0.1" min="0"
+                                       class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                            </div>
+
+                            <div>
+                                <label for="reduction_rate" class="block text-sm font-medium text-gray-900 dark:text-white">Reduction Rate</label>
+                                <input type="number" id="reduction_rate" name="reduction_rate" step="0.1" min="0"
+                                       class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                            </div>
                         </div>
 
-                        <div>
-                            <label for="reduction_rate" class="block text-sm font-medium text-gray-700">Reduction Rate</label>
-                            <input type="number" id="reduction_rate" name="reduction_rate" step="0.1" min="0"
-                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                        <div class="mt-4">
+                            <label for="reduction_frequency" class="block text-sm font-medium text-gray-900 dark:text-white">Reduction Frequency</label>
+                            <select id="reduction_frequency" name="reduction_frequency"
+                                    class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                                <option value="weekly">Weekly</option>
+                                <option value="biweekly">Bi-weekly</option>
+                                <option value="monthly">Monthly</option>
+                            </select>
                         </div>
-                    </div>
-
-                    <div>
-                        <label for="reduction_frequency" class="block text-sm font-medium text-gray-700">Reduction Frequency</label>
-                        <select id="reduction_frequency" name="reduction_frequency"
-                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
-                            <option value="weekly">Weekly</option>
-                            <option value="biweekly">Bi-weekly</option>
-                            <option value="monthly">Monthly</option>
-                        </select>
                     </div>
                 </div>
 
                 <!-- Template Selection -->
                 {% if templates %}
                 <div>
-                    <label for="template_id" class="block text-sm font-medium text-gray-700">Use Template (Optional)</label>
+                    <label for="template_id" class="block text-sm font-medium text-gray-900 dark:text-white">Use Template (Optional)</label>
                     <select id="template_id" name="template_id"
-                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                            class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
                         <option value="">No template</option>
                         {% for template in templates %}
                         <option value="{{ template.id }}">{{ template.name }} - {{ template.description }}</option>
@@ -110,11 +115,13 @@ Create Flexible Goal - Nicotine Tracker
                 {% endif %}
 
                 <!-- Submit Buttons -->
-                <div class="flex justify-between">
-                    <a href="/flexible-goals" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">
+                <div class="flex justify-between pt-6 border-t border-gray-200 dark:border-gray-700">
+                    <a href="/flexible-goals" 
+                       class="rounded-md bg-white dark:bg-gray-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600">
                         Cancel
                     </a>
-                    <button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <button type="submit" 
+                            class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
                         Create Goal
                     </button>
                 </div>
