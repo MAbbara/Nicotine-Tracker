@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+
+{% block title %}
+Create Flexible Goal - Nicotine Tracker
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="max-w-2xl mx-auto">
+        <h1 class="text-3xl font-bold mb-6">Create New Flexible Goal</h1>
+
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <form id="create-goal-form" class="space-y-6">
+                <!-- Basic Information -->
+                <div>
+                    <label for="name" class="block text-sm font-medium text-gray-700">Goal Name *</label>
+                    <input type="text" id="name" name="name" required
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                           placeholder="e.g., Reduce to 5 pouches per day">
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="goal_type" class="block text-sm font-medium text-gray-700">Goal Type *</label>
+                        <select id="goal_type" name="goal_type" required
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                            <option value="">Select goal type</option>
+                            <option value="daily_pouches">Daily Pouches Limit</option>
+                            <option value="daily_mg">Daily Nicotine (mg) Limit</option>
+                            <option value="weekly_pouches">Weekly Pouches Limit</option>
+                            <option value="weekly_mg">Weekly Nicotine (mg) Limit</option>
+                            <option value="gradual_reduction">Gradual Reduction</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="target_value" class="block text-sm font-medium text-gray-700">Target Value *</label>
+                        <input type="number" id="target_value" name="target_value" step="0.1" min="0" required
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                    </div>
+                </div>
+
+                <!-- Date Range -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="start_date" class="block text-sm font-medium text-gray-700">Start Date</label>
+                        <input type="date" id="start_date" name="start_date"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                    </div>
+
+                    <div>
+                        <label for="end_date" class="block text-sm font-medium text-gray-700">End Date (Optional)</label>
+                        <input type="date" id="end_date" name="end_date"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                    </div>
+                </div>
+
+                <!-- Frequency -->
+                <div>
+                    <label for="frequency" class="block text-sm font-medium text-gray-700">Frequency</label>
+                    <select id="frequency" name="frequency"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                    </select>
+                </div>
+
+                <!-- Gradual Reduction Fields (hidden by default) -->
+                <div id="gradual-reduction-fields" class="hidden space-y-4">
+                    <h3 class="text-lg font-semibold text-gray-800">Gradual Reduction Settings</h3>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="initial_target" class="block text-sm font-medium text-gray-700">Starting Amount</label>
+                            <input type="number" id="initial_target" name="initial_target" step="0.1" min="0"
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                        </div>
+
+                        <div>
+                            <label for="reduction_rate" class="block text-sm font-medium text-gray-700">Reduction Rate</label>
+                            <input type="number" id="reduction_rate" name="reduction_rate" step="0.1" min="0"
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="reduction_frequency" class="block text-sm font-medium text-gray-700">Reduction Frequency</label>
+                        <select id="reduction_frequency" name="reduction_frequency"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                            <option value="weekly">Weekly</option>
+                            <option value="biweekly">Bi-weekly</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Template Selection -->
+                {% if templates %}
+                <div>
+                    <label for="template_id" class="block text-sm font-medium text-gray-700">Use Template (Optional)</label>
+                    <select id="template_id" name="template_id"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                        <option value="">No template</option>
+                        {% for template in templates %}
+                        <option value="{{ template.id }}">{{ template.name }} - {{ template.description }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+
+                <!-- Submit Buttons -->
+                <div class="flex justify-between">
+                    <a href="/flexible-goals" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">
+                        Cancel
+                    </a>
+                    <button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        Create Goal
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const goalTypeSelect = document.getElementById('goal_type');
+    const gradualReductionFields = document.getElementById('gradual-reduction-fields');
+    const form = document.getElementById('create-goal-form');
+
+    // Show/hide gradual reduction fields
+    goalTypeSelect.addEventListener('change', function() {
+        if (this.value === 'gradual_reduction') {
+            gradualReductionFields.classList.remove('hidden');
+        } else {
+            gradualReductionFields.classList.add('hidden');
+        }
+    });
+
+    // Set default start date to today
+    document.getElementById('start_date').value = new Date().toISOString().split('T')[0];
+
+    // Handle form submission
+    form.addEventListener('submit', function(event) {
+        event.preventDefault();
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
+
+        // Remove empty values
+        Object.keys(data).forEach(key => {
+            if (data[key] === '') {
+                delete data[key];
+            }
+        });
+
+        fetch('/flexible-goals/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (result.error) {
+                alert('Error: ' + result.error);
+            } else {
+                alert('Goal created successfully!');
+                window.location.href = '/flexible-goals';
+            }
+        })
+        .catch(error => {
+            console.error('Create goal error:', error);
+            alert('Error creating goal. Please try again.');
+        });
+    });
+
+    // Check for template_id in URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const templateId = urlParams.get('template_id');
+    if (templateId) {
+        document.getElementById('template_id').value = templateId;
+    }
+});
+</script>
+{% endblock %}

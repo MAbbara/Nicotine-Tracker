@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% block title %}
+Health Impact Dashboard - Nicotine Tracker
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold mb-6">Health Impact Dashboard</h1>
+
+    <!-- Financial Impact -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <h3 class="text-lg font-semibold text-green-600 mb-2">Money Saved</h3>
+            <div class="text-3xl font-bold" id="total-saved">$0.00</div>
+            <p class="text-sm text-gray-600">Total savings</p>
+        </div>
+        
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <h3 class="text-lg font-semibold text-blue-600 mb-2">Daily Savings</h3>
+            <div class="text-3xl font-bold" id="daily-saved">$0.00</div>
+            <p class="text-sm text-gray-600">Per day</p>
+        </div>
+        
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <h3 class="text-lg font-semibold text-purple-600 mb-2">Days Since Start</h3>
+            <div class="text-3xl font-bold" id="days-since-start">0</div>
+            <p class="text-sm text-gray-600">Reduction journey</p>
+        </div>
+        
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <h3 class="text-lg font-semibold text-orange-600 mb-2">Consumption Reduction</h3>
+            <div class="text-3xl font-bold" id="reduction-percent">0%</div>
+            <p class="text-sm text-gray-600">From baseline</p>
+        </div>
+    </div>
+
+    <!-- Health Timeline -->
+    <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+        <h2 class="text-2xl font-semibold mb-4">Health Improvement Timeline</h2>
+        <div id="health-timeline" class="space-y-4">
+            <!-- Timeline items will be loaded here -->
+        </div>
+    </div>
+
+    <!-- Risk Reduction -->
+    <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+        <h2 class="text-2xl font-semibold mb-4">Health Risk Reduction</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="text-center">
+                <div class="text-2xl font-bold text-red-600" id="cardiovascular-risk">0%</div>
+                <p class="text-sm text-gray-600">Cardiovascular Risk Reduction</p>
+            </div>
+            <div class="text-center">
+                <div class="text-2xl font-bold text-yellow-600" id="addiction-risk">0%</div>
+                <p class="text-sm text-gray-600">Addiction Risk Reduction</p>
+            </div>
+            <div class="text-center">
+                <div class="text-2xl font-bold text-green-600" id="oral-health-risk">0%</div>
+                <p class="text-sm text-gray-600">Oral Health Risk Reduction</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Set Quit Date -->
+    <div class="bg-white p-6 rounded-lg shadow-md">
+        <h2 class="text-2xl font-semibold mb-4">Complete Cessation Tracking</h2>
+        <p class="text-gray-600 mb-4">If you've quit nicotine completely, set your quit date to track additional health milestones.</p>
+        
+        <div class="flex items-center space-x-4">
+            <input type="date" id="quit-date" class="rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+            <button id="set-quit-date" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                Set Quit Date
+            </button>
+        </div>
+        
+        <div id="quit-status" class="mt-4 text-sm text-gray-600"></div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Load health impact data
+    function loadHealthData() {
+        fetch('/health-impact/api/financial-data')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('total-saved').textContent = '$' + (data.total_savings || 0).toFixed(2);
+                document.getElementById('daily-saved').textContent = '$' + (data.daily_savings || 0).toFixed(2);
+                document.getElementById('days-since-start').textContent = data.days_since_start || 0;
+            })
+            .catch(error => console.error('Financial data error:', error));
+
+        // Load health timeline
+        fetch('/health-impact/api/health-timeline')
+            .then(response => response.json())
+            .then(data => {
+                const timeline = document.getElementById('health-timeline');
+                timeline.innerHTML = '';
+                
+                data.forEach(milestone => {
+                    const div = document.createElement('div');
+                    div.className = `flex items-center p-4 border-l-4 ${milestone.achieved ? 'border-green-500 bg-green-50' : 'border-gray-300 bg-gray-50'}`;
+                    
+                    div.innerHTML = `
+                        <div class="flex-1">
+                            <h4 class="font-semibold ${milestone.achieved ? 'text-green-800' : 'text-gray-700'}">${milestone.milestone}</h4>
+                            <p class="text-sm text-gray-600">${milestone.description}</p>
+                            ${milestone.achieved ? 
+                                `<p class="text-xs text-green-600 mt-1">✓ Achieved ${milestone.days_ago} days ago</p>` :
+                                milestone.days_remaining ? 
+                                    `<p class="text-xs text-gray-500 mt-1">In ${milestone.days_remaining} days</p>` : ''
+                            }
+                        </div>
+                        <div class="ml-4">
+                            ${milestone.achieved ? 
+                                '<span class="text-green-500 text-2xl">✓</span>' : 
+                                '<span class="text-gray-400 text-2xl">○</span>'
+                            }
+                        </div>
+                    `;
+                    timeline.appendChild(div);
+                });
+            })
+            .catch(error => console.error('Timeline error:', error));
+
+        // Load risk reduction data
+        fetch('/health-impact/api/risk-reduction')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('cardiovascular-risk').textContent = (data.cardiovascular_risk_reduction || 0).toFixed(1) + '%';
+                document.getElementById('addiction-risk').textContent = (data.addiction_risk_reduction || 0).toFixed(1) + '%';
+                document.getElementById('oral-health-risk').textContent = (data.oral_health_risk_reduction || 0).toFixed(1) + '%';
+                document.getElementById('reduction-percent').textContent = (data.consumption_reduction_pct || 0).toFixed(1) + '%';
+            })
+            .catch(error => console.error('Risk reduction error:', error));
+    }
+
+    // Handle quit date setting
+    document.getElementById('set-quit-date').addEventListener('click', function() {
+        const quitDate = document.getElementById('quit-date').value;
+        if (!quitDate) {
+            alert('Please select a quit date.');
+            return;
+        }
+
+        fetch('/health-impact/set-quit-date', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ quit_date: quitDate })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert('Error: ' + data.error);
+            } else {
+                document.getElementById('quit-status').innerHTML = 
+                    `<span class="text-green-600">✓ Quit date set: ${data.quit_date} (${data.days_since_quit} days ago)</span>`;
+                loadHealthData(); // Reload to show updated timeline
+            }
+        })
+        .catch(error => {
+            console.error('Set quit date error:', error);
+            alert('Error setting quit date. Please try again.');
+        });
+    });
+
+    // Initial load
+    loadHealthData();
+});
+</script>
+{% endblock %}
