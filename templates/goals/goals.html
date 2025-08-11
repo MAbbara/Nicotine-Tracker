@@ -4,10 +4,26 @@
 
 {% block content %}
 <div class="px-4 sm:px-6 lg:px-8">
-    <h1 class="text-2xl font-semibold leading-6 text-gray-900 dark:text-white mb-6">Your Goals</h1>
-    
-    <div class="mb-6">
-        <a href="{{ url_for('goals.create_goal') }}" class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 cursor-pointer">Create New Goal</a>
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Your Goals</h1>
+            <p class="text-sm text-gray-700 dark:text-gray-300">Track your progress with traditional and smart goals</p>
+        </div>
+        <div class="flex space-x-3">
+            <a href="{{ url_for('goals.create_goal') }}" 
+               class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
+                Create Traditional Goal
+            </a>
+            <a href="{{ url_for('flexible_goals.dashboard') }}" 
+               class="rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600">
+                Smart Goals Dashboard
+            </a>
+        </div>
+    </div>
+
+    <!-- Goal Analytics Summary -->
+    <div class="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4" id="goal-analytics">
+        <!-- Will be populated by JavaScript -->
     </div>
     
     {% if active_goals %}
@@ -71,4 +87,95 @@
     </div>
     {% endif %}
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Load unified goal analytics
+    function loadGoalAnalytics() {
+        fetch('/goals/api/unified-goals')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updateAnalyticsCards(data.analytics);
+                }
+            })
+            .catch(error => {
+                console.error('Error loading goal analytics:', error);
+            });
+    }
+
+    function updateAnalyticsCards(analytics) {
+        const analyticsContainer = document.getElementById('goal-analytics');
+        analyticsContainer.innerHTML = '';
+
+        // Total Goals Card
+        const totalGoalsCard = createAnalyticsCard(
+            'Total Goals',
+            analytics.total_goals || 0,
+            '🎯',
+            'bg-blue-500'
+        );
+        analyticsContainer.appendChild(totalGoalsCard);
+
+        // Active Goals Card
+        const activeGoalsCard = createAnalyticsCard(
+            'Active Goals',
+            analytics.active_goals || 0,
+            '✅',
+            'bg-green-500'
+        );
+        analyticsContainer.appendChild(activeGoalsCard);
+
+        // Traditional Goals Card
+        const traditionalGoalsCard = createAnalyticsCard(
+            'Traditional Goals',
+            analytics.traditional_goals_count || 0,
+            '📊',
+            'bg-indigo-500'
+        );
+        analyticsContainer.appendChild(traditionalGoalsCard);
+
+        // Smart Goals Card
+        const smartGoalsCard = createAnalyticsCard(
+            'Smart Goals',
+            analytics.smart_goals_count || 0,
+            '🤖',
+            'bg-purple-500'
+        );
+        analyticsContainer.appendChild(smartGoalsCard);
+    }
+
+    function createAnalyticsCard(title, value, icon, bgColor) {
+        const card = document.createElement('div');
+        card.className = 'bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg';
+        
+        card.innerHTML = `
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 ${bgColor} rounded-md flex items-center justify-center">
+                            <span class="text-white font-bold text-sm">${icon}</span>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+                                ${title}
+                            </dt>
+                            <dd class="text-lg font-medium text-gray-900 dark:text-white">
+                                ${value}
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        return card;
+    }
+
+    // Load analytics on page load
+    loadGoalAnalytics();
+});
+</script>
 {% endblock %}
