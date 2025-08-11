@@ -64,8 +64,8 @@ def create_app(config_name=None):
     app.register_blueprint(api_bp, url_prefix='/api')
     app.register_blueprint(insights_bp, url_prefix='/insights')
     app.register_blueprint(cravings_bp, url_prefix='/cravings')
-    app.register_blueprint(health_impact_bp, url_prefix='/health-impact')
-    app.register_blueprint(flexible_goals_bp, url_prefix='/flexible-goals')
+    app.register_blueprint(health_impact_bp, url_prefix='/health_impact')
+    app.register_blueprint(flexible_goals_bp, url_prefix='/flexible_goals')
 
 
     
