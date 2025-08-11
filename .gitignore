@@ -49,3 +49,5 @@ upload/
 *.tmp
 *.bak
 *.zip
+
+.hypothesis
