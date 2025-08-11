@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}
+Craving Tracker - Nicotine Tracker
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold mb-6">Craving Tracker</h1>
+
+    <!-- Log Craving Form -->
+    <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+        <h2 class="text-2xl font-semibold mb-4">Log a Craving</h2>
+        <form id="craving-form">
+            <div class="mb-4">
+                <label for="intensity" class="block text-sm font-medium text-gray-700">Intensity (1-10)</label>
+                <input type="number" id="intensity" name="intensity" min="1" max="10" required
+                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+            </div>
+            <div class="mb-4">
+                <label for="trigger" class="block text-sm font-medium text-gray-700">Trigger</label>
+                <input type="text" id="trigger" name="trigger"
+                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+            </div>
+            <div class="mb-4">
+                <label for="notes" class="block text-sm font-medium text-gray-700">Notes</label>
+                <textarea id="notes" name="notes" rows="3"
+                          class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"></textarea>
+            </div>
+            <button type="submit"
+                    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                Log Craving
+            </button>
+        </form>
+    </div>
+
+    <!-- Cravings List -->
+    <div class="bg-white p-6 rounded-lg shadow-md">
+        <h2 class="text-2xl font-semibold mb-4">Recent Cravings</h2>
+        <ul id="cravings-list" class="space-y-4">
+            <!-- Cravings will be loaded here -->
+        </ul>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const cravingForm = document.getElementById('craving-form');
+    const cravingsList = document.getElementById('cravings-list');
+
+    // Fetch and display cravings
+    function loadCravings() {
+        fetch('/api/cravings')
+            .then(response => response.json())
+            .then(data => {
+                cravingsList.innerHTML = '';
+                data.forEach(craving => {
+                    const li = document.createElement('li');
+                    li.className = 'p-4 border rounded-md';
+                    li.innerHTML = `
+                        <div class="flex justify-between">
+                            <span class="font-semibold">Intensity: ${craving.intensity}</span>
+                            <span class="text-sm text-gray-500">${new Date(craving.craving_time).toLocaleString()}</span>
+                        </div>
+                        ${craving.trigger ? `<p><strong>Trigger:</strong> ${craving.trigger}</p>` : ''}
+                        ${craving.notes ? `<p><strong>Notes:</strong> ${craving.notes}</p>` : ''}
+                    `;
+                    cravingsList.appendChild(li);
+                });
+            });
+    }
+
+    // Handle form submission
+    cravingForm.addEventListener('submit', function(event) {
+        event.preventDefault();
+        const formData = new FormData(cravingForm);
+        const data = Object.fromEntries(formData.entries());
+
+        fetch('/api/cravings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(() => {
+            cravingForm.reset();
+            loadCravings();
+        });
+    });
+
+    // Initial load
+    loadCravings();
+});
+</script>
+{% endblock %}
