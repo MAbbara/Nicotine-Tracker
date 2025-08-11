@@ -10,17 +10,27 @@
             <p class="text-sm text-gray-700 dark:text-gray-300">Comprehensive analysis of your nicotine consumption patterns</p>
         </div>
         <div class="flex space-x-3">
-            <div class="relative">
-                <select id="time-range" class="appearance-none rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2 pr-8 text-sm text-gray-900 dark:text-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
-                    <option value="7">Last 7 days</option>
-                    <option value="30" selected>Last 30 days</option>
-                    <option value="90">Last 90 days</option>
-                    <option value="365">Last year</option>
-                </select>
-                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700 dark:text-gray-300">
-                    <svg class="h-4 w-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                        <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/>
+            <div class="hs-dropdown relative inline-flex">
+                <button id="hs-dropdown-default" type="button" class="hs-dropdown-toggle py-2 px-3 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-gray-300 bg-white text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:hover:bg-gray-600">
+                    <span id="selected-range">Last 30 days</span>
+                    <svg class="hs-dropdown-open:rotate-180 size-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="m6 9 6 6 6-6"/>
                     </svg>
+                </button>
+
+                <div class="hs-dropdown-menu transition-[opacity,margin] duration hs-dropdown-open:opacity-100 opacity-0 hidden min-w-60 bg-white shadow-md rounded-lg p-2 mt-2 dark:bg-gray-800 dark:border dark:border-gray-700" aria-labelledby="hs-dropdown-default">
+                    <a class="dropdown-item flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:bg-gray-700" href="#" data-days="7">
+                        Last 7 days
+                    </a>
+                    <a class="dropdown-item flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:bg-gray-700" href="#" data-days="30">
+                        Last 30 days
+                    </a>
+                    <a class="dropdown-item flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:bg-gray-700" href="#" data-days="90">
+                        Last 90 days
+                    </a>
+                    <a class="dropdown-item flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:bg-gray-700" href="#" data-days="365">
+                        Last year
+                    </a>
                 </div>
             </div>
             <button id="export-data" class="inline-flex items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
@@ -308,6 +318,17 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     }
                 }
+            },
+            noData: {
+                text: 'No data available',
+                align: 'center',
+                verticalAlign: 'middle',
+                offsetX: 0,
+                offsetY: 0,
+                style: {
+                    color: theme.foreColor,
+                    fontSize: '14px'
+                }
             }
         });
         charts.timeChart.render();
@@ -363,6 +384,17 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             tooltip: {
                 theme: theme.mode
+            },
+            noData: {
+                text: 'No brand data available',
+                align: 'center',
+                verticalAlign: 'middle',
+                offsetX: 0,
+                offsetY: 0,
+                style: {
+                    color: theme.foreColor,
+                    fontSize: '14px'
+                }
             }
         });
         charts.brandChart.render();
@@ -488,18 +520,24 @@ document.addEventListener('DOMContentLoaded', function() {
             const labels = Object.keys(timeData);
             
             if (values.length > 0 && values.some(v => v > 0)) {
-                charts.timeChart.updateSeries(values);
                 charts.timeChart.updateOptions({ 
                     labels: labels,
                     noData: { text: undefined }
-                });
+                }, false, true);
+                charts.timeChart.updateSeries(values);
             } else {
-                charts.timeChart.updateSeries([]);
                 charts.timeChart.updateOptions({ 
                     labels: [],
                     noData: { text: 'No data available' }
-                });
+                }, false, true);
+                charts.timeChart.updateSeries([]);
             }
+        } else {
+            charts.timeChart.updateOptions({ 
+                labels: [],
+                noData: { text: 'No data available' }
+            }, false, true);
+            charts.timeChart.updateSeries([]);
         }
 
         // Update day of week chart
@@ -517,18 +555,24 @@ document.addEventListener('DOMContentLoaded', function() {
             const labels = Object.keys(brandData);
             
             if (values.length > 0 && values.some(v => v > 0)) {
-                charts.brandChart.updateSeries(values);
                 charts.brandChart.updateOptions({ 
                     labels: labels,
                     noData: { text: undefined }
-                });
+                }, false, true);
+                charts.brandChart.updateSeries(values);
             } else {
-                charts.brandChart.updateSeries([]);
                 charts.brandChart.updateOptions({ 
                     labels: [],
                     noData: { text: 'No brand data available' }
-                });
+                }, false, true);
+                charts.brandChart.updateSeries([]);
             }
+        } else {
+            charts.brandChart.updateOptions({ 
+                labels: [],
+                noData: { text: 'No brand data available' }
+            }, false, true);
+            charts.brandChart.updateSeries([]);
         }
 
         // Update heatmap
@@ -585,9 +629,21 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Event listeners
-    document.getElementById('time-range').addEventListener('change', function() {
-        currentTimeRange = parseInt(this.value);
-        loadInsights();
+    document.querySelectorAll('.dropdown-item').forEach(item => {
+        item.addEventListener('click', function(e) {
+            e.preventDefault();
+            const days = parseInt(this.dataset.days);
+            const text = this.textContent.trim();
+            
+            currentTimeRange = days;
+            document.getElementById('selected-range').textContent = text;
+            
+            // Close dropdown
+            const dropdown = document.querySelector('.hs-dropdown');
+            dropdown.classList.remove('hs-dropdown-open');
+            
+            loadInsights();
+        });
     });
 
     document.getElementById('export-data').addEventListener('click', function() {
