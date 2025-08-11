@@ -51,8 +51,8 @@ def create_app(config_name=None):
     from routes.api import api_bp
     from routes.insights import insights_bp
     from routes.cravings import cravings_bp
-    from routes.flexible_goals import flexible_goals_bp
     from routes.predictions import predictions_bp
+
 
     
     app.register_blueprint(auth_bp, url_prefix='/auth')
@@ -64,8 +64,8 @@ def create_app(config_name=None):
     app.register_blueprint(api_bp, url_prefix='/api')
     app.register_blueprint(insights_bp, url_prefix='/insights')
     app.register_blueprint(cravings_bp, url_prefix='/cravings')
-    app.register_blueprint(flexible_goals_bp, url_prefix='/flexible_goals')
     app.register_blueprint(predictions_bp, url_prefix='/predictions')
+
 
 
     
