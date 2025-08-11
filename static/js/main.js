@@ -38,11 +38,8 @@ function initializeApp() {
 
     // Dashboard charts and insights
     if (document.getElementById('dailyIntakeChart')) {
-        loadDailyIntakeChart();
-        loadHourlyChart();
-        loadInsights();
-
         const openModalBtn = document.getElementById('openAddLogModal');
+
         const closeModalBtn = document.getElementById('closeAddLogModal');
         const addLogModal = document.getElementById('addLogModal');
         if (openModalBtn && closeModalBtn && addLogModal) {
@@ -140,143 +137,7 @@ function isValidEmail(email) {
     return emailRegex.test(email);
 }
 
-// ApexCharts loaders
-function loadDailyIntakeChart() {
-  fetch('/dashboard/api/daily_intake_chart?days=30')
-    .then(res => res.json())
-    .then(data => {
-      if (!data.success) return;
 
-      const chartDom = document.querySelector('#dailyIntakeChart');
-      if (!chartDom) return;
-      if (chartDom._apexcharts) chartDom._apexcharts.destroy();
-
-      const isDark = document.documentElement.classList.contains('dark');
-      const seriesColor = isDark ? '#A78BFA' : '#8B5CF6';  // violet-400 ↔ violet-600
-      const axisColor   = isDark ? '#D1D5DB' : '#4B5563';  // gray-300 ↔ gray-600
-      const gridColor   = isDark ? '#374151' : '#E5E7EB';  // gray-700 ↔ gray-200
-      const bgColor     = isDark ? '#1F2937' : '#FFF';
-
-      const options = {
-        chart: {
-          type: 'line',
-          height: chartDom.clientHeight || 256,
-          toolbar: { show: false },
-          zoom: { enabled: false },
-          background: bgColor
-        },
-        series: [{ name: 'Pouches', data: data.data.map(d => d.pouches) }],
-        colors: [ seriesColor ],
-        stroke: { curve: 'straight', width: 2 },
-        fill: {
-          type: 'gradient',
-          gradient: {
-            shade: 'dark',
-            shadeIntensity: 0.2,
-            opacityFrom: 0.2,
-            opacityTo: 0.6,
-            stops: [0, 80, 100]
-          }
-        },
-        xaxis: {
-          categories: data.data.map(d => new Date(d.date).toLocaleDateString()),
-          labels: { style: { colors: axisColor, fontSize: '12px' } }
-        },
-        yaxis: {
-          min: 0,
-          labels: { style: { colors: axisColor, fontSize: '12px' } }
-        },
-        grid: {
-          borderColor: gridColor,
-          strokeDashArray: 4
-        },
-        theme: {
-          mode: isDark ? 'dark' : 'light'
-        }
-      };
-
-      new ApexCharts(chartDom, options).render();
-    })
-    .catch(err => console.error(err));
-}
-
-
-
-function loadHourlyChart() {
-  fetch('/dashboard/api/hourly_distribution?days=30')
-    .then(res => res.json())
-    .then(data => {
-      if (!data.success) return;
-
-      const chartDom = document.querySelector('#hourlyChart');
-      if (!chartDom) return;
-      if (chartDom._apexcharts) chartDom._apexcharts.destroy();
-
-      const isDark = document.documentElement.classList.contains('dark');
-
-      // use Tailwind’s green-500 in light, green-400 in dark
-      const seriesColor = isDark ? '#4ADE80' : '#22C55E';
-      // axis/grid colors
-      const axisColor   = isDark ? '#D1D5DB' : '#4B5563';  // gray-300 ↔ gray-600
-      const gridColor   = isDark ? '#374151' : '#E5E7EB';  // gray-600 vs gray-200
-      // chart background
-      const bgColor     = isDark ? '#1F2937' : '#FFFFFF';  // gray-800 vs white
-
-      const options = {
-        chart: {
-          type: 'bar',
-          height: chartDom.clientHeight || 256,
-          toolbar: { show: false },
-          background: bgColor,
-        },
-        series: [{ name: 'Pouches', data: data.data.map(d => d.pouches) }],
-        colors: [ seriesColor ],
-        xaxis: {
-          categories: data.data.map(d => d.hour),
-          labels: { style: { colors: axisColor, fontSize: '12px' } }
-        },
-        yaxis: {
-          min: 0,
-          labels: { style: { colors: axisColor, fontSize: '12px' } }
-        },
-        grid: {
-          borderColor: gridColor,
-          strokeDashArray: 4
-        },
-        theme: {
-          mode: isDark ? 'dark' : 'light'
-        }
-      };
-
-      new ApexCharts(chartDom, options).render();
-    })
-    .catch(err => console.error(err));
-}
-
-
-
-function loadInsights() {
-    fetch('/dashboard/api/insights')
-        .then(response => response.json())
-        .then(data => {
-            const insightsContent = document.getElementById('insights-content');
-            if (!insightsContent) return;
-            if (data.success && data.insights.length > 0) {
-                insightsContent.innerHTML = data.insights.map(insight =>
-                    `<p class="text-sm text-gray-600 dark:text-gray-400 mb-2">• ${insight}</p>`
-                ).join('');
-            } else {
-                insightsContent.innerHTML = '<p class="text-sm text-gray-500 dark:text-gray-400">No insights available yet. Add more log entries to see personalized insights.</p>';
-            }
-        })
-        .catch(err => {
-            console.error('Error loading insights:', err);
-            const insightsContent = document.getElementById('insights-content');
-            if (insightsContent) {
-                insightsContent.innerHTML = '<p class="text-sm text-gray-500 dark:text-gray-400">Unable to load insights.</p>';
-            }
-        });
-}
 
 // Quick add buttons
 function initializeQuickAdd() {
