@@ -2,9 +2,9 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from datetime import date, datetime, timedelta
 from models import User, Goal, Log
 from services import create_goal as create_goal_service
+from services.unified_goal_service import UnifiedGoalService
 from services.timezone_service import (
     get_current_user_time, 
-
     get_user_date_boundaries, 
     get_user_week_boundaries,
     convert_utc_to_user_time
@@ -15,6 +15,7 @@ from routes.auth import login_required, get_current_user
 from sqlalchemy import desc, func
 
 goals_bp = Blueprint('goals', __name__, template_folder="../templates/goals")
+unified_goal_service = UnifiedGoalService()
 
 @goals_bp.route('/')
 @login_required
@@ -387,6 +388,28 @@ def check_notifications():
         return jsonify({
             'success': False,
             'error': 'Unable to check notifications'
+        })
+
+@goals_bp.route('/api/unified-goals')
+@login_required
+def get_unified_goals():
+    """API endpoint to get all goals (traditional + smart)"""
+    try:
+        user = get_current_user()
+        all_goals = unified_goal_service.get_all_user_goals(user.id)
+        analytics = unified_goal_service.get_goal_analytics(user.id)
+        
+        return jsonify({
+            'success': True,
+            'goals': all_goals,
+            'analytics': analytics
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f'Unified goals API error: {e}')
+        return jsonify({
+            'success': False,
+            'error': 'Unable to fetch unified goals'
         })
 
 def calculate_goal_progress(user, goal, target_date):
