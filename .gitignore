@@ -50,4 +50,7 @@ upload/
 *.bak
 *.zip
 
+# Testing
+.pytest_cache/
+axe_*.json
 .hypothesis
