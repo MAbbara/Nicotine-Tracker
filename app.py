@@ -49,6 +49,7 @@ def create_app(config_name=None):
     from routes.goals import goals_bp
     from routes.settings import settings_bp
     from routes.api import api_bp
+    from routes.insights import insights_bp
 
     
     app.register_blueprint(auth_bp, url_prefix='/auth')
@@ -56,8 +57,10 @@ def create_app(config_name=None):
     app.register_blueprint(logging_bp, url_prefix='/log')
     app.register_blueprint(dashboard_bp, url_prefix='/dashboard')
     app.register_blueprint(goals_bp, url_prefix='/goals')
+
     app.register_blueprint(settings_bp, url_prefix='/settings')
     app.register_blueprint(api_bp, url_prefix='/api')
+    app.register_blueprint(insights_bp, url_prefix='/insights')
 
     
     # Main route

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}
+Analytics & Insights - Nicotine Tracker
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold mb-6">Analytics & Insights</h1>
+
+    <!-- Consumption by Time of Day -->
+    <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+        <h2 class="text-2xl font-semibold mb-4">Consumption by Time of Day</h2>
+        <div id="time-of-day-chart"></div>
+    </div>
+
+    <!-- Consumption by Day of Week -->
+    <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+        <h2 class="text-2xl font-semibold mb-4">Consumption by Day of Week</h2>
+        <div id="day-of-week-chart"></div>
+    </div>
+
+    <!-- Average Time Between Pouches -->
+    <div class="bg-white p-6 rounded-lg shadow-md">
+        <h2 class="text-2xl font-semibold mb-4">Average Time Between Pouches</h2>
+        <p id="avg-time-between" class="text-xl"></p>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    fetch('/api/insights')
+        .then(response => response.json())
+        .then(data => {
+            // Time of Day Chart
+            const timeOfDayData = data.consumption_by_time_of_day;
+            const timeOfDayOptions = {
+                chart: { type: 'donut' },
+                series: Object.values(timeOfDayData),
+                labels: Object.keys(timeOfDayData),
+                title: { text: 'Consumption by Time of Day' }
+            };
+            new ApexCharts(document.querySelector("#time-of-day-chart"), timeOfDayOptions).render();
+
+            // Day of Week Chart
+            const dayOfWeekData = data.consumption_by_day_of_week;
+            const dayOfWeekOptions = {
+                chart: { type: 'bar' },
+                series: [{ name: 'Pouches', data: Object.values(dayOfWeekData) }],
+                xaxis: { categories: Object.keys(dayOfWeekData) },
+                title: { text: 'Consumption by Day of Week' }
+            };
+            new ApexCharts(document.querySelector("#day-of-week-chart"), dayOfWeekOptions).render();
+            
+            // Average Time Between Pouches
+            const avgTime = data.average_time_between_pouches;
+            document.getElementById('avg-time-between').innerText = avgTime ? avgTime : 'Not enough data';
+        });
+});
+</script>
+{% endblock %}
