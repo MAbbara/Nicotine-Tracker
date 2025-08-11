@@ -15,6 +15,23 @@ from services.user_service import (
 )  # noqa: F401
 from services.log_service import add_log_entry, add_bulk_logs  # noqa: F401
 from services.goal_service import create_goal  # noqa: F401
+from services.craving_service import (
+    create_craving,
+    get_comprehensive_craving_analytics
+)  # noqa: F401
+from services.health_impact_service import (
+    get_comprehensive_health_impact,
+    update_money_saved
+)  # noqa: F401
+from services.flexible_goal_service import (
+    create_flexible_goal,
+    get_goal_recommendations
+)  # noqa: F401
+from services.predictive_service import (
+    predict_craving_risk,
+    get_risk_alerts,
+    analyze_user_patterns
+)  # noqa: F401
 
 __all__ = [
     "create_user", 
@@ -25,5 +42,14 @@ __all__ = [
     "get_user_date_boundaries_utc",
     "add_log_entry", 
     "add_bulk_logs", 
-    "create_goal"
+    "create_goal",
+    "create_craving",
+    "get_comprehensive_craving_analytics",
+    "get_comprehensive_health_impact",
+    "update_money_saved",
+    "create_flexible_goal",
+    "get_goal_recommendations",
+    "predict_craving_risk",
+    "get_risk_alerts",
+    "analyze_user_patterns"
 ]
