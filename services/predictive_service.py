@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Tuple
 import json
 from sqlalchemy import func, desc, and_, or_
 from extensions import db
-from models import CravingPrediction, UserPattern, Craving, Log, User
+from models import Prediction, CravingPrediction, UserPattern, Craving, Log, User
 
 def analyze_user_patterns(user_id: int, days_back: int = 60) -> List[UserPattern]:
     """Analyze user patterns and store them in the database."""
