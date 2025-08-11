@@ -74,10 +74,7 @@
              class="{% if current_endpoint == 'cravings.cravings_page' %}border-indigo-500 text-gray-900 dark:text-white{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white{% endif %} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
             Cravings
           </a>
-          <a href="{{ url_for('flexible_goals.dashboard') }}"
-             class="{% if current_endpoint == 'flexible_goals.dashboard' %}border-indigo-500 text-gray-900 dark:text-white{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white{% endif %} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
-            Smart Goals
-          </a>
+
         </div>
       </div>
 
@@ -93,32 +90,39 @@
 
           <div class="hs-dropdown-menu transition-[opacity,margin] ease-in-out duration-[150ms] hs-dropdown-open:opacity-100 hs-dropdown-open:translate-y-0 opacity-0 -translate-y-2 w-60 z-10 bg-white shadow-md rounded-lg p-2 mt-2 dark:bg-gray-800 dark:border dark:border-gray-700 before:absolute top-full border border-gray-200 before:-top-5 before:start-0 before:w-full before:h-5 hidden" role="menu" aria-orientation="vertical" aria-labelledby="hs-navbar-dropdown">
             <div class="py-3 px-5 -m-2 bg-gray-100 rounded-t-lg dark:bg-gray-700">
-              <p class="text-sm text-gray-500 dark:text-yellow-400 leading-tight">
+              <p class="text-sm text-gray-500 dark:text-gray-400 leading-tight">
                 Signed in as
               </p>
-              <p class="text-sm font-medium text-gray-800 dark:text-yellow-300 break-all">{{ session.user_email }}</p>
+              <p class="text-sm font-medium text-gray-800 dark:text-white break-all">{{ session.user_email }}</p>
+
             </div>
             <div class="mt-2 py-2 first:pt-0 last:pb-0">
-              <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 dark:text-yellow-400 dark:hover:bg-gray-700 dark:hover:text-yellow-300 dark:focus:bg-gray-700 dark:focus:text-yellow-300 {% if current_endpoint == 'settings.profile' %}bg-gray-100 dark:bg-gray-700{% endif %}" href="{{ url_for('settings.profile') }}">
+              <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white dark:focus:bg-gray-700 dark:focus:text-white {% if current_endpoint == 'settings.profile' %}bg-gray-100 dark:bg-gray-700{% endif %}" href="{{ url_for('settings.profile') }}">
+
                 Profile
               </a>
-              <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 dark:text-yellow-400 dark:hover:bg-gray-700 dark:hover:text-yellow-300 dark:focus:bg-gray-700 dark:focus:text-yellow-300 {% if current_endpoint == 'settings.index' %}bg-gray-100 dark:bg-gray-700{% endif %}" href="{{ url_for('settings.index') }}">
+              <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white dark:focus:bg-gray-700 dark:focus:text-white {% if current_endpoint == 'settings.index' %}bg-gray-100 dark:bg-gray-700{% endif %}" href="{{ url_for('settings.index') }}">
+
                 Settings
               </a>
-              <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-gray-800 hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 dark:text-yellow-400 dark:hover:bg-gray-700 dark:hover:text-yellow-300 dark:focus:bg-gray-700 dark:focus:text-yellow-300 {% if current_endpoint == 'settings.privacy' %}bg-gray-100 dark:bg-gray-700{% endif %}" href="{{ url_for('settings.privacy') }}">
+              <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white dark:focus:bg-gray-700 dark:focus:text-white {% if current_endpoint == 'settings.privacy' %}bg-gray-100 dark:bg-gray-700{% endif %}" href="{{ url_for('settings.privacy') }}">
+
                 Privacy Settings
               </a>
-              <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-gray-800 hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 dark:text-yellow-400 dark:hover:bg-gray-700 dark:hover:text-yellow-300 dark:focus:bg-gray-700 dark:focus:text-yellow-300 {% if current_endpoint == 'settings.data_management' %}bg-gray-100 dark:bg-gray-700{% endif %}" href="{{ url_for('settings.data_management') }}">
+              <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white dark:focus:bg-gray-700 dark:focus:text-white {% if current_endpoint == 'settings.data_management' %}bg-gray-100 dark:bg-gray-700{% endif %}" href="{{ url_for('settings.data_management') }}">
+
                 Data Management
               </a>
-              <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-gray-800 hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 dark:text-yellow-400 dark:hover:bg-gray-700 dark:hover:text-yellow-300 dark:focus:bg-gray-700 dark:focus:text-yellow-300 {% if current_endpoint == 'settings.account' %}bg-gray-100 dark:bg-gray-700{% endif %}" href="{{ url_for('settings.account') }}">
+              <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white dark:focus:bg-gray-700 dark:focus:text-white {% if current_endpoint == 'settings.account' %}bg-gray-100 dark:bg-gray-700{% endif %}" href="{{ url_for('settings.account') }}">
+
                 Account Settings
               </a>
 
               <div class="border-t border-gray-200 dark:border-gray-700 my-2"></div>
-              <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-gray-800 hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 dark:text-yellow-400 dark:hover:bg-gray-700 dark:hover:text-yellow-300 dark:focus:bg-gray-700 dark:focus:text-yellow-300" href="{{ url_for('auth.logout') }}">
+              <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white dark:focus:bg-gray-700 dark:focus:text-white" href="{{ url_for('auth.logout') }}">
                 Sign out
               </a>
+
             </div>
           </div>
         </div>
@@ -166,10 +170,7 @@
          class="{% if current_endpoint == 'cravings.cravings_page' %}bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-gray-700 dark:border-indigo-500 dark:text-indigo-300{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">
         Cravings
       </a>
-      <a href="{{ url_for('flexible_goals.dashboard') }}"
-         class="{% if current_endpoint == 'flexible_goals.dashboard' %}bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-gray-700 dark:border-indigo-500 dark:text-indigo-300{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">
-        Smart Goals
-      </a>
+
     </div>
     <div class="pt-4 pb-3 border-t border-gray-200 dark:border-gray-700">
       <div class="hs-dropdown [--strategy:static] sm:[--strategy:fixed] [--adaptive:none] sm:[--adaptive:adaptive] relative px-4">
@@ -203,15 +204,12 @@
             </a>
 
             <div class="border-t border-gray-200 dark:border-gray-700 my-2"></div>
-            <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-gray-800 hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 dark:text-yellow-400 dark:hover:bg-gray-700 dark:hover:text-yellow-300 dark:focus:bg-gray-700 dark:focus:text-yellow-300" href="{{ url_for('auth.logout') }}">
-               class="block px-4 py-2 text-base font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700 {% if current_endpoint == 'settings.account' %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-white{% endif %}">
-              Account Settings
-            </a>
 
             <a href="{{ url_for('auth.logout') }}"
                class="block px-4 py-2 text-base font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700">
               Sign out
             </a>
+
           </div>
         </div>
       </div>

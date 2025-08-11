@@ -19,11 +19,8 @@ from services.craving_service import (
     create_craving,
     get_comprehensive_craving_analytics
 )  # noqa: F401
-from services.flexible_goal_service import (
-    create_flexible_goal,
-    get_goal_recommendations
-)  # noqa: F401
 from services.predictive_service import (
+
     predict_craving_risk,
     get_risk_alerts,
     analyze_user_patterns
@@ -42,9 +39,8 @@ __all__ = [
     "create_goal",
     "create_craving",
     "get_comprehensive_craving_analytics",
-    "create_flexible_goal",
-    "get_goal_recommendations",
     "predict_craving_risk",
+
     "get_risk_alerts",
     "analyze_user_patterns",
     "UnifiedGoalService",
