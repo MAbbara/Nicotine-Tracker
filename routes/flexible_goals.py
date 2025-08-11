@@ -16,7 +16,7 @@ flexible_goals_bp = Blueprint('flexible_goals', __name__, template_folder='../te
 
 @flexible_goals_bp.route('/')
 @login_required
-def index():
+def dashboard():
     """Flexible goals dashboard page."""
     try:
         user = get_current_user()

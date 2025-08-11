@@ -12,7 +12,7 @@ health_impact_service = HealthImpactService()
 @login_required
 def dashboard():
     """Health impact dashboard"""
-    return render_template('dashboard.html')
+    return render_template('dashboard.html', user=get_current_user())
 
 @health_impact_bp.route('/add', methods=['POST'])
 @login_required
