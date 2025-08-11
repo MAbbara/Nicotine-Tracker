@@ -18,10 +18,14 @@ from .user_settings import UserSettings  # noqa: F401
 from .notification import NotificationQueue, NotificationHistory  # noqa: F401
 from .user_activity import UserActivity  # noqa: F401
 from .craving import Craving  # noqa: F401
+from .health_impact import HealthImpact  # noqa: F401
+from .goal_template import GoalTemplate, FlexibleGoal  # noqa: F401
+from .prediction import CravingPrediction, UserPattern  # noqa: F401
 
 __all__ = [
     "User", "Pouch", "Log", "Goal", "PasswordReset", "EmailVerification", "UserPreferences", 
     "UserSettings", "NotificationQueue", "NotificationHistory", "UserActivity", "Craving",
+    "HealthImpact", "GoalTemplate", "FlexibleGoal", "CravingPrediction", "UserPattern",
     "init_default_pouches"
 ]
 
