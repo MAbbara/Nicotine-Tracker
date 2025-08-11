@@ -1,7 +1,6 @@
 document.addEventListener('DOMContentLoaded', function () {
     const dailyIntakeChartEl = document.getElementById('dailyIntakeChart');
     const hourlyChartEl = document.getElementById('hourlyChart');
-    const insightsContentEl = document.getElementById('insights-content');
 
     if (!dailyIntakeChartEl) {
         return;
@@ -132,30 +131,12 @@ document.addEventListener('DOMContentLoaded', function () {
             .catch(err => console.error('Error loading hourly chart:', err));
     }
 
-    const loadInsights = () => {
-        if (!insightsContentEl) return;
-        fetch('/dashboard/api/insights')
-            .then(response => response.json())
-            .then(data => {
-                if (data.success && data.insights.length > 0) {
-                    insightsContentEl.innerHTML = data.insights.map(insight => `<p class="text-sm text-gray-600 dark:text-gray-400 mb-2">• ${insight}</p>`).join('');
-                } else {
-                    insightsContentEl.innerHTML = '<p class="text-sm text-gray-500 dark:text-gray-400">No insights available yet.</p>';
-                }
-            })
-            .catch(err => {
-                console.error('Error loading insights:', err);
-                insightsContentEl.innerHTML = '<p class="text-sm text-gray-500 dark:text-gray-400">Unable to load insights.</p>';
-            });
-    }
-
     // Initial load
     const endDate = new Date();
     const startDate = new Date();
     startDate.setDate(endDate.getDate() - 29);
     fetchAndRenderDailyIntakeChart(formatDate(startDate), formatDate(endDate));
     loadHourlyChart();
-    loadInsights();
 
 
     const customRangeContainer = document.querySelector('#daily-intake-filter-dropdown .px-3.py-2');

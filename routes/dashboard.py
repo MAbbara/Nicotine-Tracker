@@ -79,6 +79,85 @@ def index():
             today_str = date.today().isoformat()
             current_time_str = datetime.now().time().strftime('%H:%M')
         
+        # Calculate 7-day stats
+        total_mg_7_days = 0
+        total_pouches_7_days = 0
+        
+        for i in range(7):
+            d = today - timedelta(days=i)
+            daily_intake = get_user_daily_intake(user, d, use_timezone=True)
+            total_mg_7_days += daily_intake['total_mg']
+            total_pouches_7_days += daily_intake['total_pouches']
+
+        # Calculate averages
+        avg_mg_7_days = round(total_mg_7_days / 7, 1) if total_mg_7_days > 0 else 0
+        avg_pouches_7_days = round(total_pouches_7_days / 7, 1) if total_pouches_7_days > 0 else 0
+        
+        insights = []
+
+        # Daily average insight
+        if total_pouches_7_days > 0:
+            insights.append(f"Your 7-day average is {avg_pouches_7_days} pouches ({avg_mg_7_days}mg) per day.")
+
+        # Categorize intake and provide messages
+        health_risk_info = ""
+        if avg_mg_7_days == 0:
+            health_risk_info = "You haven't logged any intake recently. This is the best way to avoid health risks."
+        elif avg_mg_7_days <= 20:
+            health_risk_info = "This is a low intake level. Keep it up to minimize health risks!"
+        elif avg_mg_7_days <= 50:
+            health_risk_info = "This is a moderate intake level. Being mindful of your consumption helps manage health risks."
+        elif avg_mg_7_days <= 100:
+            health_risk_info = "This is a high intake level. Consider strategies to reduce consumption to lower long-term health risks."
+        else:
+            health_risk_info = "This is a very high intake level, associated with increased health risks. Setting reduction goals could be a valuable step."
+        
+        insights.append(health_risk_info)
+        
+        # Get this week vs last week comparison using timezone-aware calculations
+        this_week_start = today - timedelta(days=today.weekday())
+        last_week_start = this_week_start - timedelta(days=7)
+        last_week_end = this_week_start - timedelta(days=1)
+        
+        # Calculate weekly totals using timezone-aware daily intake
+        this_week_pouches = 0
+        
+        current_date = this_week_start
+        while current_date <= today:
+            daily_intake = get_user_daily_intake(user, current_date, use_timezone=True)
+            this_week_pouches += daily_intake['total_pouches']
+            current_date += timedelta(days=1)
+        
+        last_week_pouches = 0
+        
+        current_date = last_week_start
+        while current_date <= last_week_end:
+            daily_intake = get_user_daily_intake(user, current_date, use_timezone=True)
+            last_week_pouches += daily_intake['total_pouches']
+            current_date += timedelta(days=1)
+        
+        # Weekly comparison
+        if last_week_pouches > 0 and this_week_pouches > 0:
+            change_percent = round(((this_week_pouches - last_week_pouches) / last_week_pouches) * 100, 1)
+            if change_percent > 5:
+                insights.append(f"Your pouch intake is up {change_percent}% compared to last week.")
+            elif change_percent < -5:
+                insights.append(f"Great job! Your pouch intake is down {abs(change_percent)}% compared to last week.")
+        
+        # Most active hour (keep simple date filtering for hourly analysis)
+        most_active_hour = db.session.query(
+            func.extract('hour', Log.log_time).label('hour'),
+            func.sum(Log.quantity).label('total_pouches')
+        ).filter(
+            Log.user_id == user.id,
+            Log.log_date >= today - timedelta(days=30),
+            Log.log_time.isnot(None)
+        ).group_by(func.extract('hour', Log.log_time)).order_by(desc('total_pouches')).first()
+        
+        if most_active_hour:
+            hour = int(most_active_hour.hour)
+            insights.append(f"Your most active time for intake is around {hour:02d}:00.")
+        
         return render_template('dashboard.html',
                              date=date,
                              today_intake=today_intake,
@@ -90,7 +169,9 @@ def index():
                              user_pouches=user_pouches,
                              today=today_str,
                              current_time=current_time_str,
+                             insights=insights,
                              user=user)
+
         
     except Exception as e:
         current_app.logger.error(f'Dashboard error: {e}')
@@ -254,89 +335,3 @@ def hourly_distribution():
     except Exception as e:
         current_app.logger.error(f'Hourly distribution error: {e}')
         return jsonify({'success': False, 'error': 'Unable to load hourly data'})
-
-@dashboard_bp.route('/api/insights')
-@login_required
-def insights():
-    """API endpoint for usage insights and trends with timezone-aware calculations"""
-    try:
-        user = get_current_user()
-        
-        # Use timezone-aware date range based on user's reset time
-        if user.timezone:
-            # Get user's current day and work backwards
-            reset_time = None
-            if user.preferences and user.preferences.daily_reset_time:
-                reset_time = user.preferences.daily_reset_time
-            
-            today = get_current_user_day(user.timezone, reset_time)
-        else:
-            today = date.today()
-        
-        # Get this week vs last week comparison using timezone-aware calculations
-        this_week_start = today - timedelta(days=today.weekday())
-        last_week_start = this_week_start - timedelta(days=7)
-        last_week_end = this_week_start - timedelta(days=1)
-        
-        # Calculate weekly totals using timezone-aware daily intake
-        this_week_pouches = 0
-        this_week_mg = 0
-        days_this_week = 0
-        
-        current_date = this_week_start
-        while current_date <= today:
-            daily_intake = get_user_daily_intake(user, current_date, use_timezone=True)
-            this_week_pouches += daily_intake['total_pouches']
-            this_week_mg += daily_intake['total_mg']
-            days_this_week += 1
-            current_date += timedelta(days=1)
-        
-        last_week_pouches = 0
-        last_week_mg = 0
-        
-        current_date = last_week_start
-        while current_date <= last_week_end:
-            daily_intake = get_user_daily_intake(user, current_date, use_timezone=True)
-            last_week_pouches += daily_intake['total_pouches']
-            last_week_mg += daily_intake['total_mg']
-            current_date += timedelta(days=1)
-        
-        insights = []
-        
-        # Weekly comparison
-        if last_week_pouches > 0:
-            change_percent = round(((this_week_pouches - last_week_pouches) / last_week_pouches) * 100, 1)
-            if change_percent > 0:
-                insights.append(f"Your intake is up {change_percent}% vs. last week")
-            elif change_percent < 0:
-                insights.append(f"Your intake is down {abs(change_percent)}% vs. last week")
-            else:
-                insights.append("Your intake is consistent with last week")
-        
-        # Daily average
-        if days_this_week > 0:
-            daily_avg = round(this_week_pouches / days_this_week, 1)
-            insights.append(f"Your daily average this week: {daily_avg} pouches")
-        
-        # Most active hour (keep simple date filtering for hourly analysis)
-        most_active_hour = db.session.query(
-            func.extract('hour', Log.log_time).label('hour'),
-            func.sum(Log.quantity).label('total_pouches')
-        ).filter(
-            Log.user_id == user.id,
-            Log.log_date >= today - timedelta(days=30),
-            Log.log_time.isnot(None)
-        ).group_by(func.extract('hour', Log.log_time)).order_by(desc('total_pouches')).first()
-        
-        if most_active_hour:
-            hour = int(most_active_hour.hour)
-            insights.append(f"Your most active hour: {hour:02d}:00")
-        
-        return jsonify({
-            'success': True,
-            'insights': insights
-        })
-        
-    except Exception as e:
-        current_app.logger.error(f'Insights error: {e}')
-        return jsonify({'success': False, 'error': 'Unable to load insights'})
