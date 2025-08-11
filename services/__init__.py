@@ -28,7 +28,6 @@ from services.predictive_service import (
     get_risk_alerts,
     analyze_user_patterns
 )
-from services.health_impact_service import HealthImpactService
 from services.unified_goal_service import UnifiedGoalService
 
 __all__ = [
@@ -43,13 +42,10 @@ __all__ = [
     "create_goal",
     "create_craving",
     "get_comprehensive_craving_analytics",
-    "get_comprehensive_health_impact",
-    "update_money_saved",
     "create_flexible_goal",
     "get_goal_recommendations",
     "predict_craving_risk",
     "get_risk_alerts",
     "analyze_user_patterns",
-    "HealthImpactService",
     "UnifiedGoalService",
 ]
