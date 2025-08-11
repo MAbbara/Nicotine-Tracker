@@ -1,9 +1,10 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, jsonify
 from datetime import date, datetime, timedelta
 from models import User, Goal, Log
-from services import create_goal
+from services import create_goal as create_goal_service
 from services.timezone_service import (
     get_current_user_time, 
+
     get_user_date_boundaries, 
     get_user_week_boundaries,
     convert_utc_to_user_time
@@ -105,7 +106,7 @@ def create_goal():
 
             # Create new goal via service layer. The Goal model defines default
             # start_date and is_active values, so we rely on those defaults.
-            new_goal = create_goal(
+            new_goal = create_goal_service(
                 user_id=user.id,
                 goal_type=goal_type,
                 target_value=target_value,
@@ -113,6 +114,7 @@ def create_goal():
                 enable_notifications=enable_notifications,
                 notification_threshold=notification_threshold
             )
+
 
             current_app.logger.info(f'Goal created for user {user.email}: {goal_type} - {target_value}')
             flash(f'Goal created successfully! Target: {target_value} {goal_type.replace("_", " ")}', 'success')

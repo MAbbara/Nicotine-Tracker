@@ -194,3 +194,49 @@ def get_daily_intake_for_user(user_id: int, start_date: date, end_date: date, re
         result[day] = total
         
     return result
+
+def get_user_logs(user_id: int) -> Iterable[Log]:
+    """Retrieve all logs for a given user, ordered by most recent."""
+    return Log.query.filter_by(user_id=user_id).order_by(Log.log_time.desc()).all()
+
+def create_log_entry(user_id: int, pouch_id: int, quantity: int, log_time: datetime, notes: str = "") -> Log:
+    """
+    Creates a log entry. Simplified for testing.
+    """
+    log = Log(
+        user_id=user_id,
+        pouch_id=pouch_id,
+        quantity=quantity,
+        log_time=log_time,
+        log_date=log_time.date(),
+        notes=notes
+    )
+    db.session.add(log)
+    db.session.commit()
+    return log
+
+def get_logs_by_date_range(user_id: int, start_date: date, end_date: date) -> Iterable[Log]:
+    """Retrieve logs for a user within a specific date range."""
+    return Log.query.filter(
+        Log.user_id == user_id,
+        Log.log_date >= start_date,
+        Log.log_date <= end_date
+    ).all()
+
+def get_average_daily_usage(user_id: int) -> float:
+    """Calculates the average daily pouch usage for a user."""
+    logs = Log.query.filter_by(user_id=user_id).all()
+    if not logs:
+        return 0.0
+
+    # Group by date and sum quantities
+    daily_usage = defaultdict(int)
+    for log in logs:
+        daily_usage[log.log_date] += log.quantity
+
+    if not daily_usage:
+        return 0.0
+
+    total_pouches = sum(daily_usage.values())
+    num_days = len(daily_usage)
+    return total_pouches / num_days if num_days > 0 else 0.0

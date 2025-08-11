@@ -69,9 +69,10 @@ def add_log():
             try:
                 # Validate and process pouch selection
                 if pouch_id and pouch_id != 'custom':
-                    pouch = Pouch.query.get(pouch_id)
+                    pouch = db.session.get(Pouch, pouch_id)
                     if not pouch:
                         flash('Selected pouch not found.', 'error')
+
                         return redirect(url_for('logging.add_log'))
                     # Always use server-side timezone conversion
                     add_log_entry(
@@ -419,9 +420,10 @@ def quick_add_api():
         if not pouch_id or quantity <= 0:
             return jsonify({'success': False, 'error': 'Invalid data'})
         
-        pouch = Pouch.query.get(pouch_id)
+        pouch = db.session.get(Pouch, pouch_id)
         if not pouch:
             return jsonify({'success': False, 'error': 'Pouch not found'})
+
         
         # Use service layer to create quick log entry with current date and time in user's timezone
         try:

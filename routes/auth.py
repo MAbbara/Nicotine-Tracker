@@ -217,7 +217,8 @@ def resend_verification():
             return redirect(url_for('auth.login'))
         
         user_id = session['user_id']
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
+
         
         if not user:
             flash('User not found.', 'error')
@@ -335,8 +336,9 @@ def login_required(f):
 def get_current_user():
     """Get current logged in user"""
     if 'user_id' in session:
-        return User.query.get(session['user_id'])
+        return db.session.get(User, session['user_id'])
     return None
+
 
 # Make current user available in all templates
 @auth_bp.app_context_processor

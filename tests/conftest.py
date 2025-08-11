@@ -10,15 +10,15 @@ from services import user_service, log_service, goal_service
 import os
 import tempfile
 import json
+import multiprocessing
+import time
 
-@pytest.fixture(scope='session')
+
+@pytest.fixture(scope='function')
 def app():
     """Create application for testing."""
-    app = create_app()
+    app = create_app('testing')
     app.config.update({
-        'TESTING': True,
-        'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
-        'WTF_CSRF_ENABLED': False,
         'SECRET_KEY': 'test-secret-key',
         'MAIL_SUPPRESS_SEND': True,
     })
@@ -131,3 +131,52 @@ def sample_user_data():
         'password': 'securepassword123',
         'confirm_password': 'securepassword123'
     }
+
+
+def run_app(db_path, port=5000):
+    """
+    Helper function to create and run the Flask app in a separate process.
+    """
+    app = create_app('testing')
+    app.config.update({
+        "SQLALCHEMY_DATABASE_URI": f"sqlite:///{db_path}",
+        "TESTING": True,
+        'SERVER_NAME': f'localhost:{port}',
+        'SECRET_KEY': 'test-secret-key',
+        'MAIL_SUPPRESS_SEND': True,
+    })
+
+    with app.app_context():
+        db.create_all()
+        # Create a test user for login-required pages
+        user = User(email='test@example.com', email_verified=True)
+        user.set_password('password123')
+        db.session.add(user)
+        db.session.commit()
+    
+    app.run(port=port)
+
+
+@pytest.fixture(scope="class")
+def live_server():
+    """
+    Fixture that starts a live server for the application, with a test user.
+    """
+    # Use a temporary file for the database
+    db_fd, db_path = tempfile.mkstemp()
+    port = 5000
+
+    # Run the server in a separate process
+    server = multiprocessing.Process(target=run_app, args=(db_path, port))
+    server.start()
+
+    # Wait for the server to be ready
+    time.sleep(2)
+
+    yield f"http://localhost:{port}"
+
+    # Clean up the server and database
+    server.terminate()
+    server.join()
+    os.close(db_fd)
+    os.unlink(db_path)

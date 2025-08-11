@@ -3,8 +3,10 @@
 These helpers encapsulate operations for creating and managing goals.
 """
 from datetime import date
+from typing import Iterable, Optional
 
 from extensions import db
+
 
 # Import the Goal model from the models package aggregator
 from models import Goal
@@ -28,4 +30,18 @@ def create_goal(user_id: int,
     )
     db.session.add(goal)
     db.session.commit()
+    return goal
+
+
+def get_active_goals(user_id: int) -> Iterable[Goal]:
+    """Retrieve all active goals for a given user."""
+    return Goal.query.filter_by(user_id=user_id, is_active=True).all()
+
+
+def deactivate_goal(goal_id: int) -> Optional[Goal]:
+    """Deactivate a specific goal."""
+    goal = db.session.get(Goal, goal_id)
+    if goal:
+        goal.is_active = False
+        db.session.commit()
     return goal

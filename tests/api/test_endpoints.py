@@ -8,7 +8,9 @@ from app import db
 from models import User, Pouch, Log, Goal
 
 class TestApiEndpoints:
+
     """Test suite for API endpoints."""
+
 
     @pytest.fixture(autouse=True)
     def logged_in_client(self, client, test_user):
@@ -51,7 +53,7 @@ class TestApiEndpoints:
         assert log.pouch_id == test_pouch.id
         assert log.quantity == 1
 
-    def test_get_pouches_api(self, logged_in_client):
+    def test_get_pouches_api(self, logged_in_client, test_pouch):
         """Test the /api/pouches endpoint."""
         response = logged_in_client.get('/api/pouches')
         assert response.status_code == 200
@@ -60,7 +62,7 @@ class TestApiEndpoints:
         assert isinstance(json_data['pouches'], list)
         assert len(json_data['pouches']) > 0
 
-    def test_get_brands_api(self, logged_in_client):
+    def test_get_brands_api(self, logged_in_client, test_pouch):
         """Test the /api/brands endpoint."""
         response = logged_in_client.get('/api/brands')
         assert response.status_code == 200
@@ -68,6 +70,7 @@ class TestApiEndpoints:
         assert json_data['success'] is True
         assert isinstance(json_data['brands'], list)
         assert 'Test Brand' in json_data['brands']
+
 
     def test_get_strengths_api(self, logged_in_client, test_pouch):
         """Test the /api/strengths/<brand> endpoint."""

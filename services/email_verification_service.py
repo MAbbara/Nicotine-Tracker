@@ -60,9 +60,10 @@ class EmailVerificationService:
                 return False, error
             
             # Get the user
-            user = User.query.get(verification_token.user_id)
+            user = db.session.get(User, verification_token.user_id)
             if not user:
                 return False, "User not found"
+
             
             # Mark email as verified
             user.email_verified = True
@@ -84,9 +85,10 @@ class EmailVerificationService:
     def send_verification_email(self, user_id):
         """Send verification email to user"""
         try:
-            user = User.query.get(user_id)
+            user = db.session.get(User, user_id)
             if not user:
                 return False, "User not found"
+
             
             if user.email_verified:
                 return False, "Email already verified"
@@ -142,9 +144,10 @@ class EmailVerificationService:
     def can_send_verification(self, user_id, cooldown_minutes=5):
         """Check if user can request another verification email"""
         try:
-            user = User.query.get(user_id)
+            user = db.session.get(User, user_id)
             if not user or user.email_verified:
                 return False
+
             
             # Check recent attempts (rate limiting)
             recent_attempts = self.get_recent_attempts(user_id, hours=1)
@@ -180,9 +183,10 @@ class EmailVerificationService:
     def get_verification_status(self, user_id):
         """Get verification status for a user"""
         try:
-            user = User.query.get(user_id)
+            user = db.session.get(User, user_id)
             if not user:
                 return None
+
             
             # Get latest verification token
             latest_token = EmailVerification.query.filter_by(
