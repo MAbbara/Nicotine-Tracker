@@ -1,7 +1,7 @@
 """
 Health Impact Service
 """
-from models.health_impact import HealthImpact
+from models import HealthImpact
 from extensions import db
 
 class HealthImpactService:

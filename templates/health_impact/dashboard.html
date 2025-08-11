@@ -1,292 +1,110 @@
 {% extends "base.html" %}
 
-{% block title %}Health Impact Dashboard - Nicotine Tracker{% endblock %}
+{% block title %}Health Impact - Nicotine Tracker{% endblock %}
 
 {% block content %}
 <div class="px-4 sm:px-6 lg:px-8">
-    <div class="flex items-center justify-between">
-        <div>
-            <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Health Impact Dashboard</h1>
-            <p class="text-sm text-gray-700 dark:text-gray-300">Track your health improvements and financial savings</p>
-        </div>
+    <h1 class="text-2xl font-semibold text-gray-900 dark:text-white mb-6">Health Impact Dashboard</h1>
+
+    <!-- Add Health Impact Form -->
+    <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-8">
+        <h2 class="text-xl font-semibold text-gray-800 dark:text-white mb-4">Record Health Metrics</h2>
+        <form id="health-impact-form">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="blood_pressure" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Blood Pressure</label>
+                    <input type="text" id="blood_pressure" name="blood_pressure" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                </div>
+                <div>
+                    <label for="heart_rate" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Heart Rate (bpm)</label>
+                    <input type="number" id="heart_rate" name="heart_rate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                </div>
+                <div>
+                    <label for="gum_health" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Gum Health</label>
+                    <select id="gum_health" name="gum_health" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        <option>Good</option>
+                        <option>Fair</option>
+                        <option>Poor</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="anxiety_level" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Anxiety Level (1-10)</label>
+                    <input type="range" id="anxiety_level" name="anxiety_level" min="1" max="10" class="mt-1 block w-full">
+                </div>
+                <div>
+                    <label for="focus_level" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Focus Level (1-10)</label>
+                    <input type="range" id="focus_level" name="focus_level" min="1" max="10" class="mt-1 block w-full">
+                </div>
+                <div>
+                    <label for="mood" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Mood</label>
+                    <input type="text" id="mood" name="mood" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                </div>
+            </div>
+            <div class="mt-6">
+                <label for="notes" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Notes</label>
+                <textarea id="notes" name="notes" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"></textarea>
+            </div>
+            <div class="mt-6">
+                <button type="submit" class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">Save Record</button>
+            </div>
+        </form>
     </div>
 
-    <!-- Financial Impact Cards -->
-    <div class="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <!-- Total Money Saved -->
-        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
-                            <span class="text-white font-bold text-sm">💰</span>
-                        </div>
-                    </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-                                Money Saved
-                            </dt>
-                            <dd class="text-lg font-medium text-gray-900 dark:text-white" id="total-saved">
-                                $0.00
-                            </dd>
-                        </dl>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Daily Savings -->
-        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center">
-                            <span class="text-white font-bold text-sm">📅</span>
-                        </div>
-                    </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-                                Daily Savings
-                            </dt>
-                            <dd class="text-lg font-medium text-gray-900 dark:text-white" id="daily-saved">
-                                $0.00
-                            </dd>
-                        </dl>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Days Since Start -->
-        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="w-8 h-8 bg-purple-500 rounded-md flex items-center justify-center">
-                            <span class="text-white font-bold text-sm">📊</span>
-                        </div>
-                    </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-                                Days Since Start
-                            </dt>
-                            <dd class="text-lg font-medium text-gray-900 dark:text-white" id="days-since-start">
-                                0
-                            </dd>
-                        </dl>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Consumption Reduction -->
-        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="w-8 h-8 bg-orange-500 rounded-md flex items-center justify-center">
-                            <span class="text-white font-bold text-sm">📉</span>
-                        </div>
-                    </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-                                Reduction
-                            </dt>
-                            <dd class="text-lg font-medium text-gray-900 dark:text-white" id="reduction-percent">
-                                0%
-                            </dd>
-                        </dl>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Health Timeline -->
-    <div class="mt-8">
-        <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Health Improvement Timeline</h2>
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <div id="health-timeline" class="space-y-4">
-                <!-- Timeline items will be loaded here -->
-                <div class="text-center py-8">
-                    <div class="text-gray-400 dark:text-gray-500 text-4xl mb-4">⏳</div>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Loading health timeline...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Risk Reduction -->
-    <div class="mt-8">
-        <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Health Risk Reduction</h2>
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div class="text-center">
-                    <div class="text-2xl font-bold text-red-600 dark:text-red-400" id="cardiovascular-risk">0%</div>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Cardiovascular Risk</p>
-                </div>
-                <div class="text-center">
-                    <div class="text-2xl font-bold text-yellow-600 dark:text-yellow-400" id="addiction-risk">0%</div>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Addiction Risk</p>
-                </div>
-                <div class="text-center">
-                    <div class="text-2xl font-bold text-green-600 dark:text-green-400" id="oral-health-risk">0%</div>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Oral Health Risk</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Set Quit Date -->
-    <div class="mt-8">
-        <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Complete Cessation Tracking</h2>
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <p class="text-sm text-gray-700 dark:text-gray-300 mb-4">
-                If you've quit nicotine completely, set your quit date to track additional health milestones.
-            </p>
-            
-            <div class="flex flex-col sm:flex-row sm:items-center gap-4">
-                <div class="flex-1">
-                    <label for="quit-date" class="block text-sm font-medium text-gray-900 dark:text-white">Quit Date</label>
-                    <input type="date" id="quit-date" 
-                           class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
-                </div>
-                <div class="flex-shrink-0">
-                    <button id="set-quit-date" 
-                            class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
-                        Set Quit Date
-                    </button>
-                </div>
-            </div>
-            
-            <div id="quit-status" class="mt-4"></div>
-        </div>
+    <!-- Health Impact History -->
+    <div id="health-impact-history">
+        <!-- Data will be loaded here -->
     </div>
 </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Load health impact data
-    function loadHealthData() {
-        fetch('/health-impact/api/financial-data')
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById('total-saved').textContent = '$' + (data.total_savings || 0).toFixed(2);
-                document.getElementById('daily-saved').textContent = '$' + (data.daily_savings || 0).toFixed(2);
-                document.getElementById('days-since-start').textContent = data.days_since_start || 0;
-            })
-            .catch(error => console.error('Financial data error:', error));
+    const form = document.getElementById('health-impact-form');
+    const historyContainer = document.getElementById('health-impact-history');
 
-        // Load health timeline
-        fetch('/health-impact/api/health-timeline')
-            .then(response => response.json())
-            .then(data => {
-                const timeline = document.getElementById('health-timeline');
-                timeline.innerHTML = '';
-                
-                if (data.length === 0) {
-                    timeline.innerHTML = `
-                        <div class="text-center py-8">
-                            <div class="text-gray-400 dark:text-gray-500 text-4xl mb-4">🏥</div>
-                            <p class="text-sm text-gray-500 dark:text-gray-400">No health milestones available yet. Keep tracking your progress!</p>
-                        </div>
-                    `;
-                    return;
-                }
-                
-                data.forEach(milestone => {
-                    const div = document.createElement('div');
-                    div.className = `flex items-center p-4 border-l-4 rounded-r-lg ${
-                        milestone.achieved 
-                            ? 'border-green-500 bg-green-50 dark:bg-green-900/20' 
-                            : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50'
-                    }`;
-                    
-                    div.innerHTML = `
-                        <div class="flex-1">
-                            <h4 class="font-semibold ${
-                                milestone.achieved 
-                                    ? 'text-green-800 dark:text-green-200' 
-                                    : 'text-gray-700 dark:text-gray-300'
-                            }">${milestone.milestone}</h4>
-                            <p class="text-sm text-gray-600 dark:text-gray-400">${milestone.description}</p>
-                            ${milestone.achieved ? 
-                                `<p class="text-xs text-green-600 dark:text-green-400 mt-1">✓ Achieved ${milestone.days_ago} days ago</p>` :
-                                milestone.days_remaining ? 
-                                    `<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">In ${milestone.days_remaining} days</p>` : ''
-                            }
-                        </div>
-                        <div class="ml-4">
-                            ${milestone.achieved ? 
-                                '<span class="text-green-500 text-2xl">✓</span>' : 
-                                '<span class="text-gray-400 text-2xl">○</span>'
-                            }
-                        </div>
-                    `;
-                    timeline.appendChild(div);
-                });
-            })
-            .catch(error => console.error('Timeline error:', error));
+    form.addEventListener('submit', function(event) {
+        event.preventDefault();
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
 
-        // Load risk reduction data
-        fetch('/health-impact/api/risk-reduction')
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById('cardiovascular-risk').textContent = (data.cardiovascular_risk_reduction || 0).toFixed(1) + '%';
-                document.getElementById('addiction-risk').textContent = (data.addiction_risk_reduction || 0).toFixed(1) + '%';
-                document.getElementById('oral-health-risk').textContent = (data.oral_health_risk_reduction || 0).toFixed(1) + '%';
-                document.getElementById('reduction-percent').textContent = (data.consumption_reduction_pct || 0).toFixed(1) + '%';
-            })
-            .catch(error => console.error('Risk reduction error:', error));
-    }
-
-    // Handle quit date setting
-    document.getElementById('set-quit-date').addEventListener('click', function() {
-        const quitDate = document.getElementById('quit-date').value;
-        if (!quitDate) {
-            alert('Please select a quit date.');
-            return;
-        }
-
-        fetch('/health-impact/set-quit-date', {
+        fetch('/health_impact/add', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ quit_date: quitDate })
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data),
         })
         .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                alert('Error: ' + data.error);
-            } else {
-                document.getElementById('quit-status').innerHTML = 
-                    `<div class="rounded-md bg-green-50 dark:bg-green-900/20 p-4">
-                        <div class="flex">
-                            <div class="flex-shrink-0">
-                                <svg class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-                                </svg>
-                            </div>
-                            <div class="ml-3">
-                                <p class="text-sm font-medium text-green-800 dark:text-green-200">
-                                    Quit date set: ${data.quit_date} (${data.days_since_quit} days ago)
-                                </p>
-                            </div>
-                        </div>
-                    </div>`;
-                loadHealthData(); // Reload to show updated timeline
+        .then(result => {
+            if (result.success) {
+                loadHealthData();
+                form.reset();
             }
-        })
-        .catch(error => {
-            console.error('Set quit date error:', error);
-            alert('Error setting quit date. Please try again.');
         });
     });
 
-    // Initial load
+    function loadHealthData() {
+        fetch('/health_impact/data')
+            .then(response => response.json())
+            .then(data => {
+                historyContainer.innerHTML = '';
+                data.forEach(record => {
+                    const recordElement = document.createElement('div');
+                    recordElement.className = 'bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-4';
+                    recordElement.innerHTML = `
+                        <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Record from ${new Date(record.created_at).toLocaleString()}</h3>
+                        <p><strong>Blood Pressure:</strong> ${record.blood_pressure}</p>
+                        <p><strong>Heart Rate:</strong> ${record.heart_rate} bpm</p>
+                        <p><strong>Gum Health:</strong> ${record.gum_health}</p>
+                        <p><strong>Anxiety Level:</strong> ${record.anxiety_level}/10</p>
+                        <p><strong>Focus Level:</strong> ${record.focus_level}/10</p>
+                        <p><strong>Mood:</strong> ${record.mood}</p>
+                        <p><strong>Notes:</strong> ${record.notes}</p>
+                    `;
+                    historyContainer.appendChild(recordElement);
+                });
+            });
+    }
+
     loadHealthData();
 });
 </script>
