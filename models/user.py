@@ -36,8 +36,43 @@ class User(db.Model):
     def check_password(self, password):
         return bcrypt.check_password_hash(self.password_hash, password)
 
+    def get_daily_intake(self, target_date=None, use_timezone=True):
+        """
+        Calculate total pouches and nicotine for a given day.
+        """
+        # Local import to avoid circular dependencies
+        from models.log import Log
+        from services.timezone_service import get_user_date_boundaries, get_current_user_time
+
+        if target_date is None:
+            if use_timezone and self.timezone:
+                _, target_date, _ = get_current_user_time(self.timezone)
+            else:
+                target_date = date.today()
+
+        if use_timezone and self.timezone:
+            start_utc, end_utc = get_user_date_boundaries(self.timezone, target_date)
+            logs_query = self.logs.filter(
+                Log.log_time >= start_utc,
+                Log.log_time < end_utc
+            )
+        else:
+            logs_query = self.logs.filter(Log.log_date == target_date)
+
+        total_pouches = 0
+        total_mg = 0.0
+
+        for log in logs_query:
+            total_pouches += log.quantity
+            total_mg += log.get_total_nicotine()
+
+        return {
+            'total_pouches': total_pouches,
+            'total_mg': total_mg
+        }
 
     def to_dict(self):
+
         return {
             'id': self.id,
             'email': self.email,

@@ -12,7 +12,7 @@ from datetime import datetime
 # Specify the template folder for settings-related templates
 settings_bp = Blueprint('settings', __name__, template_folder='../templates/settings')
 
-@settings_bp.route('/', methods=['GET', 'POST'])
+@settings_bp.route('/', methods=['GET'])
 @login_required
 def index():
     """Settings main page"""
@@ -20,67 +20,8 @@ def index():
         user = get_current_user()
         preferences_service = UserPreferencesService()
         
-        if request.method == 'POST':
-            # Handle form submission
-            units_preference = request.form.get('units_preference', 'mg').strip()
-            timezone = request.form.get('timezone', 'UTC').strip()
-            
-            # Notification preferences
-            email_notifications = request.form.get('email_notifications') == 'on'
-            goal_notifications = request.form.get('goal_notifications') == 'on'
-            achievement_notifications = request.form.get('achievement_notifications') == 'on'
-            daily_reminders = request.form.get('daily_reminders') == 'on'
-            weekly_reports = request.form.get('weekly_reports') == 'on'
-            discord_webhook = request.form.get('discord_webhook', '').strip()
-            
-            # Notification timing
-            reminder_time = request.form.get('reminder_time', '').strip()
-            quiet_hours_start = request.form.get('quiet_hours_start', '').strip()
-            quiet_hours_end = request.form.get('quiet_hours_end', '').strip()
-            notification_frequency = request.form.get('notification_frequency', 'immediate').strip()
-            
-            # Daily reset time
-            daily_reset_time = request.form.get('daily_reset_time', '').strip()
-            
-            # Validation
-            if units_preference not in ['mg', 'percentage']:
-                flash('Please select a valid units preference.', 'error')
-            elif notification_frequency not in ['immediate', 'daily', 'weekly']:
-                flash('Please select a valid notification frequency.', 'error')
-            else:
-                # Update user preferences
-                user.units_preference = units_preference
-                user.timezone = timezone
-                
-                # Update session timezone for immediate effect
-                session['user_timezone'] = timezone
-                
-                # Update preferences using service
-                success, message = preferences_service.update_preferences(
-                    user.id,
-                    email_notifications=email_notifications,
-                    goal_notifications=goal_notifications,
-                    achievement_notifications=achievement_notifications,
-                    daily_reminders=daily_reminders,
-                    weekly_reports=weekly_reports,
-                    discord_webhook=discord_webhook,
-                    reminder_time=reminder_time if reminder_time else None,
-                    quiet_hours_start=quiet_hours_start if quiet_hours_start else None,
-                    quiet_hours_end=quiet_hours_end if quiet_hours_end else None,
-                    notification_frequency=notification_frequency,
-                    daily_reset_time=daily_reset_time if daily_reset_time else None
-                )
-                
-                if success:
-                    db.session.commit()
-                    current_app.logger.info(f'Settings updated for user {user.email}')
-                    flash('Settings updated successfully!', 'success')
-                else:
-                    flash(f'Error updating preferences: {message}', 'error')
-                
-                return redirect(url_for('settings.index'))
-        
         # GET request - load current preferences from database
+
         current_preferences = preferences_service.get_notification_settings(user.id)
         webhook_settings = preferences_service.get_webhook_settings(user.id)
         

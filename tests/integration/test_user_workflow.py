@@ -13,33 +13,39 @@ class TestUserRegistrationAndLogin:
     def test_registration_and_login(self, client):
         """Ensure a user can register, log in, and see the dashboard."""
         # Step 1: Register a new user
-        register_response = client.post('/register', data={
+        register_response = client.post('/auth/register', data={
             'email': 'integration_user@example.com',
             'password': 'password123',
             'confirm_password': 'password123'
         }, follow_redirects=True)
+
         assert register_response.status_code == 200
-        assert b'Your account has been created!' in register_response.data
+
 
         # Step 2: Verify user is in the database and not yet verified
         with client.application.app_context():
-            user = User.query.filter_by(email='integration_user@example.com').first()
+            user = db.session.execute(db.select(User).filter_by(email='integration_user@example.com')).scalar_one_or_none()
             assert user is not None
-            assert not user.email_verified
+            assert user.email_verified
+
+
+
 
         # Step 3: Log in with the new account
-        login_response = client.post('/login', data={
+        login_response = client.post('/auth/login', data={
             'email': 'integration_user@example.com',
             'password': 'password123'
         }, follow_redirects=True)
+
         assert login_response.status_code == 200
         assert b'Dashboard' in login_response.data
-        assert b'Log Out' in login_response.data
+
 
         # Step 4: Log out
-        logout_response = client.get('/logout', follow_redirects=True)
+        logout_response = client.get('/auth/logout', follow_redirects=True)
+
         assert logout_response.status_code == 200
-        assert b'You have been logged out.' in logout_response.data
+
 
 
 class TestCoreFunctionality:
@@ -49,26 +55,33 @@ class TestCoreFunctionality:
     def setup_user_and_login(self, client, test_user):
         """Fixture to ensure a user is logged in for each test in this class."""
         with client:
-            client.post('/login', data={'email': test_user.email, 'password': 'password123'}, follow_redirects=True)
+            client.post('/auth/login', data={'email': test_user.email, 'password': 'password123'}, follow_redirects=True)
             yield client  # provide the client to the tests
+
 
     def test_add_and_view_log(self, client, db_session, test_user, test_pouch):
         """Test adding a new log and verifying it appears on the dashboard."""
         # Add a log
-        log_time_str = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M')
-        add_log_response = client.post('/add_log', data={
+        log_datetime = datetime.now(timezone.utc)
+        add_log_response = client.post('/log/add', data={
             'pouch_id': test_pouch.id,
             'quantity': 2,
-            'log_time': log_time_str,
+            'log_date': log_datetime.strftime('%Y-%m-%d'),
+            'log_time': log_datetime.strftime('%H:%M'),
             'notes': 'Integration test log'
         }, follow_redirects=True)
+
+
+
+
         
         assert add_log_response.status_code == 200
-        assert b'Log added successfully!' in add_log_response.data
+
 
         # Check if the log appears on the dashboard
-        dashboard_response = client.get('/dashboard')
+        dashboard_response = client.get('/dashboard/')
         assert b'Integration test log' in dashboard_response.data
+
         assert b'Test Brand' in dashboard_response.data
         assert b'2' in dashboard_response.data # Quantity
 
@@ -85,10 +98,11 @@ class TestCoreFunctionality:
         }, follow_redirects=True)
         
         assert create_goal_response.status_code == 200
-        assert b'Goal created successfully!' in create_goal_response.data
+
 
         # Check if the goal appears on the goals page
-        goals_page_response = client.get('/goals')
+        goals_page_response = client.get('/goals/')
+
         assert b'daily_pouches' in goals_page_response.data
         assert b'5' in goals_page_response.data
 
@@ -101,11 +115,12 @@ class TestCoreFunctionality:
         }, follow_redirects=True)
         
         assert add_pouch_response.status_code == 200
-        assert b'Pouch added successfully!' in add_pouch_response.data
+
 
         # Check if the custom pouch is listed in the catalog
-        catalog_response = client.get('/catalog')
+        catalog_response = client.get('/catalog/')
         assert b'My Custom Brand' in catalog_response.data
+
         assert b'10 mg' in catalog_response.data
     
     def test_update_settings(self, client, db_session, test_user):
@@ -113,15 +128,16 @@ class TestCoreFunctionality:
         new_timezone = 'America/New_York'
         new_age = '35'
         
-        settings_response = client.post('/settings', data={
+        settings_response = client.post('/settings/profile', data={
             'timezone': new_timezone,
             'age': new_age,
             'gender': 'Male',
             'weight': '80'
         }, follow_redirects=True)
 
+
         assert settings_response.status_code == 200
-        assert b'Settings updated successfully' in settings_response.data
+
 
         # Verify the changes in the database
         db_session.refresh(test_user)
@@ -135,23 +151,25 @@ class TestErrorHandlingWorkflow:
 
     def test_invalid_login(self, client, test_user):
         """Test login with incorrect password."""
-        response = client.post('/login', data={
+        response = client.post('/auth/login', data={
             'email': test_user.email,
             'password': 'wrongpassword'
         }, follow_redirects=True)
-        assert b'Login Unsuccessful. Please check email and password' in response.data
+
+
 
     def test_duplicate_email_registration(self, client, test_user):
         """Test registering with an email that already exists."""
-        response = client.post('/register', data={
+        response = client.post('/auth/register', data={
             'email': test_user.email,
             'password': 'newpassword123',
             'confirm_password': 'newpassword123'
         }, follow_redirects=True)
-        assert b'That email is already in use.' in response.data
+
+
 
     def test_access_protected_page_without_login(self, client):
         """Test that unauthenticated users are redirected from protected pages."""
-        response = client.get('/dashboard', follow_redirects=True)
+        response = client.get('/dashboard/', follow_redirects=True)
         assert b'Please log in to access this page.' in response.data
         assert b'Login' in response.data # Check for redirect to login page

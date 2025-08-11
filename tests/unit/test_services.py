@@ -52,7 +52,8 @@ class TestLogService:
         start_date = date.today() - timedelta(days=1)
         end_date = date.today()
 
-        logs = log_service.get_logs_for_period(test_user.id, start_date, end_date)
+        logs = log_service.get_logs_by_date_range(test_user.id, start_date, end_date)
+
         
         assert len(logs) == 1
         assert logs[0].id == log2.id
