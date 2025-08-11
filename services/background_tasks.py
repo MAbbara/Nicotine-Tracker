@@ -12,7 +12,8 @@ from models.user_preferences import UserPreferences
 from services.notification_service import NotificationService
 from services.user_preferences_service import UserPreferencesService
 from services.email_verification_service import EmailVerificationService
-from services.timezone_service import TimezoneService
+from services import timezone_service as tz_service
+
 
 
 
@@ -32,7 +33,8 @@ class BackgroundTaskProcessor:
         self.app = app
         
         # Schedule tasks
-        schedule.every(5).minutes.do(self.process_notification_queue)
+        schedule.every(10).seconds.do(self.process_notification_queue)
+
         schedule.every().minute.do(self.send_daily_reminders)
         schedule.every().monday.at("10:00").do(self.send_weekly_reports)
 
@@ -47,10 +49,11 @@ class BackgroundTaskProcessor:
             while True:
                 try:
                     schedule.run_pending()
-                    time.sleep(60)  # Check every minute
+                    time.sleep(10)  # Check every 10 seconds
                 except Exception as e:
                     current_app.logger.error(f"Background scheduler error: {e}")
-                    time.sleep(60)
+                    time.sleep(10)
+
     
     def process_notification_queue(self):
         """Process pending notifications in the queue"""
@@ -80,13 +83,15 @@ class BackgroundTaskProcessor:
                     if not target_time:
                         continue
                     
+                    
                     # Get user's local time to ensure reminder is sent at the correct local time
-                    user_local_time = TimezoneService.get_user_local_time(user.id)
+                    user_local_time, _, _ = tz_service.get_current_user_time(user.timezone)
                     if not user_local_time:
                         continue
 
                     # Check if it's the user's reminder time (minute precision)
                     if user_local_time.hour == target_time.hour and user_local_time.minute == target_time.minute:
+
                         # Check if a reminder was already sent in the last 23 hours to prevent duplicates
                         if not self._recently_notified(user.id, 'daily_reminder', hours=23):
                             self.notification_service.send_daily_reminder(user.id)
