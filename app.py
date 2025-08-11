@@ -48,6 +48,8 @@ def create_app(config_name=None):
     from routes.dashboard import dashboard_bp
     from routes.goals import goals_bp
     from routes.settings import settings_bp
+    from routes.api import api_bp
+
     
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(catalog_bp, url_prefix='/catalog')
@@ -55,6 +57,8 @@ def create_app(config_name=None):
     app.register_blueprint(dashboard_bp, url_prefix='/dashboard')
     app.register_blueprint(goals_bp, url_prefix='/goals')
     app.register_blueprint(settings_bp, url_prefix='/settings')
+    app.register_blueprint(api_bp, url_prefix='/api')
+
     
     # Main route
     @app.route('/')
@@ -72,4 +76,3 @@ def create_app(config_name=None):
         return render_template('errors/500.html'), 500
     
     return app
-

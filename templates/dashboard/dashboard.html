@@ -291,9 +291,48 @@
 <!-- Charts Section -->
 <div class="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
   <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
-    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Daily Intake (Last 30 Days)</h3>
+    <div class="flex justify-between items-center mb-4">
+      <h3 class="text-lg font-medium text-gray-900 dark:text-white">Daily Intake</h3>
+      <!-- Dropdown -->
+      <div class="hs-dropdown relative inline-flex [--placement:bottom-right] z-10">
+        <button id="hs-dropdown-default" type="button" class="hs-dropdown-toggle py-2 px-3 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:bg-gray-700">
+
+          <span id="selected-range-text">Last 30 days</span>
+          <svg class="hs-dropdown-open:rotate-180 size-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+
+        <div id="daily-intake-filter-dropdown" class="hs-dropdown-menu transition-[opacity,margin] duration hs-dropdown-open:opacity-100 opacity-0 hidden min-w-60 bg-white shadow-md rounded-lg p-2 mt-2 dark:bg-gray-800 dark:border dark:border-gray-700" aria-labelledby="hs-dropdown-default">
+          <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:ring-2 focus:ring-blue-500 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300" href="#" data-range="7">
+            Last 7 days
+          </a>
+          <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:ring-2 focus:ring-blue-500 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300" href="#" data-range="30">
+            Last 30 days
+          </a>
+          <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:ring-2 focus:ring-blue-500 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300" href="#" data-range="90">
+            Last 90 days
+          </a>
+          <div class="my-2 border-t border-gray-200 dark:border-gray-700"></div>
+          <div class="px-3 py-2">
+            <p class="text-sm text-gray-800 dark:text-gray-400 mb-2">Custom range</p>
+            <div class="space-y-2">
+              <div>
+                <label for="start_date_filter" class="sr-only">Start Date</label>
+                <input type="date" id="start_date_filter" name="start_date" class="py-2 px-3 block w-full border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300">
+              </div>
+              <div>
+                <label for="end_date_filter" class="sr-only">End Date</label>
+                <input type="date" id="end_date_filter" name="end_date" class="py-2 px-3 block w-full border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300">
+
+              </div>
+              <button id="apply_custom_range" class="w-full py-2 px-3 inline-flex justify-center items-center gap-x-2 text-sm font-semibold rounded-lg border border-transparent bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none">Apply</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     <div id="dailyIntakeChart" class="h-64"></div>
   </div>
+
   <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
     <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Usage by Hour</h3>
     <div id="hourlyChart" class="h-64"></div>
@@ -399,4 +438,9 @@
 </div>
 </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{{ super() if super }}
+<script src="{{ url_for('static', filename='js/dashboard-charts.js') }}" defer></script>
 {% endblock %}

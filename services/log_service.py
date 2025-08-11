@@ -4,14 +4,17 @@ These helpers encapsulate operations for creating and processing log entries,
 including bulk insertion. They abstract away database interactions from the
 route handlers.
 """
-from datetime import date, datetime, time
+from collections import defaultdict
+from datetime import date, datetime, time, timedelta
 from typing import Iterable, Dict, Any, Optional
 
+
 from extensions import db
-from services.timezone_service import convert_user_time_to_utc
+from services.timezone_service import convert_user_time_to_utc, get_current_user_time
 
 # Import the Log and Pouch models from the models package aggregator
-from models import Log, Pouch
+from models import Log, Pouch, User
+
 
 def add_log_entry(user_id: int,
                   log_date: date,
@@ -119,3 +122,75 @@ def add_bulk_logs(user_id: int, entries: Iterable[Dict[str, Any]], log_date: dat
     
     db.session.commit()
     return count
+
+
+def get_daily_intake_for_user(user_id: int, start_date: date, end_date: date, reset_time: time = time(0, 0)) -> Dict[date, float]:
+    """
+    Calculates daily nicotine intake for a user over a date range, considering the user's daily reset time.
+
+    Args:
+        user_id: The ID of the user.
+        start_date: The start of the date range (inclusive).
+        end_date: The end of the date range (inclusive).
+        reset_time: The user's daily reset time. Logs before this time are counted for the previous day.
+
+    Returns:
+        A dictionary where keys are dates and values are the total nicotine for that day.
+    """
+    user = User.query.get(user_id)
+    if not user:
+        return {}
+    user_timezone = user.timezone or 'UTC'
+
+    # Determine the user's "current" time to adjust the end date if needed
+    _, today_in_user_tz, time_in_user_tz = get_current_user_time(user_timezone)
+
+    effective_end_date = end_date
+    # If the request's end date is today, check if the user's day has rolled over yet
+    if end_date == today_in_user_tz and time_in_user_tz < reset_time:
+        effective_end_date -= timedelta(days=1)
+
+    # Widen the query range to account for timezone and reset time offsets
+    query_start_date = start_date - timedelta(days=1)
+    query_end_date = end_date + timedelta(days=1)
+
+    start_datetime = datetime.combine(query_start_date, time.min)
+    end_datetime = datetime.combine(query_end_date, time.max)
+
+    logs = Log.query.filter(
+        Log.user_id == user_id,
+        Log.log_time.between(start_datetime, end_datetime)
+    ).order_by(Log.log_time).all()
+
+    daily_intake = defaultdict(float)
+    
+    # Pre-fill the result with zeros for the dates that should be displayed
+    result = {}
+    current_date = start_date
+    while current_date <= effective_end_date:
+        result[current_date] = 0
+        current_date += timedelta(days=1)
+
+    if not logs:
+        return result
+
+    from services.timezone_service import convert_utc_to_user_time
+
+    for log in logs:
+        # log.log_time is a naive datetime in UTC, so we convert it to user's local time
+        user_local_dt, _, _ = convert_utc_to_user_time(user_timezone, log.log_time)
+        
+        effective_date = user_local_dt.date()
+        if user_local_dt.time() < reset_time:
+            effective_date -= timedelta(days=1)
+
+        total_nicotine = log.get_total_nicotine()
+        # Only include intake for dates that exist as keys in our result dict
+        if total_nicotine is not None and effective_date in result:
+            daily_intake[effective_date] += total_nicotine
+    
+    # Populate the results dictionary with calculated totals
+    for day, total in daily_intake.items():
+        result[day] = total
+        
+    return result
