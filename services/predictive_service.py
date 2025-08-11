@@ -7,9 +7,9 @@ from typing import Dict, List, Optional, Tuple
 import json
 from sqlalchemy import func, desc, and_, or_
 from extensions import db
-from models import Prediction, CravingPrediction, UserPattern, Craving, Log, User
+from models import Prediction, Craving, Log, User
 
-def analyze_user_patterns(user_id: int, days_back: int = 60) -> List[UserPattern]:
+def analyze_user_patterns(user_id: int, days_back: int = 60) -> List:
     """Analyze user patterns and store them in the database."""
     user = User.query.get(user_id)
     if not user:
@@ -268,7 +268,7 @@ def _analyze_mood_pattern(user_id: int, start_date: datetime) -> Optional[Dict]:
         'sample_size': len(mood_cravings)
     }
 
-def predict_craving_risk(user_id: int, prediction_date: date = None, prediction_hour: int = None) -> CravingPrediction:
+def predict_craving_risk(user_id: int, prediction_date: date = None, prediction_hour: int = None):
     """Predict craving risk for a specific date and hour."""
     if not prediction_date:
         prediction_date = date.today()
