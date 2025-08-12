@@ -3,6 +3,7 @@ Handles periodic tasks like processing notification queue and sending scheduled 
 """
 import schedule
 import time
+import logging
 from datetime import datetime, date, timedelta
 from flask import current_app
 from extensions import db
@@ -15,9 +16,11 @@ from services.email_verification_service import EmailVerificationService
 from services import timezone_service as tz_service
 
 
+logger = logging.getLogger('background_tasks')
 
 
 class BackgroundTaskProcessor:
+
     
     def __init__(self, app=None):
         self.app = app
@@ -44,69 +47,88 @@ class BackgroundTaskProcessor:
     def run_scheduler(self):
         """Run the background scheduler (should be called in a separate process/thread)"""
         with self.app.app_context():
-            current_app.logger.info("Background task scheduler started")
+            logger.info("Background task scheduler started")
             
             while True:
                 try:
                     schedule.run_pending()
                     time.sleep(10)  # Check every 10 seconds
                 except Exception as e:
-                    current_app.logger.error(f"Background scheduler error: {e}")
+                    logger.error(f"Background scheduler error: {e}", exc_info=True)
                     time.sleep(10)
+
 
     
     def process_notification_queue(self):
         """Process pending notifications in the queue"""
+        logger.debug("Checking notification queue...")
         try:
             with self.app.app_context():
                 processed = self.notification_service.process_notification_queue()
                 if processed > 0:
-                    current_app.logger.info(f"Processed {processed} notifications from queue")
+                    logger.info(f"Processed {processed} notifications from queue")
+                else:
+                    logger.debug("Notification queue was empty.")
         except Exception as e:
-            current_app.logger.error(f"Error processing notification queue: {e}")
+            logger.error(f"Error processing notification queue: {e}", exc_info=True)
+
     
     def send_daily_reminders(self):
         """Send daily reminders to users who have them enabled at their preferred time."""
-        current_app.logger.info("Starting send deaily reminders")
+        logger.debug("Running daily reminder check...")
         try:
             with self.app.app_context():
                 users_to_remind = db.session.query(User).join(UserPreferences).filter(
                     UserPreferences.daily_reminders == True,
                     UserPreferences.notification_channel != 'none'
                 ).all()
+                logger.debug(f"Found {len(users_to_remind)} users with daily reminders enabled.")
 
                 sent_count = 0
                 for user in users_to_remind:
+                    logger.debug(f"Checking user {user.id} for daily reminder.")
                     # Determine the target time for the reminder, falling back to daily reset time
                     preferences = self.preferences_service.get_or_create_preferences(user.id)
                     target_time = preferences.reminder_time or preferences.daily_reset_time
 
                     if not target_time:
+                        logger.debug(f"User {user.id} has no target time for reminders. Skipping.")
                         continue
                     
                     
                     # Get user's local time to ensure reminder is sent at the correct local time
                     user_local_time, _, _ = tz_service.get_current_user_time(user.timezone)
                     if not user_local_time:
+                        logger.warning(f"Could not determine local time for user {user.id}. Skipping.")
                         continue
+                    
+                    logger.debug(f"User {user.id}: Local time is {user_local_time.strftime('%H:%M')}, Target time is {target_time.strftime('%H:%M')}.")
 
                     # Check if it's the user's reminder time (minute precision)
                     if user_local_time.hour == target_time.hour and user_local_time.minute == target_time.minute:
+                        logger.info(f"Time match for user {user.id}. Checking if recently notified.")
 
                         # Check if a reminder was already sent in the last 23 hours to prevent duplicates
                         if not self._recently_notified(user.id, 'daily_reminder', hours=23):
+                            logger.info(f"Sending daily reminder to user {user.id}.")
                             self.notification_service.send_daily_reminder(user.id)
                             sent_count += 1
+                        else:
+                            logger.debug(f"User {user.id} was recently notified. Skipping.")
                 
                 if sent_count > 0:
-                    current_app.logger.info(f"Sent daily reminders to {sent_count} users")
+                    logger.info(f"Sent daily reminders to {sent_count} users")
+                else:
+                    logger.debug("No daily reminders sent in this run.")
                     
         except Exception as e:
-            current_app.logger.error(f"Error sending daily reminders: {e}")
+            logger.error(f"Error sending daily reminders: {e}", exc_info=True)
+
 
     
     def send_weekly_reports(self):
         """Send weekly progress reports to users who have them enabled"""
+        logger.info("Running weekly report job...")
         try:
             with self.app.app_context():
                 # Get users with weekly reports enabled
@@ -114,22 +136,28 @@ class BackgroundTaskProcessor:
                     UserPreferences.weekly_reports == True,
                     UserPreferences.notification_channel != 'none'
                 ).all()
+                logger.debug(f"Found {len(users_with_reports)} users with weekly reports enabled.")
 
                 
                 sent_count = 0
                 for user in users_with_reports:
+                    logger.debug(f"Generating weekly report for user {user.id}")
                     success = self._send_weekly_report(user)
                     if success:
                         sent_count += 1
                 
                 if sent_count > 0:
-                    current_app.logger.info(f"Sent weekly reports to {sent_count} users")
+                    logger.info(f"Sent weekly reports to {sent_count} users")
+                else:
+                    logger.info("No weekly reports sent.")
                     
         except Exception as e:
-            current_app.logger.error(f"Error sending weekly reports: {e}")
+            logger.error(f"Error sending weekly reports: {e}", exc_info=True)
+
     
     def check_goal_thresholds(self):
         """Check for goals approaching their thresholds and send warnings"""
+        logger.debug("Checking goal thresholds...")
         try:
             with self.app.app_context():
                 # Get active goals with notifications enabled
@@ -137,12 +165,14 @@ class BackgroundTaskProcessor:
                     is_active=True,
                     enable_notifications=True
                 ).all()
+                logger.debug(f"Found {len(active_goals)} active goals with notifications on.")
                 
                 notifications_sent = 0
                 today = date.today()
                 
                 for goal in active_goals:
                     user = goal.user
+                    logger.debug(f"Checking goal {goal.id} for user {user.id}")
                     
                     # Calculate current progress
                     from routes.goals import calculate_goal_progress
@@ -150,11 +180,13 @@ class BackgroundTaskProcessor:
                     
                     # Check if approaching threshold (and not already exceeded)
                     threshold_percentage = goal.notification_threshold * 100
+                    logger.debug(f"Goal {goal.id}: Progress={progress['percentage']:.2f}%, Threshold={threshold_percentage:.2f}%")
                     if (progress['percentage'] >= threshold_percentage and 
                         progress['percentage'] <= 100):
                         
                         # Check if we haven't sent a notification recently
                         if not self._recently_notified(user.id, 'goal_reminder', hours=4):
+                            logger.info(f"Goal {goal.id} for user {user.id} has crossed threshold. Sending notification.")
                             subject = f"⚠️ Goal Threshold Alert"
                             message = f"You're at {progress['percentage']:.0f}% of your {goal.goal_type.replace('_', ' ')} goal ({progress['current']}/{progress['target']}). Stay mindful of your usage!"
                             
@@ -185,17 +217,23 @@ class BackgroundTaskProcessor:
                                 extra_data=extra_data
                             )
                             notifications_sent += 1
+                        else:
+                            logger.debug(f"Goal {goal.id} for user {user.id} crossed threshold, but recently notified. Skipping.")
                 
                 if notifications_sent > 0:
-                    current_app.logger.info(f"Sent goal threshold notifications for {notifications_sent} goal(s)")
+                    logger.info(f"Sent goal threshold notifications for {notifications_sent} goal(s)")
+                else:
+                    logger.debug("No goal threshold notifications sent in this run.")
                     
         except Exception as e:
-            current_app.logger.error(f"Error checking goal thresholds: {e}")
+            logger.error(f"Error checking goal thresholds: {e}", exc_info=True)
+
 
     
     def _send_weekly_report(self, user):
         """Send weekly progress report to a user"""
         try:
+            logger.debug(f"Calculating weekly stats for user {user.id}")
             # Calculate weekly statistics
             today = date.today()
             week_start = today - timedelta(days=today.weekday())
@@ -211,6 +249,7 @@ class BackgroundTaskProcessor:
             
             total_pouches = sum(log.quantity for log in week_logs)
             total_nicotine = sum(log.get_total_nicotine() for log in week_logs)
+            logger.debug(f"User {user.id} weekly stats: {total_pouches} pouches, {total_nicotine:.1f}mg nicotine.")
             
             # Get active goals progress
             active_goals = Goal.query.filter_by(user_id=user.id, is_active=True).all()
@@ -263,6 +302,7 @@ class BackgroundTaskProcessor:
             }
             
             # Queue notification
+            logger.info(f"Queuing weekly report for user {user.id}")
             return self.notification_service.queue_notification(
                 user_id=user.id,
                 notification_type='email',
@@ -274,19 +314,24 @@ class BackgroundTaskProcessor:
             )
             
         except Exception as e:
-            current_app.logger.error(f"Error creating weekly report for user {user.id}: {e}")
+            logger.error(f"Error creating weekly report for user {user.id}: {e}", exc_info=True)
             return False
+
     
     def cleanup_expired_tokens(self):
 
         """Clean up expired email verification tokens"""
+        logger.debug("Running expired token cleanup...")
         try:
             with self.app.app_context():
                 cleaned = self.verification_service.cleanup_expired_tokens()
                 if cleaned > 0:
-                    current_app.logger.info(f"Cleaned up {cleaned} expired email verification tokens")
+                    logger.info(f"Cleaned up {cleaned} expired email verification tokens")
+                else:
+                    logger.debug("No expired tokens to clean up.")
         except Exception as e:
-            current_app.logger.error(f"Error cleaning up expired tokens: {e}")
+            logger.error(f"Error cleaning up expired tokens: {e}", exc_info=True)
+
     
     def _recently_notified(self, user_id, category, hours):
         """Check if a notification of a certain category was sent to a user recently."""
@@ -303,8 +348,9 @@ class BackgroundTaskProcessor:
             
             return recent_notification is not None
         except Exception as e:
-            current_app.logger.error(f"Error checking recent notifications: {e}")
+            logger.error(f"Error checking recent notifications for user {user.id}: {e}", exc_info=True)
             return False
+
 
 
 
