@@ -18,3 +18,4 @@ bandit==1.8.6
 hypothesis==6.137.1
 axe-selenium-python==2.1.6
 pandas
+PyMySQL==1.1.1
