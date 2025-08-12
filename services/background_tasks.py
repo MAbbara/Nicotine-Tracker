@@ -52,10 +52,10 @@ class BackgroundTaskProcessor:
             while True:
                 try:
                     schedule.run_pending()
-                    time.sleep(10)  # Check every 10 seconds
+                    time.sleep(5)  # Check every 10 seconds
                 except Exception as e:
                     logger.error(f"Background scheduler error: {e}", exc_info=True)
-                    time.sleep(10)
+                    time.sleep(5)
 
 
     
@@ -114,7 +114,7 @@ class BackgroundTaskProcessor:
                             self.notification_service.send_daily_reminder(user.id)
                             sent_count += 1
                         else:
-                            logger.debug(f"User {user.id} was recently notified. Skipping.")
+                            logger.debug(f"User {user.id} was recently notified. Skipping. {self._recently_notified(user.id, 'daily_reminder', hours=23)}")
                 
                 if sent_count > 0:
                     logger.info(f"Sent daily reminders to {sent_count} users")
@@ -343,12 +343,13 @@ class BackgroundTaskProcessor:
             recent_notification = NotificationHistory.query.filter(
                 NotificationHistory.user_id == user_id,
                 NotificationHistory.category == category,
-                NotificationHistory.sent_at >= cutoff_time
+                NotificationHistory.sent_at >= cutoff_time,
+                NotificationHistory.delivery_status != ""
             ).first()
-            
+
             return recent_notification is not None
         except Exception as e:
-            logger.error(f"Error checking recent notifications for user {user.id}: {e}", exc_info=True)
+            logger.error(f"Error checking recent notifications for user {user_id}: {e}", exc_info=True)
             return False
 
 
