@@ -240,42 +240,45 @@ class NotificationService:
         from flask import render_template, url_for
         
         try:
-            # Map notification categories to specific templates
-            template_map = {
-                'daily_reminder': 'emails/daily_reminder.html',
-                'goal_achievement': 'emails/goal_achievement.html', 
-                'achievement': 'emails/goal_achievement.html',
-                'weekly_report': 'emails/weekly_report.html',
-                'test_email': 'emails/test_email.html'
-            }
-            
-            template_name = template_map.get(notification.category, 'emails/generic_notification.html')
-            
-            # Prepare template context
-            context = {
-                'subject': notification.subject,
-                'message': notification.message,
-                'extra_data': notification.extra_data,
-                'dashboard_url': url_for('dashboard.index', _external=True) if hasattr(notification, 'user_id') else '#'
-            }
-            
-            # Add specific context for goal achievements
-            if notification.category in ['goal_achievement', 'achievement'] and notification.extra_data:
-                context['achievement_type'] = notification.extra_data.get('achievement_type', 'milestone')
-                # Create a mock goal object for template compatibility
-                if 'goal_type' in notification.extra_data:
-                    context['goal'] = type('Goal', (), {
-                        'goal_type': notification.extra_data.get('goal_type', ''),
-                        'target_value': notification.extra_data.get('target_value', 0),
-                        'current_streak': notification.extra_data.get('current_streak', 0),
-                        'best_streak': notification.extra_data.get('best_streak', 0)
-                    })()
-            
-            # Add action URL if available
-            if notification.extra_data and 'action_url' in notification.extra_data:
-                context['action_url'] = notification.extra_data['action_url']
-            
-            return render_template(template_name, **context)
+            # Use a request context to allow url_for to work with _external=True
+            with current_app.test_request_context():
+                # Map notification categories to specific templates
+                template_map = {
+                    'daily_reminder': 'emails/daily_reminder.html',
+                    'goal_achievement': 'emails/goal_achievement.html', 
+                    'achievement': 'emails/goal_achievement.html',
+                    'weekly_report': 'emails/weekly_report.html',
+                    'test_email': 'emails/test_email.html'
+                }
+                
+                template_name = template_map.get(notification.category, 'emails/generic_notification.html')
+                
+                # Prepare template context
+                context = {
+                    'subject': notification.subject,
+                    'message': notification.message,
+                    'extra_data': notification.extra_data,
+                    'dashboard_url': url_for('dashboard.index', _external=True) if hasattr(notification, 'user_id') else '#'
+                }
+                
+                # Add specific context for goal achievements
+                if notification.category in ['goal_achievement', 'achievement'] and notification.extra_data:
+                    context['achievement_type'] = notification.extra_data.get('achievement_type', 'milestone')
+                    # Create a mock goal object for template compatibility
+                    if 'goal_type' in notification.extra_data:
+                        context['goal'] = type('Goal', (), {
+                            'goal_type': notification.extra_data.get('goal_type', ''),
+                            'target_value': notification.extra_data.get('target_value', 0),
+                            'current_streak': notification.extra_data.get('current_streak', 0),
+                            'best_streak': notification.extra_data.get('best_streak', 0)
+                        })()
+                
+                # Add action URL if available
+                if notification.extra_data and 'action_url' in notification.extra_data:
+                    context['action_url'] = notification.extra_data['action_url']
+                
+                return render_template(template_name, **context)
+
             
         except Exception as e:
             current_app.logger.error(f'Error rendering email template: {e}')
