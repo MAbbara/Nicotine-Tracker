@@ -344,7 +344,7 @@ class BackgroundTaskProcessor:
                 NotificationHistory.user_id == user_id,
                 NotificationHistory.category == category,
                 NotificationHistory.sent_at >= cutoff_time,
-                NotificationHistory.delivery_status != ""
+                NotificationHistory.delivery_status != "failed"
             ).first()
 
             return recent_notification is not None
