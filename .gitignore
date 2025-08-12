@@ -46,6 +46,7 @@ uploads/
 upload/
 
 # Temporary files
+temp/
 *.tmp
 *.bak
 *.zip
