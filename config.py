@@ -6,8 +6,12 @@ load_dotenv()
 class Config:
     # Security settings
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
+    SERVER_NAME = os.environ.get('SERVER_NAME')
+    APPLICATION_ROOT = os.environ.get('APPLICATION_ROOT', '/')
+    PREFERRED_URL_SCHEME = os.environ.get('PREFERRED_URL_SCHEME', 'http')
     
     # Database configuration
+
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:///nicotine_tracker.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
@@ -18,7 +22,8 @@ class Config:
     PERMANENT_SESSION_LIFETIME = int(os.environ.get('SESSION_LIFETIME', 86400))  # 24 hours default
     
     # CSRF protection
-    WTF_CSRF_ENABLED = False
+    WTF_CSRF_ENABLED = os.environ.get('WTF_CSRF_ENABLED', 'False').lower() == 'true'
+
     
     # Email configuration
     MAIL_SERVER = os.environ.get('MAIL_SERVER')
@@ -34,9 +39,17 @@ class Config:
     
     # Pagination
     LOGS_PER_PAGE = int(os.environ.get('LOGS_PER_PAGE', 20))
+
+    # Notification settings
+    NOTIFICATION_PROCESS_INTERVAL = int(os.environ.get('NOTIFICATION_PROCESS_INTERVAL', 30))
+    NOTIFICATION_MAX_RETRIES = int(os.environ.get('NOTIFICATION_MAX_RETRIES', 3))
+    NOTIFICATION_BATCH_SIZE = int(os.environ.get('NOTIFICATION_BATCH_SIZE', 10))
+    NOTIFICATION_DEBUG = os.environ.get('NOTIFICATION_DEBUG', 'False').lower() == 'true'
     
     # Logging
     LOG_TO_STDOUT = os.environ.get('LOG_TO_STDOUT', 'False').lower() == 'true'
+    LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO').upper()
+
     
     # Debug mode - automatically set based on environment
     @property
@@ -50,7 +63,7 @@ class Config:
 class ProductionConfig(Config):
     DEBUG = False
     SESSION_COOKIE_SECURE = True
-    WTF_CSRF_ENABLED = True
+
 
 class DevelopmentConfig(Config):
     DEBUG = True
