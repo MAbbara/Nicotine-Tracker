@@ -11,47 +11,11 @@
         </div>
     </div>
 
-    <!-- Risk Alerts -->
-    {% if risk_alerts %}
-    <div class="mt-8">
-        <div class="rounded-md bg-red-50 dark:bg-red-900/20 p-4 border border-red-200 dark:border-red-800">
-            <div class="flex">
-                <div class="flex-shrink-0">
-                    <div class="w-8 h-8 bg-red-500 rounded-md flex items-center justify-center">
-                        <span class="text-white font-bold text-sm">⚠️</span>
-                    </div>
-                </div>
-                <div class="ml-3">
-                    <h3 class="text-sm font-medium text-red-800 dark:text-red-200">High Risk Periods Ahead</h3>
-                    <div class="mt-2 text-sm text-red-700 dark:text-red-300">
-                        {% for alert in risk_alerts %}
-                        <div class="mb-2">
-                            <span class="font-medium">{{ alert.time.strftime('%I:%M %p') }}</span> - 
-                            <span class="text-red-600 dark:text-red-400">{{ alert.risk_level }} Risk</span>
-                            <p class="text-sm text-gray-600 dark:text-gray-400">{{ alert.recommendations[0] if alert.recommendations else 'Stay mindful of your consumption.' }}</p>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    {% endif %}
+
 
     <!-- Analytics Dashboard -->
-    <div class="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <!-- Time Patterns -->
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Time Patterns</h3>
-            <div id="time-patterns-chart" class="h-48">
-                <div class="flex items-center justify-center h-full">
-                    <div class="text-center">
-                        <div class="text-gray-400 dark:text-gray-500 text-4xl mb-4">⏰</div>
-                        <p class="text-sm text-gray-500 dark:text-gray-400">Pattern data will appear here</p>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+
 
         <!-- Trigger Analysis -->
         <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
@@ -247,31 +211,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     });
                 }
 
-                // Update time patterns (simple display)
-                const timePatterns = document.getElementById('time-patterns-chart');
-                timePatterns.innerHTML = '';
-                const patterns = data.time_patterns || {};
-                
-                if (Object.keys(patterns).length === 0) {
-                    timePatterns.innerHTML = `
-                        <div class="flex items-center justify-center h-full">
-                            <div class="text-center">
-                                <div class="text-gray-400 dark:text-gray-500 text-4xl mb-4">⏰</div>
-                                <p class="text-sm text-gray-500 dark:text-gray-400">Pattern data will appear here</p>
-                            </div>
-                        </div>
-                    `;
-                } else {
-                    Object.entries(patterns).forEach(([period, count]) => {
-                        const div = document.createElement('div');
-                        div.className = 'flex justify-between items-center mb-2 p-2 border-b border-gray-200 dark:border-gray-700 last:border-b-0';
-                        div.innerHTML = `
-                            <span class="text-sm text-gray-900 dark:text-white">${period}</span>
-                            <span class="text-sm font-medium text-gray-900 dark:text-white">${count}</span>
-                        `;
-                        timePatterns.appendChild(div);
-                    });
-                }
+
             })
             .catch(error => console.error('Analytics error:', error));
     }
