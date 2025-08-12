@@ -13,7 +13,8 @@ class UserPreferences(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # Notification channel preferences
-    notification_channel = db.Column(db.String(20), default='email', nullable=False)  # 'none', 'email', 'discord', 'both'
+    notification_channel = db.Column(db.JSON, nullable=False, default=lambda: ['email'])  # e.g., ['email', 'discord']
+
     
     # Specific notification type preferences
 
@@ -45,7 +46,6 @@ class UserPreferences(db.Model):
             'id': self.id,
             'user_id': self.user_id,
             'notification_channel': self.notification_channel,
-
             'goal_notifications': self.goal_notifications,
             'daily_reminders': self.daily_reminders,
             'weekly_reports': self.weekly_reports,

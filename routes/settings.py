@@ -26,8 +26,9 @@ def index():
             timezone = request.form.get('timezone', 'UTC').strip()
             
             # Notification preferences
-            notification_channel = request.form.get('notification_channel', 'email').strip()
+            notification_channel = request.form.getlist('notification_channel')
             goal_notifications = request.form.get('goal_notifications') == 'on'
+
 
             achievement_notifications = request.form.get('achievement_notifications') == 'on'
             daily_reminders = request.form.get('daily_reminders') == 'on'
@@ -89,8 +90,9 @@ def index():
         if not current_preferences:
             # Fallback to defaults if service fails
             current_preferences = {
-                'notification_channel': 'email',
+                'notification_channel': ['email'],
                 'goal_notifications': True,
+
                 'achievement_notifications': True,
                 'daily_reminders': False,
                 'weekly_reports': False,
@@ -125,8 +127,9 @@ def index():
         
         # Provide default preferences even on error
         default_preferences = {
-            'notification_channel': 'email',
+            'notification_channel': ['email'],
             'goal_notifications': True,
+
             'achievement_notifications': True,
 
             'daily_reminders': False,

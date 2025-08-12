@@ -145,18 +145,14 @@ class UserPreferencesService:
             if not preferences:
                 return False
 
-            # 1. Check if the channel is enabled for the user
-            channel = preferences.notification_channel
-            if channel == 'none':
-                return False
-            if channel_type == 'email' and channel not in ['email', 'both']:
-                return False
-            if channel_type == 'discord' and channel not in ['discord', 'both']:
+            # 1. Check if the channel is enabled for the user in their preferences list
+            if channel_type not in preferences.notification_channel:
                 return False
 
             # 2. Check if the specific notification category is enabled
             category_mapping = {
                 'goal_reminder': preferences.goal_notifications,
+
                 'daily_reminder': preferences.daily_reminders,
                 'weekly_report': preferences.weekly_reports,
                 'achievement': preferences.achievement_notifications
@@ -168,6 +164,7 @@ class UserPreferencesService:
         except Exception as e:
             current_app.logger.error(f'Error checking notification permission: {e}')
             return False
+
 
     
     def is_quiet_hours(self, user_id):
@@ -211,11 +208,12 @@ class UserPreferencesService:
                 if session_key in session_preferences:
                     value = session_preferences[session_key]
                     if session_key == 'email_notifications':
-                        update_data[db_field] = 'email' if value else 'none'
+                        update_data[db_field] = ['email'] if value else []
                     else:
                         update_data[db_field] = value
             
             if update_data:
+
                 success, message = self.update_preferences(user_id, **update_data)
                 if success:
                     current_app.logger.info(f'Migrated session preferences for user {user_id}')
