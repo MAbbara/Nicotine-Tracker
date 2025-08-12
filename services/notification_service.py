@@ -17,25 +17,43 @@ class NotificationService:
     
     def __init__(self):
         self.preferences_service = UserPreferencesService()
+        self.send_handlers = {
+            'email': self.send_email_notification,
+            'discord': self.send_discord_notification,
+        }
     
-    def queue_notification(self, user_id, notification_type, category, subject, message, 
-                          recipient=None, priority=5, extra_data=None, scheduled_for=None):
-        """Queue a notification for sending"""
+    def queue_notification(self, user_id, category, subject, message, priority=5, extra_data=None):
+        """
+        Queues notifications for a user based on their channel and category preferences.
+        Iterates through all possible channels and queues a notification if the user
+        has opted in for that channel and category.
+        """
+        try:
+            possible_channels = ['email', 'discord']  # Add new channels here in the future
+            queued_count = 0
+
+            for channel_type in possible_channels:
+                if self.preferences_service.should_send_notification(user_id, category, channel_type):
+                    if self._queue_single_notification(user_id, channel_type, category, subject, message, priority=priority, extra_data=extra_data):
+                        queued_count += 1
+            
+            return queued_count > 0
+
+        except Exception as e:
+            current_app.logger.error(f'Error queuing notifications for user {user_id}: {e}')
+            return False
+
+    def _queue_single_notification(self, user_id, notification_type, category, subject, message, 
+                                 recipient=None, priority=5, extra_data=None, scheduled_for=None):
+        """Queues a single notification to a specific channel after validation."""
         try:
             user = User.query.get(user_id)
             if not user:
                 current_app.logger.error(f'User {user_id} not found for notification')
                 return False
             
-            # Check if user wants this type of notification for this channel
-            if not self.preferences_service.should_send_notification(user_id, category, notification_type):
-                current_app.logger.info(f'User {user_id} has disabled {category} notifications for channel {notification_type}')
-                return False
-
-            
             # Check quiet hours
             if self.preferences_service.is_quiet_hours(user_id):
-                # Schedule for after quiet hours
                 preferences = self.preferences_service.get_or_create_preferences(user_id)
                 if preferences and preferences.quiet_hours_end:
                     from datetime import time
@@ -78,8 +96,9 @@ class NotificationService:
             
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error(f'Error queuing notification: {e}')
+            current_app.logger.error(f'Error queuing single notification: {e}')
             return False
+
     
     def send_email_notification(self, notification):
         """Send an email notification"""
@@ -203,18 +222,18 @@ class NotificationService:
         try:
             notification.status = 'processing'
             db.session.commit()
+
+            handler = self.send_handlers.get(notification.notification_type)
+            if handler:
+                return handler(notification)
             
-            if notification.notification_type == 'email':
-                return self.send_email_notification(notification)
-            elif notification.notification_type == 'discord':
-                return self.send_discord_notification(notification)
-            else:
-                current_app.logger.error(f'Unknown notification type: {notification.notification_type}')
-                return False
+            current_app.logger.error(f'Unknown notification type: {notification.notification_type}')
+            return False
                 
         except Exception as e:
             current_app.logger.error(f'Error sending notification {notification.id}: {e}')
             return False
+
     
     def _create_history_record(self, notification, delivery_status):
         """Create a history record for the notification"""
@@ -396,26 +415,15 @@ class NotificationService:
                 'best_streak': goal.best_streak
             }
             
-            # Attempt to queue for both email and Discord. `queue_notification` will check preferences.
             self.queue_notification(
                 user_id=user_id,
-                notification_type='email',
                 category='achievement',
                 subject=subject,
                 message=message,
                 priority=3,
                 extra_data=extra_data
             )
-            
-            self.queue_notification(
-                user_id=user_id,
-                notification_type='discord',
-                category='achievement',
-                subject=subject,
-                message=message,
-                priority=3,
-                extra_data=extra_data
-            )
+
             
             return True
             
@@ -430,24 +438,14 @@ class NotificationService:
             subject = "📝 Daily Nicotine Tracking Reminder"
             message = "Don't forget to log your nicotine usage today! Consistent tracking helps you stay on top of your goals."
             
-            # Attempt to queue for both email and Discord. `queue_notification` will check preferences.
             self.queue_notification(
                 user_id=user_id,
-                notification_type='email',
                 category='daily_reminder',
                 subject=subject,
                 message=message,
                 priority=4
             )
-            
-            self.queue_notification(
-                user_id=user_id,
-                notification_type='discord',
-                category='daily_reminder',
-                subject=subject,
-                message=message,
-                priority=4
-            )
+
             
             return True
             
