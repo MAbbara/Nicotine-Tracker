@@ -80,9 +80,10 @@ class BackgroundTaskProcessor:
             with self.app.app_context():
                 users_to_remind = db.session.query(User).join(UserPreferences).filter(
                     UserPreferences.daily_reminders == True,
-                    UserPreferences.notification_channel != 'none'
+                    db.func.json_length(UserPreferences.notification_channel) > 0
                 ).all()
                 logger.debug(f"Found {len(users_to_remind)} users with daily reminders enabled.")
+
 
                 sent_count = 0
                 for user in users_to_remind:
@@ -134,9 +135,10 @@ class BackgroundTaskProcessor:
                 # Get users with weekly reports enabled
                 users_with_reports = db.session.query(User).join(UserPreferences).filter(
                     UserPreferences.weekly_reports == True,
-                    UserPreferences.notification_channel != 'none'
+                    db.func.json_length(UserPreferences.notification_channel) > 0
                 ).all()
                 logger.debug(f"Found {len(users_with_reports)} users with weekly reports enabled.")
+
 
                 
                 sent_count = 0
@@ -197,19 +199,9 @@ class BackgroundTaskProcessor:
                                 'target': progress['target']
                             }
                             
-                            # Queue notifications for both channels. The service will filter based on user prefs.
+                            # The service will filter based on user prefs.
                             self.notification_service.queue_notification(
                                 user_id=user.id,
-                                notification_type='email',
-                                category='goal_reminder',
-                                subject=subject,
-                                message=message,
-                                priority=2,
-                                extra_data=extra_data
-                            )
-                            self.notification_service.queue_notification(
-                                user_id=user.id,
-                                notification_type='discord',
                                 category='goal_reminder',
                                 subject=subject,
                                 message=message,
@@ -217,6 +209,7 @@ class BackgroundTaskProcessor:
                                 extra_data=extra_data
                             )
                             notifications_sent += 1
+
                         else:
                             logger.debug(f"Goal {goal.id} for user {user.id} crossed threshold, but recently notified. Skipping.")
                 
@@ -305,13 +298,13 @@ class BackgroundTaskProcessor:
             logger.info(f"Queuing weekly report for user {user.id}")
             return self.notification_service.queue_notification(
                 user_id=user.id,
-                notification_type='email',
                 category='weekly_report',
                 subject=subject,
                 message=message,
                 priority=4,
                 extra_data=extra_data
             )
+
             
         except Exception as e:
             logger.error(f"Error creating weekly report for user {user.id}: {e}", exc_info=True)
