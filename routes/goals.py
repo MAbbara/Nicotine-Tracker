@@ -1,8 +1,12 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, jsonify
 from datetime import date, datetime, timedelta
 from models import User, Goal, Log
-from services import create_goal as create_goal_service
-from services.unified_goal_service import UnifiedGoalService
+from services.goal_service import (
+    create_goal as create_goal_service,
+    get_all_goals,
+    get_goal_analytics,
+)
+
 from services.timezone_service import (
     get_current_user_time, 
     get_user_date_boundaries, 
@@ -15,7 +19,7 @@ from routes.auth import login_required, get_current_user
 from sqlalchemy import desc, func
 
 goals_bp = Blueprint('goals', __name__, template_folder="../templates/goals")
-unified_goal_service = UnifiedGoalService()
+
 
 @goals_bp.route('/')
 @login_required
@@ -185,7 +189,8 @@ def edit_goal(goal_id):
         db.session.rollback()
         current_app.logger.error(f'Edit goal error: {e}')
         flash('An error occurred while editing the goal.', 'error')
-        return redirect(url_for('goals.index'))
+        return render_template('edit_goal.html', goal=goal)
+
 
 @goals_bp.route('/delete/<int:goal_id>', methods=['POST'])
 @login_required
@@ -390,27 +395,33 @@ def check_notifications():
             'error': 'Unable to check notifications'
         })
 
-@goals_bp.route('/api/unified-goals')
+@goals_bp.route('/api/goals')
 @login_required
-def get_unified_goals():
-    """API endpoint to get all goals (traditional + smart)"""
+def get_goals_api():
+    """API endpoint to get all goals and analytics"""
     try:
         user = get_current_user()
-        all_goals = unified_goal_service.get_all_user_goals(user.id)
-        analytics = unified_goal_service.get_goal_analytics(user.id)
-        
+        all_goals_data = get_all_goals(user.id)
+        analytics_data = get_goal_analytics(user.id)
+
+        goals_list = [goal.to_dict() for goal in all_goals_data]
+
         return jsonify({
             'success': True,
-            'goals': all_goals,
-            'analytics': analytics
+            'goals': {
+                'traditional_goals': goals_list,
+                'total_count': len(goals_list)
+            },
+            'analytics': analytics_data
         })
         
     except Exception as e:
-        current_app.logger.error(f'Unified goals API error: {e}')
+        current_app.logger.error(f'Goals API error: {e}')
         return jsonify({
             'success': False,
-            'error': 'Unable to fetch unified goals'
+            'error': 'Unable to fetch goals'
         })
+
 
 def calculate_goal_progress(user, goal, target_date):
     """Calculate progress for a specific goal and date using user's timezone"""

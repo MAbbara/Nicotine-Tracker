@@ -25,7 +25,7 @@ from services.predictive_service import (
     get_risk_alerts,
     analyze_user_patterns
 )
-from services.unified_goal_service import UnifiedGoalService
+
 
 __all__ = [
     "create_user", 
@@ -43,5 +43,4 @@ __all__ = [
 
     "get_risk_alerts",
     "analyze_user_patterns",
-    "UnifiedGoalService",
 ]

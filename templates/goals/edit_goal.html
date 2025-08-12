@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Goal - Nicotine Tracker{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-6 lg:px-8 max-w-lg mx-auto">
+    <h1 class="text-2xl font-semibold leading-6 text-gray-900 dark:text-white mb-6">Edit Goal</h1>
+    
+    <form method="POST" class="space-y-6" data-validate>
+        <div>
+            <label for="goal_type" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">Goal Type</label>
+            <select name="goal_type" id="goal_type" required
+                    class="mt-2 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600" disabled>
+                <option value="daily_pouches" {% if goal.goal_type == 'daily_pouches' %}selected{% endif %}>Limit to pouches per day</option>
+                <option value="daily_mg" {% if goal.goal_type == 'daily_mg' %}selected{% endif %}>Limit to nicotine mg per day</option>
+                <option value="weekly_reduction" {% if goal.goal_type == 'weekly_reduction' %}selected{% endif %}>Reduce by % per week</option>
+            </select>
+        </div>
+        
+        <div>
+            <label for="target_value" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">Target Value</label>
+            <input type="number" name="target_value" id="target_value" min="1" required
+                   class="mt-2 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600"
+                   value="{{ goal.target_value }}">
+        </div>
+        
+        <div>
+            <label for="end_date" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">End Date (optional)</label>
+            <input type="date" name="end_date" id="end_date"
+                   class="mt-2 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600"
+                   value="{{ goal.end_date.strftime('%Y-%m-%d') if goal.end_date }}">
+        </div>
+        
+        <div class="flex items-center gap-2">
+            <input type="checkbox" name="enable_notifications" id="enable_notifications" {% if goal.enable_notifications %}checked{% endif %}
+                   class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 dark:border-gray-600 dark:bg-gray-700">
+            <label for="enable_notifications" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">
+                Enable Notifications
+            </label>
+        </div>
+        
+        <div>
+            <label for="notification_threshold" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">Notification Threshold (%)</label>
+            <input type="number" name="notification_threshold" id="notification_threshold" min="1" max="100" value="{{ (goal.notification_threshold * 100)|int }}" required
+                   class="mt-2 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+        </div>
+
+        <div class="flex items-center gap-2">
+            <input type="checkbox" name="is_active" id="is_active" {% if goal.is_active %}checked{% endif %}
+                   class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 dark:border-gray-600 dark:bg-gray-700">
+            <label for="is_active" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">
+                Active
+            </label>
+        </div>
+        
+        <div class="flex gap-3">
+            <button type="submit" class="flex-1 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 cursor-pointer">Update Goal</button>
+            <a href="{{ url_for('goals.index') }}" class="rounded-md bg-white dark:bg-gray-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 cursor-pointer">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -3,7 +3,8 @@
 These helpers encapsulate operations for creating and managing goals.
 """
 from datetime import date
-from typing import Iterable, Optional
+from typing import Dict, Iterable, Optional
+
 
 from extensions import db
 
@@ -38,7 +39,24 @@ def get_active_goals(user_id: int) -> Iterable[Goal]:
     return Goal.query.filter_by(user_id=user_id, is_active=True).all()
 
 
+def get_all_goals(user_id: int) -> Iterable[Goal]:
+    """Retrieve all goals for a given user, including inactive ones."""
+    return Goal.query.filter_by(user_id=user_id).all()
+
+
+def get_goal_analytics(user_id: int) -> Dict:
+    """Get comprehensive goal analytics."""
+    all_goals_list = get_all_goals(user_id)
+    active_goals_list = [g for g in all_goals_list if g.is_active]
+
+    return {
+        "total_goals": len(all_goals_list),
+        "active_goals": len(active_goals_list),
+    }
+
+
 def deactivate_goal(goal_id: int) -> Optional[Goal]:
+
     """Deactivate a specific goal."""
     goal = db.session.get(Goal, goal_id)
     if goal:
