@@ -17,3 +17,4 @@ locust==2.34.0
 bandit==1.8.6
 hypothesis==6.137.1
 axe-selenium-python==2.1.6
+pandas
