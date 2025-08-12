@@ -1,0 +1,88 @@
+{% extends "settings/settings_layout.html" %}
+
+{% block title %}Data & Privacy - Settings{% endblock %}
+
+{% block settings_content %}
+<div class="space-y-6">
+    <!-- Data Export -->
+    <div class="bg-white dark:bg-gray-800 shadow rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <h3 class="text-lg font-medium leading-6 text-gray-900 dark:text-white">Export Your Data</h3>
+            <p class="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">Download a copy of all your data in a JSON format.</p>
+            <div class="mt-5">
+                <form method="POST" action="{{ url_for('settings.data') }}">
+                    <input type="hidden" name="action" value="export_data">
+                    <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700">
+                        Download Data
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Cleanup -->
+    <div class="bg-white dark:bg-gray-800 shadow rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <h3 class="text-lg font-medium leading-6 text-gray-900 dark:text-white">Data Cleanup</h3>
+            <p class="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">Tools to keep your data tidy and accurate.</p>
+        </div>
+        <div class="border-t border-gray-200 dark:border-gray-700">
+             <form method="POST" action="{{ url_for('settings.data') }}" class="divide-y divide-gray-200 dark:divide-gray-700">
+                <div class="px-4 py-4 sm:px-6 flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-900 dark:text-white">Cleanup Duplicates</p>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">Remove duplicate log entries. ({{ data_stats.potential_duplicates }} potential duplicates found)</p>
+                    </div>
+                    <input type="hidden" name="action" value="cleanup_duplicates">
+                    <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600">Cleanup</button>
+                </div>
+                <div class="px-4 py-4 sm:px-6 flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-900 dark:text-white">Merge Similar Pouches</p>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">Merge custom pouch entries with the same brand and nicotine content. ({{ data_stats.similar_pouches }} similar pouches found)</p>
+                    </div>
+                    <input type="hidden" name="action" value="merge_custom_pouches">
+                    <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600">Merge</button>
+                </div>
+                 <div class="px-4 py-4 sm:px-6 flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-900 dark:text-white">Recalculate Goal Streaks</p>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">Recalculate streaks for all your goals.</p>
+                    </div>
+                    <input type="hidden" name="action" value="recalculate_goals">
+                    <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600">Recalculate</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Privacy Actions -->
+    <div class="bg-white dark:bg-gray-800 shadow rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <h3 class="text-lg font-medium leading-6 text-gray-900 dark:text-white">Privacy</h3>
+            <p class="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">Manage your personal data.</p>
+        </div>
+        <div class="border-t border-gray-200 dark:border-gray-700">
+            <form method="POST" action="{{ url_for('settings.data') }}" class="divide-y divide-gray-200 dark:divide-gray-700">
+                <div class="px-4 py-4 sm:px-6">
+                    <p class="text-sm font-medium text-gray-900 dark:text-white">Anonymize Personal Data</p>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">This will remove your age, gender, weight, and preferred brands. This action cannot be undone.</p>
+                    <div class="mt-3">
+                        <input type="hidden" name="action" value="anonymize_data">
+                        <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 dark:bg-red-900 dark:text-red-300 dark:border-red-700">Anonymize Data</button>
+                    </div>
+                </div>
+                <div class="px-4 py-4 sm:px-6">
+                    <p class="text-sm font-medium text-gray-900 dark:text-white">Delete Old Logs</p>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Permanently delete log entries older than a specified number of days.</p>
+                    <div class="mt-3 flex items-center gap-4">
+                        <input type="hidden" name="action" value="delete_old_logs">
+                        <input type="number" name="days_to_keep" value="365" min="30" class="block w-32 rounded-md border-0 py-1.5 px-2 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                        <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 dark:bg-red-900 dark:text-red-300 dark:border-red-700">Delete Logs</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

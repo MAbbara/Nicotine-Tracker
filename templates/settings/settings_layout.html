@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Nicotine Tracker{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex flex-col md:flex-row md:space-x-8">
+        <!-- Sidebar Navigation -->
+        <div class="md:w-1/4">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Settings</h2>
+            <nav class="space-y-1">
+                <a href="{{ url_for('settings.profile') }}" class="flex items-center px-3 py-2 text-sm font-medium rounded-md {% if request.endpoint == 'settings.profile' %}bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white{% else %}text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white{% endif %}">
+                    <span class="truncate">Profile</span>
+                </a>
+                <a href="{{ url_for('settings.account') }}" class="flex items-center px-3 py-2 text-sm font-medium rounded-md {% if request.endpoint == 'settings.account' %}bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white{% else %}text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white{% endif %}">
+                    <span class="truncate">Account</span>
+                </a>
+                <a href="{{ url_for('settings.preferences') }}" class="flex items-center px-3 py-2 text-sm font-medium rounded-md {% if request.endpoint == 'settings.preferences' %}bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white{% else %}text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white{% endif %}">
+                    <span class="truncate">Preferences</span>
+                </a>
+                <a href="{{ url_for('settings.notifications') }}" class="flex items-center px-3 py-2 text-sm font-medium rounded-md {% if request.endpoint == 'settings.notifications' %}bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white{% else %}text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white{% endif %}">
+                    <span class="truncate">Notifications</span>
+                </a>
+                <a href="{{ url_for('settings.data') }}" class="flex items-center px-3 py-2 text-sm font-medium rounded-md {% if request.endpoint == 'settings.data' %}bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white{% else %}text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white{% endif %}">
+                    <span class="truncate">Data & Privacy</span>
+                </a>
+                <a href="{{ url_for('settings.statistics') }}" class="flex items-center px-3 py-2 text-sm font-medium rounded-md {% if request.endpoint == 'settings.statistics' %}bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white{% else %}text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white{% endif %}">
+                    <span class="truncate">Statistics</span>
+                </a>
+            </nav>
+        </div>
+
+        <!-- Main Content -->
+        <div class="md:w-3/4 mt-8 md:mt-0">
+            {% block settings_content %}{% endblock %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,66 @@
+{% extends "settings/settings_layout.html" %}
+
+{% block title %}Preferences - Settings{% endblock %}
+
+{% block settings_content %}
+<div class="bg-white dark:bg-gray-800 shadow rounded-lg">
+    <div class="px-4 py-5 sm:p-6">
+        <h3 class="text-lg font-medium leading-6 text-gray-900 dark:text-white">
+            Preferences
+        </h3>
+        <p class="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
+            Customize your experience.
+        </p>
+    </div>
+    <div class="border-t border-gray-200 dark:border-gray-700">
+        <form method="POST" action="{{ url_for('settings.preferences') }}">
+            <div class="px-4 py-5 sm:p-6 space-y-6">
+                <div>
+                    <label for="units_preference" class="block text-sm font-medium text-gray-900 dark:text-white mb-2">Units Preference</label>
+                    <select name="units_preference" id="units_preference" class="block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                        <option value="mg" {% if user.units_preference == 'mg' %}selected{% endif %}>Milligrams (mg)</option>
+                        <option value="percentage" {% if user.units_preference == 'percentage' %}selected{% endif %}>Percentage of max dose</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label for="timezone" class="block text-sm font-medium text-gray-900 dark:text-white mb-2">Time Zone</label>
+                    <div class="relative">
+                        <select name="timezone" id="timezone" data-hs-select='{
+                            "hasSearch": true,
+                            "searchPlaceholder": "Search timezones...",
+                            "searchClasses": "block w-full text-sm border-gray-200 rounded-lg focus:border-blue-500 focus:ring-blue-500 before:absolute before:inset-0 before:z-[1] dark:bg-slate-900 dark:border-gray-700 dark:text-gray-400 dark:placeholder-gray-500 py-2 px-3",
+                            "searchWrapperClasses": "bg-white p-2 -mx-1 sticky top-0 dark:bg-slate-900",
+                            "placeholder": "Select timezone...",
+                            "toggleTag": "<button type=\"button\"></button>",
+                            "toggleClasses": "hs-select-disabled:pointer-events-none hs-select-disabled:opacity-50 relative py-3 px-4 pe-9 flex text-nowrap w-full cursor-pointer bg-white border border-gray-200 rounded-lg text-start text-sm focus:border-blue-500 focus:ring-blue-500 before:absolute before:inset-0 before:z-[1] dark:bg-slate-900 dark:border-gray-700 dark:text-gray-400",
+                            "dropdownClasses": "mt-2 max-h-72 pb-1 px-1 space-y-0.5 z-20 w-full bg-white border border-gray-200 rounded-lg overflow-hidden overflow-y-auto dark:bg-slate-900 dark:border-gray-700",
+                            "optionClasses": "py-2 px-4 w-full text-sm text-gray-800 cursor-pointer hover:bg-gray-100 rounded-lg focus:outline-none focus:bg-gray-100 dark:bg-slate-900 dark:hover:bg-slate-800 dark:text-gray-200 dark:focus:bg-slate-800",
+                            "optionTemplate": "<div class=\"flex justify-between items-center w-full\"><span data-title></span><span class=\"hidden hs-selected:block\"><svg class=\"flex-shrink-0 size-3.5 text-blue-600 dark:text-blue-500\" xmlns=\"http:.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"20,6 9,17 4,12\"/></svg></span></div>"
+                        }' class="hidden">
+                            <option value="">Select timezone...</option>
+                            {% for tz_id, tz_name in common_timezones %}
+                            <option value="{{ tz_id }}" {% if user.timezone == tz_id %}selected{% endif %}>★ {{ tz_name }}</option>
+                            {% endfor %}
+                            {% for tz in all_timezones %}
+                            <option value="{{ tz.value }}" {% if user.timezone == tz.value %}selected{% endif %}>{{ tz.label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                
+                <div>
+                    <label for="daily_reset_time" class="block text-sm font-medium text-gray-900 dark:text-white mb-2">Daily Reset Time</label>
+                    <input type="time" name="daily_reset_time" id="daily_reset_time" value="{{ preferences.daily_reset_time or '00:00' }}" class="block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Select the time of day when your daily statistics reset.</p>
+                </div>
+            </div>
+            <div class="px-4 py-3 bg-gray-50 dark:bg-gray-800 text-right sm:px-6">
+                <button type="submit" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Save
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

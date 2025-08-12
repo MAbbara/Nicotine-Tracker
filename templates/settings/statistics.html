@@ -1,138 +1,71 @@
-{% extends "base.html" %}
+{% extends "settings/settings_layout.html" %}
 
-{% block title %}Statistics - Nicotine Tracker{% endblock %}
+{% block title %}Statistics - Settings{% endblock %}
 
-{% block content %}
-<div class="max-w-4xl mx-auto p-6">
-    <h1 class="text-3xl font-bold text-white mb-8">Your Statistics</h1>
-    
-    <!-- Overview Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div class="bg-gray-800 rounded-lg p-6">
-            <div class="flex items-center">
-                <div class="p-3 rounded-full bg-blue-500 bg-opacity-20">
-                    <svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-                    </svg>
+{% block settings_content %}
+<div class="space-y-6">
+    <div class="bg-white dark:bg-gray-800 shadow rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <h3 class="text-lg font-medium leading-6 text-gray-900 dark:text-white">Usage Overview</h3>
+            <dl class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Logs</dt>
+                    <dd class="mt-1 text-3xl font-semibold text-gray-900 dark:text-white">{{ stats.total_logs }}</dd>
                 </div>
-                <div class="ml-4">
-                    <p class="text-sm font-medium text-gray-400">Total Logs</p>
-                    <p class="text-2xl font-semibold text-white">{{ stats.total_logs }}</p>
+                <div>
+                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Pouches</dt>
+                    <dd class="mt-1 text-3xl font-semibold text-gray-900 dark:text-white">{{ stats.total_pouches }}</dd>
                 </div>
-            </div>
-        </div>
-        
-        <div class="bg-gray-800 rounded-lg p-6">
-            <div class="flex items-center">
-                <div class="p-3 rounded-full bg-green-500 bg-opacity-20">
-                    <svg class="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-                    </svg>
+                <div>
+                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Nicotine (mg)</dt>
+                    <dd class="mt-1 text-3xl font-semibold text-gray-900 dark:text-white">{{ stats.total_nicotine }}</dd>
                 </div>
-                <div class="ml-4">
-                    <p class="text-sm font-medium text-gray-400">Total Pouches</p>
-                    <p class="text-2xl font-semibold text-white">{{ stats.total_pouches }}</p>
+                <div>
+                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Daily Average</dt>
+                    <dd class="mt-1 text-3xl font-semibold text-gray-900 dark:text-white">{{ stats.daily_average }}</dd>
                 </div>
-            </div>
-        </div>
-        
-        <div class="bg-gray-800 rounded-lg p-6">
-            <div class="flex items-center">
-                <div class="p-3 rounded-full bg-yellow-500 bg-opacity-20">
-                    <svg class="w-8 h-8 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
-                    </svg>
+                <div>
+                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Most Used Brand</dt>
+                    <dd class="mt-1 text-3xl font-semibold text-gray-900 dark:text-white">{{ stats.most_used_brand or 'N/A' }}</dd>
                 </div>
-                <div class="ml-4">
-                    <p class="text-sm font-medium text-gray-400">Total Nicotine</p>
-                    <p class="text-2xl font-semibold text-white">{{ stats.total_nicotine }}mg</p>
+                <div>
+                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Account Age (days)</dt>
+                    <dd class="mt-1 text-3xl font-semibold text-gray-900 dark:text-white">{{ stats.account_age or 'N/A' }}</dd>
                 </div>
-            </div>
-        </div>
-        
-        <div class="bg-gray-800 rounded-lg p-6">
-            <div class="flex items-center">
-                <div class="p-3 rounded-full bg-purple-500 bg-opacity-20">
-                    <svg class="w-8 h-8 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                    </svg>
-                </div>
-                <div class="ml-4">
-                    <p class="text-sm font-medium text-gray-400">Daily Average</p>
-                    <p class="text-2xl font-semibold text-white">{{ stats.daily_average }}</p>
-                </div>
-            </div>
+            </dl>
         </div>
     </div>
     
-    <!-- Time Period Statistics -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        <div class="bg-gray-800 rounded-lg p-6">
-            <h3 class="text-lg font-semibold text-white mb-4">Weekly Statistics</h3>
-            <div class="space-y-3">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Weekly Stats -->
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Last 7 Days</h3>
+            <dl class="space-y-4 mt-4">
                 <div class="flex justify-between">
-                    <span class="text-gray-400">Logs this week:</span>
-                    <span class="text-white font-medium">{{ stats.week_logs }}</span>
+                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Logs</dt>
+                    <dd class="text-sm font-semibold text-gray-900 dark:text-white">{{ stats.week_logs }}</dd>
                 </div>
                 <div class="flex justify-between">
-                    <span class="text-gray-400">Pouches this week:</span>
-                    <span class="text-white font-medium">{{ stats.week_pouches }}</span>
+                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Pouches</dt>
+                    <dd class="text-sm font-semibold text-gray-900 dark:text-white">{{ stats.week_pouches }}</dd>
                 </div>
-            </div>
+            </dl>
         </div>
         
-        <div class="bg-gray-800 rounded-lg p-6">
-            <h3 class="text-lg font-semibold text-white mb-4">Monthly Statistics</h3>
-            <div class="space-y-3">
+        <!-- Monthly Stats -->
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Last 30 Days</h3>
+            <dl class="space-y-4 mt-4">
                 <div class="flex justify-between">
-                    <span class="text-gray-400">Logs this month:</span>
-                    <span class="text-white font-medium">{{ stats.month_logs }}</span>
+                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Logs</dt>
+                    <dd class="text-sm font-semibold text-gray-900 dark:text-white">{{ stats.month_logs }}</dd>
                 </div>
                 <div class="flex justify-between">
-                    <span class="text-gray-400">Pouches this month:</span>
-                    <span class="text-white font-medium">{{ stats.month_pouches }}</span>
+                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Pouches</dt>
+                    <dd class="text-sm font-semibold text-gray-900 dark:text-white">{{ stats.month_pouches }}</dd>
                 </div>
-            </div>
+            </dl>
         </div>
-    </div>
-    
-    <!-- Additional Information -->
-    <div class="bg-gray-800 rounded-lg p-6">
-        <h3 class="text-lg font-semibold text-white mb-4">Additional Information</h3>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div class="space-y-3">
-                <div class="flex justify-between">
-                    <span class="text-gray-400">Account age:</span>
-                    <span class="text-white font-medium">
-                        {% if stats.account_age %}
-                            {{ stats.account_age }} days
-                        {% else %}
-                            Unknown
-                        {% endif %}
-                    </span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-gray-400">Most used brand:</span>
-                    <span class="text-white font-medium">
-                        {% if stats.most_used_brand %}
-                            {{ stats.most_used_brand }}
-                        {% else %}
-                            No data
-                        {% endif %}
-                    </span>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Back Button -->
-    <div class="mt-8">
-        <a href="{{ url_for('settings.account') }}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
-            </svg>
-            Back to Account Settings
-        </a>
     </div>
 </div>
 {% endblock %}

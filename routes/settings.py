@@ -12,148 +12,139 @@ from datetime import datetime
 # Specify the template folder for settings-related templates
 settings_bp = Blueprint('settings', __name__, template_folder='../templates/settings')
 
-@settings_bp.route('/', methods=['GET', 'POST'])
+@settings_bp.route('/')
 @login_required
 def index():
-    """Settings main page"""
+    """Redirect to profile settings page"""
+    return redirect(url_for('settings.profile'))
+
+
+@settings_bp.route('/preferences', methods=['GET', 'POST'])
+@login_required
+def preferences():
+    """User preferences settings"""
     try:
         user = get_current_user()
         preferences_service = UserPreferencesService()
         
         if request.method == 'POST':
-            # Handle form submission
             units_preference = request.form.get('units_preference', 'mg').strip()
             timezone = request.form.get('timezone', 'UTC').strip()
+            daily_reset_time = request.form.get('daily_reset_time', '').strip()
+
+            if units_preference not in ['mg', 'percentage']:
+                flash('Please select a valid units preference.', 'error')
+            else:
+                user.units_preference = units_preference
+                user.timezone = timezone
+                session['user_timezone'] = timezone
+                
+                success, message = preferences_service.update_preferences(
+                    user.id,
+                    daily_reset_time=daily_reset_time if daily_reset_time else None
+                )
+                
+                if success:
+                    db.session.commit()
+                    flash('Preferences updated successfully!', 'success')
+                else:
+                    db.session.rollback()
+                    flash(f'Error updating preferences: {message}', 'error')
             
-            # Notification preferences
+            return redirect(url_for('settings.preferences'))
+
+        # GET request
+        from models import UserPreferences
+        user_preferences = UserPreferences.query.filter_by(user_id=user.id).first()
+        
+        preferences_data = {
+            'daily_reset_time': user_preferences.daily_reset_time.strftime('%H:%M') if user_preferences and user_preferences.daily_reset_time else ''
+        }
+        
+        all_timezones = get_all_timezones_for_dropdown()
+        common_timezones = get_common_timezones()
+        
+        return render_template('preferences.html', 
+                             user=user, 
+                             preferences=preferences_data,
+                             all_timezones=all_timezones,
+                             common_timezones=common_timezones)
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Preferences settings error: {e}')
+        flash('An error occurred while loading preferences.', 'error')
+        return redirect(url_for('settings.profile'))
+
+
+@settings_bp.route('/notifications', methods=['GET', 'POST'])
+@login_required
+def notifications():
+    """Notification settings"""
+    try:
+        user = get_current_user()
+        preferences_service = UserPreferencesService()
+
+        if request.method == 'POST':
             notification_channel = request.form.getlist('notification_channel')
             goal_notifications = request.form.get('goal_notifications') == 'on'
-
-
             achievement_notifications = request.form.get('achievement_notifications') == 'on'
             daily_reminders = request.form.get('daily_reminders') == 'on'
             weekly_reports = request.form.get('weekly_reports') == 'on'
             discord_webhook = request.form.get('discord_webhook', '').strip()
-            
-            # Notification timing
             reminder_time = request.form.get('reminder_time', '').strip()
             quiet_hours_start = request.form.get('quiet_hours_start', '').strip()
             quiet_hours_end = request.form.get('quiet_hours_end', '').strip()
             notification_frequency = request.form.get('notification_frequency', 'immediate').strip()
-            
-            # Daily reset time
-            daily_reset_time = request.form.get('daily_reset_time', '').strip()
-            
-            # Validation
-            if units_preference not in ['mg', 'percentage']:
-                flash('Please select a valid units preference.', 'error')
-            elif notification_frequency not in ['immediate', 'daily', 'weekly']:
+
+            if notification_frequency not in ['immediate', 'daily', 'weekly']:
                 flash('Please select a valid notification frequency.', 'error')
             else:
-                # Update user preferences
-                user.units_preference = units_preference
-                user.timezone = timezone
-                
-                # Update session timezone for immediate effect
-                session['user_timezone'] = timezone
-                
-                # Update preferences using service
                 success, message = preferences_service.update_preferences(
                     user.id,
                     notification_channel=notification_channel,
                     goal_notifications=goal_notifications,
                     achievement_notifications=achievement_notifications,
-
                     daily_reminders=daily_reminders,
                     weekly_reports=weekly_reports,
                     discord_webhook=discord_webhook,
                     reminder_time=reminder_time if reminder_time else None,
                     quiet_hours_start=quiet_hours_start if quiet_hours_start else None,
                     quiet_hours_end=quiet_hours_end if quiet_hours_end else None,
-                    notification_frequency=notification_frequency,
-                    daily_reset_time=daily_reset_time if daily_reset_time else None
+                    notification_frequency=notification_frequency
                 )
                 
                 if success:
                     db.session.commit()
-                    current_app.logger.info(f'Settings updated for user {user.email}')
-                    flash('Settings updated successfully!', 'success')
+                    flash('Notification settings updated successfully!', 'success')
                 else:
                     flash(f'Error updating preferences: {message}', 'error')
                 
-                return redirect(url_for('settings.index'))
+                return redirect(url_for('settings.notifications'))
         
-        # GET request - load current preferences from database
+        # GET request
         current_preferences = preferences_service.get_notification_settings(user.id)
         webhook_settings = preferences_service.get_webhook_settings(user.id)
         
         if not current_preferences:
-            # Fallback to defaults if service fails
             current_preferences = {
-                'notification_channel': ['email'],
-                'goal_notifications': True,
-
-                'achievement_notifications': True,
-                'daily_reminders': False,
-                'weekly_reports': False,
-                'reminder_time': None,
-                'quiet_hours_start': None,
-                'quiet_hours_end': None,
+                'notification_channel': ['email'], 'goal_notifications': True,
+                'achievement_notifications': True, 'daily_reminders': False,
+                'weekly_reports': False, 'reminder_time': None,
+                'quiet_hours_start': None, 'quiet_hours_end': None,
                 'notification_frequency': 'immediate'
             }
-
         
         if not webhook_settings:
-            webhook_settings = {
-                'discord_webhook': '',
-                'slack_webhook': ''
-            }
+            webhook_settings = {'discord_webhook': '', 'slack_webhook': ''}
         
-        # Merge webhook settings into preferences for template
         current_preferences.update(webhook_settings)
-        
-        # Get timezone data for dropdown
-        all_timezones = get_all_timezones_for_dropdown()
-        common_timezones = get_common_timezones()
-        
-        return render_template('settings.html', 
-                             user=user, 
-                             preferences=current_preferences,
-                             all_timezones=all_timezones,
-                             common_timezones=common_timezones)
+
+        return render_template('notifications.html', user=user, preferences=current_preferences)
     except Exception as e:
-        current_app.logger.error(f'Settings index error: {e}')
-        flash('An error occurred while loading settings.', 'error')
-        
-        # Provide default preferences even on error
-        default_preferences = {
-            'notification_channel': ['email'],
-            'goal_notifications': True,
+        current_app.logger.error(f'Notifications settings error: {e}')
+        flash('An error occurred while loading notification settings.', 'error')
+        return redirect(url_for('settings.profile'))
 
-            'achievement_notifications': True,
-
-            'daily_reminders': False,
-            'weekly_reports': False,
-            'discord_webhook': '',
-            'reminder_time': None,
-            'quiet_hours_start': None,
-            'quiet_hours_end': None,
-            'notification_frequency': 'immediate'
-        }
-        
-        # Get timezone data for dropdown even on error
-        try:
-            all_timezones = get_all_timezones_for_dropdown()
-            common_timezones = get_common_timezones()
-        except Exception:
-            all_timezones = []
-            common_timezones = [('UTC', 'UTC (Coordinated Universal Time)')]
-        
-        return render_template('settings.html', 
-                             user=get_current_user(), 
-                             preferences=default_preferences,
-                             all_timezones=all_timezones,
-                             common_timezones=common_timezones)
 
 @settings_bp.route('/test-discord-webhook', methods=['POST'])
 @login_required
@@ -192,10 +183,10 @@ def test_discord_webhook():
             'message': 'An error occurred while testing the webhook.'
         }), 500
 
-@settings_bp.route('/privacy', methods=['GET', 'POST'])
+@settings_bp.route('/data', methods=['GET', 'POST'])
 @login_required
-def privacy():
-    """Privacy settings"""
+def data():
+    """Data and privacy settings"""
     try:
         user = get_current_user()
         
@@ -203,146 +194,72 @@ def privacy():
             action = request.form.get('action')
             
             if action == 'anonymize_data':
-                # Anonymize user data (keep logs but remove personal info)
-                user.age = None
-                user.gender = None
-                user.weight = None
-                user.preferred_brands = None
-                
-                # Clear notes from logs
-                user_logs = Log.query.filter_by(user_id=user.id).all()
-                for log in user_logs:
+                user.age, user.gender, user.weight, user.preferred_brands = None, None, None, None
+                for log in user.logs:
                     log.notes = None
-                
                 db.session.commit()
-                
                 current_app.logger.info(f'Data anonymized for user {user.email}')
                 flash('Your personal data has been anonymized successfully.', 'success')
                 
             elif action == 'delete_old_logs':
                 days_to_keep = request.form.get('days_to_keep', 365, type=int)
-                
                 if days_to_keep < 30:
                     flash('You must keep at least 30 days of data.', 'error')
-                    return render_template('privacy.html', user=user)
-                
-                # Delete logs older than specified days
-                from datetime import date, timedelta
-                cutoff_date = date.today() - timedelta(days=days_to_keep)
-                old_logs = Log.query.filter(
-                    Log.user_id == user.id,
-                    Log.log_date < cutoff_date
-                ).all()
-                
-                deleted_count = len(old_logs)
-                for log in old_logs:
-                    db.session.delete(log)
-                
-                db.session.commit()
-                
-                current_app.logger.info(f'Deleted {deleted_count} old logs for user {user.email}')
-                flash(f'Successfully deleted {deleted_count} old log entries.', 'success')
-                
-            elif action == 'export_data':
-                # Export user data directly
-                return export_user_data(user)
-                
-            return redirect(url_for('settings.privacy'))
-        
-        # Calculate data statistics
-        total_logs = user.logs.count()
-        oldest_log = user.logs.order_by(Log.log_date.asc()).first()
-        newest_log = user.logs.order_by(Log.log_date.desc()).first()
-        
-        data_stats = {
-            'total_logs': total_logs,
-            'oldest_log_date': oldest_log.log_date if oldest_log else None,
-            'newest_log_date': newest_log.log_date if newest_log else None,
-            'custom_pouches': user.custom_pouches.count(),
-            'active_goals': user.goals.filter_by(is_active=True).count()
-        }
-        
-        return render_template('privacy.html', user=user, data_stats=data_stats)
-        
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f'Privacy settings error: {e}')
-        flash('An error occurred while processing privacy settings.', 'error')
-        return render_template('privacy.html', user=get_current_user())
-
-@settings_bp.route('/data_management', methods=['GET', 'POST'])
-@login_required
-def data_management():
-    """Data management settings"""
-    try:
-        user = get_current_user()
-        
-        if request.method == 'POST':
-            action = request.form.get('action')
-            
-            if action == 'cleanup_duplicates':
-                # Find and remove duplicate log entries
-                duplicates_removed = cleanup_duplicate_logs(user)
-                if duplicates_removed > 0:
-                    flash(f'Removed {duplicates_removed} duplicate log entries.', 'success')
-                    current_app.logger.info(f'Cleaned up {duplicates_removed} duplicates for user {user.email}')
                 else:
-                    flash('No duplicate entries found.', 'info')
+                    from datetime import date, timedelta
+                    cutoff_date = date.today() - timedelta(days=days_to_keep)
+                    deleted_count = Log.query.filter(Log.user_id == user.id, Log.log_date < cutoff_date).delete()
+                    db.session.commit()
+                    current_app.logger.info(f'Deleted {deleted_count} old logs for user {user.email}')
+                    flash(f'Successfully deleted {deleted_count} old log entries.', 'success')
+            
+            elif action == 'export_data':
+                return export_user_data(user)
+
+            elif action == 'cleanup_duplicates':
+                duplicates_removed = cleanup_duplicate_logs(user)
+                flash(f'Removed {duplicates_removed} duplicate log entries.' if duplicates_removed > 0 else 'No duplicate entries found.', 'success' if duplicates_removed > 0 else 'info')
                     
             elif action == 'merge_custom_pouches':
-                # Merge similar custom pouches
                 merged_count = merge_similar_pouches(user)
-                if merged_count > 0:
-                    flash(f'Merged {merged_count} similar pouch entries.', 'success')
-                    current_app.logger.info(f'Merged {merged_count} pouches for user {user.email}')
-                else:
-                    flash('No similar pouches found to merge.', 'info')
+                flash(f'Merged {merged_count} similar pouch entries.' if merged_count > 0 else 'No similar pouches found to merge.', 'success' if merged_count > 0 else 'info')
                     
             elif action == 'recalculate_goals':
-                # Recalculate goal streaks
                 updated_goals = recalculate_goal_streaks(user)
                 flash(f'Recalculated streaks for {updated_goals} goals.', 'success')
-                current_app.logger.info(f'Recalculated goal streaks for user {user.email}')
-                
-            return redirect(url_for('settings.data_management'))
+            
+            return redirect(url_for('settings.data'))
         
-        # Get data statistics
+        # GET request
         from sqlalchemy import func
-        
-        # Check for potential duplicates
-        duplicate_check = db.session.query(
-            Log.log_date,
-            Log.log_time,
-            func.count(Log.id).label('count')
-        ).filter_by(user_id=user.id).group_by(
-            Log.log_date, Log.log_time
-        ).having(func.count(Log.id) > 1).all()
+        duplicate_check = db.session.query(Log.log_date, Log.log_time, func.count(Log.id)).filter_by(user_id=user.id).group_by(Log.log_date, Log.log_time).having(func.count(Log.id) > 1).all()
         potential_duplicates = len(duplicate_check)
         
-        # Check for similar custom pouches
         custom_pouches = user.custom_pouches.all()
         similar_pouches = 0
-        for i, pouch1 in enumerate(custom_pouches):
-            for pouch2 in custom_pouches[i+1:]:
-                if (pouch1.brand.lower().strip() == pouch2.brand.lower().strip() and 
-                    pouch1.nicotine_mg == pouch2.nicotine_mg):
-                    similar_pouches += 1
-        
+        pouch_groups = {}
+        for pouch in custom_pouches:
+            key = (pouch.brand.lower().strip(), pouch.nicotine_mg)
+            if key not in pouch_groups:
+                pouch_groups[key] = 0
+            pouch_groups[key] += 1
+        for count in pouch_groups.values():
+            if count > 1:
+                similar_pouches += (count - 1)
+
         data_stats = {
-            'total_logs': user.logs.count(),
-            'custom_pouches': len(custom_pouches),
-            'active_goals': user.goals.filter_by(is_active=True).count(),
             'potential_duplicates': potential_duplicates,
             'similar_pouches': similar_pouches
         }
         
-        return render_template('data_management.html', user=user, data_stats=data_stats)
+        return render_template('data.html', user=user, data_stats=data_stats)
         
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f'Data management error: {e}')
-        flash('An error occurred while managing data.', 'error')
-        return render_template('data_management.html', user=get_current_user())
+        current_app.logger.error(f'Data & Privacy settings error: {e}')
+        flash('An error occurred while processing data settings.', 'error')
+        return redirect(url_for('settings.data'))
+
 
 @settings_bp.route('/profile', methods=['GET', 'POST'])
 @login_required
@@ -356,10 +273,9 @@ def profile():
             age = request.form.get('age', type=int)
             gender = request.form.get('gender', '').strip()
             weight = request.form.get('weight', type=float)
-            timezone = request.form.get('timezone', 'UTC').strip()
-            units_preference = request.form.get('units_preference', 'mg').strip()
             
             # Get preferred brands (multiple selection)
+
             preferred_brands = request.form.getlist('preferred_brands')
             
             # Validation
@@ -375,21 +291,14 @@ def profile():
                 flash('Please select a valid gender option.', 'error')
                 return render_template('profile.html', user=user)
             
-            if units_preference not in ['mg', 'percentage']:
-                flash('Please select a valid units preference.', 'error')
-                return render_template('profile.html', user=user)
             
             # Update user profile
             user.age = age
             user.gender = gender if gender else None
             user.weight = weight
-            user.timezone = timezone
-            user.units_preference = units_preference
-            
-            # Update session timezone for immediate effect
-            session['user_timezone'] = timezone
             
             # Store preferred brands as JSON
+
             if preferred_brands:
                 user.preferred_brands = json.dumps(preferred_brands)
             else:
@@ -415,17 +324,11 @@ def profile():
         available_brands = db.session.query(Pouch.brand).distinct().order_by(Pouch.brand).all()
         available_brands = [brand[0] for brand in available_brands]
         
-        # Get timezone data
-        from services.timezone_service import get_common_timezones, get_all_timezones_for_dropdown
-        common_timezones = get_common_timezones()
-        all_timezones = get_all_timezones_for_dropdown()
-        
         return render_template('profile.html', 
                              user=user, 
                              preferred_brands=preferred_brands,
-                             available_brands=available_brands,
-                             common_timezones=common_timezones,
-                             all_timezones=all_timezones)
+                             available_brands=available_brands)
+
         
     except Exception as e:
         db.session.rollback()
@@ -509,11 +412,8 @@ def account():
                 current_app.logger.info(f'Password changed for user {user.email}')
                 flash('Password changed successfully!', 'success')
                 
-            elif action == 'download_data':
-                # Export user data directly
-                return export_user_data(user)
-                
             elif action == 'resend_verification':
+
                 # Resend email verification
                 if user.email_verified:
                     flash('Your email is already verified.', 'info')

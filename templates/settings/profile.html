@@ -1,82 +1,63 @@
-{% extends "base.html" %}
+{% extends "settings/settings_layout.html" %}
 
-{% block title %}Profile - Nicotine Tracker{% endblock %}
+{% block title %}Profile - Settings{% endblock %}
 
-{% block content %}
-<div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <h1 class="text-2xl font-semibold text-gray-900 dark:text-white mb-6">Your Profile</h1>
-    <form method="POST" class="space-y-6" data-validate>
-        <div>
-            <label for="age" class="block text-sm font-medium text-gray-900 dark:text-white">Age</label>
-            <input type="number" name="age" id="age" min="18" max="120" value="{{ user.age or '' }}" class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600" placeholder="Enter your age">
-        </div>
-        <div>
-            <label for="gender" class="block text-sm font-medium text-gray-900 dark:text-white">Gender</label>
-            <select name="gender" id="gender" class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600">
-                <option value="" {% if not user.gender %}selected{% endif %}>Select gender</option>
-                <option value="male" {% if user.gender == 'male' %}selected{% endif %}>Male</option>
-                <option value="female" {% if user.gender == 'female' %}selected{% endif %}>Female</option>
-                <option value="other" {% if user.gender == 'other' %}selected{% endif %}>Other</option>
-                <option value="prefer_not_to_say" {% if user.gender == 'prefer_not_to_say' %}selected{% endif %}>Prefer not to say</option>
-            </select>
-        </div>
-        <div>
-            <label for="weight" class="block text-sm font-medium text-gray-900 dark:text-white">Weight (kg)</label>
-            <input type="number" name="weight" id="weight" min="30" max="500" step="0.1" value="{{ user.weight or '' }}" class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600" placeholder="Enter your weight">
-        </div>
-        <div>
-            <label for="timezone" class="block text-sm font-medium text-gray-900 dark:text-white">Time Zone</label>
-            <div class="mt-1">
-                <select data-hs-select='{
-                    "hasSearch": true,
-                    "searchPlaceholder": "Search timezones...",
-                    "searchClasses": "block w-full text-sm border-gray-200 rounded-lg focus:border-blue-500 focus:ring-blue-500 before:absolute before:inset-0 before:z-[1] dark:bg-gray-700 dark:border-gray-600 dark:text-gray-400 dark:placeholder-gray-500 py-2 px-3",
-                    "searchWrapperClasses": "bg-white p-2 -mx-1 sticky top-0 dark:bg-gray-700",
-                    "placeholder": "Select timezone...",
-                    "toggleTag": "<button type=\"button\" aria-expanded=\"false\"><span class=\"me-2\" data-icon></span><span class=\"text-gray-800 dark:text-gray-200\" data-title></span></button>",
-                    "toggleClasses": "hs-select-disabled:pointer-events-none hs-select-disabled:opacity-50 relative py-2 ps-4 pe-9 flex gap-x-2 text-nowrap w-full cursor-pointer bg-white border border-gray-200 rounded-lg text-start text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-400 dark:focus:outline-none dark:focus:ring-1 dark:focus:ring-gray-600",
-                    "dropdownClasses": "mt-2 max-h-72 pb-1 px-1 space-y-0.5 z-20 w-full bg-white border border-gray-200 rounded-lg overflow-hidden overflow-y-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-thumb]:bg-gray-300 dark:[&::-webkit-scrollbar-track]:bg-gray-700 dark:[&::-webkit-scrollbar-thumb]:bg-gray-500 dark:bg-gray-700 dark:border-gray-600",
-                    "optionClasses": "py-2 px-4 w-full text-sm text-gray-800 cursor-pointer hover:bg-gray-100 rounded-lg focus:outline-none focus:bg-gray-100 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-300 dark:focus:bg-gray-600",
-                    "optionTemplate": "<div><div class=\"flex items-center\"><div class=\"me-2\" data-icon></div><div class=\"text-gray-800 dark:text-gray-200\" data-title></div></div></div>",
-                    "extraMarkup": "<div class=\"absolute top-1/2 end-3 -translate-y-1/2\"><svg class=\"shrink-0 size-3.5 text-gray-500 dark:text-gray-500\" xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m7 15 5 5 5-5\"/><path d=\"m7 9 5-5 5 5\"/></svg></div>"
-                }' class="hidden" name="timezone" id="timezone">
-                    <option value="">Select timezone...</option>
-                    {% for tz_id, tz_name in common_timezones %}
-                        <option value="{{ tz_id }}" {% if user.timezone == tz_id %}selected{% endif %}>
-                            ★ {{ tz_name }}
-                        </option>
-                    {% endfor %}
-                    {% for tz in all_timezones %}
-                        {% set is_common = tz.value in common_timezones|map('first')|list %}
-                        {% if not is_common %}
-                            <option value="{{ tz.value }}" {% if user.timezone == tz.value %}selected{% endif %}>
-                                {{ tz.label }}
-                            </option>
-                        {% endif %}
-                    {% endfor %}
-                </select>
+{% block settings_content %}
+<div class="bg-white dark:bg-gray-800 shadow rounded-lg">
+    <div class="px-4 py-5 sm:p-6">
+        <h3 class="text-lg font-medium leading-6 text-gray-900 dark:text-white">
+            Profile
+        </h3>
+        <p class="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
+            This information is private and will not be shared publicly.
+        </p>
+    </div>
+    <div class="border-t border-gray-200 dark:border-gray-700">
+        <form method="POST" action="{{ url_for('settings.profile') }}">
+            <div class="px-4 py-5 sm:p-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Age -->
+                    <div>
+                        <label for="age" class="block text-sm font-medium text-gray-900 dark:text-white">Age</label>
+                        <input type="number" name="age" id="age" value="{{ user.age or '' }}" min="18" max="120" class="mt-1 block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                    </div>
+                    
+                    <!-- Gender -->
+                    <div>
+                        <label for="gender" class="block text-sm font-medium text-gray-900 dark:text-white">Gender</label>
+                        <select name="gender" id="gender" class="mt-1 block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                            <option value="" {% if not user.gender %}selected{% endif %}>Select...</option>
+                            <option value="male" {% if user.gender == 'male' %}selected{% endif %}>Male</option>
+                            <option value="female" {% if user.gender == 'female' %}selected{% endif %}>Female</option>
+                            <option value="other" {% if user.gender == 'other' %}selected{% endif %}>Other</option>
+                            <option value="prefer_not_to_say" {% if user.gender == 'prefer_not_to_say' %}selected{% endif %}>Prefer not to say</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Weight -->
+                    <div>
+                        <label for="weight" class="block text-sm font-medium text-gray-900 dark:text-white">Weight (kg)</label>
+                        <input type="number" name="weight" id="weight" value="{{ user.weight or '' }}" min="30" max="500" step="0.1" class="mt-1 block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                    </div>
+                    
+                    <!-- Preferred Brands -->
+                    <div class="md:col-span-2">
+                        <label for="preferred_brands" class="block text-sm font-medium text-gray-900 dark:text-white">Preferred Brands</label>
+                        <select name="preferred_brands" id="preferred_brands" multiple class="mt-1 block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                            {% for brand in available_brands %}
+                            <option value="{{ brand }}" {% if brand in preferred_brands %}selected{% endif %}>{{ brand }}</option>
+                            {% endfor %}
+                        </select>
+                        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Hold Ctrl (or Cmd on Mac) to select multiple brands.</p>
+                    </div>
+                </div>
             </div>
-        </div>
-        <div>
-            <label for="units_preference" class="block text-sm font-medium text-gray-900 dark:text-white">Units Preference</label>
-            <select name="units_preference" id="units_preference" class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600">
-                <option value="mg" {% if user.units_preference == 'mg' %}selected{% endif %}>Milligrams (mg)</option>
-                <option value="percentage" {% if user.units_preference == 'percentage' %}selected{% endif %}>Percentage of max dose</option>
-            </select>
-        </div>
-        <div>
-            <label for="preferred_brands" class="block text-sm font-medium text-gray-900 dark:text-white">Preferred Brands</label>
-            <select name="preferred_brands" id="preferred_brands" multiple class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600">
-                {% for brand in available_brands %}
-                <option value="{{ brand }}" {% if brand in preferred_brands %}selected{% endif %}>{{ brand }}</option>
-                {% endfor %}
-            </select>
-            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Hold Ctrl (Cmd on Mac) to select multiple brands.</p>
-        </div>
-        <div class="flex gap-3">
-            <button type="submit" class="flex-1 py-2 px-3 inline-flex items-center justify-center gap-x-2 text-sm font-medium rounded-lg border border-transparent bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-hidden focus:bg-indigo-700 disabled:opacity-50 disabled:pointer-events-none">Save Profile</button>
-            <a href="{{ url_for('settings.index') }}" class="py-2 px-3 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-800 shadow-2xs hover:bg-gray-50 focus:outline-hidden focus:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:bg-gray-700 dark:focus:bg-gray-700">Cancel</a>
-        </div>
-    </form>
+            <div class="px-4 py-3 bg-gray-50 dark:bg-gray-800 text-right sm:px-6">
+                <button type="submit" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Save Profile
+                </button>
+            </div>
+        </form>
+    </div>
 </div>
 {% endblock %}
