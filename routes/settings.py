@@ -26,8 +26,9 @@ def index():
             timezone = request.form.get('timezone', 'UTC').strip()
             
             # Notification preferences
-            email_notifications = request.form.get('email_notifications') == 'on'
+            notification_channel = request.form.get('notification_channel', 'email').strip()
             goal_notifications = request.form.get('goal_notifications') == 'on'
+
             achievement_notifications = request.form.get('achievement_notifications') == 'on'
             daily_reminders = request.form.get('daily_reminders') == 'on'
             weekly_reports = request.form.get('weekly_reports') == 'on'
@@ -58,9 +59,10 @@ def index():
                 # Update preferences using service
                 success, message = preferences_service.update_preferences(
                     user.id,
-                    email_notifications=email_notifications,
+                    notification_channel=notification_channel,
                     goal_notifications=goal_notifications,
                     achievement_notifications=achievement_notifications,
+
                     daily_reminders=daily_reminders,
                     weekly_reports=weekly_reports,
                     discord_webhook=discord_webhook,
@@ -87,7 +89,7 @@ def index():
         if not current_preferences:
             # Fallback to defaults if service fails
             current_preferences = {
-                'email_notifications': True,
+                'notification_channel': 'email',
                 'goal_notifications': True,
                 'achievement_notifications': True,
                 'daily_reminders': False,
@@ -97,6 +99,7 @@ def index():
                 'quiet_hours_end': None,
                 'notification_frequency': 'immediate'
             }
+
         
         if not webhook_settings:
             webhook_settings = {
@@ -122,9 +125,10 @@ def index():
         
         # Provide default preferences even on error
         default_preferences = {
-            'email_notifications': True,
+            'notification_channel': 'email',
             'goal_notifications': True,
             'achievement_notifications': True,
+
             'daily_reminders': False,
             'weekly_reports': False,
             'discord_webhook': '',
