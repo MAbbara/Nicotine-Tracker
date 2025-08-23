@@ -31,17 +31,19 @@ def preferences():
             units_preference = request.form.get('units_preference', 'mg').strip()
             timezone = request.form.get('timezone', 'UTC').strip()
             daily_reset_time = request.form.get('daily_reset_time', '').strip()
+            preferred_brands = request.form.getlist('preferred_brands')
 
             if units_preference not in ['mg', 'percentage']:
                 flash('Please select a valid units preference.', 'error')
             else:
-                user.units_preference = units_preference
                 user.timezone = timezone
                 session['user_timezone'] = timezone
                 
                 success, message = preferences_service.update_preferences(
                     user.id,
-                    daily_reset_time=daily_reset_time if daily_reset_time else None
+                    daily_reset_time=daily_reset_time if daily_reset_time else None,
+                    units_preference=units_preference,
+                    preferred_brands=preferred_brands
                 )
                 
                 if success:
@@ -54,21 +56,28 @@ def preferences():
             return redirect(url_for('settings.preferences'))
 
         # GET request
-        from models import UserPreferences
-        user_preferences = UserPreferences.query.filter_by(user_id=user.id).first()
+        user_preferences = preferences_service.get_or_create_preferences(user.id)
         
         preferences_data = {
-            'daily_reset_time': user_preferences.daily_reset_time.strftime('%H:%M') if user_preferences and user_preferences.daily_reset_time else ''
+            'daily_reset_time': user_preferences.daily_reset_time.strftime('%H:%M') if user_preferences.daily_reset_time else '',
+            'units_preference': user_preferences.units_preference,
+            'preferred_brands': user_preferences.preferred_brands or []
         }
         
         all_timezones = get_all_timezones_for_dropdown()
         common_timezones = get_common_timezones()
+
+        # Get available brands for selection
+        available_brands = db.session.query(Pouch.brand).distinct().order_by(Pouch.brand).all()
+        available_brands = [brand[0] for brand in available_brands]
         
         return render_template('preferences.html', 
                              user=user, 
                              preferences=preferences_data,
                              all_timezones=all_timezones,
-                             common_timezones=common_timezones)
+                             common_timezones=common_timezones,
+                             available_brands=available_brands)
+
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f'Preferences settings error: {e}')
@@ -194,11 +203,17 @@ def data():
             action = request.form.get('action')
             
             if action == 'anonymize_data':
-                user.age, user.gender, user.weight, user.preferred_brands = None, None, None, None
+                user.age, user.gender, user.weight = None, None, None
+                preferences_service = UserPreferencesService()
+                user_preferences = preferences_service.get_or_create_preferences(user.id)
+                user_preferences.preferred_brands = None
+                user_preferences.units_preference = 'mg'
                 for log in user.logs:
                     log.notes = None
                 db.session.commit()
                 current_app.logger.info(f'Data anonymized for user {user.email}')
+
+
                 flash('Your personal data has been anonymized successfully.', 'success')
                 
             elif action == 'delete_old_logs':
@@ -274,10 +289,6 @@ def profile():
             gender = request.form.get('gender', '').strip()
             weight = request.form.get('weight', type=float)
             
-            # Get preferred brands (multiple selection)
-
-            preferred_brands = request.form.getlist('preferred_brands')
-            
             # Validation
             if age is not None and (age < 18 or age > 120):
                 flash('Please enter a valid age between 18 and 120.', 'error')
@@ -297,13 +308,6 @@ def profile():
             user.gender = gender if gender else None
             user.weight = weight
             
-            # Store preferred brands as JSON
-
-            if preferred_brands:
-                user.preferred_brands = json.dumps(preferred_brands)
-            else:
-                user.preferred_brands = None
-            
             db.session.commit()
             
             current_app.logger.info(f'Profile updated for user {user.email}')
@@ -311,23 +315,8 @@ def profile():
             return redirect(url_for('settings.profile'))
         
         # GET request - display profile
-        # Parse preferred brands from JSON
-        preferred_brands = []
-        if user.preferred_brands:
-            try:
-                preferred_brands = json.loads(user.preferred_brands)
-            except (json.JSONDecodeError, TypeError):
-                preferred_brands = []
-        
-        # Get available brands for selection
-        from models import Pouch
-        available_brands = db.session.query(Pouch.brand).distinct().order_by(Pouch.brand).all()
-        available_brands = [brand[0] for brand in available_brands]
-        
-        return render_template('profile.html', 
-                             user=user, 
-                             preferred_brands=preferred_brands,
-                             available_brands=available_brands)
+        return render_template('profile.html', user=user)
+
 
         
     except Exception as e:
@@ -629,10 +618,12 @@ def export_user_data(user):
                 'gender': user.gender,
                 'weight': user.weight,
                 'timezone': user.timezone,
-                'units_preference': user.units_preference,
-                'preferred_brands': json.loads(user.preferred_brands) if user.preferred_brands else None,
+                'units_preference': user.preferences.units_preference,
+                'preferred_brands': user.preferences.preferred_brands,
                 'email_verified': user.email_verified
             },
+
+
             'logs': [],
             'custom_pouches': [],
             'goals': []

@@ -21,9 +21,8 @@ class User(db.Model):
     email_verified = db.Column(db.Boolean, default=False)
 
     # Preferences
-    preferred_brands = db.Column(db.Text)  # JSON string of preferred brands
     timezone = db.Column(db.String(50), default='UTC')
-    units_preference = db.Column(db.String(20), default='mg')
+
 
     # Relationships
     logs = db.relationship('Log', backref='user', lazy='dynamic', cascade='all, delete-orphan')
@@ -81,9 +80,8 @@ class User(db.Model):
             'weight': self.weight,
             'email_verified': self.email_verified,
             'timezone': self.timezone,
-            'units_preference': self.units_preference,
-            'preferred_brands': self.preferred_brands,
             'created_at': self.created_at.isoformat() if self.created_at else None
+
         }
 
     def __repr__(self):

@@ -10,8 +10,9 @@ from services.timezone_service import (
 )
 
 # Import the User model from the models package aggregator
-from models import User, Log
+from models import User, Log, UserPreferences
 from datetime import datetime as dt, time as dt_time
+
 
 def filter_logs_by_datetime_range(query, start_utc, end_utc):
     """
@@ -42,14 +43,25 @@ def filter_logs_by_datetime_range(query, start_utc, end_utc):
 
 def create_user(email: str, password: str, **profile_data) -> User:
     """Create a new user with the given email and password."""
+    user_profile_data = {
+        key: value for key, value in profile_data.items()
+        if key not in ['units_preference', 'preferred_brands'] and value is not None
+    }
     user = User(
         email=email,
-        **{k: v for k, v in profile_data.items() if v is not None}
+        **user_profile_data
     )
     user.set_password(password)
     db.session.add(user)
+    db.session.flush()
+
+    # Create default preferences for the new user
+    preferences = UserPreferences(user_id=user.id)
+    db.session.add(preferences)
+
     db.session.commit()
     return user
+
 
 def get_user_daily_intake(user: User, target_date=None, use_timezone=True):
     """
