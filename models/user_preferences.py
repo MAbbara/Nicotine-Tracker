@@ -38,7 +38,12 @@ class UserPreferences(db.Model):
     # Daily reset time preference (defaults to midnight)
     daily_reset_time = db.Column(db.Time, nullable=True)  # Time when daily statistics reset
     
+    # General preferences
+    units_preference = db.Column(db.String(20), default='mg', nullable=False)  # 'mg' or 'percentage'
+    preferred_brands = db.Column(db.JSON, nullable=True)
+    
     # Relationships
+
     user = db.relationship('User', backref=db.backref('preferences', uselist=False, cascade='all, delete-orphan'))
     
     def to_dict(self):
@@ -57,9 +62,12 @@ class UserPreferences(db.Model):
             'quiet_hours_end': self.quiet_hours_end.isoformat() if self.quiet_hours_end else None,
             'notification_frequency': self.notification_frequency,
             'daily_reset_time': self.daily_reset_time.isoformat() if self.daily_reset_time else None,
+            'units_preference': self.units_preference,
+            'preferred_brands': self.preferred_brands,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
+
     
     def __repr__(self):
         return f'<UserPreferences {self.user_id}>'

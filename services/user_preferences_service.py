@@ -60,8 +60,10 @@ class UserPreferencesService:
                 'notification_channel', 'goal_notifications', 'daily_reminders',
                 'weekly_reports', 'achievement_notifications', 'discord_webhook',
                 'slack_webhook', 'reminder_time', 'quiet_hours_start',
-                'quiet_hours_end', 'notification_frequency', 'daily_reset_time'
+                'quiet_hours_end', 'notification_frequency', 'daily_reset_time',
+                'units_preference', 'preferred_brands'
             ]
+
 
             
             updated_fields = []
