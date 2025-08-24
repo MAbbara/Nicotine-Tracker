@@ -15,11 +15,11 @@ def get_sorted_pouches(user):
     ).label('preferred_order')
 
     default_pouches = Pouch.query.filter_by(is_default=True).order_by(
-        preferred_brand_case, Pouch.brand, Pouch.nicotine_mg
+        preferred_brand_case, Pouch.brand, desc(Pouch.nicotine_mg)
     ).all()
     
     user_pouches = Pouch.query.filter_by(created_by=user.id).order_by(
-        preferred_brand_case, Pouch.brand, Pouch.nicotine_mg
+        preferred_brand_case, Pouch.brand, desc(Pouch.nicotine_mg)
     ).all()
 
     return default_pouches, user_pouches
