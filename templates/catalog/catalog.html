@@ -11,41 +11,39 @@
     </div>
     
     <h2 class="text-xl font-semibold text-gray-800 dark:text-white mb-4">Default Pouches</h2>
-    {% if default_brands %}
-        {% for brand, pouches in default_brands.items() %}
-            <div class="mb-6">
-                <h3 class="text-lg font-medium text-gray-900 dark:text-white">{{ brand }}</h3>
-                <ul class="list-disc list-inside text-gray-700 dark:text-gray-300">
-                    {% for pouch in pouches %}
-                    <li>{{ pouch.brand }} - {{ pouch.nicotine_mg }} mg</li>
-                    {% endfor %}
-                </ul>
+    {% if default_pouches %}
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {% for pouch in default_pouches %}
+            <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-4">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white">{{ pouch.brand }}</h3>
+                <p class="text-gray-700 dark:text-gray-300">{{ pouch.nicotine_mg }} mg</p>
             </div>
         {% endfor %}
+        </div>
     {% else %}
         <p class="text-gray-500 dark:text-gray-400">No default pouches available.</p>
     {% endif %}
+
     
-    <h2 class="text-xl font-semibold text-gray-800 dark:text-white mb-4">Your Custom Pouches</h2>
-    {% if custom_brands %}
-        {% for brand, pouches in custom_brands.items() %}
-            <div class="mb-6">
-                <h3 class="text-lg font-medium text-gray-900 dark:text-white">{{ brand }}</h3>
-                <ul class="list-disc list-inside text-gray-700 dark:text-gray-300">
-                    {% for pouch in pouches %}
-                    <li>
-                        {{ pouch.brand }} - {{ pouch.nicotine_mg }} mg
-                        <a href="{{ url_for('catalog.edit_pouch', pouch_id=pouch.id) }}" class="text-indigo-600 hover:text-indigo-900 ml-2">Edit</a>
-                        <form action="{{ url_for('catalog.delete_pouch', pouch_id=pouch.id) }}" method="POST" class="inline" onsubmit="return confirm('Are you sure you want to delete this pouch?');">
-                            <button type="submit" class="text-red-600 hover:text-red-900 ml-2">Delete</button>
-                        </form>
-                    </li>
-                    {% endfor %}
-                </ul>
+    <h2 class="text-xl font-semibold text-gray-800 dark:text-white my-4">Your Custom Pouches</h2>
+    {% if custom_pouches %}
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {% for pouch in custom_pouches %}
+            <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-4">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white">{{ pouch.brand }}</h3>
+                <p class="text-gray-700 dark:text-gray-300">{{ pouch.nicotine_mg }} mg</p>
+                <div class="mt-4">
+                    <a href="{{ url_for('catalog.edit_pouch', pouch_id=pouch.id) }}" class="text-indigo-600 hover:text-indigo-900 mr-2">Edit</a>
+                    <form action="{{ url_for('catalog.delete_pouch', pouch_id=pouch.id) }}" method="POST" class="inline" onsubmit="return confirm('Are you sure you want to delete this pouch?');">
+                        <button type="submit" class="text-red-600 hover:text-red-900">Delete</button>
+                    </form>
+                </div>
             </div>
         {% endfor %}
+        </div>
     {% else %}
         <p class="text-gray-500 dark:text-gray-400">You have not added any custom pouches yet.</p>
     {% endif %}
+
 </div>
 {% endblock %}

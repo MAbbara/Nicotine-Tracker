@@ -15,6 +15,29 @@
     </div>
   </div>
 
+  <!-- Quick Add Section -->
+  {% if quick_add_pouches %}
+  <div class="mt-8">
+    <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Quick Add from Preferred Brands</h2>
+    <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+      Based on your most used pouches from your favorite brands.
+    </p>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {% for pouch in quick_add_pouches %}
+      <button type="button" data-quick-add data-pouch-id="{{ pouch.id }}" data-quantity="1"
+        class="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg shadow hover:shadow-md transition-shadow border border-gray-200 dark:border-gray-700">
+        <div>
+          <div class="font-medium text-gray-900 dark:text-white">{{ pouch.brand }}</div>
+          <div class="text-sm text-gray-500 dark:text-gray-400">{{ pouch.nicotine_mg }}mg</div>
+        </div>
+        <div class="text-indigo-600 dark:text-indigo-400 font-semibold">+1</div>
+      </button>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   <!-- Form -->
   <div class="mt-8 max-w-2xl">
     <form method="POST" class="space-y-6" id="add-log-form" data-validate>
@@ -172,27 +195,6 @@
       </div>
     </form>
   </div>
-
-  <!-- Quick Add Section -->
-  <div class="mt-12">
-    <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Quick Add</h2>
-    <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
-      Quickly log common pouches with current time
-    </p>
-
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {% for pouch in pouches[:6] %}
-      <button type="button" data-quick-add data-pouch-id="{{ pouch.id }}" data-quantity="1"
-        class="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg shadow hover:shadow-md transition-shadow border border-gray-200 dark:border-gray-700">
-        <div>
-          <div class="font-medium text-gray-900 dark:text-white">{{ pouch.brand }}</div>
-          <div class="text-sm text-gray-500 dark:text-gray-400">{{ pouch.nicotine_mg }}mg</div>
-        </div>
-        <div class="text-indigo-600 dark:text-indigo-400 font-semibold">+1</div>
-      </button>
-      {% endfor %}
-    </div>
-  </div>
 </div>
 </div>
 
@@ -242,6 +244,21 @@
       pouchSelect.focus();
       return;
     }
+  });
+
+  // Quick Add
+  document.querySelectorAll('[data-quick-add]').forEach(button => {
+    button.addEventListener('click', function() {
+      const pouchId = this.dataset.pouchId;
+      const quantity = this.dataset.quantity;
+      
+      // Set the values in the form
+      document.getElementById('pouch_selection').value = pouchId;
+      document.getElementById('quantity').value = quantity;
+      
+      // Submit the form
+      document.getElementById('add-log-form').submit();
+    });
   });
 </script>
 {% endblock %}

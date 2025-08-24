@@ -1,8 +1,10 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, jsonify
-from models import User, Pouch, Log      # import Log here as well
+from models import User, Pouch, Log
 from extensions import db
 from routes.auth import login_required, get_current_user
+from services.pouch_service import get_sorted_pouches, get_sorted_brands
 from sqlalchemy import or_, desc
+
 
 catalog_bp = Blueprint('catalog', __name__, template_folder="../templates/catalog")
 
@@ -16,16 +18,8 @@ def index():
             current_app.logger.error('Catalog index error: No current user found')
             return redirect(url_for('auth.login'))
         
-        # Get default pouches
-        default_pouches = Pouch.query.filter_by(is_default=True).order_by(
-            Pouch.brand, Pouch.nicotine_mg
-        ).all()
-        
-        # Get user's custom pouches
-        custom_pouches = Pouch.query.filter_by(
-            created_by=user.id, is_default=False
-        ).order_by(Pouch.brand, Pouch.nicotine_mg).all()
-        
+        default_pouches, custom_pouches = get_sorted_pouches(user)
+
         # Group pouches by brand for better display
         default_brands = {}
         for pouch in default_pouches:
@@ -48,7 +42,7 @@ def index():
     except Exception as e:
         current_app.logger.error(f'Catalog index error: {e}')
         flash('An error occurred while loading the catalog.', 'error')
-        return render_template('catalog.html', default_brands={}, custom_brands={})
+        return render_template('catalog.html', default_brands={}, custom_brands={}, default_pouches=[], custom_pouches=[])
 
 @catalog_bp.route('/add', methods=['GET', 'POST'])
 @login_required
@@ -61,7 +55,6 @@ def add_pouch():
             brand = request.form.get('brand', '').strip()
             nicotine_mg = request.form.get('nicotine_mg', type=int)
             
-            # Validation
             if not brand:
                 flash('Brand name is required.', 'error')
                 return render_template('add_pouch.html')
@@ -73,7 +66,6 @@ def add_pouch():
             if nicotine_mg > 100:
                 flash('Nicotine content seems too high. Please verify.', 'warning')
             
-            # Check if pouch already exists for this user
             existing_pouch = Pouch.query.filter_by(
                 brand=brand,
                 nicotine_mg=nicotine_mg,
@@ -84,7 +76,6 @@ def add_pouch():
                 flash('This pouch already exists in your custom list.', 'warning')
                 return redirect(url_for('catalog.index'))
             
-            # Check if it exists in default pouches
             default_pouch = Pouch.query.filter_by(
                 brand=brand,
                 nicotine_mg=nicotine_mg,
@@ -95,7 +86,6 @@ def add_pouch():
                 flash('This pouch already exists in the default catalog.', 'info')
                 return redirect(url_for('catalog.index'))
             
-            # Create new custom pouch
             new_pouch = Pouch(
                 brand=brand,
                 nicotine_mg=nicotine_mg,
@@ -138,7 +128,6 @@ def edit_pouch(pouch_id):
             brand = request.form.get('brand', '').strip()
             nicotine_mg = request.form.get('nicotine_mg', type=int)
             
-            # Validation
             if not brand:
                 flash('Brand name is required.', 'error')
                 return render_template('edit_pouch.html', pouch=pouch)
@@ -147,7 +136,6 @@ def edit_pouch(pouch_id):
                 flash('Nicotine content must be a positive number.', 'error')
                 return render_template('edit_pouch.html', pouch=pouch)
             
-            # Check for duplicates (excluding current pouch)
             existing_pouch = Pouch.query.filter(
                 Pouch.brand == brand,
                 Pouch.nicotine_mg == nicotine_mg,
@@ -159,7 +147,6 @@ def edit_pouch(pouch_id):
                 flash('A pouch with this brand and nicotine content already exists.', 'warning')
                 return render_template('edit_pouch.html', pouch=pouch)
             
-            # Update pouch
             pouch.brand = brand
             pouch.nicotine_mg = nicotine_mg
             
@@ -193,7 +180,6 @@ def delete_pouch(pouch_id):
             flash('Pouch not found or you do not have permission to delete it.', 'error')
             return redirect(url_for('catalog.index'))
         
-        # Check if pouch is being used in logs
         logs_using_pouch = Log.query.filter_by(pouch_id=pouch.id).count()
         
         if logs_using_pouch > 0:
@@ -228,7 +214,6 @@ def search():
         if not query:
             return redirect(url_for('catalog.index'))
         
-        # Search in both default and custom pouches
         search_pattern = f'%{query}%'
         
         default_results = Pouch.query.filter(
@@ -258,14 +243,10 @@ def api_pouches():
     """API endpoint to get pouches for dropdowns"""
     try:
         user = get_current_user()
-        
-        # Get all available pouches for this user
-        default_pouches = Pouch.query.filter_by(is_default=True).all()
-        custom_pouches = Pouch.query.filter_by(created_by=user.id, is_default=False).all()
+        default_pouches, custom_pouches = get_sorted_pouches(user)
         
         pouches_data = []
         
-        # Add default pouches
         for pouch in default_pouches:
             pouches_data.append({
                 'id': pouch.id,
@@ -275,7 +256,6 @@ def api_pouches():
                 'is_custom': False
             })
         
-        # Add custom pouches
         for pouch in custom_pouches:
             pouches_data.append({
                 'id': pouch.id,
@@ -284,9 +264,6 @@ def api_pouches():
                 'display_name': f'{pouch.brand} ({pouch.nicotine_mg}mg) [Custom]',
                 'is_custom': True
             })
-        
-        # Sort by brand name
-        pouches_data.sort(key=lambda x: (x['brand'], x['nicotine_mg']))
         
         return jsonify({
             'success': True,
@@ -306,16 +283,7 @@ def api_brands():
     """API endpoint to get unique brands"""
     try:
         user = get_current_user()
-        
-        # Get unique brands from both default and custom pouches
-        default_brands = db.session.query(Pouch.brand).filter_by(is_default=True).distinct().all()
-        custom_brands = db.session.query(Pouch.brand).filter_by(created_by=user.id, is_default=False).distinct().all()
-        
-        brands = set()
-        for brand_tuple in default_brands + custom_brands:
-            brands.add(brand_tuple[0])
-        
-        brands_list = sorted(list(brands))
+        brands_list = get_sorted_brands(user)
         
         return jsonify({
             'success': True,
@@ -336,7 +304,6 @@ def api_strengths(brand):
     try:
         user = get_current_user()
         
-        # Get strengths for the specified brand
         default_strengths = db.session.query(Pouch.nicotine_mg).filter_by(
             brand=brand, is_default=True
         ).distinct().all()

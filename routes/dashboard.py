@@ -31,7 +31,7 @@ def index():
         else:
             today = date.today()
         
-        default_pouches, user_pouches = get_all_pouches(user.id)
+        default_pouches, user_pouches = get_sorted_pouches(user)
         
         # Get today's summary with timezone support
         today_intake = get_user_daily_intake(user, None, use_timezone=True)
@@ -176,7 +176,8 @@ def index():
     except Exception as e:
         current_app.logger.error(f'Dashboard error: {e}')
         user = get_current_user()
-        return render_template('dashboard.html', error="Unable to load dashboard data", user=user)
+        return render_template('dashboard.html', error="Unable to load dashboard data", user=user, date=date)
+
 
 @dashboard_bp.route('/api/daily_intake_chart')
 @login_required
