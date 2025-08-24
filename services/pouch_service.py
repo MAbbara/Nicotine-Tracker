@@ -1,6 +1,6 @@
 from extensions import db
 from models import Pouch, Log
-from sqlalchemy import case, func, desc
+from sqlalchemy import case, func, desc, or_
 
 def get_sorted_pouches(user):
     """
@@ -14,16 +14,18 @@ def get_sorted_pouches(user):
         else_=len(preferred_brands)
     ).label('preferred_order')
 
-    default_pouches = Pouch.query.filter_by(is_default=True).order_by(
-        preferred_brand_case, Pouch.brand, desc(Pouch.nicotine_mg)
-    ).all()
-    
-    user_pouches = Pouch.query.filter_by(created_by=user.id).order_by(
-        preferred_brand_case, Pouch.brand, desc(Pouch.nicotine_mg)
+    pouches = Pouch.query.filter(
+        or_(
+            Pouch.is_default == True,
+            Pouch.created_by == user.id
+        )
+    ).order_by(
+        preferred_brand_case,
+        Pouch.brand,
+        desc(Pouch.nicotine_mg)
     ).all()
 
-    return default_pouches, user_pouches
-
+    return pouches
 
 def get_sorted_brands(user):
     """

@@ -120,7 +120,7 @@ def add_log():
                 return redirect(url_for('logging.add_log'))
         
         # GET request - show form
-        pouches, user_pouches = get_sorted_pouches(user)
+        pouches = get_sorted_pouches(user)
         quick_add_pouches = pouches[:6]
 
         # Get today's date and current time in user's timezone
@@ -135,7 +135,7 @@ def add_log():
 
         return render_template('add_log.html', 
                              pouches=pouches, 
-                             user_pouches=user_pouches,
+                            #  user_pouches=user_pouches,
                              quick_add_pouches=quick_add_pouches,
                              today=today,
                              current_time=current_time,
