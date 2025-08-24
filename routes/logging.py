@@ -4,7 +4,7 @@ from datetime import date
 from models import User, Log, Pouch
 from services import add_log_entry, add_bulk_logs  # use service layer for log creation
 from services.timezone_service import convert_utc_to_user_time, get_current_user_time
-from services.pouch_service import get_sorted_pouches, get_quick_add_pouches
+from services.pouch_service import get_sorted_pouches
 from extensions import db
 from routes.auth import login_required, get_current_user
 from sqlalchemy import desc
@@ -121,14 +121,9 @@ def add_log():
         
         # GET request - show form
         pouches, user_pouches = get_sorted_pouches(user)
-        quick_add_pouches = get_quick_add_pouches(user)
+        quick_add_pouches = pouches[:6]
 
-
-
-        print(quick_add_pouches)
         # Get today's date and current time in user's timezone
-
-
         if user.timezone:
             _, user_today, user_current_time = get_current_user_time(user.timezone)
             today = user_today.isoformat()
@@ -137,7 +132,7 @@ def add_log():
             # Fallback to server local time if no timezone is set
             today = date.today().isoformat()
             current_time = datetime.now().time().strftime('%H:%M')
-        
+
         return render_template('add_log.html', 
                              pouches=pouches, 
                              user_pouches=user_pouches,

@@ -24,53 +24,6 @@ def get_sorted_pouches(user):
 
     return default_pouches, user_pouches
 
-def get_quick_add_pouches(user):
-    """
-    Get a list of pouches for the quick-add section.
-    This function prioritizes the user's most logged pouches from their preferred brands.
-    If none are found, it falls back to the most logged pouches overall.
-    If there's no log history, it falls back to the top pouches from their sorted list.
-    """
-    pouch_ids = []
-
-    # 1. Try most used from preferred brands
-    preferred_brands = user.preferences.preferred_brands or []
-    if preferred_brands:
-        most_used_preferred = db.session.query(
-            Log.pouch_id,
-            func.count(Log.pouch_id).label('log_count')
-        ).join(Pouch, Pouch.id == Log.pouch_id).filter(
-            Log.user_id == user.id,
-            Pouch.brand.in_(preferred_brands),
-            Log.pouch_id.isnot(None)
-        ).group_by(Log.pouch_id).order_by(
-            desc('log_count')
-        ).limit(6).all()
-        pouch_ids = [item.pouch_id for item in most_used_preferred]
-
-    # 2. Fallback to most used overall if no preferred ones were found
-    if not pouch_ids:
-        most_used_overall = db.session.query(
-            Log.pouch_id,
-            func.count(Log.pouch_id).label('log_count')
-        ).filter(
-            Log.user_id == user.id,
-            Log.pouch_id.isnot(None)
-        ).group_by(Log.pouch_id).order_by(
-            desc('log_count')
-        ).limit(6).all()
-        pouch_ids = [item.pouch_id for item in most_used_overall]
-
-    # Fetch pouches if any were found from logs
-    if pouch_ids:
-        order_case = case({p_id: i for i, p_id in enumerate(pouch_ids)}, value=Pouch.id)
-        return Pouch.query.filter(Pouch.id.in_(pouch_ids)).order_by(order_case).all()
-    
-    # 3. Fallback to just the top sorted pouches if there is no log history
-    default_pouches, user_pouches = get_sorted_pouches(user)
-    all_sorted_pouches = default_pouches + user_pouches
-    return all_sorted_pouches[:6]
-
 
 def get_sorted_brands(user):
     """
