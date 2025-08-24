@@ -14,6 +14,25 @@ def get_sorted_pouches(user):
         else_=len(preferred_brands)
     ).label('preferred_order')
 
+    default_pouches = Pouch.query.filter_by(is_default=True).order_by(
+        preferred_brand_case, Pouch.brand, desc(Pouch.nicotine_mg)
+    ).all()
+    
+    user_pouches = Pouch.query.filter_by(created_by=user.id).order_by(
+        preferred_brand_case, Pouch.brand, desc(Pouch.nicotine_mg)
+    ).all()
+
+    return default_pouches, user_pouches
+
+def get_all_pouches(user):
+    preferred_brands = user.preferences.preferred_brands or []
+    
+    preferred_brand_case = case(
+        {brand: i for i, brand in enumerate(preferred_brands)},
+        value=Pouch.brand,
+        else_=len(preferred_brands)
+    ).label('preferred_order')
+
     pouches = Pouch.query.filter(
         or_(
             Pouch.is_default == True,
@@ -26,6 +45,7 @@ def get_sorted_pouches(user):
     ).all()
 
     return pouches
+
 
 def get_sorted_brands(user):
     """
