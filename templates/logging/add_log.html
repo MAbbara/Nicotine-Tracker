@@ -246,19 +246,5 @@
     }
   });
 
-  // Quick Add
-  document.querySelectorAll('[data-quick-add]').forEach(button => {
-    button.addEventListener('click', function() {
-      const pouchId = this.dataset.pouchId;
-      const quantity = this.dataset.quantity;
-      
-      // Set the values in the form
-      document.getElementById('pouch_selection').value = pouchId;
-      document.getElementById('quantity').value = quantity;
-      
-      // Submit the form
-      document.getElementById('add-log-form').submit();
-    });
-  });
 </script>
 {% endblock %}
