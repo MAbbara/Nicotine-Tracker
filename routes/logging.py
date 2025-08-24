@@ -4,9 +4,12 @@ from datetime import date
 from models import User, Log, Pouch
 from services import add_log_entry, add_bulk_logs  # use service layer for log creation
 from services.timezone_service import convert_utc_to_user_time, get_current_user_time
+from services.pouch_service import get_sorted_pouches, get_quick_add_pouches
 from extensions import db
 from routes.auth import login_required, get_current_user
 from sqlalchemy import desc
+
+
 import re
 
 # Specify the template folder for logging-related templates
@@ -117,10 +120,15 @@ def add_log():
                 return redirect(url_for('logging.add_log'))
         
         # GET request - show form
-        pouches = Pouch.query.filter_by(is_default=True).order_by(Pouch.brand, Pouch.nicotine_mg).all()
-        user_pouches = Pouch.query.filter_by(created_by=user.id).order_by(Pouch.brand, Pouch.nicotine_mg).all()
+        pouches, user_pouches = get_sorted_pouches(user)
+        quick_add_pouches = get_quick_add_pouches(user)
 
+
+
+        print(quick_add_pouches)
         # Get today's date and current time in user's timezone
+
+
         if user.timezone:
             _, user_today, user_current_time = get_current_user_time(user.timezone)
             today = user_today.isoformat()
@@ -132,10 +140,12 @@ def add_log():
         
         return render_template('add_log.html', 
                              pouches=pouches, 
-                             user_pouches=user_pouches, 
+                             user_pouches=user_pouches,
+                             quick_add_pouches=quick_add_pouches,
                              today=today,
                              current_time=current_time,
                              user_timezone=user.timezone)
+
         
     except Exception as e:
         db.session.rollback()
