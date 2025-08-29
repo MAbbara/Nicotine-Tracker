@@ -67,7 +67,6 @@ def send_reset_email(user, reset_token):
             # Queue the email
             success = notification_service.queue_notification(
                 user_id=user.id,
-                notification_type='email',
                 category='password_reset',
                 subject=subject,
                 message=message,
@@ -219,7 +218,6 @@ def resend_verification():
         user_id = session['user_id']
         user = db.session.get(User, user_id)
 
-        
         if not user:
             flash('User not found.', 'error')
             return redirect(url_for('auth.login'))
@@ -235,6 +233,7 @@ def resend_verification():
             flash('Verification email sent! Please check your inbox.', 'success')
         else:
             flash(f'Failed to send verification email: {message}', 'error')
+            current_app.logger.error(f"Error occurred in auth.resend_verification {message}") 
             
     except Exception as e:
         current_app.logger.error(f'Resend verification error: {e}')

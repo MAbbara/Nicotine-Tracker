@@ -113,16 +113,15 @@ class EmailVerificationService:
             if current_app.config.get('FLASK_ENV') == 'development' or current_app.debug:
                 current_app.logger.info(f'Development mode: Verification URL for {user.email}: {verification_url}')
                 # Auto-verify in development
-                user.email_verified = True
-                verification_token.is_verified = True
-                verification_token.verified_at = datetime.utcnow()
-                db.session.commit()
-                return True, "Email auto-verified in development mode"
+                # user.email_verified = True
+                # verification_token.is_verified = True
+                # verification_token.verified_at = datetime.utcnow()
+                # db.session.commit()
+                # return True, "Email auto-verified in development mode"
             
             # Queue email notification
             success = notification_service.queue_notification(
                 user_id=user_id,
-                notification_type='email',
                 category='email_verification',
                 subject=subject,
                 message=message,
