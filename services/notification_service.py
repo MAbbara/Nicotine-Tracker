@@ -279,6 +279,20 @@ class NotificationService:
                     'extra_data': notification.extra_data,
                     'dashboard_url': url_for('dashboard.index', _external=True) if hasattr(notification, 'user_id') else '#'
                 }
+
+                # Enrich context for weekly reports so template fields render with numbers
+                if notification.category == 'weekly_report' and notification.extra_data:
+                    ed = notification.extra_data or {}
+                    # Map expected template variables with safe fallbacks
+                    context.update({
+                        'total_logs': ed.get('total_logs', ed.get('total_pouches', 0)),
+                        'daily_average': ed.get('daily_average_pouches', 0),
+                        'goals_on_track': ed.get('goals_on_track', ed.get('goals_count', 0)),
+                        'active_streaks': ed.get('active_streaks', 0),
+                        'total_pouches': ed.get('total_pouches', 0),
+                        'total_nicotine': ed.get('total_nicotine', 0),
+                        'daily_average_mg': ed.get('daily_average_mg', 0)
+                    })
                 
                 # Add specific context for goal achievements
                 if notification.category in ['goal_achievement', 'achievement'] and notification.extra_data:
@@ -309,6 +323,59 @@ class NotificationService:
     
     def _format_discord_embed(self, notification):
         """Format notification as Discord embed"""
+        # Special handling for weekly reports: avoid HTML and present clean fields
+        if notification.category == 'weekly_report' and notification.extra_data:
+            ed = notification.extra_data or {}
+            # Parse week range for display
+            try:
+                ws = datetime.fromisoformat(ed.get('week_start')).date() if ed.get('week_start') else None
+                we = datetime.fromisoformat(ed.get('week_end')).date() if ed.get('week_end') else None
+                week_range = f"Week of {ws.strftime('%b %d')} - {we.strftime('%b %d, %Y')}" if ws and we else "Weekly Summary"
+            except Exception:
+                week_range = "Weekly Summary"
+
+            fields = []
+            fields.append({
+                "name": "Total Pouches",
+                "value": str(ed.get('total_pouches', 0)),
+                "inline": True
+            })
+            fields.append({
+                "name": "Total Nicotine",
+                "value": f"{ed.get('total_nicotine', 0):.1f} mg",
+                "inline": True
+            })
+            fields.append({
+                "name": "Daily Avg (Pouches)",
+                "value": f"{ed.get('daily_average_pouches', 0):.1f}",
+                "inline": True
+            })
+            fields.append({
+                "name": "Daily Avg (Nicotine)",
+                "value": f"{ed.get('daily_average_mg', 0):.1f} mg",
+                "inline": True
+            })
+            fields.append({
+                "name": "Goals On Track",
+                "value": f"{ed.get('goals_on_track', 0)}/{ed.get('goals_count', 0)}",
+                "inline": True
+            })
+            fields.append({
+                "name": "Active Streaks",
+                "value": str(ed.get('active_streaks', 0)),
+                "inline": True
+            })
+
+            return {
+                "title": notification.subject,
+                "description": week_range,
+                "color": self._get_embed_color(notification.category),
+                "timestamp": datetime.utcnow().isoformat(),
+                "fields": fields,
+                "footer": {"text": "Nicotine Tracker"}
+            }
+
+        # Default formatting for other categories (may include simple fields)
         embed = {
             "title": notification.subject,
             "description": notification.message,
@@ -318,35 +385,17 @@ class NotificationService:
                 "text": "Nicotine Tracker"
             }
         }
-        
-        # Add fields based on extra data
+
         if notification.extra_data:
             fields = []
-            
             if 'progress' in notification.extra_data:
-                fields.append({
-                    "name": "Progress",
-                    "value": f"{notification.extra_data['progress']}%",
-                    "inline": True
-                })
-            
+                fields.append({"name": "Progress", "value": f"{notification.extra_data['progress']}%", "inline": True})
             if 'streak' in notification.extra_data:
-                fields.append({
-                    "name": "Current Streak",
-                    "value": f"{notification.extra_data['streak']} days",
-                    "inline": True
-                })
-            
+                fields.append({"name": "Current Streak", "value": f"{notification.extra_data['streak']} days", "inline": True})
             if 'goal_type' in notification.extra_data:
-                fields.append({
-                    "name": "Goal Type",
-                    "value": notification.extra_data['goal_type'].replace('_', ' ').title(),
-                    "inline": True
-                })
-            
+                fields.append({"name": "Goal Type", "value": notification.extra_data['goal_type'].replace('_', ' ').title(), "inline": True})
             if fields:
                 embed["fields"] = fields
-        
         return embed
     
     def _get_embed_color(self, category):
