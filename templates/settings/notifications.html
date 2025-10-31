@@ -75,6 +75,13 @@
                             </div>
                             <input type="checkbox" name="weekly_reports" id="weekly_reports" {% if preferences.weekly_reports %}checked{% endif %} class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 dark:border-gray-600 dark:bg-gray-700">
                         </div>
+                        <div class="mt-3 flex items-center justify-between gap-4">
+                            <p class="text-sm text-gray-500 dark:text-gray-400">Need your latest report right away?</p>
+                            <button type="button" id="trigger-weekly-report" class="inline-flex items-center px-3 py-2 text-sm font-medium rounded-md text-indigo-600 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-indigo-900 dark:text-indigo-300 dark:border-indigo-700 dark:hover:bg-indigo-800">
+                                Send Weekly Report
+                            </button>
+                        </div>
+                        <div id="weekly-report-feedback" class="hidden mt-2 text-sm"></div>
                     </div>
                 </div>
 
@@ -122,6 +129,79 @@ document.addEventListener('DOMContentLoaded', function() {
     discordCheckbox.addEventListener('change', () => {
         webhookContainer.classList.toggle('hidden', !discordCheckbox.checked);
     });
+
+    // Manual weekly report trigger
+    const weeklyReportsCheckbox = document.getElementById('weekly_reports');
+    const triggerWeeklyButton = document.getElementById('trigger-weekly-report');
+    const weeklyReportFeedback = document.getElementById('weekly-report-feedback');
+
+    if (triggerWeeklyButton) {
+        const updateWeeklyButtonState = () => {
+            const enabled = weeklyReportsCheckbox && weeklyReportsCheckbox.checked;
+            triggerWeeklyButton.disabled = !enabled;
+            triggerWeeklyButton.classList.toggle('opacity-50', !enabled);
+            triggerWeeklyButton.classList.toggle('cursor-not-allowed', !enabled);
+        };
+
+        updateWeeklyButtonState();
+
+        if (weeklyReportsCheckbox) {
+            weeklyReportsCheckbox.addEventListener('change', () => {
+                updateWeeklyButtonState();
+                if (weeklyReportFeedback) {
+                    weeklyReportFeedback.classList.add('hidden');
+                }
+            });
+        }
+
+        triggerWeeklyButton.addEventListener('click', async function() {
+            if (triggerWeeklyButton.disabled) {
+                return;
+            }
+
+            if (weeklyReportFeedback) {
+                weeklyReportFeedback.classList.add('hidden');
+            }
+
+            const originalText = triggerWeeklyButton.textContent;
+            triggerWeeklyButton.disabled = true;
+            triggerWeeklyButton.textContent = 'Sending...';
+
+            try {
+                const response = await fetch("{{ url_for('settings.trigger_weekly_report') }}", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({})
+                });
+
+                const result = await response.json();
+                const success = response.ok && result.success;
+                showWeeklyReportFeedback(success ? 'success' : 'error', result.message || (success ? 'Weekly report queued.' : 'Unable to queue weekly report.'));
+            } catch (error) {
+                showWeeklyReportFeedback('error', 'Failed to send weekly report. Please try again.');
+            } finally {
+                triggerWeeklyButton.textContent = originalText;
+                updateWeeklyButtonState();
+            }
+        });
+
+        function showWeeklyReportFeedback(type, message) {
+            if (!weeklyReportFeedback) {
+                return;
+            }
+            weeklyReportFeedback.textContent = message;
+            weeklyReportFeedback.classList.remove('hidden', 'text-green-600', 'dark:text-green-400', 'text-red-600', 'dark:text-red-400');
+            if (type === 'success') {
+                weeklyReportFeedback.classList.add('text-green-600', 'dark:text-green-400');
+            } else {
+                weeklyReportFeedback.classList.add('text-red-600', 'dark:text-red-400');
+            }
+            setTimeout(() => {
+                weeklyReportFeedback.classList.add('hidden');
+            }, 5000);
+        }
+    }
 
     // Discord webhook test functionality
     const testButton = document.getElementById('test-discord-webhook');

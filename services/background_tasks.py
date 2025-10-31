@@ -227,98 +227,12 @@ class BackgroundTaskProcessor:
         """Send weekly progress report to a user"""
         try:
             logger.debug(f"Calculating weekly stats for user {user.id}")
-            # Calculate previous week's statistics (Mon-Sun)
-            # Current week starts Monday
-            today = date.today()
-            current_week_start = today - timedelta(days=today.weekday())
-            # Last week range: Monday to Sunday
-            week_start = current_week_start - timedelta(days=7)
-            week_end = current_week_start - timedelta(days=1)
-            
-            # Get user's logs for this week
-            from models.log import Log
-            week_logs = Log.query.filter(
-                Log.user_id == user.id,
-                Log.log_date >= week_start,
-                Log.log_date <= week_end
-            ).all()
-            
-            total_pouches = sum(log.quantity for log in week_logs)
-            total_nicotine = sum(log.get_total_nicotine() for log in week_logs)
-            daily_avg_pouches = (total_pouches / 7.0) if 7 else 0.0
-            daily_avg_mg = (total_nicotine / 7.0) if 7 else 0.0
-            logger.debug(
-                f"User {user.id} weekly stats: {total_pouches} pouches, {total_nicotine:.1f}mg nicotine."
-            )
-            
-            # Get active goals progress
-            active_goals = Goal.query.filter_by(user_id=user.id, is_active=True).all()
-            goals_summary = []
-            
-            for goal in active_goals:
-                from routes.goals import calculate_goal_progress
-                # Evaluate goal status as of end of last week
-                progress = calculate_goal_progress(user, goal, week_end)
-                goals_summary.append({
-                    'type': goal.goal_type.replace('_', ' ').title(),
-                    'target': goal.target_value,
-                    'current': progress['current'],
-                    'achieved': progress['achieved']
-                })
-            goals_on_track = sum(1 for g in goals_summary if g.get('achieved'))
-            active_streaks = sum(1 for g in active_goals if getattr(g, 'current_streak', 0) > 0)
-            
-            # Create report message
-            subject = f"📊 Your Weekly Progress Report"
-            message = f"""
-            <h3>Week of {week_start.strftime('%B %d')} - {week_end.strftime('%B %d, %Y')}</h3>
-
-            <h4>📈 Usage Summary</h4>
-            <ul>
-                <li><strong>Total Pouches:</strong> {total_pouches}</li>
-                <li><strong>Total Nicotine:</strong> {total_nicotine:.1f}mg</li>
-                <li><strong>Daily Average:</strong> {daily_avg_pouches:.1f} pouches</li>
-            </ul>
-
-            <h4>🎯 Goals Progress</h4>
-            """
-            
-            if goals_summary:
-                message += "<ul>"
-                for goal in goals_summary:
-                    status = "✅ Achieved" if goal['achieved'] else "⏳ In Progress"
-                    message += f"<li><strong>{goal['type']}:</strong> {goal['current']}/{goal['target']} - {status}</li>"
-                message += "</ul>"
+            queued = self.notification_service.queue_weekly_report(user)
+            if queued:
+                logger.info(f"Queued weekly report for user {user.id}")
             else:
-                message += "<p>No active goals. Consider setting some goals to track your progress!</p>"
-            
-            message += """
-            <p>Keep up the great work! Remember, every small step counts towards your health goals.</p>
-            """
-            
-            extra_data = {
-                'week_start': week_start.isoformat(),
-                'week_end': week_end.isoformat(),
-                'total_pouches': total_pouches,
-                'total_nicotine': total_nicotine,
-                'daily_average_pouches': round(daily_avg_pouches, 1),
-                'daily_average_mg': round(daily_avg_mg, 1),
-                'total_logs': len(week_logs),
-                'goals_count': len(goals_summary),
-                'goals_on_track': goals_on_track,
-                'active_streaks': active_streaks
-            }
-            
-            # Queue notification
-            logger.info(f"Queuing weekly report for user {user.id}")
-            return self.notification_service.queue_notification(
-                user_id=user.id,
-                category='weekly_report',
-                subject=subject,
-                message=message,
-                priority=4,
-                extra_data=extra_data
-            )
+                logger.warning(f"Weekly report not queued for user {user.id}")
+            return queued
 
             
         except Exception as e:

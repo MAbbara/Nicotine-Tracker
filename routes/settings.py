@@ -155,6 +155,46 @@ def notifications():
         return redirect(url_for('settings.profile'))
 
 
+@settings_bp.route('/notifications/trigger-weekly', methods=['POST'])
+@login_required
+def trigger_weekly_report():
+    """Allow users to manually queue their weekly report."""
+    try:
+        user = get_current_user()
+        if not user:
+            return jsonify({'success': False, 'message': 'User not found.'}), 404
+
+        preferences_service = UserPreferencesService()
+        preferences = preferences_service.get_or_create_preferences(user.id)
+
+        if not preferences or not preferences.weekly_reports:
+            return jsonify({
+                'success': False,
+                'message': 'Enable weekly reports before sending a manual report.'
+            }), 400
+
+        notification_service = NotificationService()
+        queued = notification_service.queue_weekly_report(user)
+
+        if queued:
+            return jsonify({
+                'success': True,
+                'message': 'Weekly report queued. It should arrive shortly.'
+            })
+
+        return jsonify({
+            'success': False,
+            'message': 'Weekly report could not be queued. Check your notification channels.'
+        }), 400
+
+    except Exception as e:
+        current_app.logger.error(f'Manual weekly report trigger error: {e}', exc_info=True)
+        return jsonify({
+            'success': False,
+            'message': 'An error occurred while attempting to send the weekly report.'
+        }), 500
+
+
 @settings_bp.route('/test-discord-webhook', methods=['POST'])
 @login_required
 def test_discord_webhook():
