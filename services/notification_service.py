@@ -2,15 +2,19 @@
 Handles email and Discord webhook notifications with queue processing.
 """
 import json
+import re
 import requests
 from datetime import datetime, timedelta
 from flask import current_app, render_template_string
 from flask_mail import Message
 from extensions import db, mail
 from models.notification import NotificationQueue, NotificationHistory
-from models.user_preferences import UserPreferences
 from models.user import User
+from models.goal import Goal
+from models.log import Log
 from services.user_preferences_service import UserPreferencesService
+from services import timezone_service as tz_service
+from sqlalchemy import and_, or_
 
 
 class NotificationService:
@@ -21,6 +25,153 @@ class NotificationService:
             'email': self.send_email_notification,
             'discord': self.send_discord_notification,
         }
+
+    def _normalize_extra_data(self, extra):
+        """Ensure extra data is returned as a dictionary."""
+        if not extra:
+            return {}
+        if isinstance(extra, dict):
+            return extra
+        if isinstance(extra, str):
+            try:
+                parsed = json.loads(extra)
+                return parsed if isinstance(parsed, dict) else {}
+            except json.JSONDecodeError:
+                return {}
+        return {}
+
+    @staticmethod
+    def _strip_html(content):
+        """Remove basic HTML tags for plain text fallbacks."""
+        if not content:
+            return ''
+        return re.sub(r'<[^>]+>', '', content)
+
+    def queue_weekly_report(self, user):
+        """Generate and queue a weekly report notification for a user."""
+        try:
+            preferences = self.preferences_service.get_or_create_preferences(user.id)
+            if not preferences:
+                current_app.logger.error(f'Preferences not found for user {user.id} while queuing weekly report')
+                return False
+
+            user_timezone = user.timezone or 'UTC'
+            reset_time = preferences.daily_reset_time if preferences else None
+
+            _, local_today, _ = tz_service.get_current_user_time(user_timezone)
+            current_week_start_local = local_today - timedelta(days=local_today.weekday())
+            last_week_start_local = current_week_start_local - timedelta(days=7)
+            last_week_end_local = last_week_start_local + timedelta(days=6)
+
+            week_start_utc, _ = tz_service.get_user_day_boundaries(user_timezone, last_week_start_local, reset_time)
+            _, week_end_utc = tz_service.get_user_day_boundaries(user_timezone, last_week_end_local, reset_time)
+            week_start_utc = week_start_utc.replace(tzinfo=None)
+            week_end_utc = week_end_utc.replace(tzinfo=None)
+
+            week_logs = Log.query.filter(
+                Log.user_id == user.id,
+                or_(
+                    and_(Log.log_time.isnot(None), Log.log_time >= week_start_utc, Log.log_time <= week_end_utc),
+                    and_(Log.log_time.is_(None), Log.log_date >= last_week_start_local, Log.log_date <= last_week_end_local)
+                )
+            ).all()
+
+            total_pouches = sum(log.quantity for log in week_logs)
+            total_nicotine = sum(log.get_total_nicotine() for log in week_logs)
+            daily_avg_pouches = total_pouches / 7.0
+            daily_avg_mg = total_nicotine / 7.0
+
+            active_goals = Goal.query.filter_by(user_id=user.id, is_active=True).all()
+            goals_summary = []
+
+            calculate_goal_progress = None
+            try:
+                from routes.goals import calculate_goal_progress as goal_progress_fn
+                calculate_goal_progress = goal_progress_fn
+            except Exception as import_error:
+                current_app.logger.error(f'Unable to import goal progress helper: {import_error}')
+
+            for goal in active_goals:
+                if callable(calculate_goal_progress):
+                    progress = calculate_goal_progress(user, goal, last_week_end_local)
+                    goals_summary.append({
+                        'type': goal.goal_type.replace('_', ' ').title(),
+                        'target': goal.target_value,
+                        'current': progress['current'],
+                        'achieved': progress['achieved']
+                    })
+                else:
+                    goals_summary.append({
+                        'type': goal.goal_type.replace('_', ' ').title(),
+                        'target': goal.target_value,
+                        'current': 0,
+                        'achieved': False
+                    })
+
+            goals_on_track = sum(1 for g in goals_summary if g.get('achieved'))
+            active_streaks = sum(1 for g in active_goals if getattr(g, 'current_streak', 0) > 0)
+
+            subject = "Your Weekly Progress Report"
+            message = (
+                f"<h3>Week of {last_week_start_local.strftime('%B %d')} - "
+                f"{last_week_end_local.strftime('%B %d, %Y')}</h3>\n\n"
+                "<h4>Usage Summary</h4>\n"
+                "<ul>\n"
+                f"  <li><strong>Total Pouches:</strong> {total_pouches}</li>\n"
+                f"  <li><strong>Total Nicotine:</strong> {total_nicotine:.1f}mg</li>\n"
+                f"  <li><strong>Daily Average:</strong> {daily_avg_pouches:.1f} pouches</li>\n"
+                "</ul>\n\n"
+                "<h4>Goals Progress</h4>\n"
+            )
+
+            if goals_summary:
+                message += "<ul>"
+                for goal_summary in goals_summary:
+                    status = "Achieved" if goal_summary['achieved'] else "In Progress"
+                    message += (
+                        f"<li><strong>{goal_summary['type']}:</strong> "
+                        f"{goal_summary['current']}/{goal_summary['target']} - {status}</li>"
+                    )
+                message += "</ul>"
+            else:
+                message += "<p>No active goals. Consider setting some goals to track your progress!</p>"
+
+            message += (
+                "<p>Keep up the great work! Remember, every small step counts towards your health goals.</p>"
+            )
+
+            extra_data = {
+                'week_start': last_week_start_local.isoformat(),
+                'week_end': last_week_end_local.isoformat(),
+                'total_pouches': total_pouches,
+                'total_nicotine': round(total_nicotine, 1),
+                'daily_average_pouches': round(daily_avg_pouches, 1),
+                'daily_average_mg': round(daily_avg_mg, 1),
+                'total_logs': len(week_logs),
+                'goals_count': len(goals_summary),
+                'goals_on_track': goals_on_track,
+                'active_streaks': active_streaks
+            }
+
+            current_app.logger.info(
+                "Queueing weekly report for user %s covering %s to %s",
+                user.id,
+                last_week_start_local,
+                last_week_end_local
+            )
+
+            return self.queue_notification(
+                user_id=user.id,
+                category='weekly_report',
+                subject=subject,
+                message=message,
+                priority=4,
+                extra_data=extra_data
+            )
+
+        except Exception as e:
+            current_app.logger.error(f'Error queuing weekly report for user {user.id}: {e}', exc_info=True)
+            return False
     
     def queue_notification(self, user_id, category, subject, message, priority=5, extra_data=None):
         """
@@ -271,18 +422,19 @@ class NotificationService:
                 }
                 
                 template_name = template_map.get(notification.category, 'emails/generic_notification.html')
-                
+                extra_data = self._normalize_extra_data(notification.extra_data)
+
                 # Prepare template context
                 context = {
                     'subject': notification.subject,
                     'message': notification.message,
-                    'extra_data': notification.extra_data,
+                    'extra_data': extra_data,
                     'dashboard_url': url_for('dashboard.index', _external=True) if hasattr(notification, 'user_id') else '#'
                 }
 
                 # Enrich context for weekly reports so template fields render with numbers
-                if notification.category == 'weekly_report' and notification.extra_data:
-                    ed = notification.extra_data or {}
+                if notification.category == 'weekly_report' and extra_data:
+                    ed = extra_data
                     # Map expected template variables with safe fallbacks
                     context.update({
                         'total_logs': ed.get('total_logs', ed.get('total_pouches', 0)),
@@ -295,20 +447,20 @@ class NotificationService:
                     })
                 
                 # Add specific context for goal achievements
-                if notification.category in ['goal_achievement', 'achievement'] and notification.extra_data:
-                    context['achievement_type'] = notification.extra_data.get('achievement_type', 'milestone')
+                if notification.category in ['goal_achievement', 'achievement'] and extra_data:
+                    context['achievement_type'] = extra_data.get('achievement_type', 'milestone')
                     # Create a mock goal object for template compatibility
-                    if 'goal_type' in notification.extra_data:
+                    if 'goal_type' in extra_data:
                         context['goal'] = type('Goal', (), {
-                            'goal_type': notification.extra_data.get('goal_type', ''),
-                            'target_value': notification.extra_data.get('target_value', 0),
-                            'current_streak': notification.extra_data.get('current_streak', 0),
-                            'best_streak': notification.extra_data.get('best_streak', 0)
+                            'goal_type': extra_data.get('goal_type', ''),
+                            'target_value': extra_data.get('target_value', 0),
+                            'current_streak': extra_data.get('current_streak', 0),
+                            'best_streak': extra_data.get('best_streak', 0)
                         })()
                 
                 # Add action URL if available
-                if notification.extra_data and 'action_url' in notification.extra_data:
-                    context['action_url'] = notification.extra_data['action_url']
+                if extra_data and 'action_url' in extra_data:
+                    context['action_url'] = extra_data['action_url']
                 
                 return render_template(template_name, **context)
 
@@ -319,13 +471,15 @@ class NotificationService:
             return render_template('emails/generic_notification.html',
                                  subject=notification.subject,
                                  message=notification.message,
-                                 extra_data=notification.extra_data)
+                                 extra_data=self._normalize_extra_data(notification.extra_data))
     
     def _format_discord_embed(self, notification):
         """Format notification as Discord embed"""
+        extra_data = self._normalize_extra_data(notification.extra_data)
+
         # Special handling for weekly reports: avoid HTML and present clean fields
-        if notification.category == 'weekly_report' and notification.extra_data:
-            ed = notification.extra_data or {}
+        if notification.category == 'weekly_report' and extra_data:
+            ed = extra_data
             # Parse week range for display
             try:
                 ws = datetime.fromisoformat(ed.get('week_start')).date() if ed.get('week_start') else None
@@ -378,7 +532,7 @@ class NotificationService:
         # Default formatting for other categories (may include simple fields)
         embed = {
             "title": notification.subject,
-            "description": notification.message,
+            "description": self._strip_html(notification.message),
             "color": self._get_embed_color(notification.category),
             "timestamp": datetime.utcnow().isoformat(),
             "footer": {
@@ -386,14 +540,14 @@ class NotificationService:
             }
         }
 
-        if notification.extra_data:
+        if extra_data:
             fields = []
-            if 'progress' in notification.extra_data:
-                fields.append({"name": "Progress", "value": f"{notification.extra_data['progress']}%", "inline": True})
-            if 'streak' in notification.extra_data:
-                fields.append({"name": "Current Streak", "value": f"{notification.extra_data['streak']} days", "inline": True})
-            if 'goal_type' in notification.extra_data:
-                fields.append({"name": "Goal Type", "value": notification.extra_data['goal_type'].replace('_', ' ').title(), "inline": True})
+            if 'progress' in extra_data:
+                fields.append({"name": "Progress", "value": f"{extra_data['progress']}%", "inline": True})
+            if 'streak' in extra_data:
+                fields.append({"name": "Current Streak", "value": f"{extra_data['streak']} days", "inline": True})
+            if 'goal_type' in extra_data:
+                fields.append({"name": "Goal Type", "value": extra_data['goal_type'].replace('_', ' ').title(), "inline": True})
             if fields:
                 embed["fields"] = fields
         return embed
