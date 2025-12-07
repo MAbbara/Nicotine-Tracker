@@ -4,7 +4,7 @@ from datetime import date
 from models import User, Log, Pouch
 from services import add_log_entry, add_bulk_logs  # use service layer for log creation
 from services.timezone_service import convert_utc_to_user_time, get_current_user_time
-from services.pouch_service import get_all_pouches
+from services.pouch_service import get_sorted_pouches
 from extensions import db
 from routes.auth import login_required, get_current_user
 from sqlalchemy import desc
@@ -42,7 +42,7 @@ def add_log():
             # Validation
             if quantity <= 0:
                 flash('Quantity must be greater than 0.', 'error')
-                return redirect(url_for('logging.add_log'))
+                return redirect(url_for('logging.view_logs', open_add_modal=1))
             
             # Get timezone info from frontend (if available)
             frontend_timezone = request.form.get('user_timezone')
@@ -52,7 +52,7 @@ def add_log():
                 log_date = datetime.strptime(log_date_str, '%Y-%m-%d').date()
             except ValueError:
                 flash('Invalid date format.', 'error')
-                return redirect(url_for('logging.add_log'))
+                return redirect(url_for('logging.view_logs', open_add_modal=1))
             
             # Parse time (optional, in user's timezone)
             log_time = None
@@ -61,7 +61,7 @@ def add_log():
                     log_time = datetime.strptime(log_time_str, '%H:%M').time()
                 except ValueError:
                     flash('Invalid time format. Use HH:MM format.', 'error')
-                    return redirect(url_for('logging.add_log'))
+                    return redirect(url_for('logging.view_logs', open_add_modal=1))
             
             # Use the frontend timezone if provided, otherwise fall back to user's configured timezone
             effective_timezone = frontend_timezone if frontend_timezone else user.timezone
@@ -76,7 +76,7 @@ def add_log():
                     if not pouch:
                         flash('Selected pouch not found.', 'error')
 
-                        return redirect(url_for('logging.add_log'))
+                        return redirect(url_for('logging.view_logs', open_add_modal=1))
                     # Always use server-side timezone conversion
                     add_log_entry(
                         user_id=user.id,
@@ -92,7 +92,7 @@ def add_log():
                         custom_mg = int(custom_nicotine_mg)
                         if custom_mg <= 0:
                             flash('Custom nicotine content must be greater than 0.', 'error')
-                            return redirect(url_for('logging.add_log'))
+                            return redirect(url_for('logging.view_logs', open_add_modal=1))
                         # Always use server-side timezone conversion
                         add_log_entry(
                             user_id=user.id,
@@ -106,10 +106,10 @@ def add_log():
                         )
                     except ValueError:
                         flash('Invalid nicotine content. Please enter a number.', 'error')
-                        return redirect(url_for('logging.add_log'))
+                        return redirect(url_for('logging.view_logs', open_add_modal=1))
                 else:
                     flash('Please select a pouch or enter custom details.', 'error')
-                    return redirect(url_for('logging.add_log'))
+                    return redirect(url_for('logging.view_logs', open_add_modal=1))
 
                 current_app.logger.info(f'Log entry added for user {user.email}: {quantity} pouches')
                 flash('Log entry added successfully!', 'success')
@@ -117,36 +117,17 @@ def add_log():
             except Exception as e:
                 current_app.logger.error(f'Add log error: {e}')
                 flash('An error occurred while adding the log entry.', 'error')
-                return redirect(url_for('logging.add_log'))
+                return redirect(url_for('logging.view_logs', open_add_modal=1))
         
-        # GET request - show form
-        pouches = get_all_pouches(user)
-        quick_add_pouches = pouches[:6]
-
-        # Get today's date and current time in user's timezone
-        if user.timezone:
-            _, user_today, user_current_time = get_current_user_time(user.timezone)
-            today = user_today.isoformat()
-            current_time = user_current_time.strftime('%H:%M')
-        else:
-            # Fallback to server local time if no timezone is set
-            today = date.today().isoformat()
-            current_time = datetime.now().time().strftime('%H:%M')
-
-        return render_template('add_log.html', 
-                             pouches=pouches, 
-                            #  user_pouches=user_pouches,
-                             quick_add_pouches=quick_add_pouches,
-                             today=today,
-                             current_time=current_time,
-                             user_timezone=user.timezone)
+        # GET request - redirect to unified log view with modal open
+        return redirect(url_for('logging.view_logs', open_add_modal=1))
 
         
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f'Add log error: {e}')
         flash('An error occurred while adding the log entry.', 'error')
-        return redirect(url_for('logging.add_log'))
+        return redirect(url_for('logging.view_logs', open_add_modal=1))
 
 @logging_bp.route('/bulk', methods=['GET', 'POST'])
 @login_required
@@ -161,21 +142,21 @@ def bulk_add():
             
             if not bulk_text:
                 flash('Please enter bulk log data.', 'error')
-                return render_template('bulk_add.html')
+                return render_template('bulk_add.html', date=date)
             
             # Parse date (in user's timezone)
             try:
                 log_date = datetime.strptime(log_date_str, '%Y-%m-%d').date()
             except ValueError:
                 flash('Invalid date format.', 'error')
-                return render_template('bulk_add.html')
+                return render_template('bulk_add.html', date=date)
             
             # Parse bulk text
             entries = parse_bulk_text(bulk_text)
             
             if not entries:
                 flash('No valid entries found in bulk text.', 'error')
-                return render_template('bulk_add.html')
+                return render_template('bulk_add.html', date=date)
             
             # Use service layer to process all entries at once with timezone
             try:
@@ -189,15 +170,15 @@ def bulk_add():
             except Exception as e:
                 current_app.logger.error(f'Bulk add error: {e}')
                 flash('An error occurred during bulk entry.', 'error')
-                return render_template('bulk_add.html')
+                return render_template('bulk_add.html', date=date)
         
-        return render_template('bulk_add.html')
+        return render_template('bulk_add.html', date=date)
         
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f'Bulk add error: {e}')
         flash('An error occurred during bulk entry.', 'error')
-        return render_template('bulk_add.html')
+        return render_template('bulk_add.html', date=date)
 
 def parse_bulk_text(text):
     """Parse bulk text input into log entries"""
@@ -280,6 +261,18 @@ def view_logs():
         user = get_current_user()
         page = request.args.get('page', 1, type=int)
         per_page = current_app.config.get('LOGS_PER_PAGE', 20)
+        open_add_modal = request.args.get('open_add_modal') == '1'
+        
+        default_pouches, user_pouches = get_sorted_pouches(user)
+        quick_add_pouches = (default_pouches + user_pouches)[:6]
+
+        if user.timezone:
+            _, user_today, user_current_time = get_current_user_time(user.timezone)
+            today = user_today.isoformat()
+            current_time = user_current_time.strftime('%H:%M')
+        else:
+            today = date.today().isoformat()
+            current_time = datetime.now().time().strftime('%H:%M')
         
         # Get logs with pagination
         logs = Log.query.filter_by(user_id=user.id).order_by(
@@ -307,12 +300,31 @@ def view_logs():
         return render_template('view_logs.html', 
                              logs=logs, 
                              daily_totals=daily_totals,
-                             user_timezone=user.timezone)
+                             user_timezone=user.timezone,
+                             default_pouches=default_pouches,
+                             user_pouches=user_pouches,
+                             quick_add_pouches=quick_add_pouches,
+                             today=today,
+                             current_time=current_time,
+                             open_add_modal=open_add_modal,
+                             user=user)
         
     except Exception as e:
         current_app.logger.error(f'View logs error: {e}')
         flash('An error occurred while loading logs.', 'error')
-        return render_template('view_logs.html', logs=None)
+        return render_template(
+            'view_logs.html',
+            logs=None,
+            daily_totals={},
+            user_timezone=None,
+            default_pouches=[],
+            user_pouches=[],
+            quick_add_pouches=[],
+            today=date.today().isoformat(),
+            current_time=datetime.now().time().strftime('%H:%M'),
+            open_add_modal=False,
+            user=None
+        )
 
 @logging_bp.route('/edit/<int:log_id>', methods=['GET', 'POST'])
 @login_required

@@ -50,13 +50,9 @@
              class="{% if current_endpoint == 'dashboard.index' %}border-indigo-500 text-gray-900 dark:text-white{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white{% endif %} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
             Dashboard
           </a>
-          <a href="{{ url_for('logging.add_log') }}"
-             class="{% if current_endpoint == 'logging.add_log' %}border-indigo-500 text-gray-900 dark:text-white{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white{% endif %} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
-            Add Log
-          </a>
           <a href="{{ url_for('logging.view_logs') }}"
-             class="{% if current_endpoint == 'logging.view_logs' %}border-indigo-500 text-gray-900 dark:text-white{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white{% endif %} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
-            View Logs
+             class="{% if current_endpoint in ['logging.view_logs', 'logging.add_log'] %}border-indigo-500 text-gray-900 dark:text-white{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white{% endif %} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+            Logs
           </a>
           <a href="{{ url_for('catalog.index') }}"
              class="{% if current_endpoint == 'catalog.index' %}border-indigo-500 text-gray-900 dark:text-white{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white{% endif %} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
@@ -128,13 +124,9 @@
          class="{% if current_endpoint == 'dashboard.index' %}bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-gray-700 dark:border-indigo-500 dark:text-indigo-300{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">
         Dashboard
       </a>
-      <a href="{{ url_for('logging.add_log') }}"
-         class="{% if current_endpoint == 'logging.add_log' %}bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-gray-700 dark:border-indigo-500 dark:text-indigo-300{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">
-        Add Log
-      </a>
       <a href="{{ url_for('logging.view_logs') }}"
-         class="{% if current_endpoint == 'logging.view_logs' %}bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-gray-700 dark:border-indigo-500 dark:text-indigo-300{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">
-        View Logs
+         class="{% if current_endpoint in ['logging.view_logs', 'logging.add_log'] %}bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-gray-700 dark:border-indigo-500 dark:text-indigo-300{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">
+        Logs
       </a>
       <a href="{{ url_for('catalog.index') }}"
          class="{% if current_endpoint == 'catalog.index' %}bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-gray-700 dark:border-indigo-500 dark:text-indigo-300{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">
