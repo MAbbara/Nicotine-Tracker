@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Bulk Add Logs - Nicotine Tracker{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-6 lg:px-8">
+  <div class="sm:flex sm:items-center sm:justify-between">
+    <div>
+      <h1 class="text-2xl font-semibold leading-6 text-gray-900 dark:text-white">Bulk Add Logs</h1>
+      <p class="mt-2 text-sm text-gray-700 dark:text-gray-300">
+        Paste multiple entries and add them in one go.
+      </p>
+    </div>
+    <a href="{{ url_for('logging.view_logs') }}"
+       class="mt-4 sm:mt-0 inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-white dark:ring-gray-700 dark:hover:bg-gray-700">
+      Back to Logs
+    </a>
+  </div>
+
+  <div class="mt-8 max-w-3xl">
+    <form method="POST" class="space-y-6" data-validate>
+      <div>
+        <label for="log_date" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">
+          Date for these entries
+        </label>
+        <p class="text-xs text-gray-500 dark:text-gray-400">Defaults to today if left blank.</p>
+        <div class="mt-2">
+          <input type="date" name="log_date" id="log_date" value="{{ date.today().isoformat() }}"
+            class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+        </div>
+      </div>
+
+      <div>
+        <label for="bulk_text" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">
+          Entries (one per line)
+        </label>
+        <p class="text-xs text-gray-500 dark:text-gray-400">
+          Examples: "3 pouches at 09:00", "2 ZYN 6mg at 14:30", "1 On! 4mg".
+        </p>
+        <div class="mt-2">
+          <textarea name="bulk_text" id="bulk_text" rows="10" required
+            class="block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600"
+            placeholder="3 pouches at 09:00&#10;2 ZYN 6mg at 14:30"></textarea>
+        </div>
+      </div>
+
+      <div class="flex gap-3">
+        <button type="submit"
+          class="inline-flex justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
+          Add Entries
+        </button>
+        <a href="{{ url_for('logging.view_logs') }}"
+          class="inline-flex justify-center rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-white dark:ring-gray-700 dark:hover:bg-gray-700">
+          Cancel
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
