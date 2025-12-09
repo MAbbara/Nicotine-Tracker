@@ -82,14 +82,17 @@ def get_craving_patterns_by_day_of_week(user_id: int, days: int = 30) -> Dict[st
     """Analyze craving patterns by day of week."""
     start_date = datetime.utcnow() - timedelta(days=days)
     
+    # MariaDB/MySQL use DAYOFWEEK (1=Sunday). Subtract 1 to match 0-6 indexing.
+    dow_expr = (func.dayofweek(Craving.craving_time) - 1).label('dow')
+
     # Query cravings with day of week extraction
     cravings = db.session.query(
-        func.extract('dow', Craving.craving_time).label('dow'),
+        dow_expr,
         func.count(Craving.id).label('count')
     ).filter(
         Craving.user_id == user_id,
         Craving.craving_time >= start_date
-    ).group_by(func.extract('dow', Craving.craving_time)).all()
+    ).group_by(dow_expr).all()
     
     # Map day numbers to names (0=Sunday, 1=Monday, etc.)
     day_names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
