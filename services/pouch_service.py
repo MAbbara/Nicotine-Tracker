@@ -7,31 +7,37 @@ def get_sorted_pouches(user):
     Get all pouches, sorted by user's preferred brands.
     """
     preferred_brands = user.preferences.preferred_brands or []
-    
-    preferred_brand_case = case(
-        {brand: i for i, brand in enumerate(preferred_brands)},
-        value=Pouch.brand,
-        else_=len(preferred_brands)
-    ).label('preferred_order')
+    order_by_clauses = (Pouch.brand, desc(Pouch.nicotine_mg))
+
+    if preferred_brands:
+        preferred_brand_case = case(
+            {brand: i for i, brand in enumerate(preferred_brands)},
+            value=Pouch.brand,
+            else_=len(preferred_brands)
+        ).label('preferred_order')
+        order_by_clauses = (preferred_brand_case, *order_by_clauses)
 
     default_pouches = Pouch.query.filter_by(is_default=True).order_by(
-        preferred_brand_case, Pouch.brand, desc(Pouch.nicotine_mg)
+        *order_by_clauses
     ).all()
     
     user_pouches = Pouch.query.filter_by(created_by=user.id).order_by(
-        preferred_brand_case, Pouch.brand, desc(Pouch.nicotine_mg)
+        *order_by_clauses
     ).all()
 
     return default_pouches, user_pouches
 
 def get_all_pouches(user):
     preferred_brands = user.preferences.preferred_brands or []
-    
-    preferred_brand_case = case(
-        {brand: i for i, brand in enumerate(preferred_brands)},
-        value=Pouch.brand,
-        else_=len(preferred_brands)
-    ).label('preferred_order')
+    order_by_clauses = (Pouch.brand, desc(Pouch.nicotine_mg))
+
+    if preferred_brands:
+        preferred_brand_case = case(
+            {brand: i for i, brand in enumerate(preferred_brands)},
+            value=Pouch.brand,
+            else_=len(preferred_brands)
+        ).label('preferred_order')
+        order_by_clauses = (preferred_brand_case, *order_by_clauses)
 
     pouches = Pouch.query.filter(
         or_(
@@ -39,9 +45,7 @@ def get_all_pouches(user):
             Pouch.created_by == user.id
         )
     ).order_by(
-        preferred_brand_case,
-        Pouch.brand,
-        desc(Pouch.nicotine_mg)
+        *order_by_clauses
     ).all()
 
     return pouches
