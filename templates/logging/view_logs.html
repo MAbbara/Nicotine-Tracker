@@ -9,7 +9,7 @@
       <div>
         <h1 class="text-2xl font-semibold leading-6 text-gray-900 dark:text-white">Logbook</h1>
         <p class="text-sm text-gray-700 dark:text-gray-300">Add entries and review your history in one place.</p>
-        <p class="text-xs text-gray-500 dark:text-gray-400">Times shown in {{ user_timezone or 'UTC' }}.</p>
+        <p class="text-xs text-gray-600 dark:text-gray-400">Times shown in {{ user_timezone or 'UTC' }}.</p>
       </div>
       <div class="flex items-center gap-2">
         <a href="{{ url_for('logging.bulk_add') }}"
@@ -36,7 +36,7 @@
           class="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg shadow-sm ring-1 ring-inset ring-gray-200 hover:shadow-md transition-shadow dark:ring-gray-700">
           <div>
             <div class="font-medium text-gray-900 dark:text-white">{{ pouch.brand }}</div>
-            <div class="text-xs text-gray-500 dark:text-gray-400">{{ pouch.nicotine_mg }}mg{% if not pouch.is_default %} • Custom{% endif %}</div>
+            <div class="text-xs text-gray-600 dark:text-gray-400">{{ pouch.nicotine_mg }}mg{% if not pouch.is_default %} • Custom{% endif %}</div>
           </div>
           <div class="text-indigo-600 dark:text-indigo-400 font-semibold text-sm">+1</div>
         </button>
@@ -47,8 +47,10 @@
 
     {% if logs and logs.items %}
     <div class="mt-6 bg-white dark:bg-gray-900 shadow-sm ring-1 ring-gray-200 dark:ring-gray-700 rounded-lg overflow-hidden">
-      <div class="overflow-x-auto">
+      <p id="log-history-scroll-help" class="sr-only">Scroll horizontally to see every log history column.</p>
+      <div class="horizontal-scroll-region overflow-x-auto" tabindex="0" role="region" aria-label="Log history" aria-describedby="log-history-scroll-help">
         <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+          <caption class="sr-only">Log history</caption>
           <thead class="bg-gray-50 dark:bg-gray-800">
             <tr>
               <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
@@ -65,13 +67,13 @@
             {% for log in logs.items %}
             <tr>
               <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{{ log.get_user_date(user_timezone).strftime('%Y-%m-%d') if user_timezone else log.log_date.strftime('%Y-%m-%d') }}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ log.get_user_time(user_timezone).strftime('%H:%M') if log.log_time and user_timezone else (log.log_time.strftime('%H:%M') if log.log_time else '-') }}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ log.get_brand_name() }}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ log.quantity }}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ log.get_nicotine_content() }}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ log.get_total_nicotine() }}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ log.notes or '-' }}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">{{ log.get_user_time(user_timezone).strftime('%H:%M') if log.log_time and user_timezone else (log.log_time.strftime('%H:%M') if log.log_time else '-') }}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">{{ log.get_brand_name() }}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">{{ log.quantity }}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">{{ log.get_nicotine_content() }}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">{{ log.get_total_nicotine() }}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">{{ log.notes or '-' }}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
                 <a href="{{ url_for('logging.edit_log', log_id=log.id) }}" class="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-600">Edit</a>
                 <span class="mx-2 text-gray-300 dark:text-gray-600">|</span>
                 <form action="{{ url_for('logging.delete_log', log_id=log.id) }}" method="POST" class="inline" onsubmit="return confirm('Are you sure you want to delete this log?');">

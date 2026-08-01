@@ -37,7 +37,7 @@
         <h3 class="text-md font-semibold text-gray-900 dark:text-white mb-2">
           {{ goal.goal_type.replace('_', ' ').title() }}
         </h3>
-        <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Target: {{ goal.target_value }}</p>
+        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Target: {{ goal.target_value }}</p>
         <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700 mb-2">
           {% set progress_color = 'bg-green-600' if goal_progress[goal.id].percentage <= 80 else ('bg-yellow-600' if
             goal_progress[goal.id].percentage <=100 else 'bg-red-600' ) %} <div
@@ -49,13 +49,13 @@
         {{ goal_progress[goal.id].current }}/{{ goal_progress[goal.id].target }}
         ({{ "%.1f"|format(goal_progress[goal.id].percentage) }}%)
       </p>
-      <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">Current Streak: {{ goal.current_streak }}</p>
-      <p class="text-sm text-gray-500 dark:text-gray-400">Best Streak: {{ goal.best_streak }}</p>
+      <p class="text-sm text-gray-600 dark:text-gray-400 mt-2">Current Streak: {{ goal.current_streak }}</p>
+      <p class="text-sm text-gray-600 dark:text-gray-400">Best Streak: {{ goal.best_streak }}</p>
     </div>
     {% endfor %}
   </div>
   {% else %}
-  <p class="text-gray-500 dark:text-gray-400">
+  <p class="text-gray-600 dark:text-gray-400">
     You have no active goals. Create one to start tracking your progress.
   </p>
   {% endif %}
@@ -76,7 +76,7 @@
           </div>
           <div class="ml-5 w-0 flex-1">
             <dl>
-              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+              <dt class="text-sm font-medium text-gray-600 dark:text-gray-400 truncate">
                 Total Pouches
               </dt>
               <dd class="text-lg font-medium text-gray-900 dark:text-white">
@@ -99,7 +99,7 @@
           </div>
           <div class="ml-5 w-0 flex-1">
             <dl>
-              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+              <dt class="text-sm font-medium text-gray-600 dark:text-gray-400 truncate">
                 Total Nicotine (mg)
               </dt>
               <dd class="text-lg font-medium text-gray-900 dark:text-white">
@@ -122,7 +122,7 @@
           </div>
           <div class="ml-5 w-0 flex-1">
             <dl>
-              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+              <dt class="text-sm font-medium text-gray-600 dark:text-gray-400 truncate">
                 Sessions
               </dt>
               <dd class="text-lg font-medium text-gray-900 dark:text-white">
@@ -145,7 +145,7 @@
           </div>
           <div class="ml-5 w-0 flex-1">
             <dl>
-              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+              <dt class="text-sm font-medium text-gray-600 dark:text-gray-400 truncate">
                 Avg/Hour
               </dt>
               <dd class="text-lg font-medium text-gray-900 dark:text-white">
@@ -233,9 +233,11 @@
 
   {% if recent_logs %}
   <div class="mt-4 flow-root">
-    <div class="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
+    <p id="recent-logs-scroll-help" class="sr-only">Scroll horizontally to see every recent logs column.</p>
+    <div class="horizontal-scroll-region -mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8" tabindex="0" role="region" aria-label="Recent logs" aria-describedby="recent-logs-scroll-help">
       <div class="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
         <table class="min-w-full divide-y divide-gray-300 dark:divide-gray-700">
+          <caption class="sr-only">Recent logs</caption>
           <thead>
             <tr>
               <th scope="col"
@@ -266,19 +268,19 @@
                 {{ log.get_user_time(user.timezone).strftime('%H:%M') if user.timezone else log.log_time.time().strftime('%H:%M') }}
                 {% endif %}
               </td>
-              <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
+              <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-600 dark:text-gray-400">
                 {{ log.get_brand_name() }}
                 {% if log.get_nicotine_content() %}
                 ({{ log.get_nicotine_content() }}mg)
                 {% endif %}
               </td>
-              <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
+              <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-600 dark:text-gray-400">
                 {{ log.quantity }}
               </td>
-              <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
+              <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-600 dark:text-gray-400">
                 {{ log.get_total_nicotine() }}
               </td>
-              <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
+              <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-600 dark:text-gray-400">
                 {{ log.notes or '' }}
               </td>
             </tr>
@@ -293,7 +295,7 @@
   <div class="mt-4 text-center py-12">
     <div class="text-gray-400 dark:text-gray-500 text-4xl mb-4">📝</div>
     <h3 class="text-sm font-medium text-gray-900 dark:text-white">No logs yet</h3>
-    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+    <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
       Start tracking your nicotine intake by adding your first log entry.
     </p>
     <div class="mt-6">
@@ -326,7 +328,7 @@
       {% endfor %}
     </ul>
     {% else %}
-      <p class="text-sm text-gray-500 dark:text-gray-400">No insights available yet. Keep logging your intake to see trends and tips here.</p>
+      <p class="text-sm text-gray-600 dark:text-gray-400">No insights available yet. Keep logging your intake to see trends and tips here.</p>
     {% endif %}
 
   </div>
