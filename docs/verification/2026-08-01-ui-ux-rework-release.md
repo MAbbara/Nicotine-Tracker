@@ -68,6 +68,14 @@ page/viewport states, and records the remaining visual, accessibility, SEO,
 PWA, responsive, and performance findings. No product code was changed during
 that audit.
 
+### Offline capability boundary
+
+Eligible queued mutations can replay after connectivity returns in an already
+loaded browser session. A cold offline launch and an offline application shell
+are unsupported; either capability requires a separate service-worker project.
+The existing offline-replay browser tests verify only the supported in-session
+recovery path.
+
 ## Copied production-data migration rehearsal — PASS
 
 The user supplied `nicotinetracker.sql` as a production-data copy. The original
