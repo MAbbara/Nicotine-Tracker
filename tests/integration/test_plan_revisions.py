@@ -703,6 +703,7 @@ def test_activation_preserves_unrelated_operational_error_without_confirmation(
 def test_sqlite_winner_confirmation_caps_real_lock_wait_and_restores_timeout(
     app, db_session, test_user, monkeypatch,
 ):
+    _require_sqlite_backend()
     plan, digest = _contention_test_draft(
         test_user.id, date(2099, 1, 1)
     )
@@ -935,9 +936,15 @@ def _temporary_sqlite_busy_timeout(value):
         assert restored_timeout == prior_timeout
 
 
+def _require_sqlite_backend():
+    if db.engine.dialect.name != 'sqlite':
+        pytest.skip('SQLite-specific lock and busy_timeout semantics')
+
+
 def test_zero_timeout_confirmation_retries_then_maps_later_visible_winner(
     db_session, test_user, monkeypatch,
 ):
+    _require_sqlite_backend()
     winner, winner_digest = _contention_test_draft(
         test_user.id, date(2099, 1, 1)
     )
@@ -987,6 +994,7 @@ def test_zero_timeout_confirmation_retries_then_maps_later_visible_winner(
 def test_zero_timeout_confirmation_retries_are_bounded_without_winner(
     db_session, test_user, monkeypatch,
 ):
+    _require_sqlite_backend()
     target, target_digest = _contention_test_draft(
         test_user.id, date(2099, 1, 1)
     )
@@ -1033,6 +1041,7 @@ def test_zero_timeout_confirmation_retries_are_bounded_without_winner(
 
 
 def test_zero_timeout_scenarios_leave_pooled_timeout_unchanged(db_session):
+    _require_sqlite_backend()
     timeout = db.session.connection().exec_driver_sql(
         'PRAGMA busy_timeout'
     ).scalar()
@@ -2632,6 +2641,10 @@ def test_corrupt_pending_boundary_state_raises_and_is_preserved(
 def test_subminute_pending_reset_is_corrupt_and_rolls_back_exact_state(
     db_session, test_user, pending_reset, effective_at,
 ):
+    if pending_reset.microsecond and db.engine.dialect.name == 'mysql':
+        pytest.skip(
+            'MySQL TIME/DATETIME columns use fsp=0 and normalize microseconds'
+        )
     preferences = UserPreferences(
         user_id=test_user.id,
         daily_reset_time=time(0, 0),

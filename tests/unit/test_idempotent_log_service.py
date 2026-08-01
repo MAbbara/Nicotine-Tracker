@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import event, text
+from sqlalchemy import event
 from sqlalchemy.exc import IntegrityError
 
 from extensions import db
@@ -492,8 +492,6 @@ def test_delete_treats_foreign_and_missing_logs_as_not_found(
 def test_delete_explicitly_clears_owned_craving_link_before_log_delete(
     app, db_session, test_user, test_pouch
 ):
-    db_session.execute(text("PRAGMA foreign_keys=ON"))
-    db_session.commit()
     log = LogService.create_idempotent(
         test_user.id,
         _selected_pouch_input(

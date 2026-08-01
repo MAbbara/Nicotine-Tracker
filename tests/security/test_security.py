@@ -267,21 +267,20 @@ class TestSecurity:
                 'email': test_user.email, 'password': 'password123'},
                 follow_redirects=True)
             client.application.config['WTF_CSRF_ENABLED'] = True
-            with client.application.app_context():
-                generation_input = PlanGenerationInput(
-                    mode='reduce', start_date=date(2099, 1, 1),
-                    baseline_pouches=Decimal('8.00'),
-                    baseline_mg=Decimal('48.00'),
-                    baseline_mg_per_pouch=Decimal('6.00'), pace='steady',
-                    end_target_pouches=2,
-                )
-                preview = PlanScheduleGenerator.generate(generation_input)
-                plan = PlanService.create_from_preview(
-                    test_user.id, generation_input, 'manual',
-                    preview.digest, 'activate'
-                )
-                plan_id = plan.id
-                db_before = _security_lifecycle_graph(test_user.id)
+            generation_input = PlanGenerationInput(
+                mode='reduce', start_date=date(2099, 1, 1),
+                baseline_pouches=Decimal('8.00'),
+                baseline_mg=Decimal('48.00'),
+                baseline_mg_per_pouch=Decimal('6.00'), pace='steady',
+                end_target_pouches=2,
+            )
+            preview = PlanScheduleGenerator.generate(generation_input)
+            plan = PlanService.create_from_preview(
+                test_user.id, generation_input, 'manual',
+                preview.digest, 'activate'
+            )
+            plan_id = plan.id
+            db_before = _security_lifecycle_graph(test_user.id)
             body = {
                 'effective_date': '2099-01-15',
                 'changes': {'pace': 'gentle'},
