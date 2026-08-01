@@ -1,0 +1,12 @@
+{% from "components/button.html" import button %}
+{% from "components/icon.html" import icon %}
+{% macro empty_state(title, body, action_label=None, action_href=None, icon_name='support') -%}
+  <section class="c-empty-state" aria-labelledby="empty-state-{{ title|lower|replace(' ', '-') }}">
+    {{ icon(icon_name, class_name='c-empty-state__icon') }}
+    <div class="c-empty-state__copy">
+      <h2 id="empty-state-{{ title|lower|replace(' ', '-') }}">{{ title }}</h2>
+      <p>{{ body }}</p>
+    </div>
+    {% if action_label and action_href %}{{ button(action_label, href=action_href) }}{% endif %}
+  </section>
+{%- endmacro %}

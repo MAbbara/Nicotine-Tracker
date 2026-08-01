@@ -1,0 +1,14 @@
+{% extends "layouts/app.html" %}
+
+{% block title %}Refresh and try again — Nicotine Tracker{% endblock %}
+
+{% block content %}
+<section class="c-empty-state" aria-labelledby="request-expired-title">
+  <div class="c-empty-state__copy">
+    <p class="eyebrow">Request expired</p>
+    <h1 id="request-expired-title">Refresh and try again</h1>
+    <p>{{ message or 'We could not verify that request. Refresh the page before trying again.' }}</p>
+  </div>
+  <a class="c-button c-button--primary" href="{{ request.referrer or url_for('index') }}">Return safely</a>
+</section>
+{% endblock %}

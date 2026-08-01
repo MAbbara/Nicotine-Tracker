@@ -1,0 +1,69 @@
+{% extends "layouts/app.html" %}
+
+{% block title %}Shape your plan — Nicotine Tracker{% endblock %}
+{% block body_class %} onboarding-shell{% endblock %}
+
+{% block content %}
+<div class="onboarding-page">
+  <header class="page-intro page-intro--wide">
+    <p class="eyebrow">A personal field guide</p>
+    <h1>Shape a plan you can learn from</h1>
+    <p>Tell us where you are now, choose a pace, then inspect every day before anything becomes active.</p>
+  </header>
+
+  <div class="onboarding-layout">
+    <form class="onboarding-form" method="post" action="{{ url_for('journey.onboarding') }}" novalidate data-onboarding-form
+          data-baseline-available="{{ 'true' if baseline.available else 'false' }}"
+          data-baseline-logged-days="{{ baseline.logged_days_used }}"
+          data-baseline-pouches="{{ '%.2f'|format(baseline.pouches_per_day) if baseline.pouches_per_day is not none else '' }}"
+          data-baseline-mg="{{ '%.2f'|format(baseline.nicotine_mg_per_day) if baseline.nicotine_mg_per_day is not none else '' }}"
+          data-baseline-mg-per-pouch="{{ '%.2f'|format(baseline.median_mg_per_pouch) if baseline.median_mg_per_pouch is not none else '' }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      {% if error_message %}
+        <div class="form-summary form-summary--error" id="onboarding-error-summary" role="alert" tabindex="-1" data-server-focus>
+          <h2>There’s something to review</h2>
+          <p>{{ error_message }}</p>
+          {% if field_errors %}
+            <ul>
+              {% for name, messages in field_errors.items() %}
+                {% for message in messages %}<li><a href="#field-{{ name }}">{{ message }}</a></li>{% endfor %}
+              {% endfor %}
+            </ul>
+          {% endif %}
+        </div>
+      {% endif %}
+      <div class="onboarding-status" role="status" aria-live="polite" aria-atomic="true">{{ status_message }}</div>
+
+      {% include "pages/journey/_intention.html" %}
+      {% include "pages/journey/_baseline.html" %}
+      {% include "pages/journey/_pace.html" %}
+      {% include "pages/journey/_support.html" %}
+      {% include "pages/journey/_review.html" %}
+
+      <div class="onboarding-actions" aria-label="Onboarding actions">
+        <button class="c-button c-button--primary" type="submit" name="form_action" value="preview">Preview my plan</button>
+        <p>Previewing does not activate a plan.</p>
+      </div>
+    </form>
+
+    <aside class="onboarding-margin" aria-labelledby="plan-so-far-title">
+      <p class="eyebrow">Your plan so far</p>
+      <h2 id="plan-so-far-title">A clear next step, not a verdict</h2>
+      <dl>
+        <div><dt>Intention</dt><dd data-plan-summary="intention">{{ values.get('intention')|replace('_', ' ')|title if values.get('intention') else 'Not chosen yet' }}</dd></div>
+        <div><dt>Baseline</dt><dd data-plan-summary="baseline">{{ values.get('baseline_source')|replace('_', ' ')|title if values.get('baseline_source') else 'Not chosen yet' }}</dd></div>
+        <div><dt>Pace</dt><dd data-plan-summary="pace">{{ values.get('pace')|title if values.get('pace') else 'Not chosen yet' }}</dd></div>
+        <div><dt>Start</dt><dd data-plan-summary="start">{{ values.get('start_date') or 'Not chosen yet' }}</dd></div>
+      </dl>
+      <p>Your answers stay editable until you explicitly activate the reviewed schedule.</p>
+    </aside>
+  </div>
+</div>
+{% endblock %}
+
+{% block preline_js %}{% endblock %}
+
+{% block extra_js %}
+  <script type="module" src="{{ url_for('static', filename='js/journey/onboarding.js') }}"></script>
+{% endblock %}

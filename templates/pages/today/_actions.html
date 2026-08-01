@@ -1,0 +1,35 @@
+{% from "components/icon.html" import icon %}
+<section class="today-actions" aria-labelledby="today-actions-title" id="quick-log">
+  <div class="today-actions__heading">
+    <p class="eyebrow">Next useful action</p>
+    <h2 id="today-actions-title">Keep the day current</h2>
+  </div>
+  <div class="today-actions__links">
+    <a
+      class="today-action today-action--primary c-button c-button--primary"
+      id="today-log-action"
+      data-today-action="log-nicotine"
+      {% if summary and summary.smart_default %}
+        data-smart-default-pouch-id="{{ summary.smart_default.pouch_id }}"
+        data-smart-default-brand="{{ summary.smart_default.brand }}"
+        data-smart-default-strength="{{ '%.2f'|format(summary.smart_default.nicotine_mg|float) }}"
+      {% endif %}
+      href="{{ url_for('logging.add_log') }}"
+    >
+      {{ icon('add') }}
+      <span>
+        <strong>Log nicotine use</strong>
+        <small>{% if summary and summary.smart_default %}{{ summary.smart_default.brand }} · {{ '%.2f'|format(summary.smart_default.nicotine_mg|float) }} mg is ready{% else %}Add the details now{% endif %}</small>
+      </span>
+    </a>
+    <a
+      class="today-action today-action--secondary c-button c-button--secondary"
+      id="today-craving-action"
+      data-today-action="craving"
+      href="{{ url_for('cravings.cravings_page') }}"
+    >
+      {{ icon('craving') }}
+      <span id="craving"><strong>I have a craving</strong><small>Pause and choose what helps next</small></span>
+    </a>
+  </div>
+</section>

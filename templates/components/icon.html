@@ -1,0 +1,17 @@
+{% macro icon(name, label=None, class_name='c-icon', size=24) -%}
+<svg
+  class="{{ class_name }}"
+  width="{{ size }}"
+  height="{{ size }}"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.75"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+  focusable="false"
+  {% if label %}role="img" aria-label="{{ label }}"{% else %}aria-hidden="true"{% endif %}
+>
+  <use href="{{ url_for('static', filename='icons/lucide/sprite.svg') }}#{{ name }}"></use>
+</svg>
+{%- endmacro %}

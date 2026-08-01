@@ -1,0 +1,12 @@
+<section class="onboarding-step" data-onboarding-step="intention" aria-labelledby="step-intention-title">
+  <p class="eyebrow">Step 1 of 5</p>
+  <h2 id="step-intention-title" tabindex="-1">Choose your intention</h2>
+  <p>Start with what would be useful now. You can revise the plan later.</p>
+  <fieldset id="field-intention"{% if field_errors.get('intention') %} aria-describedby="error-intention"{% endif %}>
+    <legend>What would you like to do?</legend>
+    <label><input type="radio" name="intention" value="reduce"{% if values.get('intention') == 'reduce' %} checked{% endif %}> <span><strong>Reduce steadily</strong><small>Work toward a lower daily pouch ceiling.</small></span></label>
+    <label><input type="radio" name="intention" value="quit_by_date"{% if values.get('intention') == 'quit_by_date' %} checked{% endif %}> <span><strong>Quit by a date</strong><small>Build a schedule that ends at zero.</small></span></label>
+    <label><input type="radio" name="intention" value="observe"{% if values.get('intention') == 'observe' %} checked{% endif %}> <span><strong>Understand my baseline first</strong><small>Track for seven days without a reduction target.</small></span></label>
+  </fieldset>
+  {% if field_errors.get('intention') %}<p class="field-error" id="error-intention">{{ field_errors['intention']|join(' ') }}</p>{% endif %}
+</section>

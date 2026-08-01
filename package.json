@@ -1,4 +1,15 @@
 {
+  "scripts": {
+    "build": "npm run build:css",
+    "build:css": "tailwindcss -i ./static/css/tailwind.css -o ./static/css/style.css --minify",
+    "watch:css": "tailwindcss -i ./static/css/tailwind.css -o ./static/css/style.css --watch",
+    "test": "node --test \"tests/js/*.test.js\"",
+    "test:e2e": "playwright test",
+    "test:e2e:update": "playwright test --update-snapshots"
+  },
+  "engines": {
+    "node": ">=22.6"
+  },
   "dependencies": {
     "@preline/input-number": "^3.2.0",
     "@preline/overlay": "^3.2.0",
@@ -9,6 +20,11 @@
     "tailwindcss": "^4.1.11"
   },
   "devDependencies": {
-    "@tailwindcss/forms": "^0.5.10"
+    "@axe-core/playwright": "^4.10.2",
+    "@fontsource-variable/dm-sans": "^5.3.0",
+    "@fontsource-variable/newsreader": "^5.3.0",
+    "@playwright/test": "^1.55.0",
+    "@tailwindcss/forms": "^0.5.10",
+    "lucide-static": "^1.27.0"
   }
 }

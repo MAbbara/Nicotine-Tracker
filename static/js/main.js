@@ -1,3 +1,7 @@
+function getCsrfToken() {
+    return document.querySelector('meta[name="csrf-token"]')?.content || '';
+}
+
 // User menu toggle and global initialisation
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
@@ -148,7 +152,7 @@ function initializeQuickAdd() {
 }
 
 function handleQuickAdd(event) {
-    const button = event.target;
+    const button = event.currentTarget;
     const pouchId = button.getAttribute('data-pouch-id');
     const quantity = button.getAttribute('data-quantity') || 1;
     if (!pouchId) return;
@@ -157,13 +161,17 @@ function handleQuickAdd(event) {
     button.disabled = true;
     fetch('/log/api/quick_add', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken()
+        },
         body: JSON.stringify({ pouch_id: pouchId, quantity: parseInt(quantity) })
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
             showNotification(data.message, 'success');
+            addQuickLogToTable(data.log);
             if (typeof refreshDashboard === 'function') {
                 refreshDashboard();
             }
@@ -179,6 +187,73 @@ function handleQuickAdd(event) {
         button.textContent = originalText;
         button.disabled = false;
     });
+}
+
+// Inject a new quick-add log row at the top of the logs table (if present)
+function addQuickLogToTable(log) {
+    const tableBody = document.getElementById('logs-table-body');
+    if (!tableBody || !log) return;
+
+    const dateStr = log.display_date || log.log_date || '';
+    const timeStr = log.display_time || (log.log_time ? log.log_time.slice(0, 5) : '-');
+    const brand = log.brand_name || (log.pouch && log.pouch.brand) || 'Unknown';
+    const nicotineContent = log.nicotine_content ?? (log.pouch && log.pouch.nicotine_mg) ?? log.custom_nicotine_mg ?? 0;
+    const totalNicotine = log.total_nicotine ?? (nicotineContent || 0) * (log.quantity || 0);
+    const notes = log.notes || '-';
+
+    const baseCell = 'px-6 py-4 whitespace-nowrap text-sm';
+    const mutedText = 'text-gray-500 dark:text-gray-400';
+
+    const row = document.createElement('tr');
+
+    const dateTd = document.createElement('td');
+    dateTd.className = `${baseCell} font-medium text-gray-900 dark:text-white`;
+    dateTd.textContent = dateStr;
+
+    const timeTd = document.createElement('td');
+    timeTd.className = `${baseCell} ${mutedText}`;
+    timeTd.textContent = timeStr;
+
+    const brandTd = document.createElement('td');
+    brandTd.className = `${baseCell} ${mutedText}`;
+    brandTd.textContent = brand;
+
+    const qtyTd = document.createElement('td');
+    qtyTd.className = `${baseCell} ${mutedText}`;
+    qtyTd.textContent = log.quantity;
+
+    const nicotineTd = document.createElement('td');
+    nicotineTd.className = `${baseCell} ${mutedText}`;
+    nicotineTd.textContent = nicotineContent;
+
+    const totalTd = document.createElement('td');
+    totalTd.className = `${baseCell} ${mutedText}`;
+    totalTd.textContent = totalNicotine;
+
+    const notesTd = document.createElement('td');
+    notesTd.className = `${baseCell} ${mutedText}`;
+    notesTd.textContent = notes;
+
+    const actionsTd = document.createElement('td');
+    actionsTd.className = `${baseCell} ${mutedText}`;
+    actionsTd.innerHTML = `
+        <a href="${log.edit_url || '#'}" class="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-600">Edit</a>
+        <span class="mx-2 text-gray-300 dark:text-gray-600">|</span>
+        <form action="${log.delete_url || '#'}" method="POST" class="inline" onsubmit="return confirm('Are you sure you want to delete this log?');">
+            <button type="submit" class="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-600">Delete</button>
+        </form>
+    `;
+    const deleteForm = actionsTd.querySelector('form');
+    if (deleteForm) {
+        const csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = 'csrf_token';
+        csrfInput.value = getCsrfToken();
+        deleteForm.prepend(csrfInput);
+    }
+
+    row.append(dateTd, timeTd, brandTd, qtyTd, nicotineTd, totalTd, notesTd, actionsTd);
+    tableBody.prepend(row);
 }
 
 // Notification helpers
@@ -308,6 +383,7 @@ function autoSaveForm(form, endpoint) {
     
     fetch(endpoint, {
         method: 'POST',
+        headers: { 'X-CSRFToken': getCsrfToken() },
         body: formData
     })
     .then(response => response.json())
@@ -321,13 +397,3 @@ function autoSaveForm(form, endpoint) {
     });
 }
 
-// Dark mode toggle (if implemented)
-function toggleDarkMode() {
-    document.documentElement.classList.toggle('dark');
-    localStorage.setItem('darkMode', document.documentElement.classList.contains('dark'));
-}
-
-// Initialize dark mode from localStorage
-if (localStorage.getItem('darkMode') === 'true') {
-    document.documentElement.classList.add('dark');
-}

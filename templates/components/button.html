@@ -1,0 +1,8 @@
+{% macro button(label, href=None, variant='primary', type='button', class_name='', aria_label=None, disabled=False) -%}
+  {% set classes = 'c-button c-button--' ~ variant ~ (' ' ~ class_name if class_name else '') %}
+  {% if href %}
+    <a class="{{ classes }}" href="{{ href }}"{% if aria_label %} aria-label="{{ aria_label }}"{% endif %}>{{ label }}</a>
+  {% else %}
+    <button class="{{ classes }}" type="{{ type }}"{% if aria_label %} aria-label="{{ aria_label }}"{% endif %}{% if disabled %} disabled aria-disabled="true"{% endif %}>{{ label }}</button>
+  {% endif %}
+{%- endmacro %}

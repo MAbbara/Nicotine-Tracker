@@ -1,0 +1,28 @@
+<section class="onboarding-step" data-onboarding-step="pace" aria-labelledby="step-pace-title">
+  <p class="eyebrow">Step 3 of 5</p>
+  <h2 id="step-pace-title" tabindex="-1">Choose a pace</h2>
+  <p>Steady is a useful middle ground, but the choice stays yours.</p>
+  <fieldset id="field-pace"{% if field_errors.get('pace') %} aria-describedby="error-pace"{% endif %}>
+    <legend>Reduction pace</legend>
+    <label><input type="radio" name="pace" value="gentle"{% if values.get('pace') == 'gentle' %} checked{% endif %}> <span><strong>Gentle · 77 days</strong><small>More time between changes.</small></span></label>
+    <label><input type="radio" name="pace" value="steady"{% if values.get('pace') == 'steady' %} checked{% endif %}> <span><strong>Steady · 49 days</strong><small>Recommended balance of time and momentum.</small></span></label>
+    <label><input type="radio" name="pace" value="focused"{% if values.get('pace') == 'focused' %} checked{% endif %}> <span><strong>Focused · 28 days</strong><small>A shorter, more concentrated schedule.</small></span></label>
+  </fieldset>
+  {% if field_errors.get('pace') %}<p class="field-error" id="error-pace">{{ field_errors['pace']|join(' ') }}</p>{% endif %}
+
+  <fieldset data-plan-target-fields>
+    <legend>Where the schedule ends</legend>
+    <div class="field-row" data-end-target-fields>
+      <label for="field-end_target_pouches">End target in pouches per day <small>For Reduce steadily</small></label>
+      <input id="field-end_target_pouches" name="end_target_pouches" type="number" min="0" step="1" inputmode="numeric" value="{{ values.get('end_target_pouches', '') }}"{% if field_errors.get('end_target_pouches') %} aria-invalid="true" aria-describedby="end-target-help error-end_target_pouches"{% else %} aria-describedby="end-target-help"{% endif %}>
+      <p id="end-target-help">Choose a whole number below your starting pouch ceiling.</p>
+      {% if field_errors.get('end_target_pouches') %}<p class="field-error" id="error-end_target_pouches">{{ field_errors['end_target_pouches']|join(' ') }}</p>{% endif %}
+    </div>
+    <div class="field-row" data-target-date-fields>
+      <label for="field-target_date">Quit date <small>For Quit by a date</small></label>
+      <input id="field-target_date" name="target_date" type="date" value="{{ values.get('target_date', '') }}"{% if field_errors.get('target_date') %} aria-invalid="true" aria-describedby="error-target_date"{% endif %}>
+      {% if field_errors.get('target_date') %}<p class="field-error" id="error-target_date">{{ field_errors['target_date']|join(' ') }}</p>{% endif %}
+    </div>
+  </fieldset>
+  <p>Observation mode skips pace and targets; it always lasts seven days.</p>
+</section>

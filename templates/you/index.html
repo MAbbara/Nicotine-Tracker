@@ -1,0 +1,34 @@
+{% extends "layouts/app.html" %}
+{% from "components/icon.html" import icon %}
+
+{% block title %}You — Nicotine Tracker{% endblock %}
+
+{% block content %}
+<div class="you-page">
+  <header class="page-intro">
+    <p class="eyebrow">Your space</p>
+    <h1>You</h1>
+    <p>Shape the tracker around your routine, your products, and the kind of support that works for you.</p>
+  </header>
+
+  <section class="preference-section" aria-labelledby="appearance-title">
+    <div><p class="eyebrow">Appearance</p><h2 id="appearance-title">Choose your theme</h2><p>The system option follows your device and changes automatically.</p></div>
+    <div class="theme-picker" role="group" aria-label="Color theme">
+      {% for value, label in [('light', 'Light'), ('dark', 'Dark'), ('system', 'System')] %}
+        <button class="theme-choice" type="button" data-theme-choice="{{ value }}" aria-pressed="{{ 'true' if settings.theme == value else 'false' }}">{{ label }}</button>
+      {% endfor %}
+    </div>
+    <p class="preference-feedback" data-theme-feedback role="status" aria-live="polite"></p>
+  </section>
+
+  <nav class="you-links" aria-label="Account and preferences">
+    <a href="{{ url_for('settings.profile') }}">{{ icon('you') }}<span><strong>Profile</strong><small>Personal details kept private</small></span><span aria-hidden="true">→</span></a>
+    <a href="{{ url_for('settings.preferences') }}">{{ icon('clock') }}<span><strong>Day &amp; timezone</strong><small>Daily reset and display preferences</small></span><span aria-hidden="true">→</span></a>
+    <a href="{{ url_for('catalog.index') }}">{{ icon('pouch') }}<span><strong>Your pouches</strong><small>Catalog and quick-log choices</small></span><span aria-hidden="true">→</span></a>
+    <a href="{{ url_for('settings.notifications') }}">{{ icon('support') }}<span><strong>Reminders</strong><small>Channels, timing, and quiet hours</small></span><span aria-hidden="true">→</span></a>
+    <a href="{{ url_for('settings.data') }}">{{ icon('insights') }}<span><strong>Data &amp; privacy</strong><small>Export and account controls</small></span><span aria-hidden="true">→</span></a>
+  </nav>
+
+  <div class="you-signout"><a class="text-link" href="{{ url_for('auth.logout') }}">Sign out</a></div>
+</div>
+{% endblock %}

@@ -1,0 +1,122 @@
+{% set status_labels = {
+  'neutral': 'Tracking',
+  'unknown': 'Nicotine unknown',
+  'on_track': 'On track',
+  'approaching': 'Approaching plan',
+  'met': 'Plan met',
+  'exceeded': 'Plan exceeded'
+} %}
+<section class="today-status" aria-labelledby="today-status-title" data-today-status="{{ summary.status }}">
+  <div class="today-status__heading">
+    <div>
+      <p class="eyebrow">Today status</p>
+      <h2 id="today-status-title" data-today-status-label>{% if summary.plan and summary.plan.status == 'paused' %}Plan paused{% elif summary.plan %}{{ status_labels[summary.status] }}{% else %}No active plan{% endif %}</h2>
+    </div>
+    {% if summary.plan and summary.plan.status != 'paused' and summary.plan.mode != 'observe' %}
+      <p class="today-status__stage">{{ summary.plan.stage_label }}</p>
+    {% endif %}
+  </div>
+
+  {% if not summary.plan %}
+    <div class="today-status__empty">
+      <p>A plan can turn today's logs into a clear daily target while keeping every choice yours.</p>
+      <div class="today-status__empty-actions">
+        <a class="c-button c-button--primary" href="{{ url_for('journey.onboarding') }}">Create a plan</a>
+        <a class="c-button c-button--secondary" href="{{ url_for('logging.add_log') }}">Continue neutral tracking</a>
+      </div>
+    </div>
+  {% elif summary.plan.status == 'paused' %}
+    <div class="today-status__observe today-status__paused">
+      <p>The plan is paused. Today stays neutral: keep an honest record without an allowance or pace judgment.</p>
+      <dl class="today-status__facts">
+        <div><dt>Pouches</dt><dd data-today-neutral-pouches>{{ summary.actual_pouches }} pouch{% if summary.actual_pouches != 1 %}es{% endif %} logged</dd></div>
+        <div>
+          <dt>Nicotine</dt>
+          <dd data-today-neutral-nicotine>{% if summary.actual_nicotine_mg is none %}Unknown — {{ '%.2f'|format(summary.known_nicotine_mg|float) }} mg known subtotal is partial{% else %}{{ '%.2f'|format(summary.actual_nicotine_mg|float) }} mg tracked{% endif %}</dd>
+        </div>
+      </dl>
+      <a class="c-button c-button--secondary" href="{{ url_for('journey.index') }}">Review or resume in Journey</a>
+    </div>
+  {% elif summary.plan.mode == 'observe' %}
+    <div class="today-status__observe">
+      <p>This is a tracking period without a daily reduction target. The pattern you record will make the next plan review more useful.</p>
+      <dl class="today-status__facts">
+        <div><dt>Pouches</dt><dd data-today-neutral-pouches>{{ summary.actual_pouches }} pouch{% if summary.actual_pouches != 1 %}es{% endif %} logged</dd></div>
+        <div>
+          <dt>Nicotine</dt>
+          <dd data-today-neutral-nicotine>{% if summary.actual_nicotine_mg is none %}Unknown{% else %}{{ '%.2f'|format(summary.actual_nicotine_mg|float) }} mg tracked{% endif %}</dd>
+        </div>
+      </dl>
+    </div>
+  {% elif summary.plan.target_pouches is none or summary.plan.nicotine_ceiling_mg is none %}
+    <div class="today-status__observe today-status__unscheduled">
+      <p>No target is scheduled for this user day. Keep tracking neutrally; Journey shows the upcoming schedule.</p>
+      <dl class="today-status__facts">
+        <div><dt>Pouches</dt><dd>{{ summary.actual_pouches }} pouch{% if summary.actual_pouches != 1 %}es{% endif %} logged</dd></div>
+        <div>
+          <dt>Nicotine</dt>
+          <dd>
+            {% if summary.actual_nicotine_mg is none %}
+              Unknown — {{ '%.2f'|format(summary.known_nicotine_mg|float) }} mg known subtotal is partial
+            {% else %}
+              {{ '%.2f'|format(summary.actual_nicotine_mg|float) }} mg tracked
+            {% endif %}
+          </dd>
+        </div>
+      </dl>
+    </div>
+  {% else %}
+      <div class="today-status__recovery" data-plan-recovery {% if summary.status != 'exceeded' %}hidden{% endif %}>
+        <p class="today-status__recovery-lead">One day does not erase your progress.</p>
+        <ul class="today-status__guardrails" aria-label="Exceeded plan guardrails">
+          <li data-plan-recovery-pouch {% if summary.pouch_status != 'exceeded' %}hidden{% endif %}><strong>Pouch guardrail:</strong> {{ summary.actual_pouches }} pouches logged; target {{ summary.plan.target_pouches }}.</li>
+          <li data-plan-recovery-nicotine {% if summary.nicotine_state != 'exceeded' %}hidden{% endif %}><strong>Nicotine guardrail:</strong> {% if summary.actual_nicotine_mg is none %}at least {{ '%.2f'|format(summary.known_nicotine_mg|float) }}{% else %}{{ '%.2f'|format(summary.actual_nicotine_mg|float) }}{% endif %} mg logged; target {{ '%.2f'|format(summary.plan.nicotine_ceiling_mg|float) }} mg.</li>
+        </ul>
+        <div class="today-status__recovery-actions">
+          <a class="text-link" href="{% if summary.smart_default %}#quick-log{% else %}{{ url_for('logging.add_log') }}{% endif %}">Keep logging</a>
+          <a class="text-link" href="#check-in">Reflect on today</a>
+          <a class="text-link" href="{{ url_for('journey.index') }}">Review the plan in Journey</a>
+          <a class="text-link" href="{{ url_for('journey.index') }}">Pause or revise in Journey</a>
+        </div>
+      </div>
+    <p class="today-status__measure" data-today-pouch-measure>
+      <strong>{{ summary.actual_pouches }} of {{ summary.plan.target_pouches }} pouches</strong>
+    </p>
+    {% if summary.plan.target_pouches > 0 %}
+      <meter
+        class="today-status__progress"
+        aria-label="Pouch plan progress"
+        min="0"
+        max="{{ summary.plan.target_pouches }}"
+        value="{{ summary.actual_pouches }}"
+        data-today-meter
+      >{{ summary.actual_pouches }} of {{ summary.plan.target_pouches }}</meter>
+    {% endif %}
+    <dl class="today-status__facts">
+      <div>
+        <dt>Pace</dt>
+        <dd>{{ summary.plan.pace|title }} pace</dd>
+      </div>
+      <div>
+        <dt>Remaining</dt>
+        <dd data-today-remaining>{{ summary.remaining_pouches }} pouch{% if summary.remaining_pouches != 1 %}es{% endif %} remaining</dd>
+      </div>
+      <div>
+        <dt>Nicotine ceiling</dt>
+        <dd data-today-nicotine>
+          {% if summary.actual_nicotine_mg is none %}
+            Unknown — {{ '%.2f'|format(summary.known_nicotine_mg|float) }} mg known subtotal is partial
+          {% else %}
+            {{ '%.2f'|format(summary.actual_nicotine_mg|float) }} of {{ '%.2f'|format(summary.plan.nicotine_ceiling_mg|float) }} mg
+          {% endif %}
+        </dd>
+      </div>
+    </dl>
+  {% endif %}
+  {% if summary.plan %}
+    <aside class="today-status__review" data-review-recommended {% if not summary.review_recommended %}hidden{% endif %}>
+      <strong>Recent days suggest the plan may deserve a review.</strong>
+      <p>Journey can help you inspect the pattern and decide whether to keep, pause, or revise it. Nothing changes automatically.</p>
+    </aside>
+  {% endif %}
+</section>

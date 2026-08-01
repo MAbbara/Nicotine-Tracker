@@ -1,0 +1,88 @@
+<dialog
+  class="quick-log"
+  id="today-quick-log"
+  aria-labelledby="today-quick-log-title"
+  data-quick-log-dialog
+>
+  <div class="quick-log__panel">
+    <header class="quick-log__header">
+      <div>
+        <p class="eyebrow">Quick log</p>
+        <h2 id="today-quick-log-title">Log nicotine use</h2>
+      </div>
+      <button class="quick-log__close" type="button" aria-label="Close quick log" data-quick-log-close>
+        <span aria-hidden="true">×</span>
+      </button>
+    </header>
+
+    <form class="quick-log__form" data-quick-log-form novalidate>
+      <div class="quick-log__default" aria-label="Current quick-log details">
+        <span class="quick-log__brand" data-quick-log-summary-brand>{{ summary.smart_default.brand }}</span>
+        <span data-quick-log-summary-detail>{{ '%.2f'|format(summary.smart_default.nicotine_mg|float) }} mg · 1 pouch · now</span>
+      </div>
+
+      <details class="quick-log__details" data-quick-log-details>
+        <summary>Change details</summary>
+        <div class="quick-log__fields">
+          <div class="quick-log__field">
+            <label for="quick-log-pouch">Saved pouch</label>
+            <select id="quick-log-pouch" name="pouchId" data-quick-log-field="pouchId" aria-describedby="quick-log-pouch-error">
+              <option
+                value="{{ summary.smart_default.pouch_id }}"
+                data-brand="{{ summary.smart_default.brand }}"
+                data-strength="{{ '%.2f'|format(summary.smart_default.nicotine_mg|float) }}"
+              >{{ summary.smart_default.brand }} · {{ '%.2f'|format(summary.smart_default.nicotine_mg|float) }} mg</option>
+            </select>
+            <p class="quick-log__field-error" id="quick-log-pouch-error" data-quick-log-error="pouchId" hidden></p>
+          </div>
+
+          <div class="quick-log__field">
+            <label for="quick-log-quantity">Quantity</label>
+            <input id="quick-log-quantity" name="quantity" type="number" inputmode="numeric" min="1" max="100" step="1" value="1" data-quick-log-field="quantity" aria-describedby="quick-log-quantity-error">
+            <p class="quick-log__field-error" id="quick-log-quantity-error" data-quick-log-error="quantity" hidden></p>
+          </div>
+
+          <div class="quick-log__field">
+            <label for="quick-log-time">Local date and time</label>
+            <input id="quick-log-time" name="occurredAtLocal" type="datetime-local" step="60" data-quick-log-field="occurredAtLocal" aria-describedby="quick-log-time-error">
+            <p class="quick-log__field-error" id="quick-log-time-error" data-quick-log-error="occurredAtLocal" hidden></p>
+          </div>
+
+          <div class="quick-log__field quick-log__field--wide">
+            <label for="quick-log-notes">Notes <span>(optional)</span></label>
+            <textarea id="quick-log-notes" name="notes" maxlength="2000" rows="3" data-quick-log-field="notes" aria-describedby="quick-log-notes-error"></textarea>
+            <p class="quick-log__field-error" id="quick-log-notes-error" data-quick-log-error="notes" hidden></p>
+          </div>
+        </div>
+        <p class="quick-log__pouch-error" data-quick-log-pouch-error hidden>
+          Saved pouches could not be refreshed. Your current choice is still available.
+        </p>
+        <div class="quick-log__links">
+          <a class="text-link" href="{{ url_for('catalog.index') }}">Manage saved pouches</a>
+          <a class="text-link" href="{{ url_for('logging.add_log') }}">Use the detailed log</a>
+        </div>
+      </details>
+
+      <p class="quick-log__request-error" data-quick-log-request-error hidden></p>
+
+      <div class="quick-log__actions">
+        <button class="c-button c-button--primary quick-log__confirm" type="submit" data-quick-log-confirm>Log one pouch</button>
+        <div class="quick-log__recovery" data-quick-log-recovery hidden>
+          <button class="c-button c-button--primary" type="button" data-quick-log-retry>Retry</button>
+          <button class="c-button c-button--secondary" type="button" data-quick-log-discard>Discard draft</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<div class="quick-log-undo" data-quick-log-undo hidden>
+  <div>
+    <strong>Nicotine use logged</strong>
+    <span>Available for 10 seconds</span>
+  </div>
+  <button class="c-button c-button--secondary" type="button" data-quick-log-undo-action>Undo</button>
+  <span class="quick-log-undo__rule" aria-hidden="true"></span>
+</div>
+
+<div class="u-visually-hidden" aria-live="polite" aria-atomic="true" data-quick-log-live></div>

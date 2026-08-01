@@ -11,6 +11,7 @@
             <p class="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">Download a copy of all your data in a JSON format.</p>
             <div class="mt-5">
                 <form method="POST" action="{{ url_for('settings.data') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="action" value="export_data">
                     <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700">
                         Download Data
@@ -28,6 +29,7 @@
         </div>
         <div class="border-t border-gray-200 dark:border-gray-700">
              <form method="POST" action="{{ url_for('settings.data') }}" class="divide-y divide-gray-200 dark:divide-gray-700">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="px-4 py-4 sm:px-6 flex items-center justify-between">
                     <div>
                         <p class="text-sm font-medium text-gray-900 dark:text-white">Cleanup Duplicates</p>
@@ -64,6 +66,7 @@
         </div>
         <div class="border-t border-gray-200 dark:border-gray-700">
             <form method="POST" action="{{ url_for('settings.data') }}" class="divide-y divide-gray-200 dark:divide-gray-700">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="px-4 py-4 sm:px-6">
                     <p class="text-sm font-medium text-gray-900 dark:text-white">Anonymize Personal Data</p>
                     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">This will remove your age, gender, weight, and preferred brands. This action cannot be undone.</p>

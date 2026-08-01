@@ -5,6 +5,7 @@
     <form id="add-log-form" method="POST" action="{{ url_for('logging.add_log') }}"
       class="w-full flex flex-col bg-white border border-gray-200 shadow-2xs rounded-xl pointer-events-auto dark:bg-gray-800 dark:border-gray-700 dark:shadow-gray-700/70"
       data-validate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="flex justify-between items-center py-3 px-4 border-b border-gray-200 dark:border-gray-700">
         <h3 id="addLogModalLabel" class="font-bold text-gray-800 dark:text-white">
           Add Log Entry

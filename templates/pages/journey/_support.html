@@ -1,0 +1,39 @@
+<section class="onboarding-step" data-onboarding-step="support" aria-labelledby="step-support-title">
+  <p class="eyebrow">Step 4 of 5</p>
+  <h2 id="step-support-title" tabindex="-1">Add useful support</h2>
+  <p>These choices help the app offer relevant prompts. All except the start date are optional.</p>
+
+  <fieldset id="field-difficult_times"{% if field_errors.get('difficult_times') %} aria-describedby="error-difficult_times"{% endif %}>
+    <legend>Times that tend to be difficult</legend>
+    {% for value, label in difficult_time_labels.items() %}<label><input type="checkbox" name="difficult_times" value="{{ value }}"{% if value in values.get('difficult_times', []) %} checked{% endif %}> {{ label }}</label>{% endfor %}
+  </fieldset>
+  {% if field_errors.get('difficult_times') %}<p class="field-error" id="error-difficult_times">{{ field_errors['difficult_times']|join(' ') }}</p>{% endif %}
+
+  <fieldset id="field-common_triggers"{% if field_errors.get('common_triggers') %} aria-describedby="error-common_triggers"{% endif %}>
+    <legend>Common triggers</legend>
+    {% for value, label in trigger_labels.items() %}<label><input type="checkbox" name="common_triggers" value="{{ value }}"{% if value in values.get('common_triggers', []) %} checked{% endif %}> {{ label }}</label>{% endfor %}
+  </fieldset>
+  {% if field_errors.get('common_triggers') %}<p class="field-error" id="error-common_triggers">{{ field_errors['common_triggers']|join(' ') }}</p>{% endif %}
+
+  <fieldset id="field-preferred_pouch_ids"{% if field_errors.get('preferred_pouch_ids') %} aria-describedby="error-preferred_pouch_ids"{% endif %}>
+    <legend>Pouches you use</legend>
+    {% if pouches %}
+      {% for pouch in pouches %}<label><input type="checkbox" name="preferred_pouch_ids" value="{{ pouch.id }}"{% if pouch.id|string in values.get('preferred_pouch_ids', []) %} checked{% endif %}> <span>{{ pouch.brand }} <small>{{ pouch.nicotine_mg_display() }} mg</small></span></label>{% endfor %}
+    {% else %}
+      <p>No accessible pouches are available yet. You can continue without choosing one.</p>
+    {% endif %}
+  </fieldset>
+  {% if field_errors.get('preferred_pouch_ids') %}<p class="field-error" id="error-preferred_pouch_ids">{{ field_errors['preferred_pouch_ids']|join(' ') }}</p>{% endif %}
+
+  <fieldset id="field-reminder_window"{% if field_errors.get('reminder_window') %} aria-describedby="error-reminder_window"{% endif %}>
+    <legend>Daily reminder window</legend>
+    {% for value, label in reminder_labels.items() %}<label><input type="radio" name="reminder_window" value="{{ value }}"{% if values.get('reminder_window') == value %} checked{% endif %}> {{ label }}</label>{% endfor %}
+  </fieldset>
+  {% if field_errors.get('reminder_window') %}<p class="field-error" id="error-reminder_window">{{ field_errors['reminder_window']|join(' ') }}</p>{% endif %}
+
+  <div class="field-row">
+    <label for="field-start_date">Plan start date</label>
+    <input id="field-start_date" name="start_date" type="date" value="{{ values.get('start_date', '') }}" required{% if field_errors.get('start_date') %} aria-invalid="true" aria-describedby="error-start_date"{% endif %}>
+    {% if field_errors.get('start_date') %}<p class="field-error" id="error-start_date">{{ field_errors['start_date']|join(' ') }}</p>{% endif %}
+  </div>
+</section>

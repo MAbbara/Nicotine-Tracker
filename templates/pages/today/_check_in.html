@@ -1,0 +1,130 @@
+{% set canonical_check_in = none %}
+{% if summary.check_in %}
+  {% set canonical_check_in = {
+    'id': summary.check_in.id,
+    'local_date': summary.check_in.local_date.isoformat(),
+    'mood': summary.check_in.mood,
+    'confidence': summary.check_in.confidence,
+    'reflection': summary.check_in.reflection,
+    'context': summary.check_in.context
+  } %}
+{% endif %}
+  <section
+    class="today-check-in"
+    aria-labelledby="today-check-in-title"
+    id="check-in"
+    data-check-in-root
+    data-check-in-local-date="{{ summary.local_date.isoformat() }}"
+    {% if not summary.check_in and not summary.check_in_eligible %}hidden{% endif %}
+  >
+    <div class="today-check-in__heading">
+      <p class="eyebrow">Close the loop</p>
+      <h2 id="today-check-in-title">Daily check-in</h2>
+      <p>Details are optional. Save only what feels useful to remember.</p>
+    </div>
+
+    <div data-check-in-summary {% if not summary.check_in %}hidden{% endif %}>
+      <dl class="today-check-in__facts">
+        <div>
+          <dt>Mood</dt>
+          <dd data-check-in-summary-mood>{% if not summary.check_in or summary.check_in.mood is none %}Mood not recorded{% else %}Mood {{ summary.check_in.mood }} of 5{% endif %}</dd>
+        </div>
+        <div>
+          <dt>Confidence</dt>
+          <dd data-check-in-summary-confidence>{% if not summary.check_in or summary.check_in.confidence is none %}Confidence not recorded{% else %}Confidence {{ summary.check_in.confidence }} of 5{% endif %}</dd>
+        </div>
+      </dl>
+      <blockquote
+        class="today-check-in__reflection"
+        data-check-in-summary-reflection
+        {% if not summary.check_in or not summary.check_in.reflection %}hidden{% endif %}
+      >{% if summary.check_in and summary.check_in.reflection %}{{ summary.check_in.reflection }}{% endif %}</blockquote>
+      <p
+        class="today-check-in__context"
+        data-check-in-summary-context
+        {% if not summary.check_in or not summary.check_in.context %}hidden{% endif %}
+      >{% if summary.check_in and summary.check_in.context %}Context: {{ summary.check_in.context }}{% endif %}</p>
+      <p
+        class="today-check-in__context"
+        data-check-in-summary-empty
+        {% if summary.check_in and (summary.check_in.reflection or summary.check_in.context) %}hidden{% endif %}
+      >No notes saved. That is completely okay.</p>
+      <p class="today-check-in__refresh" data-check-in-refresh-unavailable hidden>Your reflection is saved. Today can be refreshed later.</p>
+      <button class="text-link today-check-in__edit" type="button" data-check-in-edit>Edit reflection</button>
+    </div>
+
+    <div class="today-check-in__offer" data-check-in-offer {% if summary.check_in %}hidden{% endif %}>
+      <p>A short check-in can preserve what mattered without turning today into a score.</p>
+      <button class="c-button c-button--secondary" type="button" data-check-in-open>Take a short check-in</button>
+    </div>
+
+    <form class="today-check-in__form" data-check-in-form novalidate hidden>
+      <fieldset class="today-check-in__rating" aria-describedby="check-in-mood-help check-in-mood-error">
+        <legend>Mood <span>optional</span></legend>
+        <p id="check-in-mood-help">How the day feels overall.</p>
+        <div class="today-check-in__scale">
+          {% for value, label in [(1, 'Very difficult'), (2, 'Difficult'), (3, 'Mixed'), (4, 'Steady'), (5, 'Good')] %}
+            <label>
+              <input type="radio" name="mood" value="{{ value }}" {% if summary.check_in and summary.check_in.mood == value %}checked{% endif %}>
+              <span>{{ value }} — {{ label }}</span>
+            </label>
+          {% endfor %}
+        </div>
+        <button class="text-link today-check-in__clear-rating" type="button" data-check-in-clear-rating="mood">Clear mood</button>
+        <p class="today-check-in__field-error" id="check-in-mood-error" data-check-in-field-error="mood" hidden></p>
+      </fieldset>
+
+      <fieldset class="today-check-in__rating" aria-describedby="check-in-confidence-help check-in-confidence-error">
+        <legend>Confidence <span>optional</span></legend>
+        <p id="check-in-confidence-help">How manageable the next step feels.</p>
+        <div class="today-check-in__scale">
+          {% for value, label in [(1, 'Very low'), (2, 'Low'), (3, 'Some'), (4, 'High'), (5, 'Very high')] %}
+            <label>
+              <input type="radio" name="confidence" value="{{ value }}" {% if summary.check_in and summary.check_in.confidence == value %}checked{% endif %}>
+              <span>{{ value }} — {{ label }}</span>
+            </label>
+          {% endfor %}
+        </div>
+        <button class="text-link today-check-in__clear-rating" type="button" data-check-in-clear-rating="confidence">Clear confidence</button>
+        <p class="today-check-in__field-error" id="check-in-confidence-error" data-check-in-field-error="confidence" hidden></p>
+      </fieldset>
+
+      <div class="today-check-in__field">
+        <label for="check-in-reflection">What helped or made today harder? <span>optional</span></label>
+        <textarea
+          id="check-in-reflection"
+          name="reflection"
+          maxlength="2000"
+          rows="4"
+          aria-describedby="check-in-reflection-help check-in-reflection-error"
+        >{% if summary.check_in and summary.check_in.reflection %}{{ summary.check_in.reflection }}{% endif %}</textarea>
+        <p id="check-in-reflection-help">Up to 2,000 characters.</p>
+        <p class="today-check-in__field-error" id="check-in-reflection-error" data-check-in-field-error="reflection" hidden></p>
+      </div>
+
+      <div class="today-check-in__field">
+        <label for="check-in-context">Anything about the setting worth remembering? <span>optional</span></label>
+        <textarea
+          id="check-in-context"
+          name="context"
+          maxlength="2000"
+          rows="3"
+          aria-describedby="check-in-context-help check-in-context-error"
+        >{% if summary.check_in and summary.check_in.context %}{{ summary.check_in.context }}{% endif %}</textarea>
+        <p id="check-in-context-help">Up to 2,000 characters.</p>
+        <p class="today-check-in__field-error" id="check-in-context-error" data-check-in-field-error="context" hidden></p>
+      </div>
+
+      <div class="today-check-in__request-recovery">
+        <p class="today-check-in__request-error" data-check-in-request-error hidden></p>
+        <button class="text-link" type="button" data-check-in-retry hidden>Retry saving</button>
+      </div>
+      <div class="today-check-in__form-actions">
+        <button class="c-button c-button--primary" type="submit" data-check-in-submit>{% if summary.check_in %}Update reflection{% else %}Save reflection{% endif %}</button>
+        <button class="c-button c-button--secondary" type="button" data-check-in-cancel>{% if summary.check_in %}Keep saved reflection{% else %}Not now{% endif %}</button>
+      </div>
+    </form>
+
+    <p class="today-check-in__status" role="status" aria-live="polite" data-check-in-status></p>
+    <script type="application/json" data-check-in-canonical>{{ canonical_check_in|tojson }}</script>
+  </section>

@@ -1,0 +1,49 @@
+<section class="legacy-review" aria-labelledby="legacy-review-title">
+  <p class="eyebrow">Archive</p>
+  <h2 id="legacy-review-title">History and migration review</h2>
+  <h3>Legacy Goals remain intact</h3>
+  <p>These records are history and review context, not an active reduction plan. Reviewing a draft never hides or changes a Goal row.</p>
+
+  {% if legacy_review.candidates %}
+    <h3>Migration-created drafts</h3>
+    {% for candidate in legacy_review.candidates %}
+      <article>
+        <h4>Candidate plan {{ candidate.plan_id }}</h4>
+        <p>Authoritative migrated target: {{ candidate.end_target_pouches }} pouch{% if candidate.end_target_pouches != 1 %}es{% endif %} per day.</p>
+        <p>Source Goal IDs {{ candidate.source_goal_ids|join(', ') }}</p>
+        <p>Pouch Goal {{ candidate.pouch_goal.id }}: {{ candidate.pouch_goal.target_value }} pouches per day · {{ candidate.pouch_goal.start_date.isoformat() if candidate.pouch_goal.start_date else 'unknown start' }} to {{ candidate.pouch_goal.end_date.isoformat() if candidate.pouch_goal.end_date else 'unknown end' }}.</p>
+        {% if candidate.nicotine_context %}
+          <p>Exactly matched nicotine context: Goal {{ candidate.nicotine_context.id }} · {{ candidate.nicotine_context.target_value }} mg per day.</p>
+        {% else %}
+          <p>No exactly matched nicotine context is attached.</p>
+        {% endif %}
+        <p>{{ candidate.explanation }}</p>
+        <a class="c-button c-button--secondary" href="{{ url_for('journey.onboarding') }}">Review this draft</a>
+      </article>
+    {% endfor %}
+  {% endif %}
+
+  {% if legacy_review.unattached_context_goals %}
+    <h3>Conflicts and unattached context</h3>
+    <ul>
+      {% for goal in legacy_review.unattached_context_goals %}
+        <li>Goal {{ goal.id }} · {{ goal.goal_type|replace('_', ' ') }} · value {{ goal.target_value }} · {{ goal.start_date.isoformat() if goal.start_date else 'unknown start' }} to {{ goal.end_date.isoformat() if goal.end_date else 'unknown end' }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  {% if legacy_goals %}
+    <h3>Past Goal rows</h3>
+    <table>
+      <caption>Every preserved legacy Goal row</caption>
+      <thead><tr><th scope="col">Goal</th><th scope="col">Type</th><th scope="col">Value</th><th scope="col">Dates</th><th scope="col">State</th></tr></thead>
+      <tbody>
+        {% for goal in legacy_goals %}
+          <tr><th scope="row">{{ goal.id }}</th><td>{{ goal.goal_type|replace('_', ' ') }}</td><td>{{ goal.target_value }}</td><td>{{ goal.start_date.isoformat() if goal.start_date else 'Unknown' }} to {{ goal.end_date.isoformat() if goal.end_date else 'Unknown' }}</td><td>{{ 'Active legacy row' if goal.is_active else 'Historical legacy row' }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>No legacy Goal rows belong to this account.</p>
+  {% endif %}
+</section>

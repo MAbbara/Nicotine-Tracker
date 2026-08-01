@@ -1,0 +1,195 @@
+<dialog
+  class="craving-flow"
+  id="today-craving-flow"
+  aria-labelledby="today-craving-flow-title"
+  data-craving-flow-dialog
+>
+  <div class="craving-flow__panel">
+    <header class="craving-flow__header">
+      <div>
+        <p class="eyebrow">Craving support</p>
+        <h2 id="today-craving-flow-title">Take the next useful step</h2>
+      </div>
+      <button class="craving-flow__close" type="button" aria-label="Close craving support" data-craving-close>
+        <span aria-hidden="true">×</span>
+      </button>
+    </header>
+
+    <div class="craving-flow__body">
+      <section class="craving-flow__step" data-craving-step="check_in">
+        <div class="craving-flow__step-heading">
+          <p class="eyebrow">Check in</p>
+          <h3 tabindex="-1" data-craving-step-focus>How strong is it right now?</h3>
+          <p>Record the moment as it is. You can decide what to do next.</p>
+        </div>
+        <form data-craving-check-in-form novalidate>
+          <fieldset class="craving-flow__intensity" aria-describedby="craving-intensity-hint craving-intensity-error">
+            <legend>Intensity</legend>
+            <p id="craving-intensity-hint">Choose 1 for mild through 10 for very strong.</p>
+            <div class="craving-flow__scale" data-craving-intensity-group>
+              {% for value in range(1, 11) %}
+                <label>
+                  <input type="radio" name="intensity" value="{{ value }}" data-craving-field="intensity">
+                  <span>{{ value }}</span>
+                </label>
+              {% endfor %}
+            </div>
+            <p class="craving-flow__field-error" id="craving-intensity-error" data-craving-error="intensity" hidden></p>
+          </fieldset>
+          <div class="craving-flow__field">
+            <label for="craving-trigger">What set it off? <span>(optional)</span></label>
+            <input id="craving-trigger" name="trigger" type="text" maxlength="100" autocomplete="off" data-craving-field="trigger" aria-describedby="craving-trigger-hint craving-trigger-error">
+            <p id="craving-trigger-hint">A short note such as “after lunch” is enough.</p>
+            <p class="craving-flow__field-error" id="craving-trigger-error" data-craving-error="trigger" hidden></p>
+          </div>
+          <p class="craving-flow__request-error" data-craving-request-error hidden></p>
+          <div class="craving-flow__actions">
+            <button class="c-button c-button--primary" type="submit" data-craving-create>Record craving</button>
+            <button class="c-button c-button--secondary" type="button" data-craving-retry-create hidden>Retry</button>
+            <button class="text-link" type="button" data-craving-cancel-check-in>Keep tracking without saving</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="craving-flow__step" data-craving-step="action_choice" hidden>
+        <div class="craving-flow__step-heading">
+          <p class="eyebrow">Right now</p>
+          <h3 tabindex="-1" data-craving-step-focus>What would help right now?</h3>
+          <p>Pick one small action. This does not lock in an outcome.</p>
+        </div>
+        <div class="craving-flow__choice-list">
+          <button class="craving-flow__choice craving-flow__choice--pause" type="button" data-craving-action-choice="pause">
+            <strong>Take a three-minute pause</strong>
+            <span>Give the next decision a little space.</span>
+          </button>
+          <button class="craving-flow__choice" type="button" data-craving-action-choice="drink_water">
+            <strong>Drink some water</strong>
+            <span>Do one ordinary thing before choosing.</span>
+          </button>
+          <button class="craving-flow__choice" type="button" data-craving-action-choice="change_rooms">
+            <strong>Change rooms</strong>
+            <span>Shift the setting for a moment.</span>
+          </button>
+          <button class="craving-flow__choice" type="button" data-craving-action-choice="short_walk">
+            <strong>Take a short walk</strong>
+            <span>Move at a pace that feels comfortable.</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="craving-flow__step" data-craving-step="pause" hidden>
+        <div class="craving-flow__step-heading">
+          <p class="eyebrow">Three-minute pause</p>
+          <h3 tabindex="-1" data-craving-step-focus>Let the moment move at its own pace</h3>
+        </div>
+        <div class="craving-flow__timer" data-craving-timer>
+          <time datetime="PT3M" data-craving-time>3:00</time>
+          <span data-craving-timer-copy>Pause in progress</span>
+          <span class="craving-flow__timer-rule" aria-hidden="true"></span>
+        </div>
+        <p>You can choose an outcome whenever you are ready. The timer will never hold you here.</p>
+        <button class="c-button c-button--primary" type="button" data-craving-show-outcome>Choose an outcome now</button>
+      </section>
+
+      <section class="craving-flow__step" data-craving-step="outcome" hidden>
+        <div class="craving-flow__step-heading">
+          <p class="eyebrow">What happened</p>
+          <h3 tabindex="-1" data-craving-step-focus>Choose the outcome that fits</h3>
+        </div>
+        <form data-craving-outcome-form novalidate>
+          <fieldset class="craving-flow__outcomes" aria-describedby="craving-outcome-error">
+            <legend>Outcome</legend>
+            <label><input type="radio" name="outcome" value="resisted" data-craving-field="outcome"><span>I resisted it</span></label>
+            <label><input type="radio" name="outcome" value="used_nicotine" data-craving-field="outcome"><span>I used nicotine</span></label>
+            <label><input type="radio" name="outcome" value="used_alternative" data-craving-field="outcome"><span>I used an alternative</span></label>
+            <p class="craving-flow__field-error" id="craving-outcome-error" data-craving-error="outcome" hidden></p>
+          </fieldset>
+          <p class="craving-flow__request-error" data-craving-request-error hidden></p>
+          <div class="craving-flow__actions">
+            <button class="c-button c-button--primary" type="submit" data-craving-save-outcome>Save outcome</button>
+            <button class="c-button c-button--secondary" type="button" data-craving-retry-outcome hidden>Retry</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="craving-flow__step" data-craving-step="details" hidden>
+        <div class="craving-flow__step-heading">
+          <p class="eyebrow">Optional context</p>
+          <h3 tabindex="-1" data-craving-step-focus>Add only what feels useful</h3>
+          <p>The outcome is already saved. These details can be skipped.</p>
+        </div>
+        <form data-craving-details-form novalidate>
+          <details class="craving-flow__details" data-craving-details>
+            <summary>Add details</summary>
+            <div class="craving-flow__fields">
+              <div class="craving-flow__field">
+                <label for="craving-duration">Duration in minutes</label>
+                <input id="craving-duration" name="duration_minutes" type="number" min="0" max="1440" step="1" inputmode="numeric" data-craving-detail-field aria-describedby="craving-duration-error">
+                <p class="craving-flow__field-error" id="craving-duration-error" data-craving-error="duration_minutes" hidden></p>
+              </div>
+              <div class="craving-flow__field">
+                <label for="craving-mood-before">Mood before</label>
+                <input id="craving-mood-before" name="mood_before" type="number" min="1" max="10" step="1" inputmode="numeric" data-craving-detail-field aria-describedby="craving-mood-before-error">
+                <p class="craving-flow__field-error" id="craving-mood-before-error" data-craving-error="mood_before" hidden></p>
+              </div>
+              <div class="craving-flow__field">
+                <label for="craving-mood-after">Mood after</label>
+                <input id="craving-mood-after" name="mood_after" type="number" min="1" max="10" step="1" inputmode="numeric" data-craving-detail-field aria-describedby="craving-mood-after-error">
+                <p class="craving-flow__field-error" id="craving-mood-after-error" data-craving-error="mood_after" hidden></p>
+              </div>
+              <div class="craving-flow__field">
+                <label for="craving-stress">Stress level</label>
+                <input id="craving-stress" name="stress_level" type="number" min="1" max="10" step="1" inputmode="numeric" data-craving-detail-field aria-describedby="craving-stress-error">
+                <p class="craving-flow__field-error" id="craving-stress-error" data-craving-error="stress_level" hidden></p>
+              </div>
+              <fieldset class="craving-flow__symptoms">
+                <legend>What did you notice? <span>(optional)</span></legend>
+                {% for value, label in [('Restless', 'Restless'), ('Jaw tense', 'Jaw tension'), ('Trouble focusing', 'Trouble focusing'), ('Low energy', 'Low energy')] %}
+                  <label><input type="checkbox" name="physical_symptoms" value="{{ value }}" data-craving-detail-field><span>{{ label }}</span></label>
+                {% endfor %}
+                <p class="craving-flow__field-error" data-craving-error="physical_symptoms" hidden></p>
+              </fieldset>
+              <div class="craving-flow__field craving-flow__field--wide">
+                <label for="craving-context">Situation</label>
+                <textarea id="craving-context" name="situation_context" maxlength="2000" rows="2" data-craving-detail-field aria-describedby="craving-context-error"></textarea>
+                <p class="craving-flow__field-error" id="craving-context-error" data-craving-error="situation_context" hidden></p>
+              </div>
+              <div class="craving-flow__field craving-flow__field--wide">
+                <label for="craving-notes">Notes</label>
+                <textarea id="craving-notes" name="notes" maxlength="2000" rows="2" data-craving-detail-field aria-describedby="craving-notes-error"></textarea>
+                <p class="craving-flow__field-error" id="craving-notes-error" data-craving-error="notes" hidden></p>
+              </div>
+              <div class="craving-flow__field craving-flow__field--wide">
+                <label for="craving-outcome-notes">What helped afterward?</label>
+                <textarea id="craving-outcome-notes" name="outcome_notes" maxlength="2000" rows="2" data-craving-detail-field aria-describedby="craving-outcome-notes-error"></textarea>
+                <p class="craving-flow__field-error" id="craving-outcome-notes-error" data-craving-error="outcome_notes" hidden></p>
+              </div>
+            </div>
+          </details>
+          <p class="craving-flow__request-error" data-craving-request-error hidden></p>
+          <div class="craving-flow__actions">
+            <button class="c-button c-button--primary" type="submit" data-craving-save-details>Save details</button>
+            <button class="c-button c-button--secondary" type="button" data-craving-retry-details hidden>Retry</button>
+            <button class="text-link" type="button" data-craving-skip-details>Skip for now</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="craving-flow__step" data-craving-step="complete" hidden>
+        <div class="craving-flow__step-heading">
+          <p class="eyebrow">Recorded</p>
+          <h3 tabindex="-1" data-craving-step-focus data-craving-complete-title>Your craving is saved</h3>
+          <p data-craving-complete-copy>You can return to Today whenever you are ready.</p>
+        </div>
+        <p class="craving-flow__link-status" data-craving-link-status hidden></p>
+        <div class="craving-flow__actions">
+          <button class="c-button c-button--primary" type="button" data-craving-retry-quick-log hidden>Try logging nicotine again</button>
+          <a class="text-link" href="{{ url_for('logging.add_log') }}" data-craving-detailed-log>Use the detailed nicotine log</a>
+          <button class="c-button c-button--secondary" type="button" data-craving-done>Done</button>
+        </div>
+      </section>
+    </div>
+  </div>
+</dialog>
+
+<div class="u-visually-hidden" aria-live="polite" aria-atomic="true" data-craving-live></div>

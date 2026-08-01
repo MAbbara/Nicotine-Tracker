@@ -1,0 +1,91 @@
+{% from "components/icon.html" import icon %}
+{% set shell_theme = 'system' %}
+{% if settings is defined and settings and settings.theme in ('light', 'dark', 'system') %}
+  {% set shell_theme = settings.theme %}
+{% elif user is defined and user and user.settings and user.settings.theme in ('light', 'dark', 'system') %}
+  {% set shell_theme = user.settings.theme %}
+{% endif %}
+<!doctype html>
+<html lang="en" data-theme="{{ shell_theme }}" data-saved-theme="{{ shell_theme }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#F5F1E7">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  {% if session.user_id and current_user is defined and current_user and current_user.preferences %}
+    <meta name="offline-queue-enabled" content="{{ 'true' if current_user.preferences.offline_queue_enabled else 'false' }}">
+    <meta name="offline-queue-id" content="{{ current_user.preferences.offline_queue_id }}">
+  {% endif %}
+  <script>
+    (() => {
+      const allowed = new Set(['light', 'dark', 'system']);
+      let saved = document.documentElement.dataset.savedTheme || 'system';
+      try {
+        const local = window.localStorage.getItem('nicotine-tracker-theme');
+        if (allowed.has(local)) saved = local;
+      } catch (_) {}
+      document.documentElement.dataset.theme = allowed.has(saved) ? saved : 'system';
+    })();
+  </script>
+  <title>{% block title %}Nicotine Tracker{% endblock %}</title>
+  <link rel="icon" href="{{ url_for('static', filename='favicon.png') }}">
+  <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='icons/pwa/icon-180.png') }}">
+  <link rel="manifest" href="{{ url_for('pwa.manifest') }}">
+  <meta name="application-name" content="Nicotine Tracker">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Nicotine Tracker">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body class="app-shell{% block body_class %}{% endblock %}">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="app-frame">
+    <header class="app-topbar">
+      <a class="wordmark" href="{{ url_for('today.index') if session.user_id else url_for('index') }}" aria-label="Nicotine Tracker home"><span aria-hidden="true">N/T</span><span>Nicotine Tracker</span></a>
+      {% block utility_navigation %}
+        {% if session.user_id %}<a class="app-account-link" href="{{ url_for('you.index') }}">{{ session.user_email or 'Your space' }}</a>{% endif %}
+      {% endblock %}
+    </header>
+
+    {% if session.user_id %}
+      {% set endpoint = request.endpoint or '' %}
+      {% if endpoint.startswith('journey.') or endpoint.startswith('goals.') %}
+        {% set active_destination = 'journey' %}
+      {% elif endpoint.startswith('insights.') %}
+        {% set active_destination = 'insights' %}
+      {% elif endpoint.startswith('you.') or endpoint.startswith('settings.') or endpoint.startswith('catalog.') %}
+        {% set active_destination = 'you' %}
+      {% else %}
+        {% set active_destination = 'today' %}
+      {% endif %}
+      {% block navigation %}
+        <nav class="primary-nav" aria-label="Primary" data-primary-navigation>
+          <a class="primary-nav__link" href="{{ url_for('today.index') }}"{% if active_destination == 'today' %} aria-current="page"{% endif %}>{{ icon('today') }}<span>Today</span></a>
+          <a class="primary-nav__link" href="{{ url_for('journey.index') }}"{% if active_destination == 'journey' %} aria-current="page"{% endif %}>{{ icon('journey') }}<span>Journey</span></a>
+          <a class="primary-nav__link" href="{{ url_for('insights.insights_page') }}"{% if active_destination == 'insights' %} aria-current="page"{% endif %}>{{ icon('insights') }}<span>Insights</span></a>
+          <a class="primary-nav__link" href="{{ url_for('you.index') }}"{% if active_destination == 'you' %} aria-current="page"{% endif %}>{{ icon('you') }}<span>You</span></a>
+        </nav>
+      {% endblock %}
+    {% endif %}
+
+    <div id="connection-status" class="connection-status" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+    <div id="flash-messages" class="flash-region" aria-live="polite" aria-atomic="true">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+          <div class="flash-message flash-message--{{ category }}" role="status">{{ message }}</div>
+        {% endfor %}
+      {% endwith %}
+    </div>
+
+    <main id="main-content" class="app-content" tabindex="-1">{% block content %}{% endblock %}</main>
+  </div>
+  {% block preline_js %}<script src="{{ url_for('static', filename='js/preline.js') }}" defer></script>{% endblock %}
+  <script src="{{ url_for('static', filename='js/main.js') }}" defer></script>
+  <script type="module" src="{{ url_for('static', filename='js/shell/theme.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/shell/navigation.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/shell/offline_status.js') }}"></script>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

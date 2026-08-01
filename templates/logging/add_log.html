@@ -41,6 +41,7 @@
   <!-- Form -->
   <div class="mt-8 max-w-2xl">
     <form method="POST" class="space-y-6" id="add-log-form" data-validate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <!-- Date -->
       <div>
         <label for="log_date" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">
