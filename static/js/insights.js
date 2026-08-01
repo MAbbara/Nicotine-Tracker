@@ -6,28 +6,52 @@ import {
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-export function buildInsightsAlternativeModel(data = {}) {
+function aggregateToWeekly(points) {
+  const weeks = new Map();
+  (points || []).forEach((point) => {
+    const [year, month, dayOfMonth] = point.date.split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, dayOfMonth));
+    const monday = new Date(date);
+    const day = monday.getUTCDay() || 7;
+    monday.setUTCDate(monday.getUTCDate() - day + 1);
+    const key = monday.toISOString().slice(0, 10);
+    weeks.set(key, (weeks.get(key) || 0) + (Number(point.value) || 0));
+  });
+  return [...weeks].map(([date, value]) => ({ date, value }));
+}
+
+export function buildTrendModel(data = {}, trendType = 'daily') {
+  const points = trendType === 'weekly'
+    ? aggregateToWeekly(data.consumption_trend)
+    : data.consumption_trend || [];
+  return points.map((point) => ({
+    label: point.date,
+    value: Number(point.value) || 0,
+  }));
+}
+
+export function buildInsightsAlternativeModel(data = {}, trendType = 'daily') {
   const pairs = (value) => Object.entries(value || {}).map(([label, count]) => ({
     label,
     value: Number(count) || 0,
   }));
   return {
-    trend: (data.consumption_trend || []).map((point) => ({
-      label: point.date,
-      value: Number(point.value) || 0,
-    })),
+    trend: buildTrendModel(data, trendType),
     timeOfDay: pairs(data.consumption_by_time_of_day),
     dayOfWeek: DAYS.map((label) => ({
       label,
       value: Number(data.consumption_by_day_of_week?.[label]) || 0,
     })),
     brands: pairs(data.brand_analysis),
-    heatmap: (data.heatmap_data || []).map((series) => ({
-      label: series.name,
-      value: (series.data || []).reduce((total, point) => (
-        total + (Number(typeof point === 'object' ? point.y : point) || 0)
-      ), 0),
-    })),
+    heatmap: (data.heatmap_data || []).flatMap((series) => (
+      (series.data || []).map((point, index) => ({
+        day: series.name,
+        hour: typeof point === 'object' && point.x != null
+          ? String(point.x)
+          : `${String(index).padStart(2, '0')}:00`,
+        value: Number(typeof point === 'object' ? point.y : point) || 0,
+      }))
+    )),
   };
 }
 
@@ -53,13 +77,46 @@ function renderRows(key, rows, emptyMessage) {
   });
 }
 
-function updateAlternatives(data) {
-  const model = buildInsightsAlternativeModel(data);
+function renderHeatmapRows(rows) {
+  const body = document.querySelector('[data-analytics-key="heatmap"]');
+  const head = body?.closest('table')?.querySelector('thead tr');
+  if (!body || !head) return;
+  const hours = [...new Set(rows.map((row) => row.hour))];
+  const days = [...new Set(rows.map((row) => row.day))];
+  head.replaceChildren();
+  ['Day', ...hours].forEach((label) => {
+    const heading = document.createElement('th');
+    heading.scope = 'col';
+    heading.textContent = label;
+    head.append(heading);
+  });
+  body.replaceChildren();
+  if (!rows.length) {
+    const row = body.insertRow();
+    const cell = row.insertCell();
+    cell.textContent = 'No hourly pattern available.';
+    return;
+  }
+  days.forEach((day) => {
+    const row = body.insertRow();
+    const heading = document.createElement('th');
+    heading.scope = 'row';
+    heading.textContent = day;
+    row.append(heading);
+    hours.forEach((hour) => {
+      const cell = row.insertCell();
+      cell.textContent = String(rows.find((item) => item.day === day && item.hour === hour)?.value ?? 0);
+    });
+  });
+}
+
+function updateAlternatives(data, trendType) {
+  const model = buildInsightsAlternativeModel(data, trendType);
   renderRows('trend', model.trend, 'No consumption logged in this range.');
   renderRows('timeOfDay', model.timeOfDay, 'No consumption logged in this range.');
   renderRows('dayOfWeek', model.dayOfWeek, 'No weekly pattern available.');
   renderRows('brands', model.brands, 'No brand data in this range.');
-  renderRows('heatmap', model.heatmap, 'No hourly pattern available.');
+  renderHeatmapRows(model.heatmap);
   return model;
 }
 
@@ -93,29 +150,16 @@ function statusFor(target) {
   return target?.parentElement?.querySelector('.analytics-chart__status') || null;
 }
 
-function aggregateToWeekly(points) {
-  const weeks = new Map();
-  (points || []).forEach((point) => {
-    const date = new Date(`${point.date}T00:00:00`);
-    const monday = new Date(date);
-    const day = monday.getDay() || 7;
-    monday.setDate(monday.getDate() - day + 1);
-    const key = monday.toISOString().slice(0, 10);
-    weeks.set(key, (weeks.get(key) || 0) + (Number(point.value) || 0));
-  });
-  return [...weeks].map(([date, value]) => ({ date, value }));
-}
-
 function chartDefinitions(data, trendType) {
   const theme = themeConfig();
-  const model = buildInsightsAlternativeModel(data);
-  const trend = trendType === 'weekly' ? aggregateToWeekly(data.consumption_trend) : data.consumption_trend || [];
+  const model = buildInsightsAlternativeModel(data, trendType);
   return [
     ['consumption-trend-chart', {
       ...commonChart('line', 250, theme),
-      series: [{ name: trendType === 'weekly' ? 'Weekly pouches' : 'Daily pouches', data: trend.map((point) => ({ x: point.date, y: Number(point.value) || 0 })) }],
+      series: [{ name: trendType === 'weekly' ? 'Weekly pouches' : 'Daily pouches', data: model.trend.map((point) => ({ x: point.label, y: point.value })) }],
       colors: ['#55755F'],
       stroke: { curve: 'smooth', width: 3 },
+      dataLabels: { enabled: true },
       xaxis: { type: 'datetime', labels: { style: { colors: theme.foreColor } } },
       yaxis: { min: 0, labels: { style: { colors: theme.foreColor } } },
     }],
@@ -200,7 +244,7 @@ async function startInsights() {
     charts.forEach((chart) => chart?.destroy?.());
     charts = [];
     updateMetrics(currentData);
-    updateAlternatives(currentData);
+    updateAlternatives(currentData, trendType);
     updateCoachNotes(currentData);
     for (const [id, options] of chartDefinitions(currentData, trendType)) {
       const target = document.getElementById(id);

@@ -119,3 +119,77 @@ exit 0
 
 - The focused Python runs retain existing Flask-WTF deprecation warnings, and adjacent regression tests retain existing SQLAlchemy legacy warnings; neither is introduced by Task 2.
 - Dashboard's legacy custom-date UI maps the selected interval to a bounded day count because its canonical analytics APIs accept `days`, not arbitrary historical start/end dates. Preset ranges and the selected interval length remain authoritative, and chart/table values still come from the same API responses.
+
+## Fix round 1 — semantic parity and binding coverage
+
+### Findings addressed
+
+1. Daily and weekly trend rendering now share one `buildTrendModel(data, trendType)` result. Both the Apex series and the accessible trend table consume the same `{label, value}` rows. Weekly grouping uses UTC date components, avoiding the prior Riyadh/local-midnight shift to Sunday.
+2. Rendered integration checks now assert complete cells for deliberately distinctive quantities: Insights date/`13`, Dashboard date/`17`/`68.0`, and hourly `11:00`/`17`. Runtime-abort browser checks require an exact `2` value cell rather than any row.
+3. A real browser binding test intercepts the 7-day API boundary with a complete controlled response, operates the actual range and weekly controls, and verifies exact table rows plus rendered Apex data-label values (`11`, `13`, then weekly `24`). This exercises `loadRange`, the real DOM table replacement, chart construction, and toggle rerendering together.
+4. Heatmap alternatives retain the hourly dimension. The server table renders Day plus `00:00` through `23:00`; client modeling retains every `{day, hour, value}` cell and rebuilds the table from API responses without daily-total reduction.
+
+### RED evidence
+
+Pure JavaScript command:
+
+```bash
+node tests/js/insights.test.js
+```
+
+Result: exit 1, 5 passed and 2 failed. `buildTrendModel` was absent, and heatmap output returned one `{label, total}` row per day instead of individual day/hour/value cells.
+
+Rendered integration command:
+
+```bash
+.venv/bin/python -m pytest tests/integration/test_analytics_pages.py -q
+```
+
+Result: exit 1, 2 passed and 1 failed. The rendered heatmap header was exactly `Day, Pouches`, not the required 24 hourly columns. The strengthened exact trend and hourly quantity assertions passed, demonstrating they now test real cells rather than date substrings.
+
+Range binding command:
+
+```bash
+npx playwright test tests/browser/analytics.spec.js --project=chromium-desktop --grep "range response"
+```
+
+Result: exit 1. The controlled response updated the daily table to `2026-07-27/11` and `2026-07-28/13`, but the chart rendered no value labels, leaving chart-input parity unverifiable. After enabling rendered labels, the first GREEN attempt also exposed and then fixed timezone-dependent weekly labels (`2026-07-26` instead of Monday `2026-07-27`).
+
+### GREEN evidence
+
+Fresh final commands after the fix:
+
+```text
+node --test tests/js/insights.test.js
+exit 0 — 1 test file passed (7 behavior subtests)
+
+.venv/bin/python -m pytest tests/integration/test_analytics_pages.py -q
+exit 0 — 3 passed, 2 existing Flask-WTF warnings
+
+npx playwright test tests/browser/analytics.spec.js --project=chromium-desktop
+exit 0 — 5 passed
+
+npx playwright test tests/browser/analytics.spec.js --project=chromium-mobile
+exit 0 — 5 passed
+
+npm run build:css
+exit 0 — Tailwind CSS v4.1.11 build completed
+
+.venv/bin/python -m pytest tests/unit/test_insights.py tests/regression/test_task5_services_fixes.py tests/integration/test_today_page.py -q
+exit 0 — 55 passed, 5 existing dependency/legacy warnings
+
+git -c core.whitespace=cr-at-eol diff --check
+exit 0
+```
+
+### Fix-round self-review
+
+- Confirmed the weekly chart series and table rows are constructed from the identical model object in a single render pass.
+- Confirmed weekly boundaries are Monday-based and timezone-stable through hand-derived literal fixtures.
+- Confirmed heatmap server markup and client refresh output preserve hour labels and values, including zeros.
+- Confirmed fallback tests inspect exact numeric cells and the range test inspects rendered chart text, not a mock call or implementation marker.
+- Confirmed no route, model, dependency, theme-event producer, branding, favicon, or PWA scope was added.
+
+### Fix-round concerns
+
+- Apex may create an additional empty SVG text node for a single-point series; the browser assertion filters only empty nodes and compares every non-empty rendered data label exactly.

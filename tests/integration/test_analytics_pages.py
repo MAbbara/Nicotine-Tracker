@@ -33,10 +33,13 @@ def _assert_local_analytics_assets(soup, initializer):
 
 def test_insights_renders_local_enhancement_and_semantic_values(
         logged_in_client, db_session, test_user, test_pouch):
+    logged_at = (datetime.now(timezone.utc) - timedelta(days=1)).replace(
+        hour=10, minute=0, second=0, microsecond=0
+    )
     log = Log(
         user_id=test_user.id,
-        quantity=3,
-        log_time=datetime.now(timezone.utc) - timedelta(days=1),
+        quantity=13,
+        log_time=logged_at,
     )
     log_service.assign_log_product(log, pouch_id=test_pouch.id)
     db_session.add(log)
@@ -50,16 +53,34 @@ def test_insights_renders_local_enhancement_and_semantic_values(
     assert soup.select_one(f"#{chart['aria-labelledby']}").get_text(strip=True) == "Consumption Trend"
     trend = soup.select_one("[role='region'][aria-label='Consumption trend data']")
     assert trend is not None
-    assert "3" in trend.get_text(" ", strip=True)
+    trend_rows = [
+        [cell.get_text(strip=True) for cell in row.select("th, td")]
+        for row in trend.select("tbody tr")
+    ]
+    assert [logged_at.date().isoformat(), "13"] in trend_rows
     assert trend.select_one("table caption").get_text(" ", strip=True) == "Consumption trend data"
+    heatmap = soup.select_one("[role='region'][aria-label='Consumption heatmap data'] table")
+    assert [cell.get_text(strip=True) for cell in heatmap.select("thead th")] == [
+        "Day", *(f"{hour:02d}:00" for hour in range(24))
+    ]
+    weekday_row = next(
+        row for row in heatmap.select("tbody tr")
+        if row.select_one("th").get_text(strip=True) == logged_at.strftime("%A")
+    )
+    hourly_values = [cell.get_text(strip=True) for cell in weekday_row.select("td")]
+    assert hourly_values[10] == "13"
+    assert sum(map(int, hourly_values)) == 13
 
 
 def test_dashboard_renders_local_enhancement_and_semantic_values(
         logged_in_client, db_session, test_user, test_pouch):
+    logged_at = (datetime.now(timezone.utc) - timedelta(days=1)).replace(
+        hour=11, minute=0, second=0, microsecond=0
+    )
     log = Log(
         user_id=test_user.id,
-        quantity=2,
-        log_time=datetime.now(timezone.utc) - timedelta(days=1),
+        quantity=17,
+        log_time=logged_at,
     )
     log_service.assign_log_product(log, pouch_id=test_pouch.id)
     db_session.add(log)
@@ -74,7 +95,16 @@ def test_dashboard_renders_local_enhancement_and_semantic_values(
     trend = soup.select_one("[role='region'][aria-label='Consumption trend data']")
     hourly = soup.select_one("[role='region'][aria-label='Hourly distribution data']")
     assert trend is not None and hourly is not None
-    assert "2" in trend.get_text(" ", strip=True)
+    trend_rows = [
+        [cell.get_text(strip=True) for cell in row.select("th, td")]
+        for row in trend.select("tbody tr")
+    ]
+    assert [logged_at.date().isoformat(), "17", "68.0"] in trend_rows
+    hourly_rows = [
+        [cell.get_text(strip=True) for cell in row.select("th, td")]
+        for row in hourly.select("tbody tr")
+    ]
+    assert ["11:00", "17"] in hourly_rows
     assert trend.select_one("table caption").get_text(" ", strip=True) == "Consumption trend data"
 
 
