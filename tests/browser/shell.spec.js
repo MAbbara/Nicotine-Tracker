@@ -71,6 +71,26 @@ test('theme choice publishes one effective contract and System alone follows the
   await expect(root).not.toHaveClass(/\bdark\b/);
 });
 
+test('explicit Dark activates legacy dark utilities under a light device', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.goto('/you');
+  await page.getByRole('button', { name: 'Dark' }).click();
+  await page.goto('/insights/');
+
+  const legacyCard = page.locator('.bg-white.dark\\:bg-gray-800').first();
+  await expect(legacyCard).toHaveCSS('background-color', 'oklch(0.278 0.033 256.848)');
+});
+
+test('explicit Light suppresses legacy dark utilities under a dark device', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('/you');
+  await page.getByRole('button', { name: 'Light' }).click();
+  await page.goto('/insights/');
+
+  const legacyCard = page.locator('.bg-white.dark\\:bg-gray-800').first();
+  await expect(legacyCard).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+});
+
 test('offline state uses the shell live region without duplicating navigation', async ({ page, context }) => {
   await page.goto('/today');
   await context.setOffline(true);
