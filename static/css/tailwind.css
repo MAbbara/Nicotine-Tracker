@@ -94,29 +94,6 @@
   --shadow-overlay: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  [data-theme="system"] {
-    color-scheme: dark;
-    --color-canvas: #111915;
-    --color-surface: #1B2721;
-    --color-surface-raised: #243129;
-    --color-ink: #EEE8D8;
-    --color-text-muted: #A7AEA7;
-    --color-border: #344139;
-    --color-border-strong: #59665E;
-    --color-constructive: #94B29A;
-    --color-constructive-soft: #293A30;
-    --color-attention: #D38466;
-    --color-attention-soft: #422D25;
-    --color-milestone: #D4B474;
-    --color-milestone-soft: #3E3525;
-    --color-focus: #B8D2BC;
-    --color-danger: #E09477;
-    --color-overlay: #080D0A;
-    --shadow-overlay: none;
-  }
-}
-
 @theme inline {
   --font-sans: var(--font-interface);
   --font-serif: var(--font-display);

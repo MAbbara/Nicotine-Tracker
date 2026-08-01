@@ -122,7 +122,7 @@ async function startDashboardCharts() {
     const days = Math.max(1, Math.min(365, Math.round((new Date(end) - new Date(start)) / 86400000) + 1));
     load(days);
   });
-  window.addEventListener('nicotine-tracker:theme-change', render);
+  document.documentElement.addEventListener('nicotine-tracker:theme-change', render);
   await render();
 }
 

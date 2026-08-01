@@ -7,6 +7,15 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
+if (typeof globalThis.CustomEvent !== 'function') {
+  globalThis.CustomEvent = class CustomEvent extends Event {
+    constructor(type, options = {}) {
+      super(type);
+      this.detail = options.detail;
+    }
+  };
+}
+
 const projectRoot = path.resolve(__dirname, '..', '..');
 const tailwindBin = path.join(projectRoot, 'node_modules', '.bin', 'tailwindcss');
 const tailwindSource = path.join(projectRoot, 'static', 'css', 'tailwind.css');
@@ -67,12 +76,19 @@ test('theme resolution accepts the three choices and otherwise follows the syste
   assert.equal(resolveTheme(undefined, false), 'light');
 });
 
-test('theme controller applies, persists, and listens to the system once', async () => {
+test('theme controller publishes saved and effective System state as the device changes', async () => {
   const { createThemeController } = await importBrowserModule('static/js/shell/theme.js');
-  const removedClasses = [];
+  const classes = new Set();
+  const events = [];
   const root = {
     dataset: { savedTheme: 'system' },
-    classList: { remove: (name) => removedClasses.push(name) },
+    classList: { toggle: (name, force) => force ? classes.add(name) : classes.delete(name) },
+    style: {},
+    dispatchEvent: (event) => events.push({ type: event.type, detail: event.detail }),
+  };
+  const themeColor = {
+    content: '#F5F1E7',
+    setAttribute(name, value) { this[name] = value; },
   };
   const saved = [];
   const storage = {
@@ -85,25 +101,99 @@ test('theme controller applies, persists, and listens to the system once', async
     addEventListener: (type, handler) => mediaListeners.add(handler),
     removeEventListener: (type, handler) => mediaListeners.delete(handler),
   };
-  const persisted = [];
   const controller = createThemeController({
     root,
     storage,
     mediaQuery: media,
+    themeColorMeta: themeColor,
+  });
+
+  assert.equal(root.dataset.savedTheme, 'system');
+  assert.equal(root.dataset.theme, 'dark');
+  assert.equal(classes.has('dark'), true);
+  assert.equal(root.style.colorScheme, 'dark');
+  assert.equal(themeColor.content, '#111915');
+  assert.deepEqual(events, [{
+    type: 'nicotine-tracker:theme-change',
+    detail: { saved: 'system', effective: 'dark' },
+  }]);
+  assert.equal(mediaListeners.size, 1);
+
+  media.matches = false;
+  for (const handler of mediaListeners) handler();
+  assert.equal(root.dataset.savedTheme, 'system');
+  assert.equal(root.dataset.theme, 'light');
+  assert.equal(classes.has('dark'), false);
+  assert.equal(root.style.colorScheme, 'light');
+  assert.equal(themeColor.content, '#F5F1E7');
+  assert.deepEqual(events.at(-1), {
+    type: 'nicotine-tracker:theme-change',
+    detail: { saved: 'system', effective: 'light' },
+  });
+  assert.equal(events.length, 2);
+
+  controller.cleanup();
+  assert.equal(mediaListeners.size, 0);
+});
+
+test('explicit theme selections publish saved state and ignore later device changes', async () => {
+  const { createThemeController } = await importBrowserModule('static/js/shell/theme.js');
+  const classes = new Set();
+  const events = [];
+  const root = {
+    dataset: { savedTheme: 'system' },
+    classList: { toggle: (name, force) => force ? classes.add(name) : classes.delete(name) },
+    style: {},
+    dispatchEvent: (event) => events.push(event.detail),
+  };
+  const themeColor = {
+    content: '#F5F1E7',
+    setAttribute(name, value) { this[name] = value; },
+  };
+  const saved = [];
+  const persisted = [];
+  const storage = {
+    getItem: () => null,
+    setItem: (key, value) => saved.push([key, value]),
+  };
+  const mediaListeners = new Set();
+  const media = {
+    matches: false,
+    addEventListener: (type, handler) => mediaListeners.add(handler),
+    removeEventListener: (type, handler) => mediaListeners.delete(handler),
+  };
+  const controller = createThemeController({
+    root,
+    storage,
+    mediaQuery: media,
+    themeColorMeta: themeColor,
     persistTheme: async (theme) => persisted.push(theme),
   });
 
+  await controller.select('dark');
+  assert.equal(root.dataset.savedTheme, 'dark');
   assert.equal(root.dataset.theme, 'dark');
-  assert.equal(mediaListeners.size, 1);
-  controller.apply();
-  assert.equal(mediaListeners.size, 1);
+  assert.equal(classes.has('dark'), true);
+  assert.equal(root.style.colorScheme, 'dark');
+  assert.equal(themeColor.content, '#111915');
+  assert.deepEqual(saved, [['nicotine-tracker-theme', 'dark']]);
+  assert.deepEqual(persisted, ['dark']);
+  assert.deepEqual(events.at(-1), { saved: 'dark', effective: 'dark' });
+
+  const eventCount = events.length;
+  media.matches = true;
+  for (const handler of mediaListeners) handler();
+  assert.equal(root.dataset.savedTheme, 'dark');
+  assert.equal(root.dataset.theme, 'dark');
+  assert.equal(events.length, eventCount);
+
   await controller.select('light');
+  assert.equal(root.dataset.savedTheme, 'light');
   assert.equal(root.dataset.theme, 'light');
-  assert.deepEqual(saved, [['nicotine-tracker-theme', 'light']]);
-  assert.deepEqual(persisted, ['light']);
-  assert.ok(removedClasses.every((name) => name === 'dark'));
-  controller.cleanup();
-  assert.equal(mediaListeners.size, 0);
+  assert.equal(classes.has('dark'), false);
+  assert.equal(root.style.colorScheme, 'light');
+  assert.equal(themeColor.content, '#F5F1E7');
+  assert.deepEqual(events.at(-1), { saved: 'light', effective: 'light' });
 });
 
 test('navigation chooses exactly one current destination and hides none', async () => {

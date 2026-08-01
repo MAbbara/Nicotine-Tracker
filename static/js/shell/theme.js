@@ -1,4 +1,5 @@
 const VALID_THEMES = new Set(['light', 'dark', 'system']);
+const THEME_COLORS = { light: '#F5F1E7', dark: '#111915' };
 const controllerRegistry = new WeakMap();
 
 export function resolveTheme(saved, prefersDark = false) {
@@ -10,6 +11,7 @@ export function createThemeController({
   root,
   storage = null,
   mediaQuery = null,
+  themeColorMeta = null,
   persistTheme = async () => {},
   buttons = [],
   feedback = null,
@@ -39,9 +41,15 @@ export function createThemeController({
 
   function apply() {
     const resolved = resolveTheme(choice, Boolean(media.matches));
+    root.dataset.savedTheme = choice;
     root.dataset.theme = resolved;
-    root.classList?.remove('dark');
+    root.classList?.toggle('dark', resolved === 'dark');
+    if (root.style) root.style.colorScheme = resolved;
+    themeColorMeta?.setAttribute('content', THEME_COLORS[resolved]);
     updateButtons();
+    root.dispatchEvent?.(new CustomEvent('nicotine-tracker:theme-change', {
+      detail: { saved: choice, effective: resolved },
+    }));
     return resolved;
   }
 
@@ -130,6 +138,7 @@ export function initThemeController(doc = globalThis.document, win = globalThis.
     root,
     storage: win.localStorage,
     mediaQuery: win.matchMedia?.('(prefers-color-scheme: dark)'),
+    themeColorMeta: doc.querySelector?.('meta[name="theme-color"]') || null,
     persistTheme,
     buttons: doc.querySelectorAll?.('[data-theme-choice]') || [],
     feedback: doc.querySelector?.('[data-theme-feedback]') || null,

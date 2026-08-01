@@ -99,3 +99,22 @@ test('Insights range response binds identical daily and weekly values to chart a
   expect((await page.locator('#consumption-trend-chart .apexcharts-data-labels text').allTextContents()).filter(Boolean))
     .toEqual(['24']);
 });
+
+
+test('System theme changes refresh the Insights chart palette without changing its table', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await login(page);
+  await page.goto('/you');
+  await page.getByRole('button', { name: 'System' }).click();
+  await page.goto('/insights/');
+
+  const table = page.getByRole('table', { name: /consumption trend data/i });
+  const originalRows = await table.locator('tbody').innerText();
+  const axisLabel = page.locator('#consumption-trend-chart .apexcharts-xaxis-texts-g text').first();
+  await expect(axisLabel).toHaveCSS('fill', 'rgb(30, 42, 36)');
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(axisLabel).toHaveCSS('fill', 'rgb(238, 232, 216)');
+  expect(await table.locator('tbody').innerText()).toBe(originalRows);
+});

@@ -24,7 +24,17 @@
         const local = window.localStorage.getItem('nicotine-tracker-theme');
         if (allowed.has(local)) saved = local;
       } catch (_) {}
-      document.documentElement.dataset.theme = allowed.has(saved) ? saved : 'system';
+      if (!allowed.has(saved)) saved = 'system';
+      const effective = saved === 'system'
+        ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+        : saved;
+      const root = document.documentElement;
+      root.dataset.savedTheme = saved;
+      root.dataset.theme = effective;
+      root.classList.toggle('dark', effective === 'dark');
+      root.style.colorScheme = effective;
+      document.querySelector('meta[name="theme-color"]')
+        ?.setAttribute('content', effective === 'dark' ? '#111915' : '#F5F1E7');
     })();
   </script>
   <title>{% block title %}Nicotine Tracker{% endblock %}</title>
