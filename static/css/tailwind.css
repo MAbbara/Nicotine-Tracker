@@ -1317,6 +1317,10 @@
     min-width: 0;
   }
 
+  .legacy-review > .eyebrow {
+    color: var(--color-ink);
+  }
+
   .journey-schedule > table,
   .journey-schedule > details,
   .journey-table-scroll,

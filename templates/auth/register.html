@@ -5,10 +5,10 @@
 {% block content %}
 <div class="flex min-h-full flex-col justify-center px-6 py-12 lg:px-8">
     <div class="sm:mx-auto sm:w-full sm:max-w-sm">
-        <h2 class="mt-10 text-center text-2xl font-bold leading-9 tracking-tight text-gray-900 dark:text-white">
+        <h1 class="mt-10 text-center text-2xl font-bold leading-9 tracking-tight text-gray-900 dark:text-white">
             Create your account
-        </h2>
-        <p class="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
+        </h1>
+        <p class="mt-2 text-center text-sm text-gray-600 dark:text-gray-300">
             Start tracking your nicotine intake today
         </p>
     </div>
@@ -36,7 +36,7 @@
                            class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600 dark:placeholder:text-gray-400"
                            placeholder="Create a password (min 6 characters)">
                 </div>
-                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                <p class="mt-1 text-xs text-gray-600 dark:text-gray-300">
                     Password must be at least 6 characters long
                 </p>
             </div>
@@ -59,10 +59,7 @@
                 </div>
                 <div class="ml-3 text-sm">
                     <label for="terms" class="text-gray-900 dark:text-white">
-                        I agree to the 
-                        <a href="#" class="font-semibold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400">Terms of Service</a>
-                        and 
-                        <a href="#" class="font-semibold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400">Privacy Policy</a>
+                        I understand this is a personal tracking tool, not medical advice.
                     </label>
                 </div>
             </div>
@@ -75,7 +72,7 @@
             </div>
         </form>
 
-        <p class="mt-10 text-center text-sm text-gray-500 dark:text-gray-400">
+        <p class="mt-10 text-center text-sm text-gray-600 dark:text-gray-300">
             Already have an account?
             <a href="{{ url_for('auth.login') }}" class="font-semibold leading-6 text-indigo-600 hover:text-indigo-500 dark:text-indigo-400">
                 Sign in here
