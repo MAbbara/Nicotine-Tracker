@@ -14,3 +14,4 @@ requests
 schedule==1.2.0
 pandas
 PyMySQL==1.1.1
+cryptography==50.0.0

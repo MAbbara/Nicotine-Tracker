@@ -26,7 +26,10 @@ def upgrade():
         sa.Column('pouch_id', sa.Integer(), nullable=False),
         sa.Column('rank', sa.Integer(), nullable=False),
         sa.Column('created_at', sa.DateTime(), nullable=False),
-        sa.CheckConstraint('rank >= 0', name='ck_preferred_rank_nonnegative'),
+        sa.CheckConstraint(
+            sa.column('rank') >= 0,
+            name='ck_preferred_rank_nonnegative',
+        ),
         sa.ForeignKeyConstraint(['user_id'], ['user.id'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['pouch_id'], ['pouch.id'], ondelete='CASCADE'),
         sa.UniqueConstraint('user_id', 'pouch_id', name='uq_preferred_user_pouch'),

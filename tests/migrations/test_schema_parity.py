@@ -140,6 +140,10 @@ class TestNegativeCanaries:
             conn.close()
 
     def _assert_detected(self, db, label):
+        # MySQL's repeatable-read transaction can retain the pre-mutation
+        # schema-reflection view because defects are committed on a second
+        # connection. Refresh only this negative-canary assertion connection.
+        db.connection.rollback()
         diffs = harness.schema_diffs(db.connection)
         assert diffs != [], f'canary not detected: {label}'
         return diffs
@@ -199,6 +203,22 @@ class TestNegativeCanaries:
     def test_wrong_foreign_key_detected(self, head_db):
         def defect(op, conn):
             # Rebuild the log table with the FK's ON DELETE SET NULL removed.
+            if conn.dialect.name == 'mysql':
+                foreign_keys = sa.inspect(conn).get_foreign_keys('log')
+                current = next(
+                    fk for fk in foreign_keys
+                    if fk['constrained_columns'] == ['pouch_id']
+                    and fk['referred_table'] == 'pouch'
+                )
+                assert current.get('name'), 'MySQL pouch FK must be named'
+                op.drop_constraint(
+                    current['name'], 'log', type_='foreignkey'
+                )
+                op.create_foreign_key(
+                    None, 'log', 'pouch', ['pouch_id'], ['id']
+                )
+                return
+
             reflected = sa.Table('log', sa.MetaData(), autoload_with=conn)
             for const in list(reflected.constraints):
                 if (isinstance(const, sa.ForeignKeyConstraint)
