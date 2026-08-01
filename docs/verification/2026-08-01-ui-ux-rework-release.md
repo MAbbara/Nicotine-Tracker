@@ -3,8 +3,8 @@
 ## Decision
 
 **NO-GO — automated application gates are green, but release acceptance is
-incomplete.** A copied legacy-database migration rehearsal was not authorized,
-an HTTPS production-configured staging environment was not available, and the
+incomplete.** The copied production-data migration rehearsal now passes, but an
+HTTPS production-configured staging environment was not available and the
 required named human accessibility and real-iPhone Safari reviews have not been
 performed. The repository also contains concurrent uncommitted branding work,
 so the clean-status completion rule is not met.
@@ -36,6 +36,9 @@ No deployment, push, merge, tag, production connection, or access to
 | SQLite migration suite | `.venv/bin/python -m pytest tests/migrations -q` | 50 passed, 1 skipped | 126.05s / 0 |
 | MySQL migration suite | `TEST_MYSQL_URL=mysql+pymysql://<disposable-test-credentials>@127.0.0.1:<ephemeral-port>/nicotine_tracker_test_release .venv/bin/python -m pytest tests/migrations -q --db=mysql` | 51 passed | 1,008.15s / 0 |
 | MySQL application matrix | `TEST_MYSQL_URL=mysql+pymysql://<disposable-test-credentials>@127.0.0.1:<ephemeral-port>/nicotine_tracker_test_release .venv/bin/python -m pytest tests/regression/test_log_product_history.py tests/integration/test_plan_revisions.py tests/unit/test_idempotent_log_service.py tests/api/test_log_mutations.py tests/unit/test_craving_mutations.py tests/api/test_craving_mutations.py tests/unit/test_portable_aggregations.py tests/unit/test_insights.py tests/security/test_security.py tests/api/test_endpoints.py tests/api/test_preference_endpoints.py tests/integration/test_journey.py -q --db=mysql` | 439 passed, 6 skipped | 1,368.88s / 0 |
+| Production-copy upgrade | `DATABASE_URL=mysql+pymysql://<disposable-test-credentials>@127.0.0.1:<ephemeral-port>/nicotine_tracker_test_production_copy FLASK_ENV=development .venv/bin/flask db upgrade` | `6848755d9016` upgraded through three revisions to `8a2d1c4e6f90` | exit 0 |
+| Production-copy schema parity | Strict Alembic `compare_metadata` through `tests.migrations.harness.schema_diffs` | 0 diffs | exit 0 |
+| Production-copy journey smoke | Authenticated aggregate-only test-client GETs | `/today/`, `/journey/`, `/insights/`, and `/you` returned 200 with nonempty bodies | exit 0 |
 
 The MySQL fixture rejected unsafe or ambiguously named databases and used only
 the disposable empty database `nicotine_tracker_test_release`. Migration tests
@@ -54,6 +57,62 @@ while browser tests were also active. The exact node passed in five separate
 focused processes, and the fresh isolated complete run above passed. No product
 code was changed without a reproducible failure mechanism.
 
+## Copied production-data migration rehearsal — PASS
+
+The user supplied `nicotinetracker.sql` as a production-data copy. The original
+file was treated as read-only. It was 501,105 bytes with SHA-256
+`e70372362ef2a98557c689dc2f2012db94453683bc3ee88429fcbac3d3672849`;
+its header identifies MariaDB 11.4.10 and its Alembic stamp was
+`6848755d9016`. No dump values or credentials are included in this record.
+
+The MariaDB dump represented four JSON columns as `LONGTEXT` plus
+`json_valid(...)` checks, including a literal default on
+`user_preferences.notification_channel`. MySQL 8.4 correctly rejected that
+literal `TEXT/JSON` default on the first import. A streaming, import-only
+compatibility transform converted exactly those four emulated columns to
+native MySQL `JSON` and removed only the illegal notification-channel server
+default. Validation before import reported zero remaining emulated JSON
+columns, four native JSON columns, and zero notification-channel defaults. The
+source file was not modified and no transformed copy was written to disk.
+
+The transformed stream restored into a disposable MySQL 8.4.8 database named
+`nicotine_tracker_test_production_copy`. Before upgrade:
+
+- revision: `6848755d9016`;
+- 11 users, 42 pouches, 4,798 logs, 1 craving, 137 notification-history
+  records, 2 password-reset records, and 9 preference records;
+- zero goals, notification-queue rows, user-activity rows, settings rows, or
+  email-verification rows;
+- zero checked user/pouch foreign-key orphans.
+
+`flask db upgrade` then applied `38495c4b5bbd`, `5f8c9b2a4e01`, and
+`8a2d1c4e6f90`. Fresh post-upgrade checks proved:
+
+- the live stamp and sole repository head are both `8a2d1c4e6f90`;
+- strict model/schema comparison reports zero diffs;
+- every pre-existing table retained its exact aggregate row count;
+- all checked legacy and new-domain foreign-key orphan counts are zero;
+- all 11 users retain a nonempty timezone;
+- all 4,798 historical logs have brand and nicotine-strength snapshots;
+- all 9 preference rows contain valid notification-channel JSON;
+- aggregate ORM counts match direct SQL counts;
+- Today, Journey, Insights, and You render successfully through the upgraded
+  database.
+
+The copy contained no reduction plans, plan revisions/days/status events,
+daily check-ins, onboarding drafts, goals, or settings records. Their migrated
+tables exist and match ORM metadata, but preservation of populated historical
+rows in those domains could not be evidenced from this particular backup.
+
+One schema-location diagnostic inadvertently printed adjacent private rows in
+the local tool transcript. Those values were not copied into a file, commit,
+or this evidence record and are not repeated here.
+
+After verification, `docker rm -f
+nicotine-tracker-mysql84-production-copy` permanently removed the disposable
+container, its restored database, and both test-only database accounts. The
+original user-supplied SQL file remains unchanged.
+
 ## Corrections made during verification
 
 - Stabilized the dashboard snapshot regression without weakening immutable
@@ -69,14 +128,6 @@ code was changed without a reproducible failure mechanism.
   synchronized with current UI state.
 
 ## Incomplete release gates
-
-### Copied legacy database migration — BLOCKED
-
-The task explicitly prohibits opening, inspecting, copying, or migrating
-`instance/nicotine_tracker.db` without approval. Approval was not supplied, so
-the private database was not accessed. A temporary-copy upgrade, single-head
-check, row-count/relationship comparison, and existing-user journey rehearsal
-remain required.
 
 ### Staging security and operations — BLOCKED
 
@@ -116,13 +167,14 @@ full proof of that planned lifecycle contract.
 - MySQL normalizes microseconds for columns declared without fractional-second
   precision, so the explicitly SQLite-specific subminute cases are skipped on
   MySQL.
-- Human, staging, and private-data gates above are release blockers, not waived
-  checks.
+- The supplied production-copy header identifies MariaDB rather than Oracle
+  MySQL. The rehearsal therefore required the documented JSON-DDL compatibility
+  stream before restoration to the MySQL 8.4 release target.
+- Human and staging gates above are release blockers, not waived checks.
 
 ## GO criteria remaining
 
-Release status may change to **GO** only after the copied-database rehearsal,
-production-configured staging checks, named accessibility review, and real
-iPhone Safari/PWA review all pass, and the intended release checkout has a clean
-Git status. Attach those results to this record; do not infer them from the
-automated suite.
+Release status may change to **GO** only after production-configured staging
+checks, named accessibility review, and real iPhone Safari/PWA review all pass,
+and the intended release checkout has a clean Git status. Attach those results
+to this record; do not infer them from the automated suite.
