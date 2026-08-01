@@ -664,10 +664,14 @@ def test_dashboard_totals_follow_snapshots_and_count_unknown_strength(
     # (excluded from mg, never back-filled from the live pouch), and a known
     # Decimal('0.00') contributes zero rather than the live pouch strength.
     db_session.add(UserPreferences(user_id=test_user.id, preferred_brands=[]))
-    # Midday of the current user day always lies inside the active window,
-    # independent of when the suite runs (test_user is UTC).
+    # Keep every event inside both the active user-day window and the elapsed
+    # rolling-history window. A fixed midday timestamp becomes a future event
+    # when this test runs before noon UTC, so divide the elapsed day into four
+    # parts and use the first three boundaries (test_user is UTC).
     current_day = get_current_user_day(test_user.timezone, None)
-    midday = datetime.combine(current_day, time(12, 0))
+    day_start = datetime.combine(current_day, time.min)
+    elapsed_quarter = (datetime.utcnow() - day_start) / 4
+    first_event_time = day_start + elapsed_quarter
 
     pouch = Pouch(
         brand='Dashboard Brand', nicotine_mg=Decimal('6.00'),
@@ -677,7 +681,8 @@ def test_dashboard_totals_follow_snapshots_and_count_unknown_strength(
     db_session.commit()
 
     snapshotted = create_log_entry(
-        user_id=test_user.id, pouch_id=pouch.id, quantity=1, log_time=midday,
+        user_id=test_user.id, pouch_id=pouch.id, quantity=1,
+        log_time=first_event_time,
     )
     assert snapshotted.product_brand_snapshot == 'Dashboard Brand'
     assert snapshotted.nicotine_mg_snapshot == Decimal('6.00')
@@ -700,7 +705,7 @@ def test_dashboard_totals_follow_snapshots_and_count_unknown_strength(
     # mg totals, never back-filled from the live pouch it references.
     unknown_strength = Log(
         user_id=test_user.id, quantity=1,
-        log_time=midday + timedelta(hours=1), log_date=current_day,
+        log_time=first_event_time + elapsed_quarter, log_date=current_day,
         pouch_id=live_pouch.id,
         product_brand_snapshot=None, nicotine_mg_snapshot=None,
     )
@@ -708,7 +713,8 @@ def test_dashboard_totals_follow_snapshots_and_count_unknown_strength(
     # zero and must not fall through to the referenced pouch's live strength.
     known_zero = Log(
         user_id=test_user.id, quantity=2,
-        log_time=midday + timedelta(hours=2), log_date=current_day,
+        log_time=first_event_time + (2 * elapsed_quarter),
+        log_date=current_day,
         pouch_id=live_pouch.id,
         product_brand_snapshot='Legacy Zero',
         nicotine_mg_snapshot=Decimal('0.00'),
