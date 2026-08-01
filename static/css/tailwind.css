@@ -461,6 +461,7 @@
   }
 
   .landing-next__heading p {
+    color: var(--color-ink);
     font-size: var(--text-caption);
     font-weight: 760;
     letter-spacing: 0.08em;
@@ -567,7 +568,7 @@
 
   .landing-cta__action p {
     margin: 0 0 var(--space-6);
-    color: var(--color-text-muted);
+    color: var(--color-ink);
   }
 
   @media (min-width: 40rem) {
