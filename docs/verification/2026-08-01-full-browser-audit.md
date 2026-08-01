@@ -12,10 +12,12 @@ This is not an unconditional GO. A named human accessibility review, a real
 iPhone Safari/installed-PWA review, and production-configured HTTPS staging
 verification remain required external release gates.
 
-This was a read-only product audit. No application fixes were made. All account,
-log, profile, plan, notification, password-reset, and deletion actions used a
-disposable in-memory test application and synthetic accounts. No production or
-user database was connected or changed.
+The original finding pass was a read-only product audit; no application fixes
+were made during that pass. The later remediation commits are listed below,
+and the resumed Task 7 verification changed only these evidence records. All
+account, log, profile, plan, notification, password-reset, and deletion actions
+used a disposable in-memory test application and synthetic accounts. No
+production or user database was connected or changed.
 
 ## Anti-pattern verdict
 
@@ -35,10 +37,11 @@ silently treated as complete design-system migration.
 | High findings | **7 remediated / 0 open** |
 | Medium findings | **8** |
 | Low findings | **3** |
-| Complete Playwright suite | **174 passed, 2 intentional skips in 3.3 minutes** |
+| Complete Playwright suite | **174 passed, 2 intentional desktop skips for mobile-only assertions in 3.3 minutes** |
 | Browser projects exercised | Desktop Chromium and Pixel 7 Chromium |
-| Additional manual viewport | 320 × 720 CSS pixels |
-| Pages/states in expanded audit | 30 page/viewport combinations |
+| Historical original-audit viewport | 320 × 720 CSS pixels |
+| Historical original-audit inventory | 30 page/viewport combinations |
+| Fresh Task 7 targeted viewport | 320 × 800 CSS pixels for repaired authenticated overflow/containment states; 320 × 760 for landing |
 
 The expanded automated suite now asserts analytics runtime and fallback
 behavior, exact destructive-action dispatch, explicit theme state,
@@ -55,15 +58,15 @@ the external human, real-device, and HTTPS staging gates.
 | Complete Python suite | `.venv/bin/python -m pytest -q` | 1,201 passed, 2 skipped, 31 warnings in 293.01s / exit 0 |
 | Complete JavaScript suite | `npm test` | 8 passed, 0 failed, 0 skipped in 400.599ms / exit 0 |
 | Production CSS build | `npm run build` | Tailwind CSS 4.1.11 completed in 133ms / exit 0 |
-| Complete end-to-end suite | `npm run test:e2e` | 174 passed, 2 intentional desktop skips in 3.3m / exit 0 |
-| Fresh manual Chromium scan | Repository-pinned Playwright Chromium against the disposable Flask app | PASS; exact actions, runtime/fallback, themes, axe, 320px, metadata, offline status, and landing visuals |
+| Complete end-to-end suite | `npm run test:e2e` | 174 passed, 2 intentional desktop skips for mobile-only assertions in 3.3m / exit 0 |
+| Fresh manual Chromium scan | Repository-pinned Playwright Chromium against the disposable Flask app | PASS; exact actions, runtime/fallback, themes, axe, keyboard scrolling, 320px, metadata/referrer behavior, offline status, and landing visuals |
 
 ### Manual action coverage
 
 | Area | Actions exercised | Result |
 | --- | --- | --- |
 | Marketing/authentication | Landing, Sign in link, invalid login, valid login | Navigation and validation worked |
-| Password recovery | Forgot-password request, token reset, login with new password | Passed in the disposable app |
+| Password recovery/privacy | Forgot-password request, token reset/login from the original audit; fresh valid-token metadata and outgoing navigation | Original flow passed; fresh reset page rendered `noindex, nofollow` and `no-referrer`, and navigation away sent no `Referer` header or destination `document.referrer` |
 | Primary navigation | Today, Journey, Insights, You | Passed; one active destination and working Insights |
 | Today / Quick Log | Open advanced fields, choose product/strength, quantity, notes, submit | Passed; timeline and progress updated |
 | Journey | Mobile layout, pause, resume preview, confirm resume | Passed; state and history persisted |
@@ -73,6 +76,7 @@ the external human, real-device, and HTTPS staging gates.
 | Data & Privacy | Button payloads; cleanup, merge, recalculate, anonymize, and delete logs | Passed in the disposable app; exact success branch observed for each action |
 | Account lifecycle | Delete synthetic account; reject subsequent login | Deletion worked; confirmation was lost after redirect |
 | Responsive behavior | 320px landing, Insights, dashboard, and Data & Privacy checks | Passed; document width remained 320px |
+| Keyboard scroll | Journey schedule, dashboard recent logs, and log history at 320px | Tab reached each named `tabindex="0"` region; ArrowRight increased scroll offsets and visible 2px outlines remained |
 | Error handling | Unknown authenticated route | Correct 404 status, one main landmark, Today recovery link, and no scoped axe violations; M5 remains retained for explicit medium-finding disposition |
 | Themes | Select Light, Dark, and System across modern and legacy pages | Passed; saved/effective theme, `.dark`, `color-scheme`, metadata, and charts agree |
 
@@ -87,9 +91,9 @@ reviewable. This table is the current status record.
 | C2 — analytics runtime | `b2df5b8`, `4593494` | Analytics unit, rendered-page, desktop/mobile browser, and adjacent Python gates passed | Insights and dashboard rendered charts and named tables without runtime errors; aborted ApexCharts produced the visible table fallback on both routes | **Remediated** |
 | H1 — retention label | `6a1365a`, `e22b0f0` | Data & Privacy axe and integration coverage passed | “Days to keep” was visible, required, and associated with `days_to_keep_help`; scoped axe returned no A/AA violations | **Remediated** |
 | H2 — theme contract | `af9e926`, `30b61aa`, `f92b3c0` | Shell/analytics unit and desktop/mobile browser gates passed | Explicit Dark, System, and Light produced matching saved/effective state, `.dark`, and `color-scheme`; analytics remained usable | **Remediated** |
-| H3 — contrast and keyboard scroll | `09ec541`, `f92b3c0`, `d6419a6` | Complete desktop/mobile accessibility suite passed; desktop had only two intentional mobile-only skips | Fresh axe scans of landing, login, Today, Journey, Insights, You, Data & Privacy, dashboard, log history, and authenticated 404 returned no A/AA violations | **Remediated** |
+| H3 — contrast and keyboard scroll | `09ec541`, `f92b3c0`, `d6419a6` | Complete desktop/mobile accessibility suite passed; the desktop project had two intentional skips for mobile-only assertions | Fresh axe scans returned no A/AA violations. At 320px, Tab focused the named Journey schedule, dashboard recent-logs, and log-history regions; ArrowRight moved scroll offsets from 0 to 296, 245, and 320px respectively while each retained a visible 2px outline | **Remediated** |
 | H4 — analytics alternatives/320px | `b2df5b8`, `4593494` | Analytics browser tests cover named tables, runtime failure, and 320px containment | At 320px Insights showed chart plus named table with no page overflow; the runtime-failure state retained the table and visible status | **Remediated** |
-| H5 — indexing privacy | `a0b7c3e` | Indexing/privacy integration gate passed | Login and authenticated pages exposed exactly `noindex, nofollow`; reset-token `no-referrer` remains integration-covered | **Remediated** |
+| H5 — indexing privacy | `a0b7c3e` | Indexing/privacy integration gate passed | Login/authenticated pages exposed `noindex, nofollow`. A fresh valid reset-token page rendered `noindex, nofollow` plus `no-referrer`; clicking its sign-in link sent no `Referer` request header and left destination `document.referrer` empty | **Remediated** |
 | H6 — install/offline contract | `a0b7c3e` | Offline shell/unit/browser and indexing/PWA/layout gates passed | Offline and back-online live-region messages were visible; cold offline launch remains explicitly unsupported rather than promised | **Remediated by narrowing the contract** |
 | H7 — landing brand/trust | `2491e52`, `d6419a6` | Landing design-token, desktop/mobile browser, focused accessibility, CSS build, and complete browser gates passed | Desktop and 320px visual inspection confirmed the editorial palette/layout, working actions, contained width, and no unsupported social proof | **Remediated** |
 
@@ -298,18 +302,19 @@ Chromium runtime. Screenshots and other disposable artifacts remain under
   production-safe robots and sitemap endpoints.
 - **Suggested workflow:** `i-harden`.
 
-### M5. The 404 page has invalid landmark composition and stale navigation
+### M5. The 404 page retains legacy styling — partially remediated
 
 - **Location:** `templates/errors/404.html:8`,
   `templates/errors/404.html:20`
 - **Category:** Accessibility / navigation / visual consistency
-- **Evidence:** The page nests a second `<main>` inside the layout's main
-  landmark, uses the legacy purple style, has a 4.28:1 contrast failure, and
-  links to “Dashboard” rather than the current Today destination language.
-- **Impact:** Landmark navigation is ambiguous and the recovery path looks and
-  reads like an older product.
-- **Recommendation:** Keep one main landmark, use current tokens and navigation
-  terminology, and fix contrast.
+- **Evidence:** The original audit found a nested second `<main>`, a 4.28:1
+  contrast failure, a stale “Dashboard” link, and legacy purple styling. Fresh
+  verification confirms one main landmark, clean scoped axe results, and a
+  Today recovery link. The legacy visual styling remains.
+- **Impact:** Landmark, contrast, and recovery terminology are repaired, but
+  the error surface still looks like an older product era.
+- **Recommendation:** Migrate the remaining visual styling to current shared
+  tokens/components, then explicitly close this retained medium finding.
 - **Suggested workflow:** `i-normalize` and `i-clarify`.
 
 ### M6. Branding and legacy JavaScript payloads are disproportionate
@@ -411,8 +416,7 @@ Chromium runtime. Screenshots and other disposable artifacts remain under
 ## Positive findings
 
 - All 174 runnable maintained Playwright tests pass across desktop and mobile
-  Chromium; two desktop cases are intentionally skipped because their overflow
-  geometry is mobile-only.
+  Chromium, with 2 intentional desktop skips for mobile-only assertions.
 - Today supports focused one-handed logging, advanced log fields, progress, and
   timeline feedback.
 - Journey pause and preview/confirm resume behavior works and preserves history.
@@ -430,7 +434,9 @@ Chromium runtime. Screenshots and other disposable artifacts remain under
 
 - Chromium was exercised; Safari/WebKit, Firefox, real iPhone behavior, and an
   installed PWA were not tested.
-- No human screen-reader session or named keyboard-only review was performed.
+- No human screen-reader session or named end-to-end keyboard-only review was
+  performed. The targeted Chromium Tab/Arrow checks above do not replace that
+  external human gate.
 - SMTP and Discord delivery were not sent to external systems; local queueing
   behavior was tested only in the disposable app.
 - Local development response sizes and timings are recorded only as diagnostic

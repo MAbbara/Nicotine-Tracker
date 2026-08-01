@@ -5,14 +5,16 @@
 **CONDITIONAL NO-GO — the technical browser remediation gate passes; three
 external release gates remain.** C1, C2, and H1-H7 have passed fresh focused,
 complete, and manual Chromium verification at `d6419a6`. The copied
-production-data migration rehearsal remains passing. Release must still wait
-for production-configured HTTPS staging verification, a named human
-accessibility review, and a real-iPhone Safari/installed-PWA review.
+production-data migration rehearsal is retained below as historical evidence
+from baseline `ed340e2c5ba3168cc3a41434b450bc4c69431ae5`; it was not rerun in
+Task 7 and is not fresh evidence for `d6419a6`. Release must still wait for
+production-configured HTTPS staging verification, a named human accessibility
+review, and a real-iPhone Safari/installed-PWA review.
 
 No deployment, push, merge, tag, production connection, or access to
 `instance/nicotine_tracker.db` occurred during this verification.
 
-## Evidence baseline
+## Fresh Task 7 remediation evidence
 
 - Branch: `codex/browser-release-gate-remediation`
 - Application/test baseline through: `d6419a6`
@@ -21,42 +23,63 @@ No deployment, push, merge, tag, production connection, or access to
 - Node.js: 24.14.1
 - npm: 11.11.0
 - Playwright: 1.62.0
-- Browser: Google Chrome for Testing 151.0.7922.34
-- MySQL: 8.4.8 Community Server, disposable `mysql` image pinned by digest
+- Browser: repository-installed Playwright Chromium 151.0.7922.34
 - Frontend build: Tailwind CSS 4.1.11
 
-## Automated verification
+### Fresh automated and manual verification
 
 | Gate | Command | Result | Duration / exit |
 | --- | --- | --- | --- |
 | Python application suite | `.venv/bin/python -m pytest -q` | 1,201 passed, 2 skipped, 31 warnings | 293.01s / 0 |
 | Production CSS build | `npm run build` | Tailwind 4.1.11 build completed | 133ms / 0 |
 | JavaScript unit suite | `npm test` | 8 passed, 0 failed, 0 skipped | 400.599ms / 0 |
-| Browser/accessibility suite | `npm run test:e2e` | 174 passed, 2 intentional mobile-only skips across desktop and mobile Chromium | 3.3m / 0 |
+| Browser/accessibility suite | `npm run test:e2e` | 174 passed, 2 intentional desktop skips for mobile-only assertions | 3.3m / 0 |
+| Full browser acceptance audit | Disposable manual actions plus expanded axe/page-error/responsive/metadata scan | **TECHNICAL PASS — C1, C2, H1-H7 remediated; 8 medium and 3 low retained** | Conditional NO-GO pending external gates |
+
+## Retained historical release evidence — not rerun in Task 7
+
+The following migration, MySQL, and copied-production-data results were
+recorded earlier on 2026-08-01 at application/test baseline
+`ed340e2c5ba3168cc3a41434b450bc4c69431ae5`. They were not rerun against
+`d6419a6`; they remain provenance for the original release record only and must
+not be read as fresh Task 7 results.
+
+The historical environment used MySQL 8.4.8 Community Server via the
+disposable `mysql` image pinned by digest.
+
+| Historical gate | Original command | Retained result | Original duration / exit |
+| --- | --- | --- | --- |
+| Python application suite | `.venv/bin/python -m pytest -q` | 1,178 passed, 2 skipped, 31 warnings | 317.88s / 0 |
+| Production CSS build | `npm run build` | Tailwind CSS 4.1.11 completed | exit 0 |
+| JavaScript unit suite | `npm test` | 7 passed | exit 0 |
+| Browser/accessibility suite | `npm run test:e2e` | 130 passed across desktop and mobile Chromium | 2.8m / 0 |
 | SQLite migration suite | `.venv/bin/python -m pytest tests/migrations -q` | 50 passed, 1 skipped | 126.05s / 0 |
 | MySQL migration suite | `TEST_MYSQL_URL=mysql+pymysql://<disposable-test-credentials>@127.0.0.1:<ephemeral-port>/nicotine_tracker_test_release .venv/bin/python -m pytest tests/migrations -q --db=mysql` | 51 passed | 1,008.15s / 0 |
 | MySQL application matrix | `TEST_MYSQL_URL=mysql+pymysql://<disposable-test-credentials>@127.0.0.1:<ephemeral-port>/nicotine_tracker_test_release .venv/bin/python -m pytest tests/regression/test_log_product_history.py tests/integration/test_plan_revisions.py tests/unit/test_idempotent_log_service.py tests/api/test_log_mutations.py tests/unit/test_craving_mutations.py tests/api/test_craving_mutations.py tests/unit/test_portable_aggregations.py tests/unit/test_insights.py tests/security/test_security.py tests/api/test_endpoints.py tests/api/test_preference_endpoints.py tests/integration/test_journey.py -q --db=mysql` | 439 passed, 6 skipped | 1,368.88s / 0 |
 | Production-copy upgrade | `DATABASE_URL=mysql+pymysql://<disposable-test-credentials>@127.0.0.1:<ephemeral-port>/nicotine_tracker_test_production_copy FLASK_ENV=development .venv/bin/flask db upgrade` | `6848755d9016` upgraded through three revisions to `8a2d1c4e6f90` | exit 0 |
 | Production-copy schema parity | Strict Alembic `compare_metadata` through `tests.migrations.harness.schema_diffs` | 0 diffs | exit 0 |
 | Production-copy journey smoke | Authenticated aggregate-only test-client GETs | `/today/`, `/journey/`, `/insights/`, and `/you` returned 200 with nonempty bodies | exit 0 |
-| Full browser acceptance audit | Manual actions plus expanded axe/page-error/responsive/metadata scan | **TECHNICAL PASS — C1, C2, H1-H7 remediated; 8 medium and 3 low retained** | Conditional NO-GO pending external gates |
 
-The MySQL fixture rejected unsafe or ambiguously named databases and used only
-the disposable empty database `nicotine_tracker_test_release`. Migration tests
-covered upgrade/downgrade behavior and schema parity on SQLite and MySQL. The
-application matrix covered immutable log history, plan revision behavior,
-idempotent log/craving mutation, portable aggregations, insights, and the
-currently implemented security/ownership cases.
+In that original run, the MySQL fixture rejected unsafe or ambiguously named
+databases and used only the disposable empty database
+`nicotine_tracker_test_release`. Migration tests covered upgrade/downgrade
+behavior and schema parity on SQLite and MySQL. The application matrix covered
+immutable log history, plan revision behavior, idempotent log/craving mutation,
+portable aggregations, insights, and the then-currently implemented
+security/ownership cases.
 
-After verification, `docker rm -f nicotine-tracker-mysql84-release` removed the
-disposable container and its test-only database. This cleanup is intentionally
-nonrecoverable; it did not target any persistent or production data.
+After that historical verification, `docker rm -f
+nicotine-tracker-mysql84-release` removed the disposable container and its
+test-only database. This cleanup was intentionally nonrecoverable; it did not
+target any persistent or production data.
 
-The first complete Python run produced one load-sensitive failure in
+The original baseline's first complete Python run produced one load-sensitive
+failure in
 `test_two_independent_connections_map_activation_race_to_one_conflict[zero-timeout]`
 while browser tests were also active. The exact node passed in five separate
-focused processes, and the fresh isolated complete run above passed. No product
-code was changed without a reproducible failure mechanism.
+focused processes, and the separately rerun complete Python result retained in
+the historical table passed. No product code was changed without a
+reproducible failure mechanism.
 
 The separate [full browser acceptance audit](2026-08-01-full-browser-audit.md)
 retains the original findings and now records C1, C2, and H1-H7 closure
@@ -75,8 +98,9 @@ installed, pinned Playwright Chromium runtime and recorded that limitation.
 | C1 / H1 — exact Data & Privacy actions and retention label | `6a1365a`, `e22b0f0` | Focused Python and Data & Privacy axe passed; all named actions manually dispatched to their intended branch |
 | C2 / H4 — analytics runtime, alternatives, fallback, and containment | `b2df5b8`, `4593494` | Unit/rendered/desktop/mobile analytics gates passed; charts, tables, failed-runtime fallback, and 320px containment manually passed |
 | H2 — authoritative theme contract | `af9e926`, `30b61aa`, `f92b3c0` | Shell/analytics regressions and manual Light/Dark/System state passed |
-| H3 — contrast and keyboard-scroll accessibility | `09ec541`, `f92b3c0`, `d6419a6` | Complete desktop/mobile axe gate and fresh scoped manual axe scan passed |
-| H5 / H6 — indexing privacy and bounded offline contract | `a0b7c3e` | Integration, shell/offline browser, metadata, and live-region checks passed; cold offline launch remains explicitly unsupported |
+| H3 — contrast and keyboard-scroll accessibility | `09ec541`, `f92b3c0`, `d6419a6` | Complete desktop/mobile axe gate passed; fresh 320px Chromium Tab/Arrow checks focused and scrolled Journey schedule, dashboard recent logs, and log history with visible 2px outlines |
+| H5 — indexing/referrer privacy | `a0b7c3e` | Login/authenticated metadata checks passed; a fresh valid reset-token page rendered `noindex, nofollow` plus `no-referrer`, and navigation away sent no `Referer` header and produced an empty destination `document.referrer` |
+| H6 — bounded offline contract | `a0b7c3e` | Integration, shell/offline browser, and manual live-region checks passed; cold offline launch remains explicitly unsupported |
 | H7 — landing brand/trust | `2491e52`, `d6419a6` | Design-token, desktop/mobile, accessibility, build, and visual/manual checks passed |
 
 ### Offline capability boundary
@@ -87,7 +111,7 @@ are unsupported; either capability requires a separate service-worker project.
 The existing offline-replay browser tests verify only the supported in-session
 recovery path.
 
-## Copied production-data migration rehearsal — PASS
+## Retained historical copied production-data migration rehearsal — PASS at original baseline; not rerun in Task 7
 
 The user supplied `nicotinetracker.sql` as a production-data copy. The original
 file was treated as read-only. It was 501,105 bytes with SHA-256
@@ -116,7 +140,7 @@ The transformed stream restored into a disposable MySQL 8.4.8 database named
 - zero checked user/pouch foreign-key orphans.
 
 `flask db upgrade` then applied `38495c4b5bbd`, `5f8c9b2a4e01`, and
-`8a2d1c4e6f90`. Fresh post-upgrade checks proved:
+`8a2d1c4e6f90`. The original rehearsal's post-upgrade checks proved:
 
 - the live stamp and sole repository head are both `8a2d1c4e6f90`;
 - strict model/schema comparison reports zero diffs;
@@ -138,12 +162,12 @@ One schema-location diagnostic inadvertently printed adjacent private rows in
 the local tool transcript. Those values were not copied into a file, commit,
 or this evidence record and are not repeated here.
 
-After verification, `docker rm -f
+After the original rehearsal, `docker rm -f
 nicotine-tracker-mysql84-production-copy` permanently removed the disposable
 container, its restored database, and both test-only database accounts. The
 original user-supplied SQL file remains unchanged.
 
-## Corrections made during verification
+## Corrections recorded in the original release verification
 
 - Stabilized the dashboard snapshot regression without weakening immutable
   historical snapshot assertions.
@@ -202,12 +226,12 @@ full proof of that planned lifecycle contract.
 
 - SQLAlchemy legacy `Query.get()` warnings remain in notification, log, and
   craving services; they did not fail the suite.
-- MySQL normalizes microseconds for columns declared without fractional-second
-  precision, so the explicitly SQLite-specific subminute cases are skipped on
-  MySQL.
-- The supplied production-copy header identifies MariaDB rather than Oracle
-  MySQL. The rehearsal therefore required the documented JSON-DDL compatibility
-  stream before restoration to the MySQL 8.4 release target.
+- In the retained historical matrix, MySQL normalized microseconds for columns
+  declared without fractional-second precision, so explicitly SQLite-specific
+  subminute cases were skipped on MySQL.
+- The retained historical production-copy header identified MariaDB rather
+  than Oracle MySQL. That rehearsal required the documented JSON-DDL
+  compatibility stream before restoration to the MySQL 8.4 release target.
 - Human and staging gates above are release blockers, not waived checks.
 - Cold offline launch and an offline application shell are unsupported; only
   the documented in-session queue/recovery boundary is verified.
