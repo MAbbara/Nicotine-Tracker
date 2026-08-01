@@ -63,5 +63,6 @@ playwright-report/
 
 # Agent execution state and scratch review packages
 .superpowers/
+.worktrees/
 /TASK*.md
 /TASK_*.md
