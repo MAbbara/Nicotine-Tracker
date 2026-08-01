@@ -105,14 +105,6 @@ LOGS = (
      'notes': 'synthetic unknown-strength log'},
 )
 
-# Immutable snapshots the reconciliation revision must backfill. Unknown
-# historical brand/strength stays NULL; zero is never fabricated.
-EXPECTED_SNAPSHOTS = {
-    1: ('SYNTH-Pouch', Decimal('1.50')),
-    2: ('SYNTH-Custom', Decimal('6.00')),
-    3: (None, None),
-}
-
 CRAVING = {'id': 1, 'user_id': 1, 'craving_time': '2025-01-05 09:30:00.000000',
            'intensity': 7, 'trigger': 'synthetic-stress'}
 
@@ -178,6 +170,20 @@ def expected_pouch_mg(db) -> dict:
     if db.dialect == 'mysql':
         return dict(MYSQL_LEGACY_POUCH_MG)
     return dict(SQLITE_LEGACY_POUCH_MG)
+
+
+def expected_snapshots(db) -> dict:
+    """Immutable snapshots resolvable from each engine's legacy fixture.
+
+    MySQL's historical INTEGER column already rounded the source 1.50 value
+    to 2 before this migration can observe it. Snapshot backfill must preserve
+    that stored history rather than fabricate an unrecoverable fraction.
+    """
+    return {
+        1: ('SYNTH-Pouch', expected_pouch_mg(db)[1]),
+        2: ('SYNTH-Custom', Decimal('6.00')),
+        3: (None, None),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -551,7 +557,7 @@ def assert_head_manifest(db: PreparedDB):
     ])
     actual_snap = {r['id']: (r['product_brand_snapshot'], r['nicotine_mg_snapshot'])
                    for r in snap}
-    for log_id, (brand, strength) in EXPECTED_SNAPSHOTS.items():
+    for log_id, (brand, strength) in expected_snapshots(db).items():
         assert actual_snap[log_id] == (brand, strength), (
             f'{db.spec.key}: log {log_id} snapshots {actual_snap[log_id]}, '
             f'expected {(brand, strength)}'
@@ -639,6 +645,9 @@ def capture_manifest(db: PreparedDB) -> dict:
 # ---------------------------------------------------------------------------
 
 KNOWN_MYSQL_TABLES = (
+    # Negative schema-parity canary; it is intentionally created during a
+    # test and must be removed before the next empty-schema preflight.
+    'rogue_table',
     'notification_history', 'notification_queue', 'user_activity',
     'user_settings', 'user_preferences', 'email_verifications',
     'password_resets', 'daily_check_in', 'plan_status_event', 'plan_day',

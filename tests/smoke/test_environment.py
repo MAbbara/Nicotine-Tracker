@@ -7,9 +7,17 @@ from urllib.parse import urlsplit
 import pytest
 
 
-def test_app_factory_uses_isolated_test_database(app):
+def test_app_factory_uses_explicit_disposable_backend(app, pytestconfig):
     assert app.config["TESTING"] is True
-    assert app.config["SQLALCHEMY_DATABASE_URI"] == "sqlite:///:memory:"
+    backend = pytestconfig.getoption("--db")
+    with app.app_context():
+        from extensions import db
+
+        assert db.engine.dialect.name == backend
+        if backend == "sqlite":
+            assert app.config["SQLALCHEMY_DATABASE_URI"] == "sqlite:///:memory:"
+        else:
+            assert db.engine.url.database.startswith("nicotine_tracker_test_")
 
 
 def test_css_is_built_from_tailwind_source():

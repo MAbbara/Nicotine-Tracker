@@ -10,7 +10,10 @@ class UserPreferredPouch(db.Model):
     __table_args__ = (
         db.UniqueConstraint('user_id', 'pouch_id', name='uq_preferred_user_pouch'),
         db.UniqueConstraint('user_id', 'rank', name='uq_preferred_user_rank'),
-        db.CheckConstraint('rank >= 0', name='ck_preferred_rank_nonnegative'),
+        db.CheckConstraint(
+            db.column('rank') >= 0,
+            name='ck_preferred_rank_nonnegative',
+        ),
     )
 
     id = db.Column(db.Integer, primary_key=True)

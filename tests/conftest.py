@@ -32,7 +32,7 @@ TEST_USER_PASSWORD = 'password123'
 
 
 def pytest_addoption(parser):
-    """Global database backend selection for migration tests.
+    """Global database backend selection for release-matrix tests.
 
     Ordinary SQLite runs (the default) never inspect TEST_MYSQL_URL; that
     variable is only read on the explicit --db=mysql path.
@@ -42,7 +42,7 @@ def pytest_addoption(parser):
         action='store',
         default='sqlite',
         choices=('sqlite', 'mysql'),
-        help="Database backend for migration tests (default: sqlite).",
+        help="Database backend for release-matrix tests (default: sqlite).",
     )
 
 
@@ -63,40 +63,85 @@ def pytest_sessionstart(session):
 
 
 @pytest.fixture(scope='function')
-def app():
+def app(pytestconfig):
     """Create an isolated application instance for testing.
 
-    Always loads the testing configuration and explicitly pins the
-    in-memory SQLite database, so a test can never touch a file-backed
-    development or production database.
+    SQLite is in-memory by default. The explicit ``--db=mysql`` release path
+    binds only after the migration harness verifies a mysql+pymysql URL,
+    MySQL 8.4+, the exact disposable database-name prefix, and an empty
+    schema. No file-backed development or production database is accepted.
     """
-    app = create_app('testing')
+    backend = pytestconfig.getoption('--db')
+    database_uri = 'sqlite:///:memory:'
+    mysql_preflight_engine = None
+    original_testing_uri = None
+    if backend == 'mysql':
+        import config as app_config
+        from tests.migrations import harness
+
+        mysql_preflight_engine = harness.create_verified_mysql_engine()
+        database_uri = mysql_preflight_engine.url.render_as_string(
+            hide_password=False
+        )
+        original_testing_uri = app_config.TestingConfig.SQLALCHEMY_DATABASE_URI
+        app_config.TestingConfig.SQLALCHEMY_DATABASE_URI = database_uri
+
+    try:
+        app = create_app('testing')
+    finally:
+        if backend == 'mysql':
+            app_config.TestingConfig.SQLALCHEMY_DATABASE_URI = original_testing_uri
+
     app.config.update({
         'TESTING': True,
-        'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
+        'SQLALCHEMY_DATABASE_URI': database_uri,
         'SECRET_KEY': 'test-secret-key',
         'MAIL_SUPPRESS_SEND': True,
         'WTF_CSRF_ENABLED': False,
     })
 
-    with app.app_context():
-        import models  # noqa: F401  ensure every model is registered before create_all
-        db.create_all()
-        yield app
-        db.session.rollback()
-        if db.engine.dialect.name == 'sqlite':
-            # reduction_plan.active_revision_id intentionally forms a cycle
-            # with plan_revision.plan_id. SQLite cannot defer that table-level
-            # constraint during DROP, so clear persisted pointers in this
-            # disposable in-memory database before dropping the schema.
-            from models import ReductionPlan
-            db.session.query(ReductionPlan).update({
-                ReductionPlan.active_revision_id: None
-            })
-            db.session.commit()
-        db.session.remove()
-        db.drop_all()
-        db.engine.dispose()
+    app_engine = None
+    try:
+        with app.app_context():
+            import models  # noqa: F401  ensure every model is registered before create_all
+            app_engine = db.engine
+            if backend == 'mysql':
+                registered_tables = set(db.metadata.tables)
+                missing_cleanup_tables = (
+                    registered_tables - set(harness.KNOWN_MYSQL_TABLES)
+                )
+                if missing_cleanup_tables:
+                    raise RuntimeError(
+                        'MySQL cleanup inventory is missing registered tables: '
+                        f'{sorted(missing_cleanup_tables)}'
+                    )
+            db.create_all()
+            yield app
+            db.session.rollback()
+            if backend == 'sqlite':
+                # reduction_plan.active_revision_id intentionally forms a cycle
+                # with plan_revision.plan_id. SQLite cannot defer that table-level
+                # constraint during DROP, so clear persisted pointers in this
+                # disposable in-memory database before dropping the schema.
+                from models import ReductionPlan
+                db.session.query(ReductionPlan).update({
+                    ReductionPlan.active_revision_id: None
+                })
+                db.session.commit()
+                db.session.remove()
+                db.drop_all()
+                app_engine.dispose()
+            else:
+                db.session.remove()
+    finally:
+        if backend == 'mysql':
+            try:
+                if app_engine is not None:
+                    harness.cleanup_mysql_engine(app_engine)
+                    with mysql_preflight_engine.connect() as connection:
+                        harness.assert_mysql_schema_empty(connection)
+            finally:
+                mysql_preflight_engine.dispose()
 
 
 @pytest.fixture(scope='function')

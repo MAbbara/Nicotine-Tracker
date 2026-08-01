@@ -196,7 +196,7 @@ class TestPartialSnapshotReconciliation:
             ('nicotine_mg_snapshot', sa.Numeric(8, 2)),
         ])[0]
         assert row['product_brand_snapshot'] == 'SYNTH-Preserved Brand'
-        assert row['nicotine_mg_snapshot'] == Decimal('1.50')
+        assert row['nicotine_mg_snapshot'] == harness.expected_snapshots(db)[1][1]
 
         first = harness.capture_manifest(db)
         db.upgrade('head')

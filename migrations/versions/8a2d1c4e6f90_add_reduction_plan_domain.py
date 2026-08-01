@@ -334,11 +334,20 @@ def _backfill_legacy_goal_drafts(conn):
 
 
 def downgrade():
+    # InnoDB removes its original implicit ``user_id`` index when the wider
+    # idempotency unique index can support the existing user foreign key.
+    # Restore that historical supporting index before dropping the wider one.
+    if op.get_bind().dialect.name == 'mysql':
+        op.create_index('user_id', 'craving', ['user_id'], unique=False)
+
     with op.batch_alter_table('craving') as batch:
         batch.drop_constraint('fk_craving_linked_log', type_='foreignkey')
         batch.drop_constraint('uq_craving_user_client_event_id', type_='unique')
         batch.drop_column('linked_log_id')
         batch.drop_column('client_event_id')
+
+    if op.get_bind().dialect.name == 'mysql':
+        op.create_index('user_id', 'log', ['user_id'], unique=False)
 
     with op.batch_alter_table('log') as batch:
         batch.drop_constraint('uq_log_user_client_event_id', type_='unique')
