@@ -2,22 +2,20 @@
 
 ## Decision
 
-**NO-GO — automated application gates are green, but browser acceptance
-fails.** A full browser audit found two release-critical defects: grouped Data
-& Privacy forms can dispatch the wrong action, and Insights/dashboard crash
-because ApexCharts is not loaded. The copied production-data migration
-rehearsal passes, but an HTTPS production-configured staging environment was
-not available and the required named human accessibility and real-iPhone Safari
-reviews have not been performed. The repository also contains concurrent
-uncommitted branding work, so the clean-status completion rule is not met.
+**CONDITIONAL NO-GO — the technical browser remediation gate passes; three
+external release gates remain.** C1, C2, and H1-H7 have passed fresh focused,
+complete, and manual Chromium verification at `d6419a6`. The copied
+production-data migration rehearsal remains passing. Release must still wait
+for production-configured HTTPS staging verification, a named human
+accessibility review, and a real-iPhone Safari/installed-PWA review.
 
 No deployment, push, merge, tag, production connection, or access to
 `instance/nicotine_tracker.db` occurred during this verification.
 
 ## Evidence baseline
 
-- Branch: `main`
-- Application/test baseline through: `ed340e2c5ba3168cc3a41434b450bc4c69431ae5`
+- Branch: `codex/browser-release-gate-remediation`
+- Application/test baseline through: `d6419a6`
 - Verification date/time zone: 2026-08-01, Asia/Riyadh
 - Python: 3.11.15
 - Node.js: 24.14.1
@@ -31,17 +29,17 @@ No deployment, push, merge, tag, production connection, or access to
 
 | Gate | Command | Result | Duration / exit |
 | --- | --- | --- | --- |
-| Python application suite | `.venv/bin/python -m pytest -q` | 1,178 passed, 2 skipped, 31 warnings | 317.88s / 0 |
-| Production CSS build | `npm run build` | Tailwind 4.1.11 build completed | exit 0 |
-| JavaScript unit suite | `npm test` | 7 passed | exit 0 |
-| Browser/accessibility suite | `npm run test:e2e` | 130 passed across desktop and mobile Chromium | 2.8m / 0 |
+| Python application suite | `.venv/bin/python -m pytest -q` | 1,201 passed, 2 skipped, 31 warnings | 293.01s / 0 |
+| Production CSS build | `npm run build` | Tailwind 4.1.11 build completed | 133ms / 0 |
+| JavaScript unit suite | `npm test` | 8 passed, 0 failed, 0 skipped | 400.599ms / 0 |
+| Browser/accessibility suite | `npm run test:e2e` | 174 passed, 2 intentional mobile-only skips across desktop and mobile Chromium | 3.3m / 0 |
 | SQLite migration suite | `.venv/bin/python -m pytest tests/migrations -q` | 50 passed, 1 skipped | 126.05s / 0 |
 | MySQL migration suite | `TEST_MYSQL_URL=mysql+pymysql://<disposable-test-credentials>@127.0.0.1:<ephemeral-port>/nicotine_tracker_test_release .venv/bin/python -m pytest tests/migrations -q --db=mysql` | 51 passed | 1,008.15s / 0 |
 | MySQL application matrix | `TEST_MYSQL_URL=mysql+pymysql://<disposable-test-credentials>@127.0.0.1:<ephemeral-port>/nicotine_tracker_test_release .venv/bin/python -m pytest tests/regression/test_log_product_history.py tests/integration/test_plan_revisions.py tests/unit/test_idempotent_log_service.py tests/api/test_log_mutations.py tests/unit/test_craving_mutations.py tests/api/test_craving_mutations.py tests/unit/test_portable_aggregations.py tests/unit/test_insights.py tests/security/test_security.py tests/api/test_endpoints.py tests/api/test_preference_endpoints.py tests/integration/test_journey.py -q --db=mysql` | 439 passed, 6 skipped | 1,368.88s / 0 |
 | Production-copy upgrade | `DATABASE_URL=mysql+pymysql://<disposable-test-credentials>@127.0.0.1:<ephemeral-port>/nicotine_tracker_test_production_copy FLASK_ENV=development .venv/bin/flask db upgrade` | `6848755d9016` upgraded through three revisions to `8a2d1c4e6f90` | exit 0 |
 | Production-copy schema parity | Strict Alembic `compare_metadata` through `tests.migrations.harness.schema_diffs` | 0 diffs | exit 0 |
 | Production-copy journey smoke | Authenticated aggregate-only test-client GETs | `/today/`, `/journey/`, `/insights/`, and `/you` returned 200 with nonempty bodies | exit 0 |
-| Full browser acceptance audit | Manual actions plus expanded axe/page-error/responsive/SEO scan | **FAIL — 2 critical, 7 high, 8 medium, 3 low** | **NO-GO** |
+| Full browser acceptance audit | Manual actions plus expanded axe/page-error/responsive/metadata scan | **TECHNICAL PASS — C1, C2, H1-H7 remediated; 8 medium and 3 low retained** | Conditional NO-GO pending external gates |
 
 The MySQL fixture rejected unsafe or ambiguously named databases and used only
 the disposable empty database `nicotine_tracker_test_release`. Migration tests
@@ -61,12 +59,25 @@ focused processes, and the fresh isolated complete run above passed. No product
 code was changed without a reproducible failure mechanism.
 
 The separate [full browser acceptance audit](2026-08-01-full-browser-audit.md)
-shows why an HTTP 200 and a green existing suite are insufficient here. It
-reproduced the two critical defects, exercised authentication and account
-lifecycle actions in a disposable in-memory application, inspected 30 expanded
-page/viewport states, and records the remaining visual, accessibility, SEO,
-PWA, responsive, and performance findings. No product code was changed during
-that audit.
+retains the original findings and now records C1, C2, and H1-H7 closure
+finding-by-finding. The fresh disposable-browser pass exercised each named
+Data & Privacy action, normal and failed analytics runtime states, Light/Dark/
+System themes, scoped axe routes, 320px containment, route metadata, offline
+status messaging, and rebuilt landing visuals. The preferred Playwright CLI
+was attempted first; because its packaged binary path
+`/opt/google/chrome/chrome` is absent, the manual scan used the repository's
+installed, pinned Playwright Chromium runtime and recorded that limitation.
+
+### Browser remediation commits and evidence
+
+| Finding | Fix commit(s) | Verification status |
+| --- | --- | --- |
+| C1 / H1 — exact Data & Privacy actions and retention label | `6a1365a`, `e22b0f0` | Focused Python and Data & Privacy axe passed; all named actions manually dispatched to their intended branch |
+| C2 / H4 — analytics runtime, alternatives, fallback, and containment | `b2df5b8`, `4593494` | Unit/rendered/desktop/mobile analytics gates passed; charts, tables, failed-runtime fallback, and 320px containment manually passed |
+| H2 — authoritative theme contract | `af9e926`, `30b61aa`, `f92b3c0` | Shell/analytics regressions and manual Light/Dark/System state passed |
+| H3 — contrast and keyboard-scroll accessibility | `09ec541`, `f92b3c0`, `d6419a6` | Complete desktop/mobile axe gate and fresh scoped manual axe scan passed |
+| H5 / H6 — indexing privacy and bounded offline contract | `a0b7c3e` | Integration, shell/offline browser, metadata, and live-region checks passed; cold offline launch remains explicitly unsupported |
+| H7 — landing brand/trust | `2491e52`, `d6419a6` | Design-token, desktop/mobile, accessibility, build, and visual/manual checks passed |
 
 ### Offline capability boundary
 
@@ -148,14 +159,13 @@ original user-supplied SQL file remains unchanged.
 
 ## Incomplete release gates
 
-### Full browser acceptance — FAIL
+### Full browser acceptance — TECHNICAL PASS
 
-The release must not proceed while Data & Privacy buttons can invoke a
-different operation than the one selected, or while Insights/dashboard raise
-`ReferenceError: ApexCharts is not defined` and leave charts blank. These are
-uncovered product defects, not staging-only or human-review gaps. See the
-[full browser acceptance audit](2026-08-01-full-browser-audit.md) for
-reproduction evidence and prioritized remediation.
+C1, C2, and H1-H7 passed the fresh focused gates, the four complete automated
+gates, and the expanded disposable Chromium pass. The eight medium and three
+low findings remain tracked in the
+[full browser acceptance audit](2026-08-01-full-browser-audit.md). This pass
+does not waive the staging, named accessibility, or real-device gates below.
 
 ### Staging security and operations — BLOCKED
 
@@ -199,14 +209,14 @@ full proof of that planned lifecycle contract.
   MySQL. The rehearsal therefore required the documented JSON-DDL compatibility
   stream before restoration to the MySQL 8.4 release target.
 - Human and staging gates above are release blockers, not waived checks.
-- The passing browser suite does not cover exact dispatch for every destructive
-  settings action or fail on the analytics runtime errors found manually.
+- Cold offline launch and an offline application shell are unsupported; only
+  the documented in-session queue/recovery boundary is verified.
 
 ## GO criteria remaining
 
-Release status may change to **GO** only after the two critical browser defects
-are fixed with regression coverage, the full browser audit is rerun without
-release blockers, production-configured staging checks pass, named
-accessibility and real iPhone Safari/PWA reviews pass, and the intended release
-checkout has a clean Git status. Attach those results to this record; do not
-infer them from the automated suite.
+Release status may change to **GO** only after production-configured HTTPS
+staging checks pass, named accessibility and real iPhone Safari/installed-PWA
+reviews pass, and the intended release checkout has a clean Git status. Attach
+those results to this record; do not infer them from this technical Chromium
+pass. The retained eight medium and three low findings must remain visible and
+be dispositioned deliberately rather than silently treated as remediated.
