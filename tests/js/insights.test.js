@@ -109,3 +109,42 @@ test('insights alternatives preserve the same labels and values as chart series'
   ]);
   assert.deepEqual(model.brands, [{ label: 'Steady Mint', value: 7 }]);
 });
+
+test('weekly trend model is the single source for chart and alternative rows', async () => {
+  const { buildTrendModel } = await importModule('static/js/insights.js');
+  const data = {
+    consumption_trend: [
+      { date: '2026-07-27', value: 2 },
+      { date: '2026-07-28', value: 5 },
+      { date: '2026-08-03', value: 11 },
+    ],
+  };
+
+  assert.deepEqual(buildTrendModel(data, 'weekly'), [
+    { label: '2026-07-27', value: 7 },
+    { label: '2026-08-03', value: 11 },
+  ]);
+  assert.deepEqual(buildTrendModel(data, 'daily'), [
+    { label: '2026-07-27', value: 2 },
+    { label: '2026-07-28', value: 5 },
+    { label: '2026-08-03', value: 11 },
+  ]);
+});
+
+test('heatmap alternatives preserve every day hour and value', async () => {
+  const { buildInsightsAlternativeModel } = await importModule('static/js/insights.js');
+  const model = buildInsightsAlternativeModel({
+    heatmap_data: [
+      { name: 'Monday', data: [0, 3, 0] },
+      { name: 'Tuesday', data: [{ x: '00:00', y: 2 }, { x: '01:00', y: 5 }] },
+    ],
+  });
+
+  assert.deepEqual(model.heatmap, [
+    { day: 'Monday', hour: '00:00', value: 0 },
+    { day: 'Monday', hour: '01:00', value: 3 },
+    { day: 'Monday', hour: '02:00', value: 0 },
+    { day: 'Tuesday', hour: '00:00', value: 2 },
+    { day: 'Tuesday', hour: '01:00', value: 5 },
+  ]);
+});
