@@ -3687,3 +3687,78 @@
     transform: scaleX(1);
   }
 }
+
+/* Charts enhance these server-rendered tables; both layers stay contained. */
+.analytics-page,
+.analytics-page > *,
+.analytics-toolbar,
+.analytics-chart,
+.analytics-data {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.analytics-toolbar {
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.analytics-chart {
+  overflow: hidden;
+}
+
+.analytics-chart .apexcharts-canvas,
+.analytics-chart svg {
+  max-width: 100% !important;
+}
+
+.analytics-chart__status {
+  margin-block: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  color: var(--color-text-muted);
+}
+
+.analytics-data {
+  margin-block-start: var(--space-4);
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
+.analytics-data:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.analytics-data table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-small);
+}
+
+.analytics-data caption {
+  padding: var(--space-3);
+  color: var(--color-ink);
+  font-weight: 700;
+  text-align: start;
+}
+
+.analytics-data th,
+.analytics-data td {
+  padding: var(--space-2) var(--space-3);
+  border-block-start: 1px solid var(--color-border);
+  color: var(--color-ink);
+  text-align: start;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .analytics-chart *,
+  .analytics-chart *::before,
+  .analytics-chart *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

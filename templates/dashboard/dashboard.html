@@ -2,6 +2,12 @@
 
 {% block title %}Dashboard - Nicotine Tracker{% endblock %}
 
+{% block analytics_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/apexcharts.css') }}">
+{% endblock %}
+
+{% block preline_js %}{% endblock %}
+
 {% block content %}
 <div data-user-timezone="{{ user.timezone or 'UTC' }}">
 <div class="px-4 sm:px-6 lg:px-8">
@@ -157,7 +163,7 @@
 <div class="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
   <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
     <div class="flex justify-between items-center mb-4">
-      <h3 class="text-lg font-medium text-gray-900 dark:text-white">Daily Intake</h3>
+      <h3 id="daily-intake-title" class="text-lg font-medium text-gray-900 dark:text-white">Daily Intake</h3>
       <!-- Dropdown -->
       <div class="hs-dropdown relative inline-flex [--placement:bottom-right] z-10">
         <button id="hs-dropdown-default" type="button" class="hs-dropdown-toggle py-2 px-3 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:bg-gray-700">
@@ -195,12 +201,16 @@
         </div>
       </div>
     </div>
-    <div id="dailyIntakeChart" class="h-64"></div>
+    <div id="dailyIntakeChart" class="analytics-chart h-64" role="img" aria-labelledby="daily-intake-title"></div>
+    <p class="analytics-chart__status" role="status" hidden></p>
+    <div class="analytics-data" tabindex="0" role="region" aria-label="Consumption trend data"><table><caption>Consumption trend data</caption><thead><tr><th scope="col">Date</th><th scope="col">Pouches</th><th scope="col">Nicotine (mg)</th></tr></thead><tbody data-dashboard-table="trend">{% for point in analytics_trend %}<tr><th scope="row">{{ point.date }}</th><td>{{ point.pouches }}</td><td>{{ point.mg }}</td></tr>{% endfor %}</tbody></table></div>
   </div>
 
   <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
-    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Usage by Hour</h3>
-    <div id="hourlyChart" class="h-64"></div>
+    <h3 id="hourly-title" class="text-lg font-medium text-gray-900 dark:text-white mb-4">Usage by Hour</h3>
+    <div id="hourlyChart" class="analytics-chart h-64" role="img" aria-labelledby="hourly-title"></div>
+    <p class="analytics-chart__status" role="status" hidden></p>
+    <div class="analytics-data" tabindex="0" role="region" aria-label="Hourly distribution data"><table><caption>Hourly distribution data</caption><thead><tr><th scope="col">Hour</th><th scope="col">Pouches</th></tr></thead><tbody data-dashboard-table="hourly">{% for point in analytics_hourly %}<tr><th scope="row">{{ point.hour }}</th><td>{{ point.pouches }}</td></tr>{% endfor %}</tbody></table></div>
   </div>
 </div>
 
@@ -322,10 +332,11 @@
   </div>
 </div>
 </div>
+<script id="initial-dashboard-analytics" type="application/json">{{ {'trend': analytics_trend, 'hourly': analytics_hourly}|tojson }}</script>
 </div>
 {% endblock %}
 
-{% block extra_js %}
-{{ super() if super }}
-<script src="{{ url_for('static', filename='js/dashboard-charts.js') }}" defer></script>
+{% block analytics_js %}
+<script src="{{ url_for('static', filename='js/apexcharts.min.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/dashboard-charts.js') }}"></script>
 {% endblock %}
