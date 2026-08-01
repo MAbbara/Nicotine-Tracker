@@ -101,7 +101,8 @@ test('populated targeted Today presents status, coaching, timeline, and reflecti
   await expect(timeline.locator(':scope > li')).toHaveCount(3);
   await expect(timeline.locator('time')).toHaveCount(3);
   await expect(page.getByRole('heading', { name: 'Daily check-in', level: 2 })).toBeVisible();
-  await expect(page.getByText('The pause before lunch helped.')).toBeVisible();
+  await expect(page.locator('[data-check-in-summary-reflection]'))
+    .toHaveText('The pause before lunch helped.');
 
   const sectionOrder = await page.locator('.today-home > section').evaluateAll(
     (sections) => sections.map((section) => section.classList[0]),
