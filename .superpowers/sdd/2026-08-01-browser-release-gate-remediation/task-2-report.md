@@ -193,3 +193,35 @@ exit 0
 ### Fix-round concerns
 
 - Apex may create an additional empty SVG text node for a single-point series; the browser assertion filters only empty nodes and compares every non-empty rendered data label exactly.
+
+## Fix round 2 — mechanical whitespace hygiene
+
+### Scope
+
+Removed carriage-return-at-EOL artifacts only from branch-added lines in:
+
+- `routes/dashboard.py`
+- `routes/insights.py`
+- `templates/dashboard/dashboard.html`
+- `templates/insights/insights.html`
+
+Unchanged legacy lines retained their existing line endings. No Python, template, JavaScript, CSS, generated asset, branding asset, screenshot, verification document, or runtime behavior was altered.
+
+### Evidence
+
+Before cleanup, `git diff --check e9b5a8d..HEAD` reported trailing whitespace on the Task 2 additions in exactly the four files above.
+
+After the mechanical rewrite:
+
+```text
+git diff --check e9b5a8d
+exit 0 — no output
+
+git diff --check
+exit 0 — no output
+
+git diff --ignore-space-at-eol --exit-code HEAD -- routes/dashboard.py routes/insights.py templates/dashboard/dashboard.html templates/insights/insights.html
+exit 0 — confirms the working changes contain no non-whitespace delta
+```
+
+The word-diff review showed only line-ending markers on the targeted lines. Because no non-whitespace application diff appeared, proportional analytics Python, browser, JavaScript, and CSS reruns were not required for this hygiene-only round.
