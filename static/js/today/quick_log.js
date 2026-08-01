@@ -1030,6 +1030,11 @@ export function createQuickLogDomView(root, dialog) {
   let bound = false;
   let activeClientEventId = null;
 
+  function confirmLabel() {
+    const quantity = Number.parseInt(field('quantity')?.value, 10) || 1;
+    return quantity === 1 ? 'Log one pouch' : `Log ${quantity} pouches`;
+  }
+
   function field(name) {
     return dialog.querySelector(`[data-quick-log-field="${name}"]`);
   }
@@ -1056,6 +1061,7 @@ export function createQuickLogDomView(root, dialog) {
     field('quantity').value = String(draft.quantity);
     field('occurredAtLocal').value = draft.occurredAtLocal;
     field('notes').value = draft.notes || '';
+    if (!confirm.disabled) confirm.textContent = confirmLabel();
     summaryBrand.textContent = draft.brand;
     const time = draft.occurredAtLocal?.slice(11, 16) || 'now';
     summaryDetail.textContent = `${draft.nicotineMg} mg · ${draft.quantity} ${Number(draft.quantity) === 1 ? 'pouch' : 'pouches'} · ${time}`;
@@ -1067,7 +1073,6 @@ export function createQuickLogDomView(root, dialog) {
     recovery.hidden = true;
     confirm.hidden = false;
     confirm.disabled = false;
-    confirm.textContent = 'Log one pouch';
     details.open = false;
     renderDraft(draft);
     if (!dialog.open) dialog.showModal();
@@ -1087,7 +1092,7 @@ export function createQuickLogDomView(root, dialog) {
     retry.disabled = value;
     discard.disabled = value;
     form.setAttribute('aria-busy', value ? 'true' : 'false');
-    if (!confirm.hidden) confirm.textContent = value ? 'Saving…' : 'Log one pouch';
+    if (!confirm.hidden) confirm.textContent = value ? 'Saving…' : confirmLabel();
   }
 
   function announce(message) {
@@ -1146,7 +1151,7 @@ export function createQuickLogDomView(root, dialog) {
     recovery.hidden = true;
     confirm.hidden = false;
     confirm.disabled = false;
-    confirm.textContent = 'Log one pouch';
+    confirm.textContent = confirmLabel();
   }
 
   function showUndo(log) {
@@ -1258,8 +1263,17 @@ export function createQuickLogDomView(root, dialog) {
 
   function onInput(event) {
     const control = event.target.closest('[data-quick-log-field]');
-    if (!control || !dialog.contains(control) || control.name !== 'notes') return;
-    handlers.change({ notes: control.value });
+    if (!control || !dialog.contains(control)) return;
+    if (control.name === 'notes') {
+      handlers.change({ notes: control.value });
+      return;
+    }
+    if (control.name === 'quantity') {
+      const value = Number.parseInt(control.value, 10);
+      if (Number.isInteger(value) && value >= 1 && value <= 100) {
+        handlers.change({ quantity: value });
+      }
+    }
   }
 
   function onToggle(event) {

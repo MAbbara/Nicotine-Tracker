@@ -459,6 +459,7 @@ export function createCheckInDomView(section) {
   const requestError = section.querySelector('[data-check-in-request-error]');
   const retryButton = section.querySelector('[data-check-in-retry]');
   const submitButton = section.querySelector('[data-check-in-submit]');
+  const cancelButton = section.querySelector('[data-check-in-cancel]');
   const refreshMessage = section.querySelector('[data-check-in-refresh-unavailable]');
   const listeners = [];
 
@@ -511,6 +512,9 @@ export function createCheckInDomView(section) {
     form.elements.reflection.value = draft.reflection;
     form.elements.context.value = draft.context;
     submitButton.textContent = actionLabel;
+    cancelButton.textContent = actionLabel === 'Update reflection'
+      ? 'Keep saved reflection'
+      : 'Not now';
     const first = form.querySelector('[name="mood"]:checked, [name="mood"]');
     first?.focus();
   }
@@ -520,6 +524,7 @@ export function createCheckInDomView(section) {
     form.hidden = true;
     summary.hidden = true;
     offer.hidden = false;
+    cancelButton.textContent = 'Not now';
   }
 
   function showSummary(value) {
@@ -527,6 +532,7 @@ export function createCheckInDomView(section) {
     form.hidden = true;
     offer.hidden = true;
     summary.hidden = false;
+    cancelButton.textContent = 'Keep saved reflection';
     section.querySelector('[data-check-in-summary-mood]').textContent = value.mood == null
       ? 'Mood not recorded'
       : `Mood ${value.mood} of 5`;
