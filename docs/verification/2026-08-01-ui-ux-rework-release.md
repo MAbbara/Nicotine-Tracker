@@ -2,12 +2,14 @@
 
 ## Decision
 
-**NO-GO — automated application gates are green, but release acceptance is
-incomplete.** The copied production-data migration rehearsal now passes, but an
-HTTPS production-configured staging environment was not available and the
-required named human accessibility and real-iPhone Safari reviews have not been
-performed. The repository also contains concurrent uncommitted branding work,
-so the clean-status completion rule is not met.
+**NO-GO — automated application gates are green, but browser acceptance
+fails.** A full browser audit found two release-critical defects: grouped Data
+& Privacy forms can dispatch the wrong action, and Insights/dashboard crash
+because ApexCharts is not loaded. The copied production-data migration
+rehearsal passes, but an HTTPS production-configured staging environment was
+not available and the required named human accessibility and real-iPhone Safari
+reviews have not been performed. The repository also contains concurrent
+uncommitted branding work, so the clean-status completion rule is not met.
 
 No deployment, push, merge, tag, production connection, or access to
 `instance/nicotine_tracker.db` occurred during this verification.
@@ -39,6 +41,7 @@ No deployment, push, merge, tag, production connection, or access to
 | Production-copy upgrade | `DATABASE_URL=mysql+pymysql://<disposable-test-credentials>@127.0.0.1:<ephemeral-port>/nicotine_tracker_test_production_copy FLASK_ENV=development .venv/bin/flask db upgrade` | `6848755d9016` upgraded through three revisions to `8a2d1c4e6f90` | exit 0 |
 | Production-copy schema parity | Strict Alembic `compare_metadata` through `tests.migrations.harness.schema_diffs` | 0 diffs | exit 0 |
 | Production-copy journey smoke | Authenticated aggregate-only test-client GETs | `/today/`, `/journey/`, `/insights/`, and `/you` returned 200 with nonempty bodies | exit 0 |
+| Full browser acceptance audit | Manual actions plus expanded axe/page-error/responsive/SEO scan | **FAIL — 2 critical, 7 high, 8 medium, 3 low** | **NO-GO** |
 
 The MySQL fixture rejected unsafe or ambiguously named databases and used only
 the disposable empty database `nicotine_tracker_test_release`. Migration tests
@@ -56,6 +59,14 @@ The first complete Python run produced one load-sensitive failure in
 while browser tests were also active. The exact node passed in five separate
 focused processes, and the fresh isolated complete run above passed. No product
 code was changed without a reproducible failure mechanism.
+
+The separate [full browser acceptance audit](2026-08-01-full-browser-audit.md)
+shows why an HTTP 200 and a green existing suite are insufficient here. It
+reproduced the two critical defects, exercised authentication and account
+lifecycle actions in a disposable in-memory application, inspected 30 expanded
+page/viewport states, and records the remaining visual, accessibility, SEO,
+PWA, responsive, and performance findings. No product code was changed during
+that audit.
 
 ## Copied production-data migration rehearsal — PASS
 
@@ -129,6 +140,15 @@ original user-supplied SQL file remains unchanged.
 
 ## Incomplete release gates
 
+### Full browser acceptance — FAIL
+
+The release must not proceed while Data & Privacy buttons can invoke a
+different operation than the one selected, or while Insights/dashboard raise
+`ReferenceError: ApexCharts is not defined` and leave charts blank. These are
+uncovered product defects, not staging-only or human-review gaps. See the
+[full browser acceptance audit](2026-08-01-full-browser-audit.md) for
+reproduction evidence and prioritized remediation.
+
 ### Staging security and operations — BLOCKED
 
 No HTTPS staging target or staging credentials were provided. The following
@@ -171,10 +191,14 @@ full proof of that planned lifecycle contract.
   MySQL. The rehearsal therefore required the documented JSON-DDL compatibility
   stream before restoration to the MySQL 8.4 release target.
 - Human and staging gates above are release blockers, not waived checks.
+- The passing browser suite does not cover exact dispatch for every destructive
+  settings action or fail on the analytics runtime errors found manually.
 
 ## GO criteria remaining
 
-Release status may change to **GO** only after production-configured staging
-checks, named accessibility review, and real iPhone Safari/PWA review all pass,
-and the intended release checkout has a clean Git status. Attach those results
-to this record; do not infer them from the automated suite.
+Release status may change to **GO** only after the two critical browser defects
+are fixed with regression coverage, the full browser audit is rerun without
+release blockers, production-configured staging checks pass, named
+accessibility and real iPhone Safari/PWA reviews pass, and the intended release
+checkout has a clean Git status. Attach those results to this record; do not
+infer them from the automated suite.
