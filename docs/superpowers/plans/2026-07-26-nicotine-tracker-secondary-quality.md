@@ -435,13 +435,22 @@ npm run test:e2e
 
 Expected: all commands exit `0`. Record exact versions, commands, test counts, elapsed times, and exit status.
 
-Run the required MySQL 8.4 release matrix separately:
+Run the required MySQL 8.4 release matrix separately. Keep migration-harness
+tests isolated from the application fixture because they manage their own
+upgrade/downgrade lifecycle:
 
 ```bash
-.venv/bin/python -m pytest tests/migrations tests/regression/test_log_product_history.py tests/integration/test_plan_revisions.py tests/unit/test_idempotent_log_service.py tests/api/test_log_mutations.py tests/unit/test_craving_mutations.py tests/api/test_craving_mutations.py tests/unit/test_portable_aggregations.py tests/unit/test_insight_service.py tests/security/test_data_ownership.py -q --db=mysql
+.venv/bin/python -m pytest tests/migrations -q --db=mysql
+.venv/bin/python -m pytest tests/regression/test_log_product_history.py tests/integration/test_plan_revisions.py tests/unit/test_idempotent_log_service.py tests/api/test_log_mutations.py tests/unit/test_craving_mutations.py tests/api/test_craving_mutations.py tests/unit/test_portable_aggregations.py tests/unit/test_insights.py tests/security/test_security.py tests/api/test_endpoints.py tests/api/test_preference_endpoints.py tests/integration/test_journey.py -q --db=mysql
 ```
 
 Expected: exit `0`. A missing or unsafe `TEST_MYSQL_URL` is a release failure, not a skipped pass.
+
+`tests/unit/test_insights.py` is the current insight portability suite. Cross-user
+ownership checks currently live across the mutation, plan-revision, onboarding,
+catalog, and security suites; `tests/security/test_security.py` is included here
+but does not provide the comprehensive export/anonymization/deletion contract
+originally planned for the nonexistent `tests/security/test_data_ownership.py`.
 
 - [ ] **Step 2: Test a copied legacy database through migration and core journeys.**
 

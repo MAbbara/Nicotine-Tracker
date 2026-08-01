@@ -101,9 +101,10 @@ NicotineTracker/
 ## Installation & Setup
 
 ### Prerequisites
-- Python 3.8+
-- Node.js 16+
-- npm or yarn
+
+- Python 3.11
+- Node.js 22.6 or newer
+- npm 11 or newer
 
 ### Installation Steps
 
@@ -115,14 +116,15 @@ NicotineTracker/
 
 2. **Set up Python environment**
    ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   pip install -r requirements.txt
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   python -m pip install -r requirements.txt
+   python -m pip install -r requirements-dev.txt
    ```
 
 3. **Install Node.js dependencies**
    ```bash
-   npm install
+   npm ci
    ```
 
 4. **Environment Configuration**
@@ -156,14 +158,22 @@ NicotineTracker/
 
 5. **Initialize Database**
    ```bash
-   flask db init
-   flask db migrate -m "Initial migration"
    flask db upgrade
    ```
 
-6. **Run the Application**
+   The repository already contains its Alembic migration history. Generate a
+   new migration only when intentionally changing the model schema.
+
+6. **Build frontend assets**
    ```bash
-   python app.py
+   npm run build
+   # During CSS development:
+   npm run watch:css
+   ```
+
+7. **Run the Application**
+   ```bash
+   python run.py
    ```
 
    The application will be available at `http://localhost:5050`
@@ -321,10 +331,27 @@ uwsgi --ini uwsgi.ini
 
 #### Testing
 ```bash
-# Run tests
-export FLASK_ENV=testing
-python -m pytest
+# Complete automated release suite
+.venv/bin/python -m pytest -q
+npm run build
+npm test
+npm run test:e2e
 ```
+
+Browser tests start a local test server and require Chromium. Install the
+version pinned by Playwright with `npx playwright install chromium` when the
+browser is not already present.
+
+### CSRF and compatibility routes
+
+Production enables CSRF protection. Browser forms include CSRF tokens, and
+clients that mutate JSON APIs must send the configured CSRF token/header; do
+not disable CSRF to work around a failing client.
+
+Legacy routes and response fields exist only as temporary migration adapters.
+New work must target the Today, Journey, Insights, and You surfaces. Remove a
+compatibility adapter only after its migrated workflow and regression tests are
+green; no calendar-based sunset date is currently promised.
 
 ### Configuration Verification
 
