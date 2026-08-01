@@ -32,6 +32,11 @@ import pytz
 # Specify the template folder for settings-related templates
 settings_bp = Blueprint('settings', __name__, template_folder='../templates/settings')
 
+DATA_ACTIONS: frozenset[str] = frozenset({
+    'export_data', 'cleanup_duplicates', 'merge_custom_pouches',
+    'recalculate_goals', 'anonymize_data', 'delete_old_logs',
+})
+
 
 def _duplicate_log_groups(user_id):
     """Group duplicates by authoritative time and immutable product identity."""
@@ -313,11 +318,18 @@ def data():
     """Data and privacy settings"""
     try:
         user = get_current_user()
-        
+
         if request.method == 'POST':
-            action = request.form.get('action')
-            
+            actions = request.form.getlist('action')
+            if len(actions) != 1 or actions[0] not in DATA_ACTIONS:
+                flash('Choose one data action and try again.', 'error')
+                return redirect(url_for('settings.data'))
+            action = actions[0]
+
             if action == 'anonymize_data':
+                if request.form.get('confirm_anonymize') != 'ANONYMIZE':
+                    flash('Type ANONYMIZE to confirm anonymization.', 'error')
+                    return redirect(url_for('settings.data'))
                 user.age, user.gender, user.weight = None, None, None
                 preferences_service = UserPreferencesService()
                 user_preferences = preferences_service.get_or_create_preferences(user.id)
@@ -330,8 +342,11 @@ def data():
 
 
                 flash('Your personal data has been anonymized successfully.', 'success')
-                
+
             elif action == 'delete_old_logs':
+                if request.form.get('confirm_delete_logs') != 'DELETE LOGS':
+                    flash('Type DELETE LOGS to confirm deletion.', 'error')
+                    return redirect(url_for('settings.data'))
                 days_to_keep = request.form.get('days_to_keep', 365, type=int)
                 if days_to_keep < 30:
                     flash('You must keep at least 30 days of data.', 'error')

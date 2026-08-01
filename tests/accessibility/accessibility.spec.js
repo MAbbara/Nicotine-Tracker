@@ -42,3 +42,18 @@ test('primary authenticated pages have one h1 and no WCAG A/AA violations', asyn
     await expectNoWcagViolations(page);
   }
 });
+
+
+test('Data & Privacy has a labelled retention control and no WCAG A/AA violations', async ({ page }) => {
+  await page.goto('/auth/login');
+  await page.getByLabel('Email address').fill('browser@example.com');
+  await page.getByLabel('Password').fill('browser-password');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page).toHaveURL(/\/today\/?$/);
+
+  await page.goto('/settings/data');
+  const daysToKeep = page.getByLabel('Days to keep');
+  await expect(daysToKeep).toBeVisible();
+  await expect(daysToKeep).toHaveAttribute('aria-describedby', 'days_to_keep_help');
+  await expectNoWcagViolations(page);
+});
