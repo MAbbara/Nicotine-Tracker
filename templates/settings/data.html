@@ -84,7 +84,7 @@
                         <div class="mt-3">
                             <input type="hidden" name="action" value="delete_old_logs">
                             <label for="days_to_keep" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Days to keep</label>
-                            <input id="days_to_keep" name="days_to_keep" type="number" value="365" min="30" aria-describedby="days_to_keep_help" class="mt-1 block w-32 rounded-md border-0 py-1.5 px-2 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                            <input id="days_to_keep" name="days_to_keep" type="number" value="365" min="30" required aria-describedby="days_to_keep_help" class="mt-1 block w-32 rounded-md border-0 py-1.5 px-2 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600">
                             <p id="days_to_keep_help" class="mt-1 text-sm text-gray-500 dark:text-gray-400">Logs newer than this many days will be kept.</p>
                             <label for="confirm_delete_logs" class="mt-3 block text-sm font-medium text-gray-700 dark:text-gray-300">Type DELETE LOGS to confirm</label>
                             <input id="confirm_delete_logs" name="confirm_delete_logs" autocomplete="off" required pattern="DELETE LOGS" class="mt-1 block w-full max-w-xs rounded-md border-0 py-1.5 px-2 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600">
