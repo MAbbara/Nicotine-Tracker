@@ -57,3 +57,31 @@ Complete. Populated Journey, dashboard, log history, and authenticated 404 state
 ## Concerns
 
 None. The focused pytest run continues to emit two existing `flask.Markup` deprecation warnings from Flask-WTF.
+
+## Fix round 1: explicit light/dark axe coverage
+
+### Review finding
+
+The original four populated-state axe cases relied on the browser's resolved system/default theme. They did not persist an explicit appearance choice or prove which effective `data-theme` axe evaluated.
+
+### Changes
+
+- Parameterized populated Journey, dashboard, log history, and authenticated 404 axe cases over explicit `light` and `dark` choices.
+- Seeded the app's real `nicotine-tracker-theme` local-storage preference before the first navigation and asserted the exact resolved `html[data-theme]` value before each axe scan.
+- Separated mobile overflow geometry/focus and 404 landmark/recovery checks from the theme matrix so theme-independent behavior is not duplicated.
+- Added a 404-local `dark:text-indigo-400` treatment for the large 404 numeral and rebuilt generated CSS.
+
+### RED
+
+- `npx playwright test tests/accessibility/accessibility.spec.js --project=chromium-desktop`
+  - 1 failed, 14 passed, 2 mobile-only tests skipped.
+  - The new explicit-dark 404 case found `#4f39f6` on `#111915` at 2.76:1, below the 3:1 WCAG AA threshold for large text.
+  - The other seven explicit light/dark populated-state combinations passed, confirming the failure was narrowly scoped.
+- Mutation relevance: removing the 404's dark override recreates the exact `color-contrast` failure above, so the new dark-theme case catches a concrete production regression rather than source text changes.
+
+### GREEN
+
+- `npm run build:css` — passed.
+- `npx playwright test tests/accessibility/accessibility.spec.js --project=chromium-desktop` — 15 passed, 2 intentional mobile-only skips.
+- `npx playwright test tests/accessibility/accessibility.spec.js --project=chromium-mobile` — 17 passed.
+- `npx playwright test tests/browser/journey.spec.js --project=chromium-mobile` — 5 passed.
