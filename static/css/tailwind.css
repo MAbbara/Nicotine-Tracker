@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 /* Preline is retained for legacy pages during the staged shell migration. */
 @source "../../node_modules/preline/dist/*.js";

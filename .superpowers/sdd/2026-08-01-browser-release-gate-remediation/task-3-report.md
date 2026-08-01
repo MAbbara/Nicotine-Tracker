@@ -104,4 +104,69 @@ The full browser specs cover normal enhancement, no-runtime-error/overflow behav
 
 ## Concerns
 
-None. The generated stylesheet remains intentionally tracked despite its `.gitignore` entry, consistent with the preceding analytics CSS commit.
+The generated stylesheet remains intentionally tracked despite its `.gitignore` entry, consistent with the preceding analytics CSS commit.
+
+## Fix Round 1 — Selector-controlled Tailwind dark utilities
+
+### Review finding and implementation
+
+Review correctly identified that Tailwind v4's default `dark:` variant was still emitted under `@media (prefers-color-scheme: dark)`. Active legacy utilities such as `bg-white dark:bg-gray-800` therefore bypassed the synchronized effective-theme contract.
+
+Added the minimal selector variant to `static/css/tailwind.css`:
+
+```css
+@custom-variant dark (&:where(.dark, .dark *));
+```
+
+The rebuilt stylesheet now emits rules such as:
+
+```css
+.dark\:bg-gray-800:where(.dark,.dark *)
+```
+
+This binds all Tailwind `dark:` utilities to the `.dark` class already synchronized from effective `data-theme`, independent of the OS preference.
+
+### RED
+
+Added two real-browser cases against the existing Insights legacy element with `bg-white dark:bg-gray-800` and ran:
+
+```text
+$ npx playwright test tests/browser/shell.spec.js --project=chromium-desktop --grep "explicit (Dark|Light).*legacy dark utilities"
+2 failed
+
+Explicit Dark + light device:
+Expected oklch(0.278 0.033 256.848); received rgb(255, 255, 255)
+
+Explicit Light + dark device:
+Expected rgb(255, 255, 255); received oklch(0.278 0.033 256.848)
+```
+
+Both failures directly demonstrated the independent OS-controlled behavior described by review.
+
+### GREEN
+
+```text
+$ node --test --test-name-pattern="theme" tests/js/shell.test.js
+1 passed, 0 failed
+
+$ npm run build:css
+tailwindcss v4.1.11 — Done in 173ms
+
+$ npx playwright test tests/browser/shell.spec.js tests/browser/analytics.spec.js --project=chromium-desktop --grep "theme|legacy dark utilities"
+4 passed
+
+$ npx playwright test tests/browser/shell.spec.js tests/browser/analytics.spec.js --project=chromium-mobile --grep "theme|legacy dark utilities"
+4 passed
+
+$ npx playwright test tests/browser/shell.spec.js tests/browser/analytics.spec.js --project=chromium-desktop
+12 passed
+```
+
+The full mobile shell/analytics run passed 11 of 12 cases but exposed a pre-existing asynchronous assertion race in `Insights range response binds identical daily and weekly values to chart and table`: its table had updated to `11/13` while the immediately-read chart labels still showed the initial `2`. The case passed when rerun alone. It is unrelated to the dark selector (the theme and legacy utility cases all pass) and was left outside this narrowly scoped review fix.
+
+### Fix-round self-review
+
+- Confirmed the custom variant is selector-based and uses the controller-synchronized `.dark` contract.
+- Confirmed generated `dark:bg-gray-800` is no longer guarded by OS color-scheme media.
+- Confirmed both mismatched explicit/device combinations assert computed style on an existing legacy element.
+- Confirmed source CSS, generated CSS, and the browser regression tests are the only implementation files changed in this round.
