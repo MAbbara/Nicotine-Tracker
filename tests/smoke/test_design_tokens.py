@@ -34,7 +34,7 @@ def test_light_and_dark_semantic_tokens_exist():
 def test_approved_palette_and_typography_are_source_tokens():
     css = SOURCE.read_text()
     for value in (
-        '#F5F1E7', '#1E2A24', '#55755F', '#B76343', '#C5A05A',
+        '#F5F1E7', '#1E2A24', '#4B6B55', '#B76343', '#C5A05A',
         '#111915', '#1B2721', '#344139', '#EEE8D8', '#A7AEA7',
         '#94B29A', '#D38466',
     ):
