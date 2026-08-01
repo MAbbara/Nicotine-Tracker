@@ -29,7 +29,7 @@ async function register(page, testInfo) {
   await page.getByLabel('Email address').fill(deterministicEmail(testInfo));
   await page.getByLabel('Password', { exact: true }).fill('browser-password');
   await page.getByLabel('Confirm Password').fill('browser-password');
-  await page.getByLabel(/I agree to the/i).check();
+  await page.getByLabel(/I understand this is a personal tracking tool/i).check();
   await page.getByRole('button', { name: 'Create Account' }).click();
   await expect(page).toHaveURL(/\/journey\/onboarding\/?$/);
   await expect(page.getByRole('heading', { name: 'Choose your intention' })).toBeFocused();
