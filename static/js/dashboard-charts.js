@@ -1,4 +1,5 @@
 import { enhanceChart, getEffectiveTheme, setChartFailure } from './analytics/runtime.js';
+import { createDisclosure } from './analytics/disclosure.js';
 
 function statusFor(target) {
   return target?.parentElement?.querySelector('.analytics-chart__status') || null;
@@ -84,11 +85,22 @@ async function startDashboardCharts() {
     }
   };
 
-  const load = async (days) => {
+  const rangeQuery = ({ days, startDate, endDate }) => {
+    const params = new URLSearchParams();
+    if (startDate && endDate) {
+      params.set('start_date', startDate);
+      params.set('end_date', endDate);
+    } else {
+      params.set('days', String(days || 30));
+    }
+    return params.toString();
+  };
+  const load = async (range) => {
     try {
+      const query = rangeQuery(range);
       const [trendResponse, hourlyResponse] = await Promise.all([
-        fetch(`/dashboard/api/daily_intake_chart?days=${days}`),
-        fetch(`/dashboard/api/hourly_distribution?days=${days}`),
+        fetch(`/dashboard/api/daily_intake_chart?${query}`),
+        fetch(`/dashboard/api/hourly_distribution?${query}`),
       ]);
       const [trend, hourly] = await Promise.all([trendResponse.json(), hourlyResponse.json()]);
       if (!trendResponse.ok || !hourlyResponse.ok || !trend.success || !hourly.success) {
@@ -96,11 +108,24 @@ async function startDashboardCharts() {
       }
       data = { trend: trend.data, hourly: hourly.data };
       await render();
+      return true;
     } catch (_) {
       document.querySelectorAll('.analytics-chart__status').forEach((status) => {
         setChartFailure(status, 'Chart unavailable. Current table values remain available.');
       });
+      return false;
     }
+  };
+
+  const disclosure = createDisclosure({
+    trigger: document.querySelector('[data-analytics-disclosure-trigger]'),
+    panel: document.querySelector('[data-analytics-disclosure-menu]'),
+  });
+  const customStatus = document.getElementById('custom-range-status');
+  const showCustomStatus = (message = '') => {
+    if (!customStatus) return;
+    customStatus.textContent = message;
+    customStatus.hidden = !message;
   };
 
   document.querySelectorAll('#daily-intake-filter-dropdown [data-range]').forEach((link) => {
@@ -109,18 +134,28 @@ async function startDashboardCharts() {
       const days = Number(link.dataset.range) || 30;
       const label = document.getElementById('selected-range-text');
       if (label) label.textContent = link.textContent.trim();
-      load(days);
+      showCustomStatus();
+      disclosure?.close();
+      load({ days });
     });
   });
-  document.getElementById('hs-dropdown-default')?.addEventListener('click', () => {
-    document.getElementById('daily-intake-filter-dropdown')?.classList.toggle('hidden');
-  });
-  document.getElementById('apply_custom_range')?.addEventListener('click', () => {
+  document.getElementById('apply_custom_range')?.addEventListener('click', async () => {
     const start = document.getElementById('start_date_filter')?.value;
     const end = document.getElementById('end_date_filter')?.value;
-    if (!start || !end) return;
-    const days = Math.max(1, Math.min(365, Math.round((new Date(end) - new Date(start)) / 86400000) + 1));
-    load(days);
+    if (!start || !end) {
+      showCustomStatus('Choose both a start and end date.');
+      return;
+    }
+    if (start > end) {
+      showCustomStatus('Start date must be on or before end date.');
+      return;
+    }
+    showCustomStatus();
+    if (await load({ startDate: start, endDate: end })) {
+      const label = document.getElementById('selected-range-text');
+      if (label) label.textContent = 'Custom range';
+      disclosure?.close();
+    }
   });
   document.documentElement.addEventListener('nicotine-tracker:theme-change', render);
   await render();

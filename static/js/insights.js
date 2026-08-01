@@ -3,6 +3,7 @@ import {
   getEffectiveTheme,
   setChartFailure,
 } from './analytics/runtime.js';
+import { createDisclosure } from './analytics/disclosure.js';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -28,6 +29,10 @@ export function buildTrendModel(data = {}, trendType = 'daily') {
     label: point.date,
     value: Number(point.value) || 0,
   }));
+}
+
+export function shouldShowTrendDataLabels(pointCount) {
+  return pointCount > 0 && pointCount <= 14;
 }
 
 export function buildInsightsAlternativeModel(data = {}, trendType = 'daily') {
@@ -159,7 +164,7 @@ function chartDefinitions(data, trendType) {
       series: [{ name: trendType === 'weekly' ? 'Weekly pouches' : 'Daily pouches', data: model.trend.map((point) => ({ x: point.label, y: point.value })) }],
       colors: ['#55755F'],
       stroke: { curve: 'smooth', width: 3 },
-      dataLabels: { enabled: true },
+      dataLabels: { enabled: shouldShowTrendDataLabels(model.trend.length) },
       xaxis: { type: 'datetime', labels: { style: { colors: theme.foreColor } } },
       yaxis: { min: 0, labels: { style: { colors: theme.foreColor } } },
     }],
@@ -239,6 +244,10 @@ async function startInsights() {
   let currentRange = 30;
   let trendType = 'daily';
   let charts = [];
+  const disclosure = createDisclosure({
+    trigger: document.querySelector('[data-analytics-disclosure-trigger]'),
+    panel: document.querySelector('[data-analytics-disclosure-menu]'),
+  });
 
   const render = async () => {
     charts.forEach((chart) => chart?.destroy?.());
@@ -278,11 +287,9 @@ async function startInsights() {
       const days = Number(item.dataset.days) || 30;
       const label = document.getElementById('selected-range');
       if (label) label.textContent = item.textContent.trim();
+      disclosure?.close();
       loadRange(days);
     });
-  });
-  document.getElementById('hs-dropdown-default')?.addEventListener('click', () => {
-    document.querySelector('.hs-dropdown-menu')?.classList.toggle('hidden');
   });
   document.querySelectorAll('.trend-toggle').forEach((button) => {
     button.addEventListener('click', () => {

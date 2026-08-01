@@ -15,6 +15,14 @@ async function importModule(relativePath) {
     const runtimeUrl = `data:text/javascript;base64,${Buffer.from(runtimeSource).toString('base64')}`;
     source = source.replace("'./analytics/runtime.js'", `'${runtimeUrl}'`);
   }
+  if (source.includes("'./analytics/disclosure.js'")) {
+    const disclosureSource = fs.readFileSync(
+      path.join(projectRoot, 'static/js/analytics/disclosure.js'),
+      'utf8',
+    );
+    const disclosureUrl = `data:text/javascript;base64,${Buffer.from(disclosureSource).toString('base64')}`;
+    source = source.replace("'./analytics/disclosure.js'", `'${disclosureUrl}'`);
+  }
   return import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 }
 
@@ -147,4 +155,14 @@ test('heatmap alternatives preserve every day hour and value', async () => {
     { day: 'Tuesday', hour: '00:00', value: 2 },
     { day: 'Tuesday', hour: '01:00', value: 5 },
   ]);
+});
+
+test('trend data labels are limited to short readable series', async () => {
+  const { shouldShowTrendDataLabels } = await importModule('static/js/insights.js');
+
+  assert.equal(shouldShowTrendDataLabels(0), false);
+  assert.equal(shouldShowTrendDataLabels(7), true);
+  assert.equal(shouldShowTrendDataLabels(14), true);
+  assert.equal(shouldShowTrendDataLabels(15), false);
+  assert.equal(shouldShowTrendDataLabels(365), false);
 });

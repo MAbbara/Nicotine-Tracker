@@ -101,6 +101,97 @@ test('Insights range response binds identical daily and weekly values to chart a
 });
 
 
+for (const destination of ['/insights/', '/dashboard/']) {
+  test(`${destination} range disclosure is visible, keyboard operable, and dismissible`, async ({ page }, testInfo) => {
+    if (testInfo.project.name.includes('mobile')) {
+      await page.setViewportSize({ width: 320, height: 800 });
+    }
+    await login(page);
+    await page.goto(destination);
+
+    const trigger = page.locator('[data-analytics-disclosure-trigger]');
+    const menu = page.locator('[data-analytics-disclosure-menu]');
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    await trigger.focus();
+    await page.keyboard.press('Enter');
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    await expect(menu).toBeVisible();
+    expect(await menu.evaluate((element) => getComputedStyle(element).opacity)).toBe('1');
+
+    await page.keyboard.press('ArrowDown');
+    await expect(menu.locator('a').first()).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    await expect(trigger).toBeFocused();
+
+    await trigger.click();
+    await page.getByRole('heading', { level: 1 }).click();
+    await expect(menu).toBeHidden();
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+    await trigger.click();
+    await menu.locator('a').first().click();
+    await expect(menu).toBeHidden();
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  });
+}
+
+
+test('Dashboard custom range requests and renders exact dates and reports reversal', async ({ page }) => {
+  const requested = [];
+  await page.route('**/dashboard/api/daily_intake_chart?*', async (route) => {
+    const url = new URL(route.request().url());
+    requested.push(`${url.pathname}?${url.searchParams.toString()}`);
+    await route.fulfill({ json: {
+      success: true,
+      data: [
+        { date: '2026-06-10', pouches: 8, mg: 48 },
+        { date: '2026-06-11', pouches: 0, mg: 0 },
+        { date: '2026-06-12', pouches: 3, mg: 18 },
+      ],
+    } });
+  });
+  await page.route('**/dashboard/api/hourly_distribution?*', async (route) => {
+    const url = new URL(route.request().url());
+    requested.push(`${url.pathname}?${url.searchParams.toString()}`);
+    await route.fulfill({ json: {
+      success: true,
+      data: Array.from({ length: 24 }, (_, hour) => ({
+        hour: `${String(hour).padStart(2, '0')}:00`,
+        pouches: hour === 9 ? 11 : 0,
+      })),
+    } });
+  });
+  await login(page);
+  await page.goto('/dashboard/');
+  await page.locator('[data-analytics-disclosure-trigger]').click();
+  await page.getByLabel('Start Date').fill('2026-06-10');
+  await page.getByLabel('End Date').fill('2026-06-12');
+  await page.getByRole('button', { name: 'Apply' }).click();
+
+  await expect(page.locator('#selected-range-text')).toHaveText('Custom range');
+  await expect(page.locator('[data-analytics-disclosure-menu]')).toBeHidden();
+  await expect(page.locator('[data-dashboard-table="trend"] tr')).toHaveText([
+    '2026-06-10848',
+    '2026-06-1100',
+    '2026-06-12318',
+  ]);
+  expect(requested).toEqual([
+    '/dashboard/api/daily_intake_chart?start_date=2026-06-10&end_date=2026-06-12',
+    '/dashboard/api/hourly_distribution?start_date=2026-06-10&end_date=2026-06-12',
+  ]);
+
+  await page.locator('[data-analytics-disclosure-trigger]').click();
+  await page.getByLabel('Start Date').fill('2026-06-12');
+  await page.getByLabel('End Date').fill('2026-06-10');
+  await page.getByRole('button', { name: 'Apply' }).click();
+  await expect(page.locator('#custom-range-status')).toBeVisible();
+  await expect(page.locator('#custom-range-status')).toHaveText('Start date must be on or before end date.');
+  expect(requested).toHaveLength(2);
+});
+
+
 test('System theme changes refresh the Insights chart palette without changing its table', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'light' });
   await login(page);

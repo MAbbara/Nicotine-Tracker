@@ -64,6 +64,30 @@ def _bounded_positive_int(value, default, maximum):
     return min(value, maximum)
 
 
+def _requested_analytics_range(default_end, default_days, maximum_days=365):
+    """Resolve a preset day count or an explicit inclusive local-date range."""
+    start_value = request.args.get('start_date')
+    end_value = request.args.get('end_date')
+    if start_value is not None or end_value is not None:
+        if not start_value or not end_value:
+            return None, None, 'Choose both a start and end date.'
+        try:
+            start_date = date.fromisoformat(start_value)
+            end_date = date.fromisoformat(end_value)
+        except ValueError:
+            return None, None, 'Dates must use YYYY-MM-DD.'
+        if start_date > end_date:
+            return None, None, 'Start date must be on or before end date.'
+        if (end_date - start_date).days + 1 > maximum_days:
+            return None, None, f'Choose a range of {maximum_days} days or fewer.'
+        return start_date, end_date, None
+
+    days = _bounded_positive_int(
+        request.args.get('days', default_days, type=int), 1, maximum_days
+    )
+    return default_end - timedelta(days=days - 1), default_end, None
+
+
 def _summaries_for_date_range(
         user_id, resolved_timezone, start_date, end_date, reset_time):
     """Fetch one canonical interval and summarize it by effective day."""
@@ -309,14 +333,14 @@ def daily_intake_chart():
         if not user:
             current_app.logger.error('Daily intake chart error: No current user found')
             return jsonify({'success': False, 'error': 'User not authenticated'})
-        days = _bounded_positive_int(
-            request.args.get('days', 30, type=int), 1, 365
-        )
-        
         resolved_timezone = resolve_timezone(user.timezone)
         reset_time = _user_reset_time(user)
         end_date, _, _ = _current_user_day(resolved_timezone, reset_time)
-        start_date = end_date - timedelta(days=days-1)
+        start_date, end_date, range_error = _requested_analytics_range(
+            end_date, 30
+        )
+        if range_error:
+            return jsonify({'success': False, 'error': range_error}), 400
 
         daily_summaries = _summaries_for_date_range(
             user.id, resolved_timezone, start_date, end_date, reset_time
@@ -419,17 +443,26 @@ def hourly_distribution():
     """API endpoint for hourly usage distribution"""
     try:
         user = get_current_user()
-        days = _bounded_positive_int(
-            request.args.get('days', 30, type=int), 1, 365
-        )
-        
         resolved_timezone = resolve_timezone(user.timezone)
         reset_time = _user_reset_time(user)
         end_date, _, _ = _current_user_day(resolved_timezone, reset_time)
+        start_date, end_date, range_error = _requested_analytics_range(
+            end_date, 30
+        )
+        if range_error:
+            return jsonify({'success': False, 'error': range_error}), 400
 
         distribution = [0] * 24
-        for log in _logs_for_local_days(
-                user.id, resolved_timezone, end_date, days, reset_time):
+        start_window = get_user_day_window(
+            resolved_timezone.zone, start_date, reset_time
+        )
+        end_window = get_user_day_window(
+            resolved_timezone.zone, end_date, reset_time
+        )
+        logs = logs_for_user_interval(
+            user.id, start_window.start_utc, end_window.end_utc
+        )
+        for log in logs:
             hour = log_local_datetime(log, resolved_timezone).hour
             distribution[hour] += log.quantity or 0
         
