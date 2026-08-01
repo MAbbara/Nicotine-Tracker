@@ -27,19 +27,48 @@ test('authenticated shell exposes four useful destinations with one active item'
   }
 });
 
-test('theme choice applies immediately, persists, and system follows the device', async ({ page }) => {
+test('theme choice publishes one effective contract and System alone follows the device', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' });
   await page.goto('/you');
+  const root = page.locator('html');
+  const themeColor = page.locator('meta[name="theme-color"]');
+
   await page.getByRole('button', { name: 'Dark' }).click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(root).toHaveAttribute('data-saved-theme', 'dark');
+  await expect(root).toHaveAttribute('data-theme', 'dark');
+  await expect(root).toHaveClass(/\bdark\b/);
+  await expect(root).toHaveCSS('color-scheme', 'dark');
+  await expect(themeColor).toHaveAttribute('content', '#111915');
   await expect(page.getByRole('button', { name: 'Dark' })).toHaveAttribute('aria-pressed', 'true');
 
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expect(root).toHaveAttribute('data-theme', 'dark');
   await page.reload();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(root).toHaveAttribute('data-saved-theme', 'dark');
+  await expect(root).toHaveAttribute('data-theme', 'dark');
+  await expect(root).toHaveClass(/\bdark\b/);
+  await expect(themeColor).toHaveAttribute('content', '#111915');
+
+  await page.getByRole('button', { name: 'System' }).click();
+  await expect(root).toHaveAttribute('data-saved-theme', 'system');
+  await expect(root).toHaveAttribute('data-theme', 'light');
+  await expect(root).not.toHaveClass(/\bdark\b/);
+  await expect(root).toHaveCSS('color-scheme', 'light');
+  await expect(themeColor).toHaveAttribute('content', '#F5F1E7');
+  await expect(page.getByRole('button', { name: 'System' })).toHaveAttribute('aria-pressed', 'true');
 
   await page.emulateMedia({ colorScheme: 'dark' });
-  await page.getByRole('button', { name: 'System' }).click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await expect(page.getByRole('button', { name: 'System' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(root).toHaveAttribute('data-saved-theme', 'system');
+  await expect(root).toHaveAttribute('data-theme', 'dark');
+  await expect(root).toHaveClass(/\bdark\b/);
+  await expect(root).toHaveCSS('color-scheme', 'dark');
+  await expect(themeColor).toHaveAttribute('content', '#111915');
+
+  await page.getByRole('button', { name: 'Light' }).click();
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await expect(root).toHaveAttribute('data-saved-theme', 'light');
+  await expect(root).toHaveAttribute('data-theme', 'light');
+  await expect(root).not.toHaveClass(/\bdark\b/);
 });
 
 test('offline state uses the shell live region without duplicating navigation', async ({ page, context }) => {

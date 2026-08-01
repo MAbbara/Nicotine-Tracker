@@ -293,7 +293,7 @@ async function startInsights() {
   document.getElementById('export-data')?.addEventListener('click', () => {
     window.location.assign(`/insights/api/export?days=${currentRange}`);
   });
-  window.addEventListener('nicotine-tracker:theme-change', render);
+  document.documentElement.addEventListener('nicotine-tracker:theme-change', render);
   await render();
 }
 
