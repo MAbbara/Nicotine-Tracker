@@ -2,15 +2,88 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from models import User, Log, Pouch, Goal        # import models from the package
 from extensions import db
 from routes.auth import login_required, get_current_user
-from services.timezone_service import get_all_timezones_for_dropdown, get_common_timezones
+from services.log_service import (
+    get_historical_brand,
+    get_historical_nicotine_strength,
+    log_local_datetime,
+    summarize_logs,
+)
+from services.timezone_service import (
+    get_all_timezones_for_dropdown,
+    get_common_timezones,
+    get_user_day_window,
+    resolve_timezone,
+    to_naive_utc,
+    validate_timezone,
+)
+from services.preference_service import PreferenceService
+from services.api_errors import (
+    authentication_required_response,
+    error_response,
+)
 from services.user_preferences_service import UserPreferencesService
 from services.notification_service import NotificationService
 from services.email_verification_service import EmailVerificationService
 import json
-from datetime import datetime
+from datetime import date, datetime, time, timedelta
+
+import pytz
 
 # Specify the template folder for settings-related templates
 settings_bp = Blueprint('settings', __name__, template_folder='../templates/settings')
+
+
+def _duplicate_log_groups(user_id):
+    """Group duplicates by authoritative time and immutable product identity."""
+    groups = {}
+    logs = Log.query.filter_by(user_id=user_id).order_by(Log.id).all()
+    for log in logs:
+        key = (
+            log.log_time,
+            get_historical_brand(log),
+            get_historical_nicotine_strength(log),
+            log.quantity or 0,
+            ' '.join((log.notes or '').split()),
+        )
+        groups.setdefault(key, []).append(log)
+    return [group for group in groups.values() if len(group) > 1]
+
+
+def _user_reset_time(user):
+    preferences = user.preferences
+    if preferences and preferences.daily_reset_time:
+        return preferences.daily_reset_time
+    return time.min
+
+
+def _current_effective_day(user, resolved_timezone, now_utc=None):
+    """Current reset-aware user day from one retained UTC instant."""
+    now_utc = now_utc or datetime.now(pytz.UTC)
+    if now_utc.tzinfo is None:
+        now_utc = pytz.UTC.localize(now_utc)
+    else:
+        now_utc = now_utc.astimezone(pytz.UTC)
+    reset_time = _user_reset_time(user)
+    candidate = now_utc.astimezone(resolved_timezone).date()
+    candidate_window = get_user_day_window(
+        resolved_timezone.zone, candidate, reset_time
+    )
+    if now_utc < candidate_window.start_utc:
+        candidate -= timedelta(days=1)
+    return candidate
+
+
+def _retention_cutoff_utc(user, days_to_keep, now_utc=None):
+    """Naive UTC start of the earliest complete effective day to retain."""
+    resolved_timezone = resolve_timezone(user.timezone)
+    current_day = _current_effective_day(user, resolved_timezone, now_utc)
+    first_retained_day = current_day - timedelta(days=days_to_keep - 1)
+    cutoff_window = get_user_day_window(
+        resolved_timezone.zone,
+        first_retained_day,
+        _user_reset_time(user),
+    )
+    return to_naive_utc(cutoff_window.start_utc)
 
 @settings_bp.route('/')
 @login_required
@@ -68,7 +141,9 @@ def preferences():
         common_timezones = get_common_timezones()
 
         # Get available brands for selection
-        available_brands = db.session.query(Pouch.brand).distinct().order_by(Pouch.brand).all()
+        available_brands = db.session.query(Pouch.brand).filter(
+            db.or_(Pouch.is_default, Pouch.created_by == user.id)
+        ).distinct().order_by(Pouch.brand).all()
         available_brands = [brand[0] for brand in available_brands]
         
         return render_template('preferences.html', 
@@ -261,9 +336,14 @@ def data():
                 if days_to_keep < 30:
                     flash('You must keep at least 30 days of data.', 'error')
                 else:
-                    from datetime import date, timedelta
-                    cutoff_date = date.today() - timedelta(days=days_to_keep)
-                    deleted_count = Log.query.filter(Log.user_id == user.id, Log.log_date < cutoff_date).delete()
+                    cutoff_time = _retention_cutoff_utc(user, days_to_keep)
+                    logs_to_delete = Log.query.filter(
+                        Log.user_id == user.id,
+                        Log.log_time < cutoff_time,
+                    ).all()
+                    for log in logs_to_delete:
+                        db.session.delete(log)
+                    deleted_count = len(logs_to_delete)
                     db.session.commit()
                     current_app.logger.info(f'Deleted {deleted_count} old logs for user {user.email}')
                     flash(f'Successfully deleted {deleted_count} old log entries.', 'success')
@@ -286,9 +366,7 @@ def data():
             return redirect(url_for('settings.data'))
         
         # GET request
-        from sqlalchemy import func
-        duplicate_check = db.session.query(Log.log_date, Log.log_time, func.count(Log.id)).filter_by(user_id=user.id).group_by(Log.log_date, Log.log_time).having(func.count(Log.id) > 1).all()
-        potential_duplicates = len(duplicate_check)
+        potential_duplicates = len(_duplicate_log_groups(user.id))
         
         custom_pouches = user.custom_pouches.all()
         similar_pouches = 0
@@ -316,6 +394,42 @@ def data():
         return redirect(url_for('settings.data'))
 
 
+@settings_bp.route('/privacy/offline-queue', methods=['PATCH'])
+def update_offline_queue_preference():
+    """Persist the account-scoped browser replay preference."""
+    user = get_current_user()
+    if user is None:
+        return authentication_required_response()
+
+    payload = request.get_json(silent=True)
+    field_errors = {}
+    if not isinstance(payload, dict):
+        field_errors['body'] = ['Send one JSON object.']
+    else:
+        unknown = sorted(set(payload) - {'enabled'})
+        if unknown:
+            field_errors['body'] = ['Only enabled may be changed here.']
+        if 'enabled' not in payload or not isinstance(payload.get('enabled'), bool):
+            field_errors['enabled'] = ['Choose true or false.']
+    if field_errors:
+        return error_response(
+            422,
+            'validation_error',
+            'Check the highlighted fields and try again.',
+            field_errors=field_errors,
+        )
+
+    preferences = PreferenceService().set_offline_queue_enabled(
+        user.id, payload['enabled']
+    )
+    return jsonify({
+        'offline_queue': {
+            'enabled': preferences.offline_queue_enabled,
+            'id': preferences.offline_queue_id,
+        }
+    })
+
+
 @settings_bp.route('/profile', methods=['GET', 'POST'])
 @login_required
 def profile():
@@ -328,6 +442,7 @@ def profile():
             age = request.form.get('age', type=int)
             gender = request.form.get('gender', '').strip()
             weight = request.form.get('weight', type=float)
+            legacy_timezone = request.form.get('timezone', '').strip()
             
             # Validation
             if age is not None and (age < 18 or age > 120):
@@ -341,12 +456,29 @@ def profile():
             if gender and gender not in ['male', 'female', 'other', 'prefer_not_to_say']:
                 flash('Please select a valid gender option.', 'error')
                 return render_template('profile.html', user=user)
+
+            if legacy_timezone and not validate_timezone(legacy_timezone):
+                flash('Please select a valid timezone.', 'error')
+                return render_template('profile.html', user=user)
             
             
             # Update user profile
             user.age = age
             user.gender = gender if gender else None
             user.weight = weight
+
+            # Compatibility for clients that submitted timezone on the old
+            # profile form. New UI uses the validated day-boundary API.
+            if legacy_timezone:
+                preferences = PreferenceService().get_or_create_preferences(user.id)
+                reset_text = (
+                    preferences.daily_reset_time.strftime('%H:%M')
+                    if preferences.daily_reset_time else '00:00'
+                )
+                PreferenceService().update_day_boundary(
+                    user.id, legacy_timezone, reset_text
+                )
+                session['user_timezone'] = legacy_timezone
             
             db.session.commit()
             
@@ -498,7 +630,9 @@ def account():
                 
                 current_app.logger.info(f'Account deleted for user {user_email}')
                 flash('Your account has been deleted successfully.', 'info')
-                return redirect(url_for('index'))
+                response = redirect(url_for('index'))
+                response.headers['Clear-Site-Data'] = '"cache", "cookies", "storage"'
+                return response
                 
             return redirect(url_for('settings.account'))
         
@@ -522,34 +656,9 @@ def account():
 def cleanup_duplicate_logs(user):
     """Remove duplicate log entries for a user"""
     try:
-        from sqlalchemy import func
-        
-        # Find duplicates based on date, time, and pouch
-        duplicates = db.session.query(
-            Log.log_date,
-            Log.log_time,
-            Log.pouch_id,
-            Log.custom_brand,
-            Log.custom_nicotine_mg,
-            func.min(Log.id).label('keep_id'),
-            func.count(Log.id).label('count')
-        ).filter_by(user_id=user.id).group_by(
-            Log.log_date, Log.log_time, Log.pouch_id, Log.custom_brand, Log.custom_nicotine_mg
-        ).having(func.count(Log.id) > 1).all()
-        
         removed_count = 0
-        for duplicate in duplicates:
-            # Keep the first log, delete the rest
-            logs_to_delete = Log.query.filter(
-                Log.user_id == user.id,
-                Log.log_date == duplicate.log_date,
-                Log.log_time == duplicate.log_time,
-                Log.pouch_id == duplicate.pouch_id,
-                Log.custom_brand == duplicate.custom_brand,
-                Log.custom_nicotine_mg == duplicate.custom_nicotine_mg,
-                Log.id != duplicate.keep_id
-            ).all()
-            for log in logs_to_delete:
+        for duplicate_group in _duplicate_log_groups(user.id):
+            for log in duplicate_group[1:]:
                 db.session.delete(log)
                 removed_count += 1
         
@@ -601,36 +710,43 @@ def merge_similar_pouches(user):
 def recalculate_goal_streaks(user):
     """Recalculate goal streaks for all user goals"""
     try:
+        from routes.goals import calculate_goal_progress
+
         goals = user.goals.all()
         updated_count = 0
+        resolved_timezone = resolve_timezone(user.timezone)
+        today = _current_effective_day(user, resolved_timezone)
         
         for goal in goals:
             # Reset streaks
             goal.current_streak = 0
             goal.best_streak = 0
             
-            # Recalculate from start date or 30 days ago
-            from datetime import date, timedelta
-            start_date = goal.start_date or (date.today() - timedelta(days=30))
+            # Recalculate from start date or 30 days ago.
+            start_date = goal.start_date or (today - timedelta(days=30))
             current_date = start_date
             current_streak = 0
             best_streak = 0
-            
-            while current_date <= date.today():
-                if goal.check_goal_progress(current_date):
+
+            achievements = []
+            while current_date <= today:
+                progress = calculate_goal_progress(
+                    user, goal, current_date, resolved_timezone
+                )
+                achieved = bool(progress['achieved'])
+                achievements.append(achieved)
+                if achieved:
                     current_streak += 1
                     best_streak = max(best_streak, current_streak)
                 else:
                     current_streak = 0
                 current_date += timedelta(days=1)
-            
-            # Update current streak (consecutive days from today backwards)
+
+            # Current streak is the trailing run through the active day.
             current_streak = 0
-            check_date = date.today()
-            while check_date >= start_date:
-                if goal.check_goal_progress(check_date):
+            for achieved in reversed(achievements):
+                if achieved:
                     current_streak += 1
-                    check_date -= timedelta(days=1)
                 else:
                     break
             
@@ -649,6 +765,7 @@ def recalculate_goal_streaks(user):
 def export_user_data(user):
     """Export user data (GDPR compliance)"""
     try:
+        resolved_timezone = resolve_timezone(user.timezone)
         # Collect all user data
         user_data = {
             'profile': {
@@ -671,24 +788,29 @@ def export_user_data(user):
         
         # Get logs
         for log in user.logs:
+            local_datetime = log_local_datetime(log, resolved_timezone)
+            historical_brand = get_historical_brand(log)
+            historical_strength = get_historical_nicotine_strength(log)
             log_data = {
-                'date': log.log_date.isoformat(),
-                'time': log.log_time.isoformat() if log.log_time else None,
+                'date': local_datetime.date().isoformat(),
+                'time': local_datetime.replace(tzinfo=None).isoformat(),
+                'log_datetime_utc': pytz.UTC.localize(
+                    to_naive_utc(log.log_time)
+                ).isoformat(),
                 'quantity': log.quantity,
                 'notes': log.notes,
                 'created_at': log.created_at.isoformat() if log.created_at else None
             }
-            
-            if log.pouch:
-                log_data['pouch'] = {
-                    'brand': log.pouch.brand,
-                    'nicotine_mg': log.pouch.nicotine_mg
-                }
-            else:
-                log_data['custom_pouch'] = {
-                    'brand': log.custom_brand,
-                    'nicotine_mg': log.custom_nicotine_mg
-                }
+
+            product_key = 'pouch' if log.pouch_id is not None else 'custom_pouch'
+            log_data[product_key] = {
+                'brand': historical_brand,
+                'nicotine_mg': (
+                    float(historical_strength)
+                    if historical_strength is not None
+                    else None
+                ),
+            }
             
             user_data['logs'].append(log_data)
         
@@ -736,44 +858,35 @@ def statistics():
     try:
         user = get_current_user()
         
-        # Calculate various statistics
-        from datetime import date, timedelta
-        from sqlalchemy import func
-        
-        today = date.today()
-        week_ago = today - timedelta(days=7)
-        month_ago = today - timedelta(days=30)
-        
-        # Total statistics
-        total_logs = user.logs.count()
-        total_pouches = db.session.query(func.sum(Log.quantity)).filter_by(user_id=user.id).scalar() or 0
-        
-        # Calculate total nicotine
-        total_nicotine = 0
-        for log in user.logs:
-            total_nicotine += log.get_total_nicotine()
-        
-        # Weekly statistics
-        week_logs = user.logs.filter(Log.log_date >= week_ago).count()
-        week_pouches = db.session.query(func.sum(Log.quantity)).filter(
+        now_utc = datetime.utcnow()
+        week_ago = now_utc - timedelta(days=7)
+        month_ago = now_utc - timedelta(days=30)
+
+        all_logs = Log.query.filter_by(user_id=user.id).all()
+        total_summary = summarize_logs(all_logs)
+        week_logs_set = Log.query.filter(
             Log.user_id == user.id,
-            Log.log_date >= week_ago
-        ).scalar() or 0
-        
-        # Monthly statistics
-        month_logs = user.logs.filter(Log.log_date >= month_ago).count()
-        month_pouches = db.session.query(func.sum(Log.quantity)).filter(
+            Log.log_time >= week_ago,
+            Log.log_time < now_utc,
+        ).all()
+        month_logs_set = Log.query.filter(
             Log.user_id == user.id,
-            Log.log_date >= month_ago
-        ).scalar() or 0
-        
-        # Most used brand
-        most_used_brand = db.session.query(
-            Pouch.brand,
-            func.sum(Log.quantity).label('total')
-        ).join(Log).filter(
-            Log.user_id == user.id
-        ).group_by(Pouch.brand).order_by(func.sum(Log.quantity).desc()).first()
+            Log.log_time >= month_ago,
+            Log.log_time < now_utc,
+        ).all()
+        week_summary = summarize_logs(week_logs_set)
+        month_summary = summarize_logs(month_logs_set)
+
+        brand_totals = {}
+        for log in all_logs:
+            brand = get_historical_brand(log)
+            if brand is not None:
+                brand_totals[brand] = (
+                    brand_totals.get(brand, 0) + (log.quantity or 0)
+                )
+        most_used_brand = (
+            max(brand_totals, key=brand_totals.get) if brand_totals else None
+        )
         
         # Account age
         account_age = None
@@ -781,16 +894,21 @@ def statistics():
             account_age = (datetime.now() - user.created_at).days
         
         statistics = {
-            'total_logs': total_logs,
-            'total_pouches': int(total_pouches),
-            'total_nicotine': int(total_nicotine),
-            'week_logs': week_logs,
-            'week_pouches': int(week_pouches),
-            'month_logs': month_logs,
-            'month_pouches': int(month_pouches),
-            'most_used_brand': most_used_brand.brand if most_used_brand else None,
+            'total_logs': total_summary['total_logs'],
+            'total_pouches': int(total_summary['total_pouches']),
+            'total_nicotine': int(total_summary['total_mg']),
+            'unknown_strength_count': total_summary['unknown_strength_count'],
+            'week_logs': week_summary['total_logs'],
+            'week_pouches': int(week_summary['total_pouches']),
+            'week_unknown_strength_count': week_summary['unknown_strength_count'],
+            'month_logs': month_summary['total_logs'],
+            'month_pouches': int(month_summary['total_pouches']),
+            'month_unknown_strength_count': month_summary['unknown_strength_count'],
+            'most_used_brand': most_used_brand,
             'account_age': account_age,
-            'daily_average': round(total_pouches / max(account_age, 1), 1) if account_age else 0
+            'daily_average': round(
+                total_summary['total_pouches'] / max(account_age, 1), 1
+            ) if account_age else 0
         }
         
         return render_template('statistics.html', user=user, stats=statistics)

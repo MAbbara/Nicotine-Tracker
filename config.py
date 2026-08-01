@@ -22,7 +22,7 @@ class Config:
     PERMANENT_SESSION_LIFETIME = int(os.environ.get('SESSION_LIFETIME', 86400))  # 24 hours default
     
     # CSRF protection
-    WTF_CSRF_ENABLED = os.environ.get('WTF_CSRF_ENABLED', 'False').lower() == 'true'
+    WTF_CSRF_ENABLED = True
 
     
     # Email configuration
@@ -49,6 +49,9 @@ class Config:
     # Logging
     LOG_TO_STDOUT = os.environ.get('LOG_TO_STDOUT', 'False').lower() == 'true'
     LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO').upper()
+
+    # Request correlation header (inbound accepted only as canonical UUID)
+    REQUEST_ID_HEADER = os.environ.get('REQUEST_ID_HEADER', 'X-Request-ID')
 
     
     # Debug mode - automatically set based on environment

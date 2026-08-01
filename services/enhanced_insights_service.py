@@ -1,47 +1,47 @@
 import pandas as pd
-from sqlalchemy import func, and_
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta
+import pytz
+
 from extensions import db
-from models import Log, User, Pouch
-from services.timezone_service import convert_utc_to_user_time
+from models import Log, User
+from services.log_service import (
+    get_historical_brand,
+    get_historical_nicotine_strength,
+)
+from services import timezone_service as tz_service
 import numpy as np
 
 def get_user_logs_df(user_id: int, user_timezone: str, days: int = 30):
     """Get user logs as DataFrame with timezone conversion"""
-    cutoff_date = datetime.utcnow() - timedelta(days=days)
-    
-    logs = db.session.query(
-        Log.log_time,
-        Log.quantity,
-        Log.pouch_id,
-        Log.custom_brand,
-        Log.custom_nicotine_mg
-    ).filter(
-        and_(Log.user_id == user_id, Log.log_time >= cutoff_date)
+    now = datetime.utcnow()
+    cutoff_date = now - timedelta(days=days)
+
+    resolved_tz = tz_service.resolve_timezone(user_timezone)
+    logs = Log.query.filter(
+        Log.user_id == user_id,
+        Log.log_time >= cutoff_date,
+        Log.log_time < now,
     ).order_by(Log.log_time).all()
 
     if not logs:
         return pd.DataFrame()
 
-    df = pd.DataFrame(logs, columns=['utc_time', 'quantity', 'pouch_id', 'custom_brand', 'custom_nicotine_mg'])
-    df['user_time'] = df['utc_time'].apply(lambda x: convert_utc_to_user_time(user_timezone, x)[0])
-    
-    # Add pouch information
-    pouch_info = {}
+    rows = []
     for log in logs:
-        if log.pouch_id and log.pouch_id not in pouch_info:
-            pouch = db.session.get(Pouch, log.pouch_id)
-            if pouch:
-                pouch_info[log.pouch_id] = {'brand': pouch.brand, 'nicotine_mg': pouch.nicotine_mg}
-    
-    df['brand'] = df.apply(lambda row: 
-        pouch_info.get(row['pouch_id'], {}).get('brand', row['custom_brand']) if row['pouch_id'] 
-        else row['custom_brand'], axis=1)
-    df['nicotine_mg'] = df.apply(lambda row: 
-        pouch_info.get(row['pouch_id'], {}).get('nicotine_mg', row['custom_nicotine_mg']) if row['pouch_id'] 
-        else row['custom_nicotine_mg'], axis=1)
-    
-    return df
+        normalized_utc = tz_service.to_naive_utc(log.log_time)
+        user_time = pytz.UTC.localize(normalized_utc).astimezone(resolved_tz)
+        rows.append({
+            'utc_time': normalized_utc,
+            'quantity': log.quantity,
+            'pouch_id': log.pouch_id,
+            'custom_brand': log.custom_brand,
+            'custom_nicotine_mg': log.custom_nicotine_mg,
+            'user_time': user_time,
+            'brand': get_historical_brand(log),
+            'nicotine_mg': get_historical_nicotine_strength(log),
+        })
+
+    return pd.DataFrame(rows)
 
 def get_enhanced_insights(user_id: int, days: int = 30):
     """Get comprehensive insights for the user"""
@@ -59,6 +59,7 @@ def get_enhanced_insights(user_id: int, days: int = 30):
             'peak_day': '--',
             'average_time_between_pouches': '--',
             'total_nicotine': 0,
+            'unknown_strength_count': 0,
             'best_day': '--',
             'consistency_score': 0,
             'trend_direction': '--',
@@ -73,7 +74,17 @@ def get_enhanced_insights(user_id: int, days: int = 30):
     # Basic metrics - convert numpy types to Python native types
     total_pouches = int(df['quantity'].sum())
     daily_average = float(total_pouches / days)
-    total_nicotine = float((df['quantity'] * df['nicotine_mg'].fillna(0)).sum())
+    known_strengths = df['nicotine_mg'].notna()
+    total_nicotine = float(
+        sum(
+            quantity * strength
+            for quantity, strength in zip(
+                df.loc[known_strengths, 'quantity'],
+                df.loc[known_strengths, 'nicotine_mg'],
+            )
+        )
+    )
+    unknown_strength_count = int((~known_strengths).sum())
     
     # Daily aggregation
     df['date'] = df['user_time'].dt.date
@@ -116,6 +127,7 @@ def get_enhanced_insights(user_id: int, days: int = 30):
         'peak_day': peak_day,
         'average_time_between_pouches': avg_time_between,
         'total_nicotine': round(total_nicotine, 1),
+        'unknown_strength_count': unknown_strength_count,
         'best_day': best_day,
         'consistency_score': round(consistency_score, 1),
         'trend_direction': trend_direction,
@@ -262,7 +274,7 @@ def generate_ai_insights(df, daily_consumption, user_timezone):
     weekend_avg = float(df[df['is_weekend']]['quantity'].sum()) / max(1, df[df['is_weekend']]['user_time'].dt.date.nunique())
     weekday_avg = float(df[~df['is_weekend']]['quantity'].sum()) / max(1, df[~df['is_weekend']]['user_time'].dt.date.nunique())
     
-    if weekend_avg > weekday_avg * 1.2:
+    if weekday_avg > 0 and weekend_avg > weekday_avg * 1.2:
         insights.append({
             'icon': '📅',
             'title': 'Weekend Pattern',

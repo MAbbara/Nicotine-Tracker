@@ -1,8 +1,10 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, jsonify
-from models import User, Pouch, Log
+from models import User, Pouch
 from extensions import db
 from routes.auth import login_required, get_current_user
+from services.log_service import parse_nicotine_strength
 from services.pouch_service import get_sorted_pouches, get_sorted_brands
+from services.preference_service import PreferenceService
 from sqlalchemy import or_, desc
 
 
@@ -53,14 +55,17 @@ def add_pouch():
         
         if request.method == 'POST':
             brand = request.form.get('brand', '').strip()
-            nicotine_mg = request.form.get('nicotine_mg', type=int)
+            try:
+                nicotine_mg = parse_nicotine_strength(request.form.get('nicotine_mg'))
+            except ValueError:
+                nicotine_mg = None
             
             if not brand:
                 flash('Brand name is required.', 'error')
                 return render_template('add_pouch.html')
             
-            if not nicotine_mg or nicotine_mg <= 0:
-                flash('Nicotine content must be a positive number.', 'error')
+            if nicotine_mg is None:
+                flash('Nicotine content must be a positive number with up to two decimals.', 'error')
                 return render_template('add_pouch.html')
             
             if nicotine_mg > 100:
@@ -126,14 +131,17 @@ def edit_pouch(pouch_id):
         
         if request.method == 'POST':
             brand = request.form.get('brand', '').strip()
-            nicotine_mg = request.form.get('nicotine_mg', type=int)
+            try:
+                nicotine_mg = parse_nicotine_strength(request.form.get('nicotine_mg'))
+            except ValueError:
+                nicotine_mg = None
             
             if not brand:
                 flash('Brand name is required.', 'error')
                 return render_template('edit_pouch.html', pouch=pouch)
             
-            if not nicotine_mg or nicotine_mg <= 0:
-                flash('Nicotine content must be a positive number.', 'error')
+            if nicotine_mg is None:
+                flash('Nicotine content must be a positive number with up to two decimals.', 'error')
                 return render_template('edit_pouch.html', pouch=pouch)
             
             existing_pouch = Pouch.query.filter(
@@ -180,16 +188,13 @@ def delete_pouch(pouch_id):
             flash('Pouch not found or you do not have permission to delete it.', 'error')
             return redirect(url_for('catalog.index'))
         
-        logs_using_pouch = Log.query.filter_by(pouch_id=pouch.id).count()
-        
-        if logs_using_pouch > 0:
-            flash(f'Cannot delete this pouch as it is used in {logs_using_pouch} log entries. '
-                  'Please update or delete those logs first.', 'warning')
-            return redirect(url_for('catalog.index'))
-        
+        # Referenced logs keep their history: log.pouch_id carries
+        # ON DELETE SET NULL and every log holds immutable brand/strength
+        # snapshots, so deleting the catalog entry no longer rewrites the past.
         brand_name = pouch.brand
         nicotine_mg = pouch.nicotine_mg
-        
+
+        PreferenceService().remove_preferred_pouch(user.id, pouch.id)
         db.session.delete(pouch)
         db.session.commit()
         
@@ -251,8 +256,10 @@ def api_pouches():
             pouches_data.append({
                 'id': pouch.id,
                 'brand': pouch.brand,
-                'nicotine_mg': pouch.nicotine_mg,
-                'display_name': f'{pouch.brand} ({pouch.nicotine_mg}mg)',
+                'nicotine_mg': float(pouch.nicotine_mg),
+                'display_name': (
+                    f'{pouch.brand} ({pouch.nicotine_mg_display()}mg)'
+                ),
                 'is_custom': False
             })
         
@@ -260,8 +267,10 @@ def api_pouches():
             pouches_data.append({
                 'id': pouch.id,
                 'brand': pouch.brand,
-                'nicotine_mg': pouch.nicotine_mg,
-                'display_name': f'{pouch.brand} ({pouch.nicotine_mg}mg) [Custom]',
+                'nicotine_mg': float(pouch.nicotine_mg),
+                'display_name': (
+                    f'{pouch.brand} ({pouch.nicotine_mg_display()}mg) [Custom]'
+                ),
                 'is_custom': True
             })
         
@@ -314,7 +323,9 @@ def api_strengths(brand):
         
         strengths = set()
         for strength_tuple in default_strengths + custom_strengths:
-            strengths.add(strength_tuple[0])
+            # Float keeps the JSON contract numeric; raw Numeric(8,2)
+            # decimals would be serialized as strings.
+            strengths.add(float(strength_tuple[0]))
         
         strengths_list = sorted(list(strengths))
         

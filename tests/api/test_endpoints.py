@@ -3,7 +3,7 @@ API endpoint tests for the Nicotine Tracker application.
 """
 import pytest
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from app import db
 from models import User, Pouch, Log, Goal
 
@@ -62,6 +62,38 @@ class TestApiEndpoints:
         assert isinstance(json_data['pouches'], list)
         assert len(json_data['pouches']) > 0
 
+    def test_get_pouches_excludes_another_users_custom_product(
+            self, logged_in_client, test_user, test_pouch):
+        """The saved-pouch picker must never reveal a foreign custom row."""
+        foreign_user = User(
+            email='foreign-pouch-owner@example.com',
+            email_verified=True,
+            timezone='UTC',
+        )
+        foreign_user.set_password('foreign-password')
+        db.session.add(foreign_user)
+        db.session.flush()
+        default_pouch = Pouch(
+            brand='Shared Default', nicotine_mg=6,
+            is_default=True, created_by=None,
+        )
+        foreign_pouch = Pouch(
+            brand='Foreign Custom', nicotine_mg=8,
+            is_default=False, created_by=foreign_user.id,
+        )
+        db.session.add_all([default_pouch, foreign_pouch])
+        db.session.commit()
+
+        response = logged_in_client.get('/api/pouches')
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        by_brand = {item['brand']: item for item in payload['pouches']}
+        assert payload['success'] is True
+        assert test_pouch.brand in by_brand
+        assert default_pouch.brand in by_brand
+        assert foreign_pouch.brand not in by_brand
+
     def test_get_brands_api(self, logged_in_client, test_pouch):
         """Test the /api/brands endpoint."""
         response = logged_in_client.get('/api/brands')
@@ -70,6 +102,24 @@ class TestApiEndpoints:
         assert json_data['success'] is True
         assert isinstance(json_data['brands'], list)
         assert 'Test Brand' in json_data['brands']
+
+    def test_daily_intake_returns_legacy_json_payload(
+            self, logged_in_client, monkeypatch):
+        """New API routes must not swallow the legacy endpoint response."""
+        from routes import api as api_routes
+
+        monkeypatch.setattr(
+            api_routes,
+            'get_daily_intake_for_user',
+            lambda **kwargs: {date(2026, 7, 29): 12.5},
+        )
+
+        response = logged_in_client.get(
+            '/api/daily_intake?start_date=2026-07-29&end_date=2026-07-29'
+        )
+
+        assert response.status_code == 200
+        assert response.get_json() == {'2026-07-29': 12.5}
 
 
     def test_get_strengths_api(self, logged_in_client, test_pouch):

@@ -2,11 +2,16 @@ from extensions import db
 from models import Pouch, Log
 from sqlalchemy import case, func, desc, or_
 
+
+def _preferred_brands(user):
+    preferences = getattr(user, 'preferences', None)
+    return (preferences.preferred_brands or []) if preferences else []
+
 def get_sorted_pouches(user):
     """
     Get all pouches, sorted by user's preferred brands.
     """
-    preferred_brands = user.preferences.preferred_brands or []
+    preferred_brands = _preferred_brands(user)
     order_by_clauses = (Pouch.brand, desc(Pouch.nicotine_mg))
 
     if preferred_brands:
@@ -28,7 +33,7 @@ def get_sorted_pouches(user):
     return default_pouches, user_pouches
 
 def get_all_pouches(user):
-    preferred_brands = user.preferences.preferred_brands or []
+    preferred_brands = _preferred_brands(user)
     order_by_clauses = (Pouch.brand, desc(Pouch.nicotine_mg))
 
     if preferred_brands:
@@ -63,7 +68,7 @@ def get_sorted_brands(user):
     brands = {brand[0] for brand in all_brands_query.all()}
     
     brands_list = list(brands)
-    preferred_brands = user.preferences.preferred_brands or []
+    preferred_brands = _preferred_brands(user)
 
     def sort_key(brand):
         try:

@@ -13,10 +13,19 @@ from services.user_service import (
     format_user_time_for_display,
     get_user_date_boundaries_utc
 )  # noqa: F401
+from services.timezone_service import (
+    InvalidEventTimeError,
+    UserDayWindow,
+    UserWeekWindow,
+    get_user_day_window,
+    get_user_week_window,
+    parse_local_event_time,
+    resolve_timezone,
+    to_naive_utc,
+)  # noqa: F401
 from services.log_service import add_log_entry, add_bulk_logs  # noqa: F401
 from services.goal_service import create_goal  # noqa: F401
 from services.craving_service import (
-    create_craving,
     get_comprehensive_craving_analytics
 )  # noqa: F401
 
@@ -28,9 +37,16 @@ __all__ = [
     "convert_user_datetime_to_timezone",
     "format_user_time_for_display",
     "get_user_date_boundaries_utc",
+    "InvalidEventTimeError",
+    "UserDayWindow",
+    "UserWeekWindow",
+    "get_user_day_window",
+    "get_user_week_window",
+    "parse_local_event_time",
+    "resolve_timezone",
+    "to_naive_utc",
     "add_log_entry", 
     "add_bulk_logs", 
     "create_goal",
-    "create_craving",
     "get_comprehensive_craving_analytics",
 ]

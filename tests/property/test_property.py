@@ -44,9 +44,14 @@ class TestPropertyBased:
         valid emails and passwords.
         """
         with app.app_context():
-            # Clean up any user with the same email from a previous run
-            User.query.filter_by(email=email).delete()
-            db.session.commit()
+            # Hypothesis may revisit an email while shrinking. Use the ORM
+            # delete path so the user's default preferences follow the
+            # configured delete-orphan cascade; a bulk query delete bypasses
+            # relationship cascades and violates the preferences FK.
+            existing = User.query.filter_by(email=email).first()
+            if existing is not None:
+                db.session.delete(existing)
+                db.session.commit()
 
             user = user_service.create_user(email=email, password=password)
             
