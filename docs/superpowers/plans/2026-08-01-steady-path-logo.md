@@ -29,7 +29,7 @@
 - Consumes: approved Steady Path design specification
 - Produces: a square symbol concept and a horizontal lockup concept suitable for project use
 
-- [ ] **Step 1: Generate the standalone symbol**
+- [x] **Step 1: Generate the standalone symbol**
 
 Use the built-in image generator with this prompt:
 
@@ -49,7 +49,7 @@ Constraints: avoid cigarettes, pills, medical crosses, lungs, smoke, flames, gen
 Avoid: neon, purple-blue gradients, glossy effects, emoji, dense detail, watermark
 ```
 
-- [ ] **Step 2: Generate the horizontal lockup**
+- [x] **Step 2: Generate the horizontal lockup**
 
 Use the same art direction with this additional requirement:
 
@@ -66,15 +66,15 @@ Create a horizontal lockup using the same Steady Path symbol at left and the exa
 - Consumes: generated previews from Task 1
 - Produces: selected symbol and lockup variants for project placement
 
-- [ ] **Step 1: Inspect the full-size previews**
+- [x] **Step 1: Inspect the full-size previews**
 
 Check that the mark reads as steady progress, uses the approved palette, contains no prohibited imagery, and that the lockup text is exactly `NicotineTracker`.
 
-- [ ] **Step 2: Inspect reduced-size previews**
+- [x] **Step 2: Inspect reduced-size previews**
 
 Review the symbol at approximately 16px, 24px, 32px, and 48px equivalent sizes. Reject any version where the pouch/leaf silhouette or path collapses into an indistinct blob.
 
-- [ ] **Step 3: Run one targeted regeneration if needed**
+- [x] **Step 3: Run one targeted regeneration if needed**
 
 If the text is malformed, the waypoint is too prominent, or the path is not legible, regenerate only the affected asset with one targeted prompt change. Do not change the approved concept.
 
@@ -89,15 +89,15 @@ If the text is malformed, the waypoint is too prominent, or the path is not legi
 - Consumes: selected generated assets from Task 2
 - Produces: project-local logo files available for future template integration
 
-- [ ] **Step 1: Create the asset directory if absent**
+- [x] **Step 1: Create the asset directory if absent**
 
 Create `static/brand/` only if it does not already exist.
 
-- [ ] **Step 2: Copy the selected assets without overwriting existing files**
+- [x] **Step 2: Copy the selected assets without overwriting existing files**
 
 Use the exact versioned filenames above. Preserve `static/favicon.png` and all archive assets.
 
-- [ ] **Step 3: Verify image metadata**
+- [x] **Step 3: Verify image metadata**
 
 Confirm each file is readable, has the expected orientation, and has non-zero dimensions appropriate to its use.
 
@@ -112,14 +112,14 @@ Confirm each file is readable, has the expected orientation, and has non-zero di
 - Consumes: project-local assets from Task 3
 - Produces: verified deliverables and a concise handoff summary
 
-- [ ] **Step 1: Re-open the project-local files**
+- [x] **Step 1: Re-open the project-local files**
 
 Inspect the copied files rather than relying only on the generation preview.
 
-- [ ] **Step 2: Verify acceptance criteria**
+- [x] **Step 2: Verify acceptance criteria**
 
 Confirm the symbol communicates steady progress without literal nicotine imagery, the lockup is legible, light and dark use cases are covered, and no existing asset was overwritten.
 
-- [ ] **Step 3: Report paths and limitations**
+- [x] **Step 3: Report paths and limitations**
 
 Report the exact saved paths, note that the assets are raster and vector-friendly rather than true SVG, and state that no existing favicon/template references were changed unless explicitly requested.
