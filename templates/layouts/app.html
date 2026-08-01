@@ -11,6 +11,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#F5F1E7">
+  <meta name="robots" content="noindex, nofollow">
   <meta name="csrf-token" content="{{ csrf_token() }}">
   {% if session.user_id and current_user is defined and current_user and current_user.preferences %}
     <meta name="offline-queue-enabled" content="{{ 'true' if current_user.preferences.offline_queue_enabled else 'false' }}">
