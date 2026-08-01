@@ -2,7 +2,8 @@
   <h3 id="journey-schedule-title">Schedule</h3>
   {% if plan.days %}
     <h4>Next seven scheduled days</h4>
-    <div class="journey-table-scroll">
+    <p id="journey-schedule-scroll-help" class="sr-only">Scroll horizontally to see every schedule column.</p>
+    <div class="journey-table-scroll horizontal-scroll-region" tabindex="0" role="region" aria-label="Schedule" aria-describedby="journey-schedule-scroll-help">
       <table data-mobile-schedule>
         <caption>The next seven persisted schedule rows from today</caption>
         <thead><tr><th scope="col">Date</th><th scope="col">Target</th><th scope="col">Revision</th></tr></thead>

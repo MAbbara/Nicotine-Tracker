@@ -33,7 +33,7 @@
   --color-text-muted: #5F6962;
   --color-border: #D7D1C3;
   --color-border-strong: #AFA99B;
-  --color-constructive: #55755F;
+  --color-constructive: #4B6B55;
   --color-constructive-soft: #DCE7DC;
   --color-attention: #B76343;
   --color-attention-soft: #F1DDD3;
@@ -779,6 +779,17 @@
     font-weight: 720;
   }
 
+  .horizontal-scroll-region {
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-gutter: stable;
+  }
+
+  .horizontal-scroll-region:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+
   .today-page,
   .journey-page,
   .you-page {
@@ -1354,10 +1365,15 @@
   }
 
   .journey-schedule thead th,
-  .journey-editor__preview thead th,
-  .legacy-review thead th {
+  .journey-editor__preview thead th {
     border-block-end-color: var(--color-border-strong);
     color: var(--color-text-muted);
+    font-size: var(--text-caption);
+  }
+
+  .legacy-review thead th {
+    border-block-end-color: var(--color-border-strong);
+    color: var(--color-ink);
     font-size: var(--text-caption);
   }
 
