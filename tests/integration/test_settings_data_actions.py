@@ -177,6 +177,7 @@ def test_cleanup_button_removes_only_duplicate_logs(
 ):
     _seed_common_state(db_session, test_user, test_pouch, test_goal)
     duplicate_time = datetime(2026, 1, 2, 9, 30)
+    duplicates = []
     for _ in range(2):
         duplicate = Log(
             user_id=test_user.id,
@@ -186,15 +187,17 @@ def test_cleanup_button_removes_only_duplicate_logs(
         )
         assign_log_product(duplicate, pouch_id=test_pouch.id)
         db_session.add(duplicate)
+        duplicates.append(duplicate)
     db_session.commit()
     before = _snapshot_data_state(test_user)
+    before_ids = {row[0] for row in before['logs']}
 
     response = _submit_data_button(logged_in_client, 'Cleanup')
 
     after = _snapshot_data_state(test_user)
     assert response.status_code == 200
     assert b'Removed 1 duplicate log entries.' in response.data
-    assert len(after['logs']) == len(before['logs']) - 1
+    assert {row[0] for row in after['logs']} == before_ids - {duplicates[1].id}
     _assert_state_unchanged_except(before, after, 'logs')
 
 
@@ -304,6 +307,7 @@ def test_delete_logs_button_respects_the_30_day_retention_boundary(
     db_session.add_all([before_cutoff, at_cutoff])
     db_session.commit()
     before = _snapshot_data_state(test_user)
+    before_ids = {row[0] for row in before['logs']}
 
     response = _submit_data_button(
         logged_in_client,
@@ -317,8 +321,7 @@ def test_delete_logs_button_respects_the_30_day_retention_boundary(
     after = _snapshot_data_state(test_user)
     remaining_ids = {row[0] for row in after['logs']}
     assert response.status_code == 200
-    assert before_cutoff.id not in remaining_ids
-    assert at_cutoff.id in remaining_ids
+    assert remaining_ids == before_ids - {before_cutoff.id}
     _assert_state_unchanged_except(before, after, 'logs')
 
 
@@ -391,4 +394,64 @@ def test_delete_logs_rejects_retention_below_30_days_without_mutation(
 
     assert response.status_code == 200
     assert b'You must keep at least 30 days of data.' in response.data
+    assert _snapshot_data_state(test_user) == before
+
+
+def test_delete_logs_rejects_blank_retention_without_mutation(
+    logged_in_client, db_session, test_user, test_pouch, test_goal,
+):
+    _seed_common_state(db_session, test_user, test_pouch, test_goal)
+    very_old_log = Log(
+        user_id=test_user.id,
+        quantity=1,
+        log_time=datetime.utcnow() - timedelta(days=500),
+        notes='must remain after blank input',
+    )
+    assign_log_product(very_old_log, pouch_id=test_pouch.id)
+    db_session.add(very_old_log)
+    db_session.commit()
+    before = _snapshot_data_state(test_user)
+
+    response = logged_in_client.post(
+        '/settings/data',
+        data={
+            'action': 'delete_old_logs',
+            'days_to_keep': '',
+            'confirm_delete_logs': 'DELETE LOGS',
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b'Enter a whole number of days to keep.' in response.data
+    assert _snapshot_data_state(test_user) == before
+
+
+def test_delete_logs_rejects_non_numeric_retention_without_mutation(
+    logged_in_client, db_session, test_user, test_pouch, test_goal,
+):
+    _seed_common_state(db_session, test_user, test_pouch, test_goal)
+    very_old_log = Log(
+        user_id=test_user.id,
+        quantity=1,
+        log_time=datetime.utcnow() - timedelta(days=500),
+        notes='must remain after invalid input',
+    )
+    assign_log_product(very_old_log, pouch_id=test_pouch.id)
+    db_session.add(very_old_log)
+    db_session.commit()
+    before = _snapshot_data_state(test_user)
+
+    response = logged_in_client.post(
+        '/settings/data',
+        data={
+            'action': 'delete_old_logs',
+            'days_to_keep': 'not-a-number',
+            'confirm_delete_logs': 'DELETE LOGS',
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b'Enter a whole number of days to keep.' in response.data
     assert _snapshot_data_state(test_user) == before

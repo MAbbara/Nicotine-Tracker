@@ -347,7 +347,10 @@ def data():
                 if request.form.get('confirm_delete_logs') != 'DELETE LOGS':
                     flash('Type DELETE LOGS to confirm deletion.', 'error')
                     return redirect(url_for('settings.data'))
-                days_to_keep = request.form.get('days_to_keep', 365, type=int)
+                days_to_keep = request.form.get('days_to_keep', type=int)
+                if days_to_keep is None:
+                    flash('Enter a whole number of days to keep.', 'error')
+                    return redirect(url_for('settings.data'))
                 if days_to_keep < 30:
                     flash('You must keep at least 30 days of data.', 'error')
                 else:

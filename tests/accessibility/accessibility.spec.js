@@ -54,6 +54,7 @@ test('Data & Privacy has a labelled retention control and no WCAG A/AA violation
   await page.goto('/settings/data');
   const daysToKeep = page.getByLabel('Days to keep');
   await expect(daysToKeep).toBeVisible();
+  await expect(daysToKeep).toHaveAttribute('required', '');
   await expect(daysToKeep).toHaveAttribute('aria-describedby', 'days_to_keep_help');
   await expectNoWcagViolations(page);
 });
