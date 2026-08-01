@@ -440,7 +440,11 @@ def test_delete_old_logs_cutoff_follows_log_time(
 
     response = logged_in_client.post(
         '/settings/data',
-        data={'action': 'delete_old_logs', 'days_to_keep': '30'},
+        data={
+            'action': 'delete_old_logs',
+            'days_to_keep': '30',
+            'confirm_delete_logs': 'DELETE LOGS',
+        },
     )
     assert response.status_code == 302
 
