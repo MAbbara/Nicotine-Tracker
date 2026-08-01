@@ -1,0 +1,7 @@
+{% macro chart_frame(id, title, summary) -%}
+  <figure class="c-chart" aria-labelledby="{{ id }}-title" aria-describedby="{{ id }}-summary">
+    <figcaption class="c-chart__caption" id="{{ id }}-title">{{ title }}</figcaption>
+    <div class="c-chart__canvas">{{ caller() }}</div>
+    <p class="c-chart__summary" id="{{ id }}-summary">{{ summary }}</p>
+  </figure>
+{%- endmacro %}

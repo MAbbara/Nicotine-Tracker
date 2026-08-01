@@ -1,0 +1,48 @@
+<section class="today-timeline" aria-labelledby="today-timeline-title" data-today-timeline-section data-detailed-log-url="{{ url_for('logging.add_log') }}">
+  <div class="today-timeline__heading">
+    <p class="eyebrow">Your day</p>
+    <h2 id="today-timeline-title">Timeline</h2>
+  </div>
+  {% if summary.timeline %}
+    <ol class="today-timeline__list" data-today-timeline>
+      {% for item in summary.timeline %}
+        <li
+          class="today-timeline__item today-timeline__item--{{ item.type }}"
+          data-timeline-type="{{ item.type }}"
+          data-timeline-id="{{ item.id }}"
+          data-occurred-at-utc="{{ item.occurred_at_utc.isoformat() }}"
+          {% if item.type in ('log', 'craving') and item.data.client_event_id %}data-client-event-id="{{ item.data.client_event_id }}"{% endif %}
+        >
+          <time
+            datetime="{{ item.occurred_at_local.isoformat() }}"
+            data-occurred-at-utc="{{ item.occurred_at_utc.isoformat() }}"
+          >{{ item.occurred_at_local.strftime('%H:%M') }}</time>
+          <span class="today-timeline__marker" aria-hidden="true"></span>
+          <span class="today-timeline__copy">
+            <strong>{{ item.label }}</strong>
+            {% if item.type == 'log' %}
+              <small>
+                {{ item.data.product_brand or 'Product not recorded' }} ·
+                {{ item.data.quantity }} pouch{% if item.data.quantity != 1 %}es{% endif %} ·
+                {% if item.data.total_nicotine_mg is none %}Strength unknown{% else %}{{ '%.2f'|format(item.data.total_nicotine_mg|float) }} mg{% endif %}
+              </small>
+            {% elif item.type == 'craving' %}
+              <small>Intensity {{ item.data.intensity }} · {% if item.data.outcome %}{{ item.data.outcome|replace('_', ' ')|title }}{% else %}Outcome not recorded{% endif %}</small>
+            {% elif item.type == 'check_in' %}
+              <small>
+                {% if item.data.mood is none %}Mood not recorded{% else %}Mood {{ item.data.mood }} of 5{% endif %} ·
+                {% if item.data.confidence is none %}Confidence not recorded{% else %}Confidence {{ item.data.confidence }} of 5{% endif %}
+              </small>
+            {% endif %}
+          </span>
+        </li>
+      {% endfor %}
+    </ol>
+  {% else %}
+    <div class="today-timeline__empty" data-today-empty="logs">
+      <h3>Nothing logged yet</h3>
+      <p>Your first log will make timing, pouch totals, and nicotine exposure visible here.</p>
+      <a class="text-link" href="{{ url_for('logging.add_log') }}">Log your first nicotine use</a>
+    </div>
+  {% endif %}
+</section>

@@ -1,0 +1,8 @@
+-r requirements.txt
+pytest==8.4.1
+pytest-cov==6.2.1
+hypothesis==6.137.1
+beautifulsoup4==4.13.4
+locust==2.34.0
+bandit==1.8.6
+axe-selenium-python==2.1.6

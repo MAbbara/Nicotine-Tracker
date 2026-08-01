@@ -1,0 +1,36 @@
+<section class="journey-schedule" aria-labelledby="journey-schedule-title">
+  <h3 id="journey-schedule-title">Schedule</h3>
+  {% if plan.days %}
+    <h4>Next seven scheduled days</h4>
+    <div class="journey-table-scroll">
+      <table data-mobile-schedule>
+        <caption>The next seven persisted schedule rows from today</caption>
+        <thead><tr><th scope="col">Date</th><th scope="col">Target</th><th scope="col">Revision</th></tr></thead>
+        <tbody>
+          {% for day in plan.next_days %}
+            <tr{% if day.local_date == today %} aria-current="date"{% endif %}><th scope="row">{{ day.local_date.isoformat() }}</th><td>{% if day.target_pouches is none %}Observe · target unknown{% else %}{{ day.target_pouches }} pouches · {{ '%.2f'|format(day.nicotine_ceiling_mg) }} mg{% endif %}</td><td>Revision {{ day.revision_id }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <details>
+      <summary>Show the complete schedule</summary>
+      <table data-complete-schedule>
+        <caption>Complete persisted daily schedule</caption>
+        <thead><tr><th scope="col">Date</th><th scope="col">Target</th><th scope="col">Revision</th></tr></thead>
+        <tbody>
+          {% for day in plan.days %}
+            <tr{% if day.local_date == today %} aria-current="date"{% endif %}><th scope="row">{{ day.local_date.isoformat() }}</th><td>{% if day.target_pouches is none %}Observe · target unknown{% else %}{{ day.target_pouches }} pouches · {{ '%.2f'|format(day.nicotine_ceiling_mg) }} mg{% endif %}</td><td>Revision {{ day.revision_id }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </details>
+    <ol class="journey-stage-list">
+      {% for stage in plan.stages %}
+        <li><strong>{{ stage.start_date.isoformat() }} to {{ stage.end_date.isoformat() }}</strong> — {% if stage.target_pouches is none %}Observe; target unknown{% else %}{{ stage.target_pouches }} pouches · {{ stage.nicotine_ceiling_mg }} mg{% endif %} · Revision {{ stage.revision_id }}</li>
+      {% endfor %}
+    </ol>
+  {% else %}
+    <p>No persisted daily schedule exists for this plan yet.</p>
+  {% endif %}
+</section>

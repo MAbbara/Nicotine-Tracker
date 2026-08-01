@@ -1,0 +1,26 @@
+# Project Instructions
+
+Work skeptically and double-check assumptions, implementation details, and verification results. The user and the agent can both be mistaken; prioritize evidence and accuracy.
+
+## Design Context
+
+### Users
+
+Nicotine-pouch users who want to reduce their consumption or quit entirely. The primary context is quick, repeated mobile use during the day: logging nicotine, responding to cravings, and checking whether they are on pace. Desktop supports deeper planning, review, and analytics.
+
+### Brand Personality
+
+Calm, encouraging, and candid. The product behaves like a trusted coach: supportive without being sentimental, clear without becoming clinical, and honest without using guilt, shame, or failure language.
+
+### Aesthetic Direction
+
+A warm, refined light theme is the default, paired with a purpose-designed dark theme. The visual language is organic and editorial rather than technological: warm ivory surfaces, mineral greens, restrained terracotta accents, expressive display typography, and a highly readable humanist body face. Avoid purple-blue gradients, neon-on-dark palettes, glassmorphism, emoji-led metric cards, repetitive dashboard grids, and sterile medical styling.
+
+### Design Principles
+
+1. **Today before history.** Lead with the user's current plan, next useful action, and immediate progress.
+2. **Coach, never judge.** Treat difficult days and lapses as information; always offer a constructive next step.
+3. **Make logging nearly effortless.** The most common nicotine and craving actions must work comfortably with one hand and minimal input.
+4. **Reveal depth progressively.** Keep daily use focused while preserving detailed planning and analytics for users who seek them.
+5. **Use data to guide action.** Every metric or chart must answer a real question or suggest a meaningful next step.
+6. **Design for real-world accessibility.** Target WCAG 2.2 AA, color-independent status communication, visible focus, comfortable touch targets, responsive text, and reduced-motion support.

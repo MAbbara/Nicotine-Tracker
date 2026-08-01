@@ -1,0 +1,7 @@
+{% from "components/icon.html" import icon %}
+{% macro alert(title, body, tone='neutral') -%}
+  <aside class="c-alert c-alert--{{ tone }}" role="{{ 'alert' if tone == 'danger' else 'status' }}">
+    {{ icon('attention' if tone in ('attention', 'danger') else 'support', class_name='c-alert__icon') }}
+    <div><strong class="c-alert__title">{{ title }}</strong><p class="c-alert__body">{{ body }}</p></div>
+  </aside>
+{%- endmacro %}

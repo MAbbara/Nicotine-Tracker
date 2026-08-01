@@ -1,0 +1,34 @@
+<section class="journey-history" aria-labelledby="journey-history-title-{{ plan.row.id }}">
+  <h3 id="journey-history-title-{{ plan.row.id }}">Exact plan history</h3>
+  <h4>Revisions</h4>
+  {% if plan.revisions %}
+    <ol>
+      {% for revision in plan.revisions %}
+        <li>
+          <strong>Revision {{ revision.id }}</strong> · effective {{ revision.effective_date.isoformat() }} · reason {{ revision.reason|replace('_', ' ') }}<br>
+          Pace {{ revision.pace|title if revision.pace else 'Unknown' }} · target date {{ revision.target_date.isoformat() if revision.target_date else 'Unknown' }} · end target {{ revision.end_target_pouches if revision.end_target_pouches is not none else 'Unknown' }} · created {{ revision.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
+        </li>
+      {% endfor %}
+    </ol>
+  {% else %}
+    <p>No revision has been confirmed yet.</p>
+  {% endif %}
+
+  <h4>Status events</h4>
+  {% if plan.events %}
+    <ol>
+      {% for event in plan.events %}
+        <li><span class="status-shape" aria-hidden="true">{% if event.status == 'paused' %}■{% else %}●{% endif %}</span> Event {{ event.id }} · {{ event.status }} · {{ event.effective_at_utc.strftime('%Y-%m-%d %H:%M') }} UTC · local day {{ event.local_date.isoformat() }}{% if event.reason %} · {{ event.reason }}{% endif %}</li>
+      {% endfor %}
+    </ol>
+  {% else %}<p>No status events are recorded.</p>{% endif %}
+
+  {% if plan.intervals %}
+    <h4>Active and paused intervals</h4>
+    <ol>
+      {% for interval in plan.intervals %}
+        <li><span class="status-shape" aria-hidden="true">{% if interval.status == 'paused' %}■{% else %}●{% endif %}</span> {{ interval.status|title }} · {{ interval.start.strftime('%Y-%m-%d %H:%M') }} UTC to {{ interval.end.strftime('%Y-%m-%d %H:%M') ~ ' UTC' if interval.end else 'ongoing' }} · from event {{ interval.event_id }}</li>
+      {% endfor %}
+    </ol>
+  {% endif %}
+</section>

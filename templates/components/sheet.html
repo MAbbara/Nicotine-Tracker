@@ -1,0 +1,10 @@
+{% macro sheet(id, title, open=False) -%}
+  <dialog class="c-sheet" id="{{ id }}" aria-labelledby="{{ id }}-title"{% if open %} open{% endif %}>
+    <div class="c-sheet__handle" aria-hidden="true"></div>
+    <div class="c-sheet__header">
+      <h2 class="c-sheet__title" id="{{ id }}-title">{{ title }}</h2>
+      <form method="dialog"><button class="c-sheet__close" type="submit" aria-label="Close {{ title }}">Close</button></form>
+    </div>
+    <div class="c-sheet__body">{{ caller() }}</div>
+  </dialog>
+{%- endmacro %}

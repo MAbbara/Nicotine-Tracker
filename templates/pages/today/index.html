@@ -1,0 +1,87 @@
+{% extends "layouts/app.html" %}
+
+{% block title %}Today — Nicotine Tracker{% endblock %}
+{% block body_class %} today-shell{% endblock %}
+{% block preline_js %}{% endblock %}
+
+{% block content %}
+<div class="today-home" data-today-root>
+  {% if today_unavailable %}
+    <header class="today-home__intro">
+      <p class="eyebrow">Today</p>
+      <h1>Keep the next step available</h1>
+      <p>Your saved activity is unchanged.</p>
+    </header>
+    <section class="today-recovery" aria-labelledby="today-recovery-title" data-today-recovery>
+      <p class="eyebrow">Temporary interruption</p>
+      <h2 id="today-recovery-title">Today's details are temporarily unavailable</h2>
+      <p>You can still record what happens now. Refresh later to see the recalculated day.</p>
+      <p class="today-recovery__reference">Support reference: {{ request_id }}</p>
+      <a class="text-link" href="{{ url_for('journey.index') }}">Open Journey</a>
+    </section>
+    {% include "pages/today/_actions.html" %}
+    <section class="today-timeline today-timeline--unavailable" aria-labelledby="today-timeline-title">
+      <p class="eyebrow">Your day</p>
+      <h2 id="today-timeline-title">Timeline unavailable</h2>
+      <p>No totals are shown until the saved details can be read accurately.</p>
+    </section>
+  {% else %}
+    <header class="today-home__intro">
+      <p class="eyebrow">{{ summary.local_date.strftime('%A, %B') }} {{ summary.local_date.day }}</p>
+      <h1>Today</h1>
+      {% if summary.plan %}
+        <p>
+          {% if summary.plan.status == 'paused' %}
+            Plan paused
+          {% elif summary.plan.mode == 'observe' %}
+            Observe day {{ summary.plan.day_number }}
+          {% elif summary.plan.day_number > 0 %}
+            Plan day {{ summary.plan.day_number }}
+          {% else %}
+            {{ summary.plan.stage_label }}
+          {% endif %}
+        </p>
+      {% endif %}
+    </header>
+
+    {% include "pages/today/_plan_status.html" %}
+    {% include "pages/today/_actions.html" %}
+    {% if summary.coaching and summary.status != 'exceeded' %}
+      <section class="today-coaching" aria-labelledby="today-coaching-title" data-coaching-key="{{ summary.coaching.key }}">
+        <p class="eyebrow">A useful next thought</p>
+        <h2 id="today-coaching-title">{{ summary.coaching.headline }}</h2>
+        <p>{{ summary.coaching.body }}</p>
+        {% if summary.coaching.actions %}
+          <div class="today-coaching__actions">
+            {% for action in summary.coaching.actions %}
+              <a class="text-link" href="{{ action.href }}" data-coaching-action="{{ action.key }}">{{ action.label }}</a>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </section>
+    {% elif summary.milestones %}
+      <section class="today-milestone" aria-labelledby="today-milestone-title" data-today-milestone>
+        <p class="eyebrow">Plan milestone</p>
+        <h2 id="today-milestone-title">A step worth noticing</h2>
+        <p>{{ summary.milestones[0] }}</p>
+      </section>
+    {% endif %}
+    {% include "pages/today/_timeline.html" %}
+    {% include "pages/today/_check_in.html" %}
+    {% if summary.smart_default %}
+      {% include "pages/today/_quick_log.html" %}
+    {% endif %}
+  {% endif %}
+  {% include "pages/today/_craving_flow.html" %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+  {% if not today_unavailable and summary.smart_default %}
+    <script type="module" src="{{ url_for('static', filename='js/today/quick_log.js') }}"></script>
+  {% endif %}
+  {% if not today_unavailable %}
+    <script type="module" src="{{ url_for('static', filename='js/today/check_in.js') }}"></script>
+  {% endif %}
+  <script type="module" src="{{ url_for('static', filename='js/today/craving_flow.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,3 @@
+{% macro status(label, tone='neutral') -%}
+  <span class="c-status c-status--{{ tone }}"><span class="c-status__mark" aria-hidden="true"></span>{{ label }}</span>
+{%- endmacro %}

@@ -1,0 +1,13 @@
+{% macro timeline(items) -%}
+  <ol class="c-timeline">
+    {% for item in items %}
+      <li class="c-timeline__item">
+        <span class="c-timeline__rail" aria-hidden="true"></span>
+        <div class="c-timeline__copy">
+          <div class="c-timeline__heading"><strong>{{ item.title }}</strong><span>{{ item.status }}</span></div>
+          {% if item.detail %}<p>{{ item.detail }}</p>{% endif %}
+        </div>
+      </li>
+    {% endfor %}
+  </ol>
+{%- endmacro %}

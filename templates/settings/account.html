@@ -40,6 +40,7 @@
     <!-- Update Email -->
     <div class="bg-white dark:bg-gray-800 shadow rounded-lg">
         <form method="POST" action="{{ url_for('settings.account') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="action" value="update_email">
             <div class="px-4 py-5 sm:p-6">
                 <h3 class="text-lg font-medium text-gray-900 dark:text-white">Update Email Address</h3>
@@ -65,6 +66,7 @@
     <!-- Change Password -->
     <div class="bg-white dark:bg-gray-800 shadow rounded-lg">
         <form method="POST" action="{{ url_for('settings.account') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="action" value="change_password">
             <div class="px-4 py-5 sm:p-6">
                 <h3 class="text-lg font-medium text-gray-900 dark:text-white">Change Password</h3>
@@ -95,6 +97,7 @@
     {% if not user.email_verified %}
     <div class="bg-white dark:bg-gray-800 shadow rounded-lg">
         <form method="POST" action="{{ url_for('settings.account') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="action" value="resend_verification">
             <div class="px-4 py-5 sm:p-6">
                 <h3 class="text-lg font-medium text-gray-900 dark:text-white">Verify Your Email</h3>
@@ -114,6 +117,7 @@
     <!-- Delete Account -->
     <div class="bg-white dark:bg-gray-800 shadow rounded-lg">
         <form method="POST" action="{{ url_for('settings.account') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
              <input type="hidden" name="action" value="delete_account">
             <div class="px-4 py-5 sm:p-6">
                 <h3 class="text-lg font-medium text-red-600 dark:text-red-400">Delete Account</h3>

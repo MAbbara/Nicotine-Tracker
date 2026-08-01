@@ -1,0 +1,48 @@
+{% extends "layouts/app.html" %}
+{% from "components/icon.html" import icon %}
+{% from "components/empty_state.html" import empty_state %}
+
+{% block title %}Journey — Nicotine Tracker{% endblock %}
+
+{% block content %}
+<div class="journey-page">
+  <header class="page-intro page-intro--wide">
+    <p class="eyebrow">Your direction</p>
+    <h1>Journey</h1>
+    <p>Set a pace that feels realistic, review what you learn, and adjust without turning one difficult day into a verdict.</p>
+  </header>
+
+  <section aria-labelledby="active-plan-title">
+    <div class="section-heading">
+      <div><p class="eyebrow">Current plan</p><h2 id="active-plan-title">What you’re working toward</h2></div>
+      <a class="c-button c-button--secondary" href="{{ url_for('goals.create_goal') }}">Create a goal</a>
+    </div>
+    {% if active_goals %}
+      <div class="goal-list">
+        {% for goal in active_goals %}
+          <article class="goal-card">
+            {{ icon('journey', class_name='goal-card__icon') }}
+            <div>
+              <p class="eyebrow">Active goal</p>
+              <h3>{% if goal.goal_type == 'daily_mg' %}Stay at or below {{ goal.target_value }} mg a day{% else %}Stay at or below {{ goal.target_value }} pouch{% if goal.target_value != 1 %}es{% endif %} a day{% endif %}</h3>
+              <p>Current rhythm: {{ goal.current_streak or 0 }} day{% if goal.current_streak != 1 %}s{% endif %}. Your best is {{ goal.best_streak or 0 }}.</p>
+            </div>
+            <a class="text-link" href="{{ url_for('goals.edit_goal', goal_id=goal.id) }}">Adjust plan</a>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      {{ empty_state('Choose a steady next step', 'A goal can be a daily ceiling or a small reduction. Start with something you can learn from, not something you have to prove.', 'Create a goal', url_for('goals.create_goal'), 'journey') }}
+    {% endif %}
+  </section>
+
+  {% if past_goals %}
+    <section class="past-plans" aria-labelledby="past-plans-title">
+      <div class="section-heading"><div><p class="eyebrow">What you learned</p><h2 id="past-plans-title">Past plans</h2></div></div>
+      <ul class="past-plan-list">
+        {% for goal in past_goals %}<li><span>{% if goal.goal_type == 'daily_mg' %}{{ goal.target_value }} mg daily{% else %}{{ goal.target_value }} pouches daily{% endif %}</span><small>Best rhythm: {{ goal.best_streak or 0 }} day{% if goal.best_streak != 1 %}s{% endif %}</small></li>{% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+</div>
+{% endblock %}
