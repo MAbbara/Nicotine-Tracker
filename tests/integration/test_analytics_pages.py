@@ -1,6 +1,6 @@
 """Rendered-page contracts for resilient, route-scoped analytics."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from bs4 import BeautifulSoup
 
@@ -115,3 +115,57 @@ def test_today_remains_free_of_analytics_assets(logged_in_client):
     assert "apexcharts" not in urls
     assert "dashboard-charts" not in urls
     assert "/static/js/insights.js" not in urls
+
+
+def test_dashboard_analytics_apis_honor_exact_historical_boundaries(
+        logged_in_client, db_session, test_user, test_pouch):
+    start = date.today() - timedelta(days=20)
+    end = start + timedelta(days=2)
+    for day, hour, quantity in ((start, 10, 9), (end, 15, 4)):
+        log = Log(
+            user_id=test_user.id,
+            quantity=quantity,
+            log_time=datetime.combine(day, datetime.min.time()).replace(hour=hour),
+        )
+        log_service.assign_log_product(log, pouch_id=test_pouch.id)
+        db_session.add(log)
+    db_session.commit()
+
+    query = f"start_date={start.isoformat()}&end_date={end.isoformat()}"
+    trend_response = logged_in_client.get(f"/dashboard/api/daily_intake_chart?{query}")
+    hourly_response = logged_in_client.get(f"/dashboard/api/hourly_distribution?{query}")
+
+    assert trend_response.status_code == 200
+    assert hourly_response.status_code == 200
+    trend = trend_response.get_json()["data"]
+    assert [row["date"] for row in trend] == [
+        start.isoformat(),
+        (start + timedelta(days=1)).isoformat(),
+        end.isoformat(),
+    ]
+    assert [row["pouches"] for row in trend] == [9, 0, 4]
+    hourly = hourly_response.get_json()["data"]
+    assert hourly[10] == {"hour": "10:00", "pouches": 9}
+    assert hourly[15] == {"hour": "15:00", "pouches": 4}
+    assert sum(row["pouches"] for row in hourly) == 13
+
+
+def test_dashboard_analytics_apis_reject_invalid_custom_boundaries(logged_in_client):
+    for path in ("daily_intake_chart", "hourly_distribution"):
+        missing = logged_in_client.get(
+            f"/dashboard/api/{path}?start_date=2026-01-01"
+        )
+        reversed_range = logged_in_client.get(
+            f"/dashboard/api/{path}?start_date=2026-01-03&end_date=2026-01-01"
+        )
+        malformed = logged_in_client.get(
+            f"/dashboard/api/{path}?start_date=not-a-date&end_date=2026-01-03"
+        )
+
+        assert missing.status_code == 400
+        assert reversed_range.status_code == 400
+        assert malformed.status_code == 400
+        assert reversed_range.get_json() == {
+            "success": False,
+            "error": "Start date must be on or before end date.",
+        }

@@ -225,3 +225,68 @@ exit 0 — confirms the working changes contain no non-whitespace delta
 ```
 
 The word-diff review showed only line-ending markers on the targeted lines. Because no non-whitespace application diff appeared, proportional analytics Python, browser, JavaScript, and CSS reruns were not required for this hygiene-only round.
+
+## Fix round 3 — complete range controls and exact historical dates
+
+### Findings addressed
+
+1. Dashboard and Insights now share an explicit disclosure controller. It synchronizes `hidden`, opacity classes, and `aria-expanded`; supports Enter/click opening, Arrow Down focus entry, Escape with focus restoration, outside-click dismissal, and closes after a preset selection. The panels are positioned above the sticky mobile shell with a bounded scroll area so their controls remain operable at 320px.
+2. Dashboard custom ranges now send the selected `start_date` and `end_date` unchanged to both analytics APIs. The server resolves inclusive local-day windows, returns the exact requested dates (including zero rows), and rejects missing, malformed, reversed, or over-365-day ranges with HTTP 400. Existing `days` behavior, including the legacy `days=0` one-day fallback, remains intact.
+3. A successful custom request updates both chart input and the semantic fallback table from the same exact response and labels the selection `Custom range`. A reversed range shows `Start date must be on or before end date.` without issuing a request.
+4. Insights trend data labels are enabled only for non-empty series of at most 14 points, with direct JavaScript boundary coverage.
+
+### RED evidence
+
+```text
+node tests/js/insights.test.js
+exit 1 — 7 passed, 1 failed because shouldShowTrendDataLabels was absent
+
+.venv/bin/python -m pytest tests/integration/test_analytics_pages.py -q
+exit 1 — 3 passed, 2 failed: custom dates remained anchored to today and invalid ranges returned 200
+
+npx playwright test tests/browser/analytics.spec.js --project=chromium-desktop --grep "range disclosure|Dashboard custom range"
+exit 1 — 3 failed: disclosure selectors/state were absent and custom-date application timed out
+
+.venv/bin/python -m pytest tests/regression/test_task5_final_review.py::test_dashboard_zero_day_range_defaults_to_one_day -q
+exit 1 — the first range-parser implementation returned the 30-day default instead of one day for days=0
+
+npx playwright test tests/browser/analytics.spec.js --project=chromium-mobile
+exit 1 — 8 passed, 1 failed: the in-flow custom panel was occluded by the sticky mobile shell when clicking Apply
+```
+
+### GREEN evidence
+
+Fresh verification after the fixes:
+
+```text
+node tests/js/insights.test.js
+exit 0 — 8 behavior tests passed
+
+.venv/bin/python -m pytest tests/integration/test_analytics_pages.py tests/regression/test_task5_final_review.py -q
+exit 0 — 19 passed, 2 existing Flask-WTF warnings
+
+.venv/bin/python -m pytest tests/unit/test_insights.py tests/regression/test_task5_services_fixes.py tests/integration/test_today_page.py -q
+exit 0 — 55 passed, 5 existing dependency/legacy warnings
+
+npx playwright test tests/browser/analytics.spec.js --project=chromium-desktop
+exit 0 — 9 passed
+
+npx playwright test tests/browser/analytics.spec.js --project=chromium-mobile
+exit 0 — 9 passed at the mobile project size, including explicit 320px disclosure checks
+
+npm run build:css
+exit 0 — Tailwind CSS v4.1.11 build completed
+```
+
+### Fix-round self-review
+
+- Confirmed open and closed disclosure state remains consistent across DOM visibility, computed opacity, and `aria-expanded`, with focus behavior covered in both pages and both browser projects.
+- Confirmed preset selection, Escape, outside click, and custom success all close the appropriate panel; reversed input deliberately keeps it open so the inline error remains actionable.
+- Confirmed both Dashboard requests use the identical exact query and that the browser fallback table renders the three controlled historical rows exactly.
+- Confirmed API aggregation uses inclusive user-day boundaries for both daily and hourly results and rejects ambiguous custom input instead of silently coercing it.
+- Confirmed the short-series data-label threshold at 0, 7, 14, 15, and 365 points.
+- Confirmed no dependency, branding, favicon, PWA, release-evidence, or theme-producer scope was added.
+
+### Fix-round concerns
+
+- Focused Python runs retain the pre-existing Flask-WTF and SQLAlchemy deprecation/legacy warnings recorded above; this round introduces no new warning class.

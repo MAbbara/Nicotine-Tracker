@@ -166,13 +166,13 @@
       <h3 id="daily-intake-title" class="text-lg font-medium text-gray-900 dark:text-white">Daily Intake</h3>
       <!-- Dropdown -->
       <div class="hs-dropdown relative inline-flex [--placement:bottom-right] z-10">
-        <button id="hs-dropdown-default" type="button" class="hs-dropdown-toggle py-2 px-3 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:bg-gray-700">
+        <button id="hs-dropdown-default" type="button" data-analytics-disclosure-trigger aria-expanded="false" aria-controls="daily-intake-filter-dropdown" class="hs-dropdown-toggle py-2 px-3 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:bg-gray-700">
 
           <span id="selected-range-text">Last 30 days</span>
           <svg class="hs-dropdown-open:rotate-180 size-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
         </button>
 
-        <div id="daily-intake-filter-dropdown" class="hs-dropdown-menu transition-[opacity,margin] duration hs-dropdown-open:opacity-100 opacity-0 hidden min-w-60 bg-white shadow-md rounded-lg p-2 mt-2 dark:bg-gray-800 dark:border dark:border-gray-700" aria-labelledby="hs-dropdown-default">
+        <div id="daily-intake-filter-dropdown" data-analytics-disclosure-menu hidden class="hs-dropdown-menu absolute right-0 top-full z-50 max-h-[calc(100dvh-8rem)] overflow-y-auto transition-[opacity,margin] duration opacity-0 hidden min-w-60 bg-white shadow-md rounded-lg p-2 mt-2 dark:bg-gray-800 dark:border dark:border-gray-700" aria-labelledby="hs-dropdown-default">
           <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:ring-2 focus:ring-blue-500 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300" href="#" data-range="7">
             Last 7 days
           </a>
@@ -196,6 +196,7 @@
 
               </div>
               <button id="apply_custom_range" class="w-full py-2 px-3 inline-flex justify-center items-center gap-x-2 text-sm font-semibold rounded-lg border border-transparent bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none">Apply</button>
+              <p id="custom-range-status" class="text-sm text-red-700 dark:text-red-300" role="status" hidden></p>
             </div>
           </div>
         </div>

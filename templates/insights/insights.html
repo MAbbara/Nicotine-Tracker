@@ -17,14 +17,14 @@
         </div>
         <div class="flex space-x-3">
             <div class="hs-dropdown relative inline-flex">
-                <button id="hs-dropdown-default" type="button" class="hs-dropdown-toggle py-2 px-3 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-gray-300 bg-white text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:hover:bg-gray-600">
+                <button id="hs-dropdown-default" type="button" data-analytics-disclosure-trigger aria-expanded="false" aria-controls="insights-range-menu" class="hs-dropdown-toggle py-2 px-3 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-gray-300 bg-white text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:hover:bg-gray-600">
                     <span id="selected-range">Last 30 days</span>
                     <svg class="hs-dropdown-open:rotate-180 size-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="m6 9 6 6 6-6"/>
                     </svg>
                 </button>
 
-                <div class="hs-dropdown-menu transition-[opacity,margin] duration hs-dropdown-open:opacity-100 opacity-0 hidden min-w-60 bg-white shadow-md rounded-lg p-2 mt-2 dark:bg-gray-800 dark:border dark:border-gray-700" aria-labelledby="hs-dropdown-default">
+                <div id="insights-range-menu" data-analytics-disclosure-menu hidden class="hs-dropdown-menu absolute right-0 top-full z-50 max-h-[calc(100dvh-8rem)] overflow-y-auto transition-[opacity,margin] duration opacity-0 hidden min-w-60 bg-white shadow-md rounded-lg p-2 mt-2 dark:bg-gray-800 dark:border dark:border-gray-700" aria-labelledby="hs-dropdown-default">
                     <a class="dropdown-item flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:bg-gray-700" href="#" data-days="7">
                         Last 7 days
                     </a>
