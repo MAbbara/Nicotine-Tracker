@@ -4,10 +4,10 @@
 
 **CONDITIONAL NO-GO — the technical browser remediation gate passes; three
 external release gates remain.** C1, C2, and H1-H7 have passed fresh focused,
-complete, and manual Chromium verification at `d6419a6`. The copied
+complete, and manual Chromium verification at `5e86a90`. The copied
 production-data migration rehearsal is retained below as historical evidence
 from baseline `ed340e2c5ba3168cc3a41434b450bc4c69431ae5`; it was not rerun in
-Task 7 and is not fresh evidence for `d6419a6`. Release must still wait for
+Task 7 and is not fresh evidence for `5e86a90`. Release must still wait for
 production-configured HTTPS staging verification, a named human accessibility
 review, and a real-iPhone Safari/installed-PWA review.
 
@@ -17,7 +17,7 @@ No deployment, push, merge, tag, production connection, or access to
 ## Fresh Task 7 remediation evidence
 
 - Branch: `codex/browser-release-gate-remediation`
-- Application/test baseline through: `d6419a6`
+- Application/test baseline through: `5e86a90`
 - Verification date/time zone: 2026-08-01, Asia/Riyadh
 - Python: 3.11.15
 - Node.js: 24.14.1
@@ -30,10 +30,10 @@ No deployment, push, merge, tag, production connection, or access to
 
 | Gate | Command | Result | Duration / exit |
 | --- | --- | --- | --- |
-| Python application suite | `.venv/bin/python -m pytest -q` | 1,201 passed, 2 skipped, 31 warnings | 293.01s / 0 |
-| Production CSS build | `npm run build` | Tailwind 4.1.11 build completed | 133ms / 0 |
-| JavaScript unit suite | `npm test` | 8 passed, 0 failed, 0 skipped | 400.599ms / 0 |
-| Browser/accessibility suite | `npm run test:e2e` | 174 passed, 2 intentional desktop skips for mobile-only assertions | 3.3m / 0 |
+| Python application suite | `.venv/bin/python -m pytest -q` | 1,203 passed, 2 skipped, 31 warnings | 294.61s / 0 |
+| Production CSS build | `npm run build` | Tailwind 4.1.11 build completed | 129ms / 0 |
+| JavaScript unit suite | `npm test` | 8 passed, 0 failed, 0 skipped | 448.519ms / 0 |
+| Browser/accessibility suite | `npm run test:e2e` | 180 passed, 2 intentional desktop skips for mobile-only assertions, 0 failed | 3.4m / 0 |
 | Full browser acceptance audit | Disposable manual actions plus expanded axe/page-error/responsive/metadata scan | **TECHNICAL PASS — C1, C2, H1-H7 remediated; 8 medium and 3 low retained** | Conditional NO-GO pending external gates |
 
 ## Retained historical release evidence — not rerun in Task 7
@@ -41,7 +41,7 @@ No deployment, push, merge, tag, production connection, or access to
 The following migration, MySQL, and copied-production-data results were
 recorded earlier on 2026-08-01 at application/test baseline
 `ed340e2c5ba3168cc3a41434b450bc4c69431ae5`. They were not rerun against
-`d6419a6`; they remain provenance for the original release record only and must
+`5e86a90`; they remain provenance for the original release record only and must
 not be read as fresh Task 7 results.
 
 The historical environment used MySQL 8.4.8 Community Server via the
@@ -84,9 +84,10 @@ reproducible failure mechanism.
 The separate [full browser acceptance audit](2026-08-01-full-browser-audit.md)
 retains the original findings and now records C1, C2, and H1-H7 closure
 finding-by-finding. The fresh disposable-browser pass exercised each named
-Data & Privacy action, normal and failed analytics runtime states, Light/Dark/
-System themes, scoped axe routes, 320px containment, route metadata, offline
-status messaging, and rebuilt landing visuals. The preferred Playwright CLI
+Data & Privacy action, normal and failed analytics runtime states, analytics
+disclosure keyboard behavior and historical ranges at desktop and 320px,
+Light/Dark/System themes, scoped axe routes, 320px containment, route metadata,
+offline status messaging, and rebuilt landing visuals. The preferred Playwright CLI
 was attempted first; because its packaged binary path
 `/opt/google/chrome/chrome` is absent, the manual scan used the repository's
 installed, pinned Playwright Chromium runtime and recorded that limitation.
@@ -96,7 +97,7 @@ installed, pinned Playwright Chromium runtime and recorded that limitation.
 | Finding | Fix commit(s) | Verification status |
 | --- | --- | --- |
 | C1 / H1 — exact Data & Privacy actions and retention label | `6a1365a`, `e22b0f0` | Focused Python and Data & Privacy axe passed; all named actions manually dispatched to their intended branch |
-| C2 / H4 — analytics runtime, alternatives, fallback, and containment | `b2df5b8`, `4593494` | Unit/rendered/desktop/mobile analytics gates passed; charts, tables, failed-runtime fallback, and 320px containment manually passed |
+| C2 / H4 — analytics runtime, alternatives, fallback, range controls, and containment | `b2df5b8`, `4593494`, `5e86a90` | `tests/browser/analytics.spec.js`, `tests/integration/test_analytics_pages.py`, `tests/js/insights.test.js`, and complete suites passed. At desktop and 320px, Enter/ArrowDown/Escape operated the disclosure with focus restoration; Insights Last year requested exactly `days=365`; dashboard requested both chart APIs for 2026-06-10 through 2026-06-12, received HTTP 200, labeled the view Custom range, rendered all three rows, and remained viewport-contained |
 | H2 — authoritative theme contract | `af9e926`, `30b61aa`, `f92b3c0` | Shell/analytics regressions and manual Light/Dark/System state passed |
 | H3 — contrast and keyboard-scroll accessibility | `09ec541`, `f92b3c0`, `d6419a6` | Complete desktop/mobile axe gate passed; fresh 320px Chromium Tab/Arrow checks focused and scrolled Journey schedule, dashboard recent logs, and log history with visible 2px outlines |
 | H5 — indexing/referrer privacy | `a0b7c3e` | Login/authenticated metadata checks passed; a fresh valid reset-token page rendered `noindex, nofollow` plus `no-referrer`, and navigation away sent no `Referer` header and produced an empty destination `document.referrer` |
@@ -235,6 +236,10 @@ full proof of that planned lifecycle contract.
 - Human and staging gates above are release blockers, not waived checks.
 - Cold offline launch and an offline application shell are unsupported; only
   the documented in-session queue/recovery boundary is verified.
+- **Deferred minor:** dashboard custom ranges longer than 365 days receive HTTP
+  400 from both chart APIs, but the page displays the generic “Chart
+  unavailable. Current table values remain available.” message rather than the
+  specific range-length validation reason.
 
 ## GO criteria remaining
 

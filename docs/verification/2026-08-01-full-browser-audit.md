@@ -4,7 +4,7 @@
 
 **TECHNICAL BROWSER PASS / RELEASE REMAINS CONDITIONAL NO-GO.** The two critical
 and seven high browser findings have been remediated and passed fresh focused,
-complete, and manual Chromium verification at `d6419a6`. The eight medium and
+complete, and manual Chromium verification at `5e86a90`. The eight medium and
 three low findings remain tracked below. They are not newly promoted release
 blockers, but they are also not represented as fixed.
 
@@ -37,7 +37,7 @@ silently treated as complete design-system migration.
 | High findings | **7 remediated / 0 open** |
 | Medium findings | **8** |
 | Low findings | **3** |
-| Complete Playwright suite | **174 passed, 2 intentional desktop skips for mobile-only assertions in 3.3 minutes** |
+| Complete Playwright suite | **180 passed, 2 intentional desktop skips for mobile-only assertions, 0 failed in 3.4 minutes** |
 | Browser projects exercised | Desktop Chromium and Pixel 7 Chromium |
 | Historical original-audit viewport | 320 × 720 CSS pixels |
 | Historical original-audit inventory | 30 page/viewport combinations |
@@ -55,11 +55,11 @@ the external human, real-device, and HTTPS staging gates.
 
 | Check | Evidence | Result |
 | --- | --- | --- |
-| Complete Python suite | `.venv/bin/python -m pytest -q` | 1,201 passed, 2 skipped, 31 warnings in 293.01s / exit 0 |
-| Complete JavaScript suite | `npm test` | 8 passed, 0 failed, 0 skipped in 400.599ms / exit 0 |
-| Production CSS build | `npm run build` | Tailwind CSS 4.1.11 completed in 133ms / exit 0 |
-| Complete end-to-end suite | `npm run test:e2e` | 174 passed, 2 intentional desktop skips for mobile-only assertions in 3.3m / exit 0 |
-| Fresh manual Chromium scan | Repository-pinned Playwright Chromium against the disposable Flask app | PASS; exact actions, runtime/fallback, themes, axe, keyboard scrolling, 320px, metadata/referrer behavior, offline status, and landing visuals |
+| Complete Python suite | `.venv/bin/python -m pytest -q` | 1,203 passed, 2 skipped, 31 warnings in 294.61s / exit 0 |
+| Complete JavaScript suite | `npm test` | 8 passed, 0 failed, 0 skipped in 448.519ms / exit 0 |
+| Production CSS build | `npm run build` | Tailwind CSS 4.1.11 completed in 129ms / exit 0 |
+| Complete end-to-end suite | `npm run test:e2e` | 180 passed, 2 intentional desktop skips for mobile-only assertions, 0 failed in 3.4m / exit 0 |
+| Fresh manual Chromium scan | Repository-pinned Playwright Chromium against the disposable Flask app | PASS; exact actions, runtime/fallback, themes, axe, keyboard scrolling, analytics disclosure/ranges at desktop and 320px, metadata/referrer behavior, offline status, and landing visuals |
 
 ### Manual action coverage
 
@@ -76,6 +76,7 @@ the external human, real-device, and HTTPS staging gates.
 | Data & Privacy | Button payloads; cleanup, merge, recalculate, anonymize, and delete logs | Passed in the disposable app; exact success branch observed for each action |
 | Account lifecycle | Delete synthetic account; reject subsequent login | Deletion worked; confirmation was lost after redirect |
 | Responsive behavior | 320px landing, Insights, dashboard, and Data & Privacy checks | Passed; document width remained 320px |
+| Analytics range controls | Insights and dashboard disclosure keyboard flow at 1440px and 320px; Insights Last year; dashboard custom historical range | Enter opened the disclosure, ArrowDown focused its first option, and Escape closed it and restored trigger focus. Insights requested exactly `days=365`. Dashboard requested both chart APIs for 2026-06-10 through 2026-06-12, received HTTP 200, labeled the view Custom range, and rendered all three historical rows at both widths |
 | Keyboard scroll | Journey schedule, dashboard recent logs, and log history at 320px | Tab reached each named `tabindex="0"` region; ArrowRight increased scroll offsets and visible 2px outlines remained |
 | Error handling | Unknown authenticated route | Correct 404 status, one main landmark, Today recovery link, and no scoped axe violations; M5 remains retained for explicit medium-finding disposition |
 | Themes | Select Light, Dark, and System across modern and legacy pages | Passed; saved/effective theme, `.dark`, `color-scheme`, metadata, and charts agree |
@@ -88,11 +89,11 @@ reviewable. This table is the current status record.
 | Finding | Fix commit(s) | Regression evidence | Fresh manual evidence | Status |
 | --- | --- | --- | --- | --- |
 | C1 — Data action dispatch | `6a1365a`, `e22b0f0` | `tests/integration/test_settings_data_actions.py`, log-time authority, and final-review regressions; 55 focused Python tests plus Data & Privacy axe passed | Inspected unique submitted values and exercised cleanup, merge, recalculate, anonymize, and delete logs; each reached its named branch | **Remediated** |
-| C2 — analytics runtime | `b2df5b8`, `4593494` | Analytics unit, rendered-page, desktop/mobile browser, and adjacent Python gates passed | Insights and dashboard rendered charts and named tables without runtime errors; aborted ApexCharts produced the visible table fallback on both routes | **Remediated** |
+| C2 — analytics runtime | `b2df5b8`, `4593494`, `5e86a90` | `tests/browser/analytics.spec.js`, `tests/integration/test_analytics_pages.py`, `tests/js/insights.test.js`, and the complete suites passed | Insights and dashboard rendered charts and named tables without runtime errors; aborted ApexCharts produced the visible table fallback. At desktop and 320px, the disclosure was keyboard operable, Insights requested exactly `days=365`, and the dashboard's 2026-06-10 through 2026-06-12 custom range received HTTP 200 from both chart APIs | **Remediated** |
 | H1 — retention label | `6a1365a`, `e22b0f0` | Data & Privacy axe and integration coverage passed | “Days to keep” was visible, required, and associated with `days_to_keep_help`; scoped axe returned no A/AA violations | **Remediated** |
 | H2 — theme contract | `af9e926`, `30b61aa`, `f92b3c0` | Shell/analytics unit and desktop/mobile browser gates passed | Explicit Dark, System, and Light produced matching saved/effective state, `.dark`, and `color-scheme`; analytics remained usable | **Remediated** |
 | H3 — contrast and keyboard scroll | `09ec541`, `f92b3c0`, `d6419a6` | Complete desktop/mobile accessibility suite passed; the desktop project had two intentional skips for mobile-only assertions | Fresh axe scans returned no A/AA violations. At 320px, Tab focused the named Journey schedule, dashboard recent-logs, and log-history regions; ArrowRight moved scroll offsets from 0 to 296, 245, and 320px respectively while each retained a visible 2px outline | **Remediated** |
-| H4 — analytics alternatives/320px | `b2df5b8`, `4593494` | Analytics browser tests cover named tables, runtime failure, and 320px containment | At 320px Insights showed chart plus named table with no page overflow; the runtime-failure state retained the table and visible status | **Remediated** |
+| H4 — analytics alternatives/320px | `b2df5b8`, `4593494`, `5e86a90` | Analytics browser, integration, and JavaScript tests cover named tables, runtime failure, responsive disclosure controls, preset ranges, custom historical ranges, and 320px containment | At desktop and 320px, Insights showed its named table and Last year result; dashboard rendered the three requested historical rows. Both documents matched their viewport widths, and the runtime-failure state retained the table and visible status | **Remediated** |
 | H5 — indexing privacy | `a0b7c3e` | Indexing/privacy integration gate passed | Login/authenticated pages exposed `noindex, nofollow`. A fresh valid reset-token page rendered `noindex, nofollow` plus `no-referrer`; clicking its sign-in link sent no `Referer` request header and left destination `document.referrer` empty | **Remediated** |
 | H6 — install/offline contract | `a0b7c3e` | Offline shell/unit/browser and indexing/PWA/layout gates passed | Offline and back-online live-region messages were visible; cold offline launch remains explicitly unsupported rather than promised | **Remediated by narrowing the contract** |
 | H7 — landing brand/trust | `2491e52`, `d6419a6` | Landing design-token, desktop/mobile browser, focused accessibility, CSS build, and complete browser gates passed | Desktop and 320px visual inspection confirmed the editorial palette/layout, working actions, contained width, and no unsupported social proof | **Remediated** |
@@ -445,6 +446,10 @@ Chromium runtime. Screenshots and other disposable artifacts remain under
   audit, or production data operation was performed.
 - Visual inspection covered representative states, not every combination of
   user data, language, browser zoom, and operating-system setting.
+- **Deferred minor:** a custom dashboard range longer than 365 days is rejected
+  by both chart APIs with HTTP 400, but the interface currently presents only
+  the generic “Chart unavailable. Current table values remain available.”
+  message instead of the APIs' specific range-length validation reason.
 
 ## Prioritized release recommendations
 
