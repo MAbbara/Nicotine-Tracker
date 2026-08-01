@@ -4,17 +4,16 @@ Handles email and Discord webhook notifications with queue processing.
 import json
 import re
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from flask import current_app, render_template_string
 from flask_mail import Message
 from extensions import db, mail
 from models.notification import NotificationQueue, NotificationHistory
 from models.user import User
 from models.goal import Goal
-from models.log import Log
+from services.log_service import logs_for_user_window, summarize_logs
 from services.user_preferences_service import UserPreferencesService
 from services import timezone_service as tz_service
-from sqlalchemy import and_, or_
 
 
 class NotificationService:
@@ -50,34 +49,34 @@ class NotificationService:
     def queue_weekly_report(self, user):
         """Generate and queue a weekly report notification for a user."""
         try:
+            resolved_tz = tz_service.resolve_timezone(user.timezone)
+            resolved_zone = resolved_tz.zone
+
             preferences = self.preferences_service.get_or_create_preferences(user.id)
             if not preferences:
                 current_app.logger.error(f'Preferences not found for user {user.id} while queuing weekly report')
                 return False
 
-            user_timezone = user.timezone or 'UTC'
-            reset_time = preferences.daily_reset_time if preferences else None
+            reset_time = preferences.daily_reset_time or time.min
 
-            _, local_today, _ = tz_service.get_current_user_time(user_timezone)
-            current_week_start_local = local_today - timedelta(days=local_today.weekday())
-            last_week_start_local = current_week_start_local - timedelta(days=7)
+            local_now, local_today, _ = tz_service.get_current_user_time(resolved_zone)
+            previous_week_date = local_today - timedelta(days=7)
+            week_window = tz_service.get_user_week_window(
+                resolved_zone, previous_week_date, reset_time
+            )
+            if local_now < week_window.end_utc:
+                previous_week_date -= timedelta(days=7)
+                week_window = tz_service.get_user_week_window(
+                    resolved_zone, previous_week_date, reset_time
+                )
+            last_week_start_local = week_window.week_start_date
             last_week_end_local = last_week_start_local + timedelta(days=6)
 
-            week_start_utc, _ = tz_service.get_user_day_boundaries(user_timezone, last_week_start_local, reset_time)
-            _, week_end_utc = tz_service.get_user_day_boundaries(user_timezone, last_week_end_local, reset_time)
-            week_start_utc = week_start_utc.replace(tzinfo=None)
-            week_end_utc = week_end_utc.replace(tzinfo=None)
-
-            week_logs = Log.query.filter(
-                Log.user_id == user.id,
-                or_(
-                    and_(Log.log_time.isnot(None), Log.log_time >= week_start_utc, Log.log_time <= week_end_utc),
-                    and_(Log.log_time.is_(None), Log.log_date >= last_week_start_local, Log.log_date <= last_week_end_local)
-                )
-            ).all()
-
-            total_pouches = sum(log.quantity for log in week_logs)
-            total_nicotine = sum(log.get_total_nicotine() for log in week_logs)
+            week_logs = logs_for_user_window(user.id, week_window)
+            summary = summarize_logs(week_logs)
+            total_pouches = summary['total_pouches']
+            total_nicotine = float(summary['total_mg'])
+            unknown_strength_count = summary['unknown_strength_count']
             daily_avg_pouches = total_pouches / 7.0
             daily_avg_mg = total_nicotine / 7.0
 
@@ -93,7 +92,12 @@ class NotificationService:
 
             for goal in active_goals:
                 if callable(calculate_goal_progress):
-                    progress = calculate_goal_progress(user, goal, last_week_end_local)
+                    progress = calculate_goal_progress(
+                        user,
+                        goal,
+                        last_week_end_local,
+                        resolved_timezone=resolved_tz,
+                    )
                     goals_summary.append({
                         'type': goal.goal_type.replace('_', ' ').title(),
                         'target': goal.target_value,
@@ -145,9 +149,10 @@ class NotificationService:
                 'week_end': last_week_end_local.isoformat(),
                 'total_pouches': total_pouches,
                 'total_nicotine': round(total_nicotine, 1),
+                'unknown_strength_count': unknown_strength_count,
                 'daily_average_pouches': round(daily_avg_pouches, 1),
                 'daily_average_mg': round(daily_avg_mg, 1),
-                'total_logs': len(week_logs),
+                'total_logs': summary['total_logs'],
                 'goals_count': len(goals_summary),
                 'goals_on_track': goals_on_track,
                 'active_streaks': active_streaks

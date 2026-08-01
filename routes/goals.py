@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, jsonify
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
+import pytz
 from models import User, Goal, Log
 from services.goal_service import (
     create_goal as create_goal_service,
@@ -11,14 +12,42 @@ from services.timezone_service import (
     get_current_user_time, 
     get_user_date_boundaries, 
     get_user_week_boundaries,
-    convert_utc_to_user_time
+    convert_utc_to_user_time,
+    get_user_day_window,
+    get_user_week_window,
+    resolve_timezone,
 )
+from services.log_service import logs_for_user_window, summarize_logs
 from services.notification_service import NotificationService
 from extensions import db
 from routes.auth import login_required, get_current_user
 from sqlalchemy import desc, func
 
 goals_bp = Blueprint('goals', __name__, template_folder="../templates/goals")
+
+
+def _user_reset_time(user):
+    preferences = user.preferences
+    if preferences and preferences.daily_reset_time:
+        return preferences.daily_reset_time
+    return time.min
+
+
+def _current_effective_day(user, resolved_timezone, now_utc=None):
+    """Return the active reset-aware user day from one UTC instant."""
+    now_utc = now_utc or datetime.now(pytz.UTC)
+    if now_utc.tzinfo is None:
+        now_utc = pytz.UTC.localize(now_utc)
+    else:
+        now_utc = now_utc.astimezone(pytz.UTC)
+    reset_time = _user_reset_time(user)
+    candidate = now_utc.astimezone(resolved_timezone).date()
+    candidate_window = get_user_day_window(
+        resolved_timezone.zone, candidate, reset_time
+    )
+    if now_utc < candidate_window.start_utc:
+        candidate -= timedelta(days=1)
+    return candidate
 
 
 @goals_bp.route('/')
@@ -37,16 +66,15 @@ def index():
         # Get completed/inactive goals
         inactive_goals = Goal.query.filter_by(user_id=user.id, is_active=False).order_by(desc(Goal.updated_at)).limit(5).all()
         
-        # Calculate progress for active goals (using user's timezone)
-        if user.timezone:
-            _, today, _ = get_current_user_time(user.timezone)
-        else:
-            today = date.today()
+        resolved_timezone = resolve_timezone(user.timezone)
+        today = _current_effective_day(user, resolved_timezone)
         
         goal_progress = {}
         
         for goal in active_goals:
-            progress = calculate_goal_progress(user, goal, today)
+            progress = calculate_goal_progress(
+                user, goal, today, resolved_timezone
+            )
             goal_progress[goal.id] = progress
         
         return render_template('goals.html', 
@@ -264,17 +292,17 @@ def progress():
         
         # Calculate detailed progress for each goal (using user's timezone)
         progress_data = {}
-        if user.timezone:
-            _, today, _ = get_current_user_time(user.timezone)
-        else:
-            today = date.today()
+        resolved_timezone = resolve_timezone(user.timezone)
+        today = _current_effective_day(user, resolved_timezone)
         
         for goal in active_goals:
             # Get last 30 days of progress
             progress_history = []
             for i in range(30):
                 check_date = today - timedelta(days=i)
-                daily_progress = calculate_goal_progress(user, goal, check_date)
+                daily_progress = calculate_goal_progress(
+                    user, goal, check_date, resolved_timezone
+                )
                 progress_history.append({
                     'date': check_date.isoformat(),
                     'achieved': daily_progress['achieved'],
@@ -350,11 +378,8 @@ def check_notifications():
     """API endpoint to check for goal notifications"""
     try:
         user = get_current_user()
-        # Use user's timezone for notifications
-        if user.timezone:
-            _, today, _ = get_current_user_time(user.timezone)
-        else:
-            today = date.today()
+        resolved_timezone = resolve_timezone(user.timezone)
+        today = _current_effective_day(user, resolved_timezone)
         notifications = []
         
         # Get active goals with notifications enabled
@@ -365,7 +390,9 @@ def check_notifications():
         ).all()
         
         for goal in active_goals:
-            progress = calculate_goal_progress(user, goal, today)
+            progress = calculate_goal_progress(
+                user, goal, today, resolved_timezone
+            )
             
             # Check if approaching threshold
             if progress['percentage'] >= (goal.notification_threshold * 100):
@@ -423,58 +450,49 @@ def get_goals_api():
         })
 
 
-def calculate_goal_progress(user, goal, target_date):
+def calculate_goal_progress(user, goal, target_date, resolved_timezone=None):
     """Calculate progress for a specific goal and date using user's timezone"""
     try:
+        if resolved_timezone is None:
+            resolved_timezone = resolve_timezone(user.timezone)
+        preferences = user.preferences
+        preferred_reset_time = preferences.daily_reset_time if preferences else None
+        reset_time = preferred_reset_time or time.min
+
+        unknown_strength_count = 0
         if goal.goal_type == 'daily_pouches':
-            # Use timezone-aware daily intake calculation
-            daily_intake = user.get_daily_intake(target_date, use_timezone=True)
-            current = daily_intake['total_pouches']
+            day_window = get_user_day_window(
+                resolved_timezone.zone, target_date, reset_time
+            )
+            summary = summarize_logs(logs_for_user_window(user.id, day_window))
+            unknown_strength_count = summary['unknown_strength_count']
+            current = summary['total_pouches']
             target = goal.target_value
             achieved = current <= target
             percentage = (current / target * 100) if target > 0 else 0
             
         elif goal.goal_type == 'daily_mg':
-            # Use timezone-aware daily intake calculation
-            daily_intake = user.get_daily_intake(target_date, use_timezone=True)
-            current = daily_intake['total_mg']
+            day_window = get_user_day_window(
+                resolved_timezone.zone, target_date, reset_time
+            )
+            summary = summarize_logs(logs_for_user_window(user.id, day_window))
+            unknown_strength_count = summary['unknown_strength_count']
+            current = float(summary['total_mg'])
             target = goal.target_value
-            achieved = current <= target
+            achieved = unknown_strength_count == 0 and current <= target
             percentage = (current / target * 100) if target > 0 else 0
             
         elif goal.goal_type == 'weekly_reduction':
-            # For weekly reduction, compare current week to previous week using user's timezone
-            if user.timezone:
-                # Get week boundaries in user's timezone
-                week_start = target_date - timedelta(days=target_date.weekday())
-                week_end = min(week_start + timedelta(days=6), target_date)
-                
-                # Get UTC boundaries for current week
-                week_start_utc, _ = get_user_date_boundaries(user.timezone, week_start)
-                _, week_end_utc = get_user_date_boundaries(user.timezone, week_end)
-                
-            # Temporarily disable timezone functionality to avoid database compatibility issues
-            # Use simple date filtering
-            week_start = target_date - timedelta(days=target_date.weekday())
-            week_end = week_start + timedelta(days=6)
-            
-            current_week_logs = Log.query.filter(
-                Log.user_id == user.id,
-                Log.log_date >= week_start,
-                Log.log_date <= min(week_end, target_date)
-            ).all()
-            
-            prev_week_start = week_start - timedelta(days=7)
-            prev_week_end = prev_week_start + timedelta(days=6)
-            
-            prev_week_logs = Log.query.filter(
-                Log.user_id == user.id,
-                Log.log_date >= prev_week_start,
-                Log.log_date <= prev_week_end
-            ).all()
-            
-            current_week_pouches = sum(log.quantity for log in current_week_logs)
-            prev_week_pouches = sum(log.quantity for log in prev_week_logs)
+            current_week = get_user_week_window(
+                resolved_timezone.zone, target_date, reset_time
+            )
+            previous_week = get_user_week_window(
+                resolved_timezone.zone, target_date - timedelta(days=7), reset_time
+            )
+            current_week_logs = logs_for_user_window(user.id, current_week)
+            previous_week_logs = logs_for_user_window(user.id, previous_week)
+            current_week_pouches = sum(log.quantity or 0 for log in current_week_logs)
+            prev_week_pouches = sum(log.quantity or 0 for log in previous_week_logs)
             
             if prev_week_pouches > 0:
                 reduction_percentage = ((prev_week_pouches - current_week_pouches) / prev_week_pouches) * 100
@@ -498,7 +516,8 @@ def calculate_goal_progress(user, goal, target_date):
             'achieved': achieved,
             'current': round(current, 1),
             'target': target,
-            'percentage': min(percentage, 999)  # Cap at 999% for display
+            'percentage': min(percentage, 999),  # Cap at 999% for display
+            'unknown_strength_count': unknown_strength_count,
         }
         
     except Exception as e:
@@ -507,5 +526,6 @@ def calculate_goal_progress(user, goal, target_date):
             'achieved': False,
             'current': 0,
             'target': goal.target_value,
-            'percentage': 0
+            'percentage': 0,
+            'unknown_strength_count': 0,
         }

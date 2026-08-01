@@ -59,3 +59,10 @@ temp/
 axe_*.json
 .hypothesis
 tests/snapshot/
+test-results/
+playwright-report/
+
+# Agent execution state and scratch review packages
+.superpowers/
+/TASK*.md
+/TASK_*.md

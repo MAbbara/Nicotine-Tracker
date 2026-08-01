@@ -1,9 +1,16 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, jsonify, session
 from datetime import datetime, time
 from datetime import date
+import pytz
 from models import User, Log, Pouch
 from services import add_log_entry, add_bulk_logs  # use service layer for log creation
-from services.timezone_service import convert_utc_to_user_time, get_current_user_time
+from services.log_service import (
+    group_logs_by_effective_day,
+    has_custom_product_input,
+    parse_nicotine_strength,
+    summarize_logs,
+)
+from services.timezone_service import get_current_user_time, resolve_timezone
 from services.pouch_service import get_sorted_pouches
 from extensions import db
 from routes.auth import login_required, get_current_user
@@ -14,6 +21,14 @@ import re
 
 # Specify the template folder for logging-related templates
 logging_bp = Blueprint('logging', __name__, template_folder='../templates/logging')
+
+
+def _available_pouch_for_user(user_id, pouch_id):
+    """Return a default or user-owned pouch without crossing tenant scope."""
+    return Pouch.query.filter(
+        Pouch.id == pouch_id,
+        db.or_(Pouch.is_default, Pouch.created_by == user_id),
+    ).first()
 
 @logging_bp.route('/add', methods=['GET', 'POST'])
 @login_required
@@ -72,7 +87,15 @@ def add_log():
             try:
                 # Validate and process pouch selection
                 if pouch_id and pouch_id != 'custom':
-                    pouch = db.session.get(Pouch, pouch_id)
+                    if has_custom_product_input(custom_brand, custom_nicotine_mg):
+                        flash(
+                            'Cannot combine a selected pouch with custom product fields.',
+                            'error',
+                        )
+                        return redirect(
+                            url_for('logging.view_logs', open_add_modal=1)
+                        )
+                    pouch = _available_pouch_for_user(user.id, pouch_id)
                     if not pouch:
                         flash('Selected pouch not found.', 'error')
 
@@ -89,11 +112,6 @@ def add_log():
                     )
                 elif custom_brand and custom_nicotine_mg:
                     try:
-                        custom_mg = int(custom_nicotine_mg)
-                        if custom_mg <= 0:
-                            flash('Custom nicotine content must be greater than 0.', 'error')
-                            return redirect(url_for('logging.view_logs', open_add_modal=1))
-                        # Always use server-side timezone conversion
                         add_log_entry(
                             user_id=user.id,
                             log_date=log_date,
@@ -101,11 +119,11 @@ def add_log():
                             quantity=quantity,
                             notes=notes,
                             custom_brand=custom_brand,
-                            custom_nicotine_mg=custom_mg,
+                            custom_nicotine_mg=custom_nicotine_mg,
                             user_timezone=effective_timezone
                         )
                     except ValueError:
-                        flash('Invalid nicotine content. Please enter a number.', 'error')
+                        flash('Invalid nicotine content. Enter a positive number with up to two decimals.', 'error')
                         return redirect(url_for('logging.view_logs', open_add_modal=1))
                 else:
                     flash('Please select a pouch or enter custom details.', 'error')
@@ -195,10 +213,10 @@ def parse_bulk_text(text):
             # More flexible patterns
             patterns = [
                 r'(\d+)\s+pouches?\s+at\s+(\d{1,2}):(\d{2})',
-                r'(\d+)\s+([^0-9]+?)\s+(\d+)mg\s+at\s+(\d{1,2}):(\d{2})',
+                r'(\d+)\s+([^0-9]+?)\s+(\d+(?:\.\d+)?)mg\s+at\s+(\d{1,2}):(\d{2})',
                 r'(\d+)\s+([^0-9]+?)\s+at\s+(\d{1,2}):(\d{2})',
                 r'(\d+)\s+pouches?',
-                r'(\d+)\s+([^0-9]+?)\s+(\d+)mg',
+                r'(\d+)\s+([^0-9]+?)\s+(\d+(?:\.\d+)?)mg',
             ]
             
             entry = None
@@ -219,7 +237,7 @@ def parse_bulk_text(text):
                         entry = {
                             'quantity': int(quantity),
                             'brand': brand.strip(),
-                            'nicotine_mg': int(nicotine_mg),
+                            'nicotine_mg': parse_nicotine_strength(nicotine_mg),
                             'time': time(int(hour), int(minute))
                         }
                     elif len(groups) == 4:  # quantity brand at time
@@ -239,7 +257,7 @@ def parse_bulk_text(text):
                         entry = {
                             'quantity': int(quantity),
                             'brand': brand.strip(),
-                            'nicotine_mg': int(nicotine_mg)
+                            'nicotine_mg': parse_nicotine_strength(nicotine_mg)
                         }
                     
                     break
@@ -266,36 +284,35 @@ def view_logs():
         default_pouches, user_pouches = get_sorted_pouches(user)
         quick_add_pouches = (default_pouches + user_pouches)[:6]
 
-        if user.timezone:
-            _, user_today, user_current_time = get_current_user_time(user.timezone)
-            today = user_today.isoformat()
-            current_time = user_current_time.strftime('%H:%M')
-        else:
-            today = date.today().isoformat()
-            current_time = datetime.now().time().strftime('%H:%M')
+        resolved_timezone = resolve_timezone(user.timezone)
+        preferences = user.preferences
+        reset_time = (
+            preferences.daily_reset_time
+            if preferences and preferences.daily_reset_time
+            else time.min
+        )
+        local_now = datetime.now(pytz.UTC).astimezone(resolved_timezone)
+        today = local_now.date().isoformat()
+        current_time = local_now.time().strftime('%H:%M')
         
         # Get logs with pagination
         logs = Log.query.filter_by(user_id=user.id).order_by(
-            desc(Log.log_date), desc(Log.log_time), desc(Log.created_at)
+            desc(Log.log_time), desc(Log.created_at), desc(Log.id)
         ).paginate(
             page=page, per_page=per_page, error_out=False
         )
         
-        # Calculate daily totals for displayed logs (convert to user timezone for grouping)
+        grouped_logs = group_logs_by_effective_day(
+            logs.items, resolved_timezone, reset_time
+        )
         daily_totals = {}
-        for log in logs.items:
-            # Convert UTC log datetime to user's timezone for proper daily grouping
-            if user.timezone and log.log_time:
-                _, user_date, _ = convert_utc_to_user_time(user.timezone, log.log_time)
-                date_key = user_date
-            else:
-                date_key = log.log_time.date() if log.log_time else log.log_date
-            
-            if date_key not in daily_totals:
-                daily_totals[date_key] = {'pouches': 0, 'mg': 0}
-            
-            daily_totals[date_key]['pouches'] += log.quantity
-            daily_totals[date_key]['mg'] += log.get_total_nicotine()
+        for date_key, day_logs in grouped_logs.items():
+            summary = summarize_logs(day_logs)
+            daily_totals[date_key] = {
+                'pouches': summary['total_pouches'],
+                'mg': summary['total_mg'],
+                'unknown_strength_count': summary['unknown_strength_count'],
+            }
         
         return render_template('view_logs.html', 
                              logs=logs, 
@@ -436,8 +453,14 @@ def quick_add_api():
         
         if not pouch_id or quantity <= 0:
             return jsonify({'success': False, 'error': 'Invalid data'})
+        if has_custom_product_input(
+                data.get('custom_brand'), data.get('custom_nicotine_mg')):
+            return jsonify({
+                'success': False,
+                'error': 'Cannot combine an existing pouch with custom product fields',
+            })
         
-        pouch = db.session.get(Pouch, pouch_id)
+        pouch = _available_pouch_for_user(user.id, pouch_id)
         if not pouch:
             return jsonify({'success': False, 'error': 'Pouch not found'})
 
@@ -445,7 +468,7 @@ def quick_add_api():
         # Use service layer to create quick log entry with current date and time in user's timezone
         try:
             _, user_date, user_time = get_current_user_time(user.timezone)
-            add_log_entry(
+            log_entry = add_log_entry(
                 user_id=user.id,
                 log_date=user_date,
                 log_time=user_time,
@@ -454,9 +477,19 @@ def quick_add_api():
                 pouch_id=pouch.id,
                 user_timezone=user.timezone
             )
+            log_data = log_entry.to_dict(user_timezone=user.timezone)
+            log_data.update({
+                'display_date': log_entry.get_user_date(user.timezone).strftime('%Y-%m-%d'),
+                'display_time': log_entry.get_user_time(user.timezone).strftime('%H:%M'),
+                'nicotine_content': (float(log_entry.get_nicotine_content())
+                                     if log_entry.get_nicotine_content() is not None else None),
+                'edit_url': url_for('logging.edit_log', log_id=log_entry.id),
+                'delete_url': url_for('logging.delete_log', log_id=log_entry.id)
+            })
             return jsonify({
                 'success': True,
-                'message': f'Added {quantity} {pouch.brand} ({pouch.nicotine_mg}mg)'
+                'message': f'Added {quantity} {pouch.brand} ({pouch.nicotine_mg_display()}mg)',
+                'log': log_data
             })
         except Exception as e:
             current_app.logger.error(f'Quick add API error: {e}')

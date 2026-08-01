@@ -5,8 +5,20 @@ from datetime import datetime
 from extensions import db
 
 class Craving(db.Model):
+    __table_args__ = (
+        db.UniqueConstraint(
+            'user_id', 'client_event_id', name='uq_craving_user_client_event_id'
+        ),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    client_event_id = db.Column(db.String(64), nullable=True)
+    linked_log_id = db.Column(
+        db.Integer,
+        db.ForeignKey('log.id', ondelete='SET NULL'),
+        nullable=True,
+    )
     craving_time = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     intensity = db.Column(db.Integer, nullable=False)  # e.g., on a scale of 1-10
     trigger = db.Column(db.String(100))  # e.g., "stress", "boredom", "social"
@@ -21,6 +33,8 @@ class Craving(db.Model):
     mood_before = db.Column(db.Integer)  # 1-10 mood scale before craving
     mood_after = db.Column(db.Integer)  # 1-10 mood scale after craving/resolution
     stress_level = db.Column(db.Integer)  # 1-10 stress scale
+
+    linked_log = db.relationship('Log', foreign_keys=[linked_log_id])
 
     def to_dict(self):
         return {
@@ -37,7 +51,8 @@ class Craving(db.Model):
             'outcome_notes': self.outcome_notes,
             'mood_before': self.mood_before,
             'mood_after': self.mood_after,
-            'stress_level': self.stress_level
+            'stress_level': self.stress_level,
+            'linked_log_id': self.linked_log_id,
         }
 
     def get_physical_symptoms_list(self):
@@ -46,7 +61,8 @@ class Craving(db.Model):
             return []
         try:
             import json
-            return json.loads(self.physical_symptoms)
+            decoded = json.loads(self.physical_symptoms)
+            return decoded if isinstance(decoded, list) else []
         except (json.JSONDecodeError, TypeError):
             return []
 

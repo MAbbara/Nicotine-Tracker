@@ -1,45 +1,19 @@
-from datetime import datetime, date
+from datetime import datetime, date, time
 from extensions import db
 from services.timezone_service import (
-    convert_utc_to_user_time, 
-    get_current_user_time, 
-    get_user_date_boundaries,
-    get_user_day_boundaries,
+    convert_utc_to_user_time,
+    get_current_user_time,
     get_current_user_day,
-    format_time_for_user
+    get_user_day_window,
+    format_time_for_user,
+    resolve_timezone,
+    to_naive_utc,
 )
 
 # Import the User model from the models package aggregator
 from models import User, Log, UserPreferences
 from datetime import datetime as dt, time as dt_time
 
-
-def filter_logs_by_datetime_range(query, start_utc, end_utc):
-    """
-    Database-agnostic helper to filter logs by datetime range.
-    This avoids the SQLite vs MySQL datetime() function incompatibility.
-    """
-    # Get all logs from the query and filter in Python
-    all_logs = query.all()
-    filtered_logs = []
-    
-    for log in all_logs:
-        # Use the UTC datetime stored in log_time field (now a DateTime field)
-        log_datetime = log.log_time if log.log_time else log.created_at
-        
-        # Ensure all datetimes are timezone-naive for comparison
-        if hasattr(start_utc, 'tzinfo') and start_utc.tzinfo is not None:
-            start_utc = start_utc.replace(tzinfo=None)
-        if hasattr(end_utc, 'tzinfo') and end_utc.tzinfo is not None:
-            end_utc = end_utc.replace(tzinfo=None)
-        if hasattr(log_datetime, 'tzinfo') and log_datetime.tzinfo is not None:
-            log_datetime = log_datetime.replace(tzinfo=None)
-        
-        # Check if this log falls within the UTC boundaries
-        if start_utc <= log_datetime <= end_utc:
-            filtered_logs.append(log)
-    
-    return filtered_logs
 
 def create_user(email: str, password: str, **profile_data) -> User:
     """Create a new user with the given email and password."""
@@ -65,41 +39,45 @@ def create_user(email: str, password: str, **profile_data) -> User:
 
 def get_user_daily_intake(user: User, target_date=None, use_timezone=True):
     """
-    Get daily intake for a specific date with timezone and custom reset time support.
-    
+    Get daily intake for a user day with timezone and reset time support.
+
+    The user day is the canonical half-open window from
+    :func:`services.timezone_service.get_user_day_window`; reads filter
+    ``Log.log_time >= start_utc`` and ``Log.log_time < end_utc`` with
+    database-naive UTC bounds normalized at the boundary. An event at
+    exactly ``end_utc`` belongs to the next user day. The deprecated
+    ``Log.log_date`` column is never read.
+
     Args:
         user: User instance
         target_date: Date to get intake for (defaults to current user day)
-        use_timezone: Whether to use user's timezone and custom reset time for date boundaries
-    
+        use_timezone: Whether to use the user's timezone and custom reset
+            time; when False the UTC calendar day is used
+
     Returns:
         Dict with total_mg, total_pouches, and sessions
     """
-    if not use_timezone or not user.timezone:
-        # Fallback to simple date filtering
-        if target_date is None:
-            target_date = date.today()
-        daily_logs = user.logs.filter_by(log_date=target_date).all()
-    else:
-        # Use timezone-aware custom day boundaries
-        if target_date is None:
-            # Get user's current day based on their reset time
-            reset_time = None
-            if user.preferences and user.preferences.daily_reset_time:
-                reset_time = user.preferences.daily_reset_time
-            target_date = get_current_user_day(user.timezone, reset_time)
-        
-        # Get custom day boundaries
-        reset_time = None
+    if use_timezone:
+        # User.timezone is persisted data and may contain an invalid legacy
+        # value; opt into the correlated UTC fallback before calling the
+        # strict canonical window constructor.
+        timezone_name = resolve_timezone(user.timezone).zone
+        reset_time = time.min
         if user.preferences and user.preferences.daily_reset_time:
             reset_time = user.preferences.daily_reset_time
-        
-        start_utc, end_utc = get_user_day_boundaries(user.timezone, target_date, reset_time)
-        
-        # Filter logs using the custom day boundaries
-        all_user_logs = user.logs.all()
-        daily_logs = filter_logs_by_datetime_range(user.logs, start_utc, end_utc)
-    
+    else:
+        timezone_name = 'UTC'
+        reset_time = time.min
+
+    if target_date is None:
+        target_date = get_current_user_day(timezone_name, reset_time)
+
+    window = get_user_day_window(timezone_name, target_date, reset_time)
+    daily_logs = user.logs.filter(
+        Log.log_time >= to_naive_utc(window.start_utc),
+        Log.log_time < to_naive_utc(window.end_utc),
+    ).all()
+
     total_mg = 0
     total_pouches = 0
     for log in daily_logs:
@@ -139,11 +117,11 @@ def format_user_time_for_display(user: User, utc_datetime, format_str='%Y-%m-%d 
     return ''
 
 def get_user_date_boundaries_utc(user: User, target_date):
-    """Get UTC boundaries for a date in user's timezone."""
-    if user.timezone:
-        return get_user_date_boundaries(user.timezone, target_date)
-    else:
-        # Fallback to simple date boundaries
-        start = datetime.combine(target_date, datetime.min.time())
-        end = datetime.combine(target_date, datetime.max.time())
-        return start, end
+    """Get the half-open UTC boundaries for a date in the user's timezone.
+
+    Returns the aware ``(start_utc, end_utc_exclusive)`` pair from the
+    canonical window; users without a timezone resolve to the UTC day.
+    """
+    timezone_name = resolve_timezone(user.timezone).zone
+    window = get_user_day_window(timezone_name, target_date)
+    return window.start_utc, window.end_utc

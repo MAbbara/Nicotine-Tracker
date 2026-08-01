@@ -2,6 +2,7 @@
 Handles user notification and communication preferences.
 """
 from datetime import datetime
+import secrets
 from extensions import db
 
 class UserPreferences(db.Model):
@@ -41,6 +42,22 @@ class UserPreferences(db.Model):
     # General preferences
     units_preference = db.Column(db.String(20), default='mg', nullable=False)  # 'mg' or 'percentage'
     preferred_brands = db.Column(db.JSON, nullable=True)
+
+    # Coaching context and offline identity.
+    difficult_times = db.Column(db.JSON, nullable=False, default=list)
+    common_triggers = db.Column(db.JSON, nullable=False, default=list)
+    offline_queue_enabled = db.Column(db.Boolean, nullable=False, default=True)
+    offline_queue_id = db.Column(
+        db.String(64), nullable=False, unique=True,
+        default=lambda: secrets.token_urlsafe(32),
+    )
+
+    # Reserved for plan-aware boundary scheduling in Phase 2. Phase 1 applies
+    # validated changes immediately and leaves these fields null.
+    pending_timezone = db.Column(db.String(50), nullable=True)
+    pending_daily_reset_time = db.Column(db.Time, nullable=True)
+    boundary_change_effective_at_utc = db.Column(db.DateTime, nullable=True)
+    boundary_change_target_local_date = db.Column(db.Date, nullable=True)
     
     # Relationships
 
@@ -64,6 +81,14 @@ class UserPreferences(db.Model):
             'daily_reset_time': self.daily_reset_time.isoformat() if self.daily_reset_time else None,
             'units_preference': self.units_preference,
             'preferred_brands': self.preferred_brands,
+            'difficult_times': self.difficult_times or [],
+            'common_triggers': self.common_triggers or [],
+            'offline_queue_enabled': self.offline_queue_enabled,
+            'offline_queue_id': self.offline_queue_id,
+            'pending_timezone': self.pending_timezone,
+            'pending_daily_reset_time': self.pending_daily_reset_time.isoformat() if self.pending_daily_reset_time else None,
+            'boundary_change_effective_at_utc': self.boundary_change_effective_at_utc.isoformat() if self.boundary_change_effective_at_utc else None,
+            'boundary_change_target_local_date': self.boundary_change_target_local_date.isoformat() if self.boundary_change_target_local_date else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

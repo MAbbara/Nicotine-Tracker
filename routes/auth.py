@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, jsonify
 from flask_mail import Message
-from models import User
+from models import ReductionPlan, User
 from services import create_user              # new import
 from services.password_reset_service import PasswordResetService
 from services.email_verification_service import EmailVerificationService
@@ -8,8 +8,27 @@ from services.timezone_service import validate_timezone
 from extensions import db, mail
 import re
 from datetime import datetime, timedelta
+from urllib.parse import urlsplit, urlunsplit
 
 auth_bp = Blueprint('auth', __name__, template_folder="../templates/auth")
+
+
+def _internal_next_destination(target):
+    """Return a normalized local redirect destination, or ``None``."""
+    if not isinstance(target, str) or not target or target != target.strip():
+        return None
+    if "\\" in target or any(ord(character) < 32 for character in target):
+        return None
+    parsed = urlsplit(target)
+    if parsed.scheme or parsed.netloc:
+        if (
+            parsed.scheme != request.scheme
+            or parsed.netloc.casefold() != request.host.casefold()
+        ):
+            return None
+    if not parsed.path.startswith('/') or parsed.path.startswith('//'):
+        return None
+    return urlunsplit(('', '', parsed.path, parsed.query, parsed.fragment))
 
 def is_valid_email(email):
     """Simple email validation"""
@@ -86,7 +105,13 @@ def send_reset_email(user, reset_token):
 @auth_bp.route('/register', methods=['GET', 'POST'])
 def register():
     if 'user_id' in session:
-        return redirect(url_for('dashboard.index'))
+        user = get_current_user()
+        has_active_plan = user is not None and ReductionPlan.query.filter_by(
+            user_id=user.id, active_slot=1
+        ).first() is not None
+        return redirect(url_for(
+            'today.index' if has_active_plan else 'journey.onboarding'
+        ))
     if request.method == 'POST':
 
         try:
@@ -123,8 +148,16 @@ def register():
                 flash('Registration successful! Please check your email to verify your account.', 'success')
             else:
                 flash(f'Registration successful, but there was an issue sending the verification email: {message}', 'warning')
-            
-            return redirect(url_for('auth.login'))
+
+            # Registration establishes the same authenticated session shape
+            # as login. Unverified accounts are already allowed to sign in;
+            # onboarding keeps the verification message visible without an
+            # unnecessary second credential prompt.
+            session['user_id'] = user.id
+            session['user_email'] = user.email
+            session['user_timezone'] = user.timezone or 'UTC'
+            session.permanent = False
+            return redirect(url_for('journey.onboarding'))
 
         except Exception as e:
             db.session.rollback()
@@ -136,7 +169,7 @@ def register():
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
     if 'user_id' in session:
-        return redirect(url_for('dashboard.index'))
+        return redirect(url_for('today.index'))
     if request.method == 'POST':
 
         try:
@@ -159,9 +192,10 @@ def login():
                 current_app.logger.info(f'User {email} logged in successfully')
                 flash('Login successful!', 'success')
                 
-                # Redirect to next page or dashboard
-                next_page = request.args.get('next')
-                return redirect(next_page) if next_page else redirect(url_for('dashboard.index'))
+                # Preserve the requested internal destination when present;
+                # otherwise Today is the authenticated home.
+                next_page = _internal_next_destination(request.args.get('next'))
+                return redirect(next_page) if next_page else redirect(url_for('today.index'))
             else:
                 flash('Invalid email or password.', 'error')
                 
@@ -323,10 +357,23 @@ def reset_password(token):
 def login_required(f):
     """Decorator to require login for routes"""
     from functools import wraps
-    
+
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if 'user_id' not in session:
+        user_id = session.get('user_id')
+        user = None
+        if (
+            isinstance(user_id, int)
+            and not isinstance(user_id, bool)
+            and 0 < user_id <= 2_147_483_647
+        ):
+            user = db.session.get(User, user_id)
+        if user is None:
+            if user_id is not None:
+                session.clear()
+            if request.path.startswith('/api/'):
+                from services.api_errors import authentication_required_response
+                return authentication_required_response()
             flash('Please log in to access this page.', 'warning')
             return redirect(url_for('auth.login', next=request.url))
         return f(*args, **kwargs)

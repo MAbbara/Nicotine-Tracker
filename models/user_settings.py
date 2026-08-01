@@ -15,6 +15,7 @@ class UserSettings(db.Model):
     # UI Display preferences
     default_view = db.Column(db.String(20), default='dashboard', nullable=False)  # dashboard, logs, goals
     chart_theme = db.Column(db.String(20), default='light', nullable=False)  # light, dark, auto
+    theme = db.Column(db.String(20), default='system', nullable=False)
     logs_per_page = db.Column(db.Integer, default=20, nullable=False)
     date_format = db.Column(db.String(20), default='YYYY-MM-DD', nullable=False)
     time_format = db.Column(db.String(10), default='24h', nullable=False)  # 24h, 12h
@@ -48,6 +49,7 @@ class UserSettings(db.Model):
             'user_id': self.user_id,
             'default_view': self.default_view,
             'chart_theme': self.chart_theme,
+            'theme': self.theme,
             'logs_per_page': self.logs_per_page,
             'date_format': self.date_format,
             'time_format': self.time_format,

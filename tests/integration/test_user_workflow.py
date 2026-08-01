@@ -11,7 +11,7 @@ class TestUserRegistrationAndLogin:
     """Tests the full user registration and login flow."""
 
     def test_registration_and_login(self, client):
-        """Ensure a user can register, log in, and see the dashboard."""
+        """Ensure a user can register, log in, and reach Today."""
         # Step 1: Register a new user
         register_response = client.post('/auth/register', data={
             'email': 'integration_user@example.com',
@@ -26,7 +26,7 @@ class TestUserRegistrationAndLogin:
         with client.application.app_context():
             user = db.session.execute(db.select(User).filter_by(email='integration_user@example.com')).scalar_one_or_none()
             assert user is not None
-            assert user.email_verified
+            assert user.email_verified is False
 
 
 
@@ -38,7 +38,7 @@ class TestUserRegistrationAndLogin:
         }, follow_redirects=True)
 
         assert login_response.status_code == 200
-        assert b'Dashboard' in login_response.data
+        assert b'Today' in login_response.data
 
 
         # Step 4: Log out

@@ -1,11 +1,77 @@
-from flask import Blueprint, render_template, request, jsonify, flash, current_app
+from datetime import datetime, timezone
+import re
+from uuid import uuid4
+
+from flask import Blueprint, render_template, request, jsonify, current_app
 from routes.auth import login_required, get_current_user
 from extensions import db
 from models import Craving
-from services.craving_service import create_craving, get_comprehensive_craving_analytics
+from services.api_errors import ApiValidationError
+from services.craving_service import (
+    CravingService,
+    CravingValidationError,
+    get_comprehensive_craving_analytics,
+)
+from services.serializers import (
+    InvalidLocalTimeError,
+    parse_create_craving_request,
+    parse_update_craving_request,
+)
+from services.timezone_service import resolve_timezone
 
 
 cravings_bp = Blueprint('cravings', __name__)
+
+_LEGACY_PATCH_KEYS = {
+    'outcome',
+    'duration_minutes',
+    'mood_before',
+    'mood_after',
+    'stress_level',
+    'physical_symptoms',
+    'situation_context',
+    'notes',
+    'outcome_notes',
+}
+_LEGACY_KEYS = {'intensity', 'trigger'} | _LEGACY_PATCH_KEYS
+_LEGACY_INTEGER_FIELDS = {
+    'intensity',
+    'duration_minutes',
+    'mood_before',
+    'mood_after',
+    'stress_level',
+}
+
+
+def _legacy_error(message, status=400):
+    response = jsonify(error=message)
+    response.status_code = status
+    return _deprecate_craving_response(response)
+
+
+def _deprecate_craving_response(response):
+    response.headers['Deprecation'] = 'true'
+    response.headers['Sunset'] = 'Thu, 31 Dec 2026 23:59:59 GMT'
+    response.headers['Link'] = '</api/cravings>; rel="successor-version"'
+    return response
+
+
+def _legacy_integer(value):
+    if not isinstance(value, str):
+        return value
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if re.fullmatch(r'[+-]?\d+', normalized) is None:
+        return value
+    return int(normalized)
+
+
+def _first_validation_message(exc):
+    for messages in exc.field_errors.values():
+        if messages:
+            return messages[0]
+    return 'Check the provided craving details and try again.'
 
 @cravings_bp.route('/cravings', methods=['GET'])
 @login_required
@@ -30,71 +96,64 @@ def cravings_page():
 @cravings_bp.route('/api/cravings', methods=['POST'])
 @login_required
 def add_craving():
-    """API endpoint to add a new enhanced craving entry."""
-    try:
-        user = get_current_user()
-        data = request.get_json()
-        
-        # Convert numeric fields and validate
-        try:
-            intensity = int(data.get('intensity')) if data.get('intensity') is not None and data.get('intensity') != '' else None
-            duration_minutes = int(data.get('duration_minutes')) if data.get('duration_minutes') is not None and data.get('duration_minutes') != '' else None
-            mood_before = int(data.get('mood_before')) if data.get('mood_before') is not None and data.get('mood_before') != '' else None
-            mood_after = int(data.get('mood_after')) if data.get('mood_after') is not None and data.get('mood_after') != '' else None
-            stress_level = int(data.get('stress_level')) if data.get('stress_level') is not None and data.get('stress_level') != '' else None
-        except (ValueError, TypeError):
-            return jsonify(error="Invalid numeric value for one of the fields."), 400
+    """Deprecated adapter over the canonical create and update services."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return _legacy_error('Send one JSON object.')
 
-        # Required fields
-        if intensity is None or not (1 <= intensity <= 10):
-            return jsonify(error="Intensity (1-10) is required."), 400
-        
-        # Optional enhanced fields
-        trigger = data.get('trigger', '').strip() or None
-        notes = data.get('notes', '').strip() or None
-        physical_symptoms = data.get('physical_symptoms', [])
-        situation_context = data.get('situation_context', '').strip() or None
-        outcome = data.get('outcome', '').strip() or None
-        outcome_notes = data.get('outcome_notes', '').strip() or None
-        
-        # Validate optional numeric fields
-        if duration_minutes is not None and (duration_minutes < 0 or duration_minutes > 1440):
-            return jsonify(error="Duration must be between 0 and 1440 minutes."), 400
-        
-        if mood_before is not None and not (1 <= mood_before <= 10):
-            return jsonify(error="Mood before must be between 1 and 10."), 400
-            
-        if mood_after is not None and not (1 <= mood_after <= 10):
-            return jsonify(error="Mood after must be between 1 and 10."), 400
-            
-        if stress_level is not None and not (1 <= stress_level <= 10):
-            return jsonify(error="Stress level must be between 1 and 10."), 400
-        
-        if outcome and outcome not in ['resisted', 'used_nicotine', 'used_alternative']:
-            return jsonify(error="Invalid outcome value."), 400
-        
-        # Create craving using service
-        craving = create_craving(
-            user_id=user.id,
-            intensity=intensity,
-            trigger=trigger,
-            notes=notes,
-            duration_minutes=duration_minutes,
-            physical_symptoms=physical_symptoms,
-            situation_context=situation_context,
-            outcome=outcome,
-            outcome_notes=outcome_notes,
-            mood_before=mood_before,
-            mood_after=mood_after,
-            stress_level=stress_level
+    unknown = sorted(set(data) - _LEGACY_KEYS)
+    if unknown:
+        return _legacy_error('This field is not supported.')
+
+    user = get_current_user()
+    instant = datetime.now(timezone.utc)
+    resolved_timezone = resolve_timezone(user.timezone)
+    raw_intensity = _legacy_integer(data.get('intensity'))
+    create_body = {
+        'client_event_id': str(uuid4()),
+        'intensity': raw_intensity,
+        'trigger': data.get('trigger'),
+        'occurred_at_local': instant.astimezone(
+            resolved_timezone
+        ).isoformat(),
+        'timezone': resolved_timezone.zone,
+    }
+    patch_body = {}
+    for field in _LEGACY_PATCH_KEYS:
+        if field not in data:
+            continue
+        value = data[field]
+        if field in _LEGACY_INTEGER_FIELDS:
+            value = _legacy_integer(value)
+        if field == 'outcome' and isinstance(value, str) and not value.strip():
+            continue
+        patch_body[field] = value
+
+    try:
+        create_input = parse_create_craving_request(create_body, now=instant)
+        patch_input = (
+            parse_update_craving_request(patch_body) if patch_body else None
         )
-        
-        current_app.logger.info(f'Enhanced craving logged for user {user.id}')
-        return jsonify(craving.to_dict()), 201
-        
-    except Exception as e:
-        current_app.logger.error(f'Add craving error: {e}')
-        return jsonify(error="Failed to log craving."), 500
+    except (ApiValidationError, InvalidLocalTimeError) as exc:
+        return _legacy_error(_first_validation_message(exc))
+
+    try:
+        result = CravingService.create_idempotent(user.id, create_input)
+        craving = result.craving
+        if patch_input is not None:
+            craving = CravingService.update_owned(
+                user.id, craving.id, patch_input
+            )
+    except CravingValidationError as exc:
+        return _legacy_error(_first_validation_message(exc))
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception('Legacy craving adapter failed')
+        return _legacy_error('Failed to log craving.', status=500)
+
+    response = jsonify(craving.to_dict())
+    response.status_code = 201
+    return _deprecate_craving_response(response)
 
 @cravings_bp.route('/api/cravings', methods=['GET'])
 @login_required

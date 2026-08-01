@@ -15,14 +15,22 @@ from .password_reset import PasswordReset  # noqa: F401
 from .email_verification import EmailVerification  # noqa: F401
 from .user_preferences import UserPreferences  # noqa: F401
 from .user_settings import UserSettings  # noqa: F401
+from .user_preferred_pouch import UserPreferredPouch  # noqa: F401
 from .notification import NotificationQueue, NotificationHistory  # noqa: F401
 from .user_activity import UserActivity  # noqa: F401
 from .craving import Craving  # noqa: F401
+from .reduction_plan import ReductionPlan  # noqa: F401
+from .plan_revision import PlanRevision  # noqa: F401
+from .plan_day import PlanDay  # noqa: F401
+from .plan_status_event import PlanStatusEvent  # noqa: F401
+from .daily_check_in import DailyCheckIn  # noqa: F401
+from .onboarding_draft import OnboardingDraft  # noqa: F401
 
 
 __all__ = [
     "User", "Pouch", "Log", "Goal", "PasswordReset", "EmailVerification", "UserPreferences", 
-    "UserSettings", "NotificationQueue", "NotificationHistory", "UserActivity", "Craving",
+    "UserSettings", "UserPreferredPouch", "NotificationQueue", "NotificationHistory", "UserActivity", "Craving",
+    "ReductionPlan", "PlanRevision", "PlanDay", "PlanStatusEvent", "DailyCheckIn", "OnboardingDraft",
     "init_default_pouches"
 ]
 

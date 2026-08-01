@@ -1,16 +1,111 @@
 from flask import Blueprint, render_template, jsonify, request, current_app, redirect, url_for
-from datetime import date, datetime, timedelta
-from models import User, Log, Pouch, Goal
-from extensions import db
+from datetime import date, datetime, time, timedelta
+
+import pytz
+
+from models import Log, Goal
 from routes.auth import login_required, get_current_user
-from services import get_user_daily_intake, get_user_current_time_info
-from services.timezone_service import get_current_user_time, get_user_day_boundaries, get_current_user_day
-from sqlalchemy import func, desc
-import json
+from services.log_service import (
+    group_logs_by_effective_day,
+    log_local_datetime,
+    logs_for_user_interval,
+    logs_for_user_window,
+    summarize_logs,
+)
+from services.timezone_service import (
+    get_user_day_window,
+    resolve_timezone,
+    to_naive_utc,
+)
+from sqlalchemy import desc
 
 from services.pouch_service import *
 
 dashboard_bp = Blueprint('dashboard', __name__, template_folder="../templates/dashboard")
+
+
+def _user_reset_time(user):
+    preferences = user.preferences
+    if preferences and preferences.daily_reset_time:
+        return preferences.daily_reset_time
+    return time.min
+
+
+def _current_user_day(resolved_timezone, reset_time):
+    """Return the effective user day and one retained current instant."""
+    now_utc = datetime.now(pytz.UTC)
+    local_now = now_utc.astimezone(resolved_timezone)
+    candidate_date = local_now.date()
+    candidate_window = get_user_day_window(
+        resolved_timezone.zone, candidate_date, reset_time
+    )
+    if now_utc < candidate_window.start_utc:
+        candidate_date -= timedelta(days=1)
+    return candidate_date, local_now, now_utc
+
+
+def _day_summary(user_id, resolved_timezone, target_date, reset_time):
+    window = get_user_day_window(
+        resolved_timezone.zone, target_date, reset_time
+    )
+    summary = summarize_logs(logs_for_user_window(user_id, window))
+    return {
+        'total_pouches': summary['total_pouches'],
+        'total_mg': float(summary['total_mg']),
+        'sessions': summary['total_logs'],
+        'unknown_strength_count': summary['unknown_strength_count'],
+    }
+
+
+def _bounded_positive_int(value, default, maximum):
+    """Normalize chart ranges without allowing empty or unbounded work."""
+    if value is None or value < 1:
+        return default
+    return min(value, maximum)
+
+
+def _summaries_for_date_range(
+        user_id, resolved_timezone, start_date, end_date, reset_time):
+    """Fetch one canonical interval and summarize it by effective day."""
+    start_window = get_user_day_window(
+        resolved_timezone.zone, start_date, reset_time
+    )
+    end_window = get_user_day_window(
+        resolved_timezone.zone, end_date, reset_time
+    )
+    logs = logs_for_user_interval(
+        user_id, start_window.start_utc, end_window.end_utc
+    )
+    grouped = group_logs_by_effective_day(
+        logs, resolved_timezone, reset_time
+    )
+    summaries = {}
+    current_date = start_date
+    while current_date <= end_date:
+        summary = summarize_logs(grouped.get(current_date, ()))
+        summaries[current_date] = {
+            'total_pouches': summary['total_pouches'],
+            'total_mg': float(summary['total_mg']),
+            'sessions': summary['total_logs'],
+            'unknown_strength_count': summary['unknown_strength_count'],
+        }
+        current_date += timedelta(days=1)
+    return summaries
+
+
+def _logs_for_local_days(
+        user_id, resolved_timezone, end_date, days, reset_time):
+    """Return logs in ``days`` canonical user days ending at ``end_date``."""
+    start_date = end_date - timedelta(days=days - 1)
+    start_window = get_user_day_window(
+        resolved_timezone.zone, start_date, reset_time
+    )
+    end_window = get_user_day_window(
+        resolved_timezone.zone, end_date, reset_time
+    )
+    return logs_for_user_interval(
+        user_id, start_window.start_utc, end_window.end_utc
+    )
 
 @dashboard_bp.route('/')
 @login_required
@@ -22,26 +117,29 @@ def index():
             current_app.logger.error('Dashboard error: No current user found')
             return redirect(url_for('auth.login'))
         
-        # Use timezone-aware current day based on user's reset time
-        if user.timezone:
-            reset_time = None
-            if user.preferences and user.preferences.daily_reset_time:
-                reset_time = user.preferences.daily_reset_time
-            today = get_current_user_day(user.timezone, reset_time)
-        else:
-            today = date.today()
+        resolved_timezone = resolve_timezone(user.timezone)
+        reset_time = _user_reset_time(user)
+        today, local_now, now_utc = _current_user_day(
+            resolved_timezone, reset_time
+        )
         
         default_pouches, user_pouches = get_sorted_pouches(user)
         
         # Get today's summary with timezone support
-        today_intake = get_user_daily_intake(user, None, use_timezone=True)
+        today_intake = _day_summary(
+            user.id, resolved_timezone, today, reset_time
+        )
         
         # Get recent logs (last 7 days) - use timezone-aware date range
-        week_ago = today - timedelta(days=7)
+        now_utc_naive = to_naive_utc(now_utc)
+        week_ago = now_utc_naive - timedelta(days=7)
         recent_logs = Log.query.filter(
             Log.user_id == user.id,
-            Log.log_date >= week_ago
-        ).order_by(desc(Log.log_date), desc(Log.log_time)).limit(10).all()
+            Log.log_time >= week_ago,
+            Log.log_time < now_utc_naive,
+        ).order_by(
+            desc(Log.log_time), desc(Log.created_at), desc(Log.id)
+        ).limit(10).all()
         
         # Get active goal
         active_goal = Goal.query.filter_by(user_id=user.id, is_active=True).first()
@@ -66,18 +164,13 @@ def index():
         # Calculate average pouches per hour (simple calculation)
         avg_pouches_per_hour = 0
         if today_intake['total_pouches'] > 0:
-            current_hour = datetime.now().hour
+            current_hour = local_now.hour
             if current_hour > 0:
                 avg_pouches_per_hour = round(today_intake['total_pouches'] / current_hour, 1)
         
         # Get timezone-aware date and time for modal
-        if user.timezone:
-            _, user_today, user_current_time = get_current_user_time(user.timezone)
-            today_str = user_today.isoformat()
-            current_time_str = user_current_time.strftime('%H:%M')
-        else:
-            today_str = date.today().isoformat()
-            current_time_str = datetime.now().time().strftime('%H:%M')
+        today_str = local_now.date().isoformat()
+        current_time_str = local_now.time().strftime('%H:%M')
         
         # Calculate 7-day stats
         total_mg_7_days = 0
@@ -85,7 +178,9 @@ def index():
         
         for i in range(7):
             d = today - timedelta(days=i)
-            daily_intake = get_user_daily_intake(user, d, use_timezone=True)
+            daily_intake = _day_summary(
+                user.id, resolved_timezone, d, reset_time
+            )
             total_mg_7_days += daily_intake['total_mg']
             total_pouches_7_days += daily_intake['total_pouches']
 
@@ -124,7 +219,9 @@ def index():
         
         current_date = this_week_start
         while current_date <= today:
-            daily_intake = get_user_daily_intake(user, current_date, use_timezone=True)
+            daily_intake = _day_summary(
+                user.id, resolved_timezone, current_date, reset_time
+            )
             this_week_pouches += daily_intake['total_pouches']
             current_date += timedelta(days=1)
         
@@ -132,7 +229,9 @@ def index():
         
         current_date = last_week_start
         while current_date <= last_week_end:
-            daily_intake = get_user_daily_intake(user, current_date, use_timezone=True)
+            daily_intake = _day_summary(
+                user.id, resolved_timezone, current_date, reset_time
+            )
             last_week_pouches += daily_intake['total_pouches']
             current_date += timedelta(days=1)
         
@@ -144,18 +243,14 @@ def index():
             elif change_percent < -5:
                 insights.append(f"Great job! Your pouch intake is down {abs(change_percent)}% compared to last week.")
         
-        # Most active hour (keep simple date filtering for hourly analysis)
-        most_active_hour = db.session.query(
-            func.extract('hour', Log.log_time).label('hour'),
-            func.sum(Log.quantity).label('total_pouches')
-        ).filter(
-            Log.user_id == user.id,
-            Log.log_date >= today - timedelta(days=30),
-            Log.log_time.isnot(None)
-        ).group_by(func.extract('hour', Log.log_time)).order_by(desc('total_pouches')).first()
-        
-        if most_active_hour:
-            hour = int(most_active_hour.hour)
+        hourly_totals = [0] * 24
+        for log in _logs_for_local_days(
+                user.id, resolved_timezone, today, 30, reset_time):
+            hour = log_local_datetime(log, resolved_timezone).hour
+            hourly_totals[hour] += log.quantity or 0
+
+        if any(hourly_totals):
+            hour = max(range(24), key=hourly_totals.__getitem__)
             insights.append(f"Your most active time for intake is around {hour:02d}:00.")
         
         return render_template('dashboard.html',
@@ -188,21 +283,18 @@ def daily_intake_chart():
         if not user:
             current_app.logger.error('Daily intake chart error: No current user found')
             return jsonify({'success': False, 'error': 'User not authenticated'})
-        days = request.args.get('days', 30, type=int)
+        days = _bounded_positive_int(
+            request.args.get('days', 30, type=int), 1, 365
+        )
         
-        # Use timezone-aware date range based on user's reset time
-        if user.timezone:
-            # Get user's current day and work backwards
-            reset_time = None
-            if user.preferences and user.preferences.daily_reset_time:
-                reset_time = user.preferences.daily_reset_time
-            
-            end_date = get_current_user_day(user.timezone, reset_time)
-            start_date = end_date - timedelta(days=days-1)
-        else:
-            # Fallback to simple date range
-            end_date = date.today()
-            start_date = end_date - timedelta(days=days-1)
+        resolved_timezone = resolve_timezone(user.timezone)
+        reset_time = _user_reset_time(user)
+        end_date, _, _ = _current_user_day(resolved_timezone, reset_time)
+        start_date = end_date - timedelta(days=days-1)
+
+        daily_summaries = _summaries_for_date_range(
+            user.id, resolved_timezone, start_date, end_date, reset_time
+        )
         
         # Create complete date range using timezone-aware daily intake
         chart_data = []
@@ -210,12 +302,13 @@ def daily_intake_chart():
         
         while current_date <= end_date:
             # Get daily intake for this specific date using timezone boundaries
-            daily_intake = get_user_daily_intake(user, current_date, use_timezone=True)
+            daily_intake = daily_summaries[current_date]
             
             chart_data.append({
                 'date': current_date.strftime('%Y-%m-%d'),
                 'pouches': daily_intake['total_pouches'],
-                'mg': daily_intake['total_mg']
+                'mg': daily_intake['total_mg'],
+                'unknown_strength_count': daily_intake['unknown_strength_count'],
             })
             current_date += timedelta(days=1)
         
@@ -234,21 +327,18 @@ def weekly_averages():
     """API endpoint for weekly averages chart with timezone-aware calculations"""
     try:
         user = get_current_user()
-        weeks = request.args.get('weeks', 8, type=int)
+        weeks = _bounded_positive_int(
+            request.args.get('weeks', 8, type=int), 1, 52
+        )
         
-        # Use timezone-aware date range based on user's reset time
-        if user.timezone:
-            # Get user's current day and work backwards
-            reset_time = None
-            if user.preferences and user.preferences.daily_reset_time:
-                reset_time = user.preferences.daily_reset_time
-            
-            end_date = get_current_user_day(user.timezone, reset_time)
-            start_date = end_date - timedelta(weeks=weeks)
-        else:
-            # Fallback to simple date range
-            end_date = date.today()
-            start_date = end_date - timedelta(weeks=weeks)
+        resolved_timezone = resolve_timezone(user.timezone)
+        reset_time = _user_reset_time(user)
+        end_date, _, _ = _current_user_day(resolved_timezone, reset_time)
+        start_date = end_date - timedelta(days=(weeks * 7) - 1)
+
+        daily_summaries = _summaries_for_date_range(
+            user.id, resolved_timezone, start_date, end_date, reset_time
+        )
         
         # Get weekly data using timezone-aware daily intake
         weekly_data = []
@@ -260,13 +350,15 @@ def weekly_averages():
             # Calculate weekly totals using timezone-aware daily intake
             total_pouches = 0
             total_mg = 0
+            unknown_strength_count = 0
             days_in_week = 0
             
             week_date = current_date
             while week_date <= week_end:
-                daily_intake = get_user_daily_intake(user, week_date, use_timezone=True)
+                daily_intake = daily_summaries[week_date]
                 total_pouches += daily_intake['total_pouches']
                 total_mg += daily_intake['total_mg']
+                unknown_strength_count += daily_intake['unknown_strength_count']
                 days_in_week += 1
                 week_date += timedelta(days=1)
             
@@ -280,7 +372,8 @@ def weekly_averages():
                 'avg_pouches': avg_pouches,
                 'avg_mg': avg_mg,
                 'total_pouches': total_pouches,
-                'total_mg': total_mg
+                'total_mg': total_mg,
+                'unknown_strength_count': unknown_strength_count,
             })
             
             current_date = week_end + timedelta(days=1)
@@ -300,26 +393,19 @@ def hourly_distribution():
     """API endpoint for hourly usage distribution"""
     try:
         user = get_current_user()
-        days = request.args.get('days', 30, type=int)
+        days = _bounded_positive_int(
+            request.args.get('days', 30, type=int), 1, 365
+        )
         
-        # Simple date range
-        end_date = date.today()
-        start_date = end_date - timedelta(days=days-1)
-        
-        hourly_data = db.session.query(
-            func.extract('hour', Log.log_time).label('hour'),
-            func.sum(Log.quantity).label('total_pouches')
-        ).filter(
-            Log.user_id == user.id,
-            Log.log_date >= start_date,
-            Log.log_date <= end_date,
-            Log.log_time.isnot(None)
-        ).group_by(func.extract('hour', Log.log_time)).all()
-        
+        resolved_timezone = resolve_timezone(user.timezone)
+        reset_time = _user_reset_time(user)
+        end_date, _, _ = _current_user_day(resolved_timezone, reset_time)
+
         distribution = [0] * 24
-        for row in hourly_data:
-            hour = int(row.hour)
-            distribution[hour] = int(row.total_pouches)
+        for log in _logs_for_local_days(
+                user.id, resolved_timezone, end_date, days, reset_time):
+            hour = log_local_datetime(log, resolved_timezone).hour
+            distribution[hour] += log.quantity or 0
         
         chart_data = []
         for hour in range(24):
