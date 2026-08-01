@@ -2,9 +2,15 @@
 
 {% block title %}Advanced Analytics & Insights - Nicotine Tracker{% endblock %}
 
+{% block analytics_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/apexcharts.css') }}">
+{% endblock %}
+
+{% block preline_js %}{% endblock %}
+
 {% block content %}
-<div class="px-4 sm:px-6 lg:px-8">
-    <div class="flex items-center justify-between">
+<div class="analytics-page px-4 sm:px-6 lg:px-8">
+    <div class="analytics-toolbar flex items-center justify-between">
         <div>
             <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Advanced Analytics & Insights</h1>
             <p class="text-sm text-gray-700 dark:text-gray-300">Comprehensive analysis of your nicotine consumption patterns</p>
@@ -142,31 +148,43 @@
         <!-- Consumption Trend -->
         <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
             <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-medium text-gray-900 dark:text-white">Consumption Trend</h3>
+                <h3 id="consumption-trend-title" class="text-lg font-medium text-gray-900 dark:text-white">Consumption Trend</h3>
                 <div class="inline-flex rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 p-1">
                     <button class="trend-toggle active rounded-md px-3 py-1 text-xs font-medium bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-sm" data-type="daily">Daily</button>
                     <button class="trend-toggle rounded-md px-3 py-1 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300" data-type="weekly">Weekly</button>
                 </div>
             </div>
-            <div id="consumption-trend-chart" class="h-64"></div>
+            <div id="consumption-trend-chart" class="analytics-chart h-64" role="img" aria-labelledby="consumption-trend-title"></div>
+            <p class="analytics-chart__status" role="status" hidden></p>
+            <div class="analytics-data" tabindex="0" role="region" aria-label="Consumption trend data">
+                <table><caption>Consumption trend data</caption><thead><tr><th scope="col">Date</th><th scope="col">Pouches</th></tr></thead>
+                    <tbody data-analytics-key="trend">{% for point in initial_insights.get('consumption_trend', []) %}<tr><th scope="row">{{ point.date }}</th><td>{{ point.value }}</td></tr>{% else %}<tr><td colspan="2">No consumption logged in this range.</td></tr>{% endfor %}</tbody>
+                </table>
+            </div>
         </div>
 
         <!-- Time of Day Distribution -->
         <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Time of Day Distribution</h3>
-            <div id="time-of-day-chart" class="h-64"></div>
+            <h3 id="time-of-day-title" class="text-lg font-medium text-gray-900 dark:text-white mb-4">Time of Day Distribution</h3>
+            <div id="time-of-day-chart" class="analytics-chart h-64" role="img" aria-labelledby="time-of-day-title"></div>
+            <p class="analytics-chart__status" role="status" hidden></p>
+            <div class="analytics-data" tabindex="0" role="region" aria-label="Time of day distribution data"><table><caption>Time of day distribution data</caption><thead><tr><th scope="col">Time</th><th scope="col">Pouches</th></tr></thead><tbody data-analytics-key="timeOfDay">{% for label, value in initial_insights.get('consumption_by_time_of_day', {}).items() %}<tr><th scope="row">{{ label }}</th><td>{{ value }}</td></tr>{% else %}<tr><td colspan="2">No consumption logged in this range.</td></tr>{% endfor %}</tbody></table></div>
         </div>
 
         <!-- Day of Week Pattern -->
         <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Weekly Pattern</h3>
-            <div id="day-of-week-chart" class="h-64"></div>
+            <h3 id="day-of-week-title" class="text-lg font-medium text-gray-900 dark:text-white mb-4">Weekly Pattern</h3>
+            <div id="day-of-week-chart" class="analytics-chart h-64" role="img" aria-labelledby="day-of-week-title"></div>
+            <p class="analytics-chart__status" role="status" hidden></p>
+            <div class="analytics-data" tabindex="0" role="region" aria-label="Weekly pattern data"><table><caption>Weekly pattern data</caption><thead><tr><th scope="col">Day</th><th scope="col">Pouches</th></tr></thead><tbody data-analytics-key="dayOfWeek">{% for label, value in initial_insights.get('consumption_by_day_of_week', {}).items() %}<tr><th scope="row">{{ label }}</th><td>{{ value }}</td></tr>{% else %}<tr><td colspan="2">No consumption logged in this range.</td></tr>{% endfor %}</tbody></table></div>
         </div>
 
         <!-- Brand Analysis -->
         <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Brand Preferences</h3>
-            <div id="brand-chart" class="h-64"></div>
+            <h3 id="brand-title" class="text-lg font-medium text-gray-900 dark:text-white mb-4">Brand Preferences</h3>
+            <div id="brand-chart" class="analytics-chart h-64" role="img" aria-labelledby="brand-title"></div>
+            <p class="analytics-chart__status" role="status" hidden></p>
+            <div class="analytics-data" tabindex="0" role="region" aria-label="Brand preference data"><table><caption>Brand preference data</caption><thead><tr><th scope="col">Brand</th><th scope="col">Pouches</th></tr></thead><tbody data-analytics-key="brands">{% for label, value in initial_insights.get('brand_analysis', {}).items() %}<tr><th scope="row">{{ label }}</th><td>{{ value }}</td></tr>{% else %}<tr><td colspan="2">No brand data in this range.</td></tr>{% endfor %}</tbody></table></div>
         </div>
     </div>
 
@@ -175,7 +193,7 @@
         <!-- Consumption Heatmap -->
         <div class="lg:col-span-2 bg-white dark:bg-gray-800 shadow rounded-lg p-6">
             <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-medium text-gray-900 dark:text-white">Consumption Heatmap</h3>
+                <h3 id="heatmap-title" class="text-lg font-medium text-gray-900 dark:text-white">Consumption Heatmap</h3>
                 <div class="text-xs text-gray-500 dark:text-gray-400">
                     <span class="inline-flex items-center">
                         <span class="mr-1">📅</span>
@@ -183,7 +201,9 @@
                     </span>
                 </div>
             </div>
-            <div id="heatmap-chart" class="h-80"></div>
+            <div id="heatmap-chart" class="analytics-chart h-80" role="img" aria-labelledby="heatmap-title"></div>
+            <p class="analytics-chart__status" role="status" hidden></p>
+            <div class="analytics-data" tabindex="0" role="region" aria-label="Consumption heatmap data"><table><caption>Consumption heatmap data</caption><thead><tr><th scope="col">Day</th><th scope="col">Pouches</th></tr></thead><tbody data-analytics-key="heatmap">{% for series in initial_insights.get('heatmap_data', []) %}<tr><th scope="row">{{ series.name }}</th><td>{{ series.data|sum }}</td></tr>{% else %}<tr><td colspan="2">No hourly pattern available.</td></tr>{% endfor %}</tbody></table></div>
             <div class="mt-3 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
                 <span>12 AM</span>
                 <span>6 AM</span>
@@ -231,465 +251,11 @@
     </div>
 </div>
 
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    let currentTimeRange = 30;
-    let currentTrendType = 'daily';
-    let charts = {};
-    let insightsData = null;
 
-    // Get theme configuration
-    function getThemeConfig() {
-        const isDark = document.documentElement.classList.contains('dark');
-        return {
-            mode: isDark ? 'dark' : 'light',
-            palette: isDark ? 'palette2' : 'palette1',
-            background: isDark ? '#1f2937' : '#ffffff',
-            foreColor: isDark ? '#d1d5db' : '#374151'
-        };
-    }
+<script id="initial-insights-data" type="application/json">{{ initial_insights|tojson }}</script>
+{% endblock %}
 
-    // Initialize charts
-    function initializeCharts() {
-        const theme = getThemeConfig();
-
-        // Consumption Trend Chart
-        charts.trendChart = new ApexCharts(document.querySelector("#consumption-trend-chart"), {
-            chart: { 
-                type: 'line', 
-                height: 250, 
-                toolbar: { show: false },
-                background: 'transparent',
-                fontFamily: 'Inter, system-ui, sans-serif'
-            },
-            series: [{ name: 'Pouches', data: [] }],
-            xaxis: { 
-                type: 'datetime',
-                labels: {
-                    style: { colors: theme.foreColor }
-                }
-            },
-            yaxis: {
-                labels: {
-                    style: { colors: theme.foreColor }
-                }
-            },
-            stroke: { curve: 'smooth', width: 3 },
-            colors: ['#3B82F6'],
-            theme: { mode: theme.mode },
-            grid: {
-                borderColor: theme.mode === 'dark' ? '#374151' : '#e5e7eb'
-            },
-            tooltip: {
-                theme: theme.mode
-            }
-        });
-        charts.trendChart.render();
-
-        // Time of Day Chart
-        charts.timeChart = new ApexCharts(document.querySelector("#time-of-day-chart"), {
-            chart: { 
-                type: 'donut', 
-                height: 250,
-                background: 'transparent',
-                fontFamily: 'Inter, system-ui, sans-serif'
-            },
-            series: [],
-            labels: [],
-            colors: ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6'],
-            theme: { mode: theme.mode },
-            legend: {
-                labels: {
-                    colors: theme.foreColor
-                }
-            },
-            tooltip: {
-                theme: theme.mode
-            },
-            plotOptions: {
-                pie: {
-                    donut: {
-                        labels: {
-                            show: true,
-                            total: {
-                                show: true,
-                                color: theme.foreColor
-                            }
-                        }
-                    }
-                }
-            },
-            noData: {
-                text: 'No data available',
-                align: 'center',
-                verticalAlign: 'middle',
-                offsetX: 0,
-                offsetY: 0,
-                style: {
-                    color: theme.foreColor,
-                    fontSize: '14px'
-                }
-            }
-        });
-        charts.timeChart.render();
-
-        // Day of Week Chart
-        charts.dayChart = new ApexCharts(document.querySelector("#day-of-week-chart"), {
-            chart: { 
-                type: 'bar', 
-                height: 250, 
-                toolbar: { show: false },
-                background: 'transparent',
-                fontFamily: 'Inter, system-ui, sans-serif'
-            },
-            series: [{ name: 'Pouches', data: [] }],
-            xaxis: { 
-                categories: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-                labels: {
-                    style: { colors: theme.foreColor }
-                }
-            },
-            yaxis: {
-                labels: {
-                    style: { colors: theme.foreColor }
-                }
-            },
-            colors: ['#3B82F6'],
-            theme: { mode: theme.mode },
-            grid: {
-                borderColor: theme.mode === 'dark' ? '#374151' : '#e5e7eb'
-            },
-            tooltip: {
-                theme: theme.mode
-            }
-        });
-        charts.dayChart.render();
-
-        // Brand Chart
-        charts.brandChart = new ApexCharts(document.querySelector("#brand-chart"), {
-            chart: { 
-                type: 'pie', 
-                height: 250,
-                background: 'transparent',
-                fontFamily: 'Inter, system-ui, sans-serif'
-            },
-            series: [],
-            labels: [],
-            colors: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'],
-            theme: { mode: theme.mode },
-            legend: {
-                labels: {
-                    colors: theme.foreColor
-                }
-            },
-            tooltip: {
-                theme: theme.mode
-            },
-            noData: {
-                text: 'No brand data available',
-                align: 'center',
-                verticalAlign: 'middle',
-                offsetX: 0,
-                offsetY: 0,
-                style: {
-                    color: theme.foreColor,
-                    fontSize: '14px'
-                }
-            }
-        });
-        charts.brandChart.render();
-
-        // Heatmap Chart
-        charts.heatmapChart = new ApexCharts(document.querySelector("#heatmap-chart"), {
-            chart: { 
-                type: 'heatmap', 
-                height: 320,
-                background: 'transparent',
-                fontFamily: 'Inter, system-ui, sans-serif'
-            },
-            series: [],
-            xaxis: { 
-                type: 'category',
-                categories: Array.from({length: 24}, (_, i) => `${i}:00`),
-                labels: {
-                    style: { colors: theme.foreColor }
-                }
-            },
-            yaxis: {
-                labels: {
-                    style: { colors: theme.foreColor }
-                }
-            },
-            colors: ['#3B82F6'],
-            theme: { mode: theme.mode },
-            tooltip: {
-                theme: theme.mode
-            },
-            plotOptions: {
-                heatmap: {
-                    shadeIntensity: 0.5,
-                    colorScale: {
-                        ranges: [
-                            { from: 0, to: 0, color: theme.mode === 'dark' ? '#374151' : '#f3f4f6' },
-                            { from: 1, to: 2, color: '#dbeafe' },
-                            { from: 3, to: 5, color: '#93c5fd' },
-                            { from: 6, to: 10, color: '#3b82f6' },
-                            { from: 11, to: 999, color: '#1d4ed8' }
-                        ]
-                    }
-                }
-            }
-        });
-        charts.heatmapChart.render();
-    }
-
-    // Load insights data
-    function loadInsights() {
-        fetch(`/insights/api/insights?days=${currentTimeRange}`)
-            .then(response => response.json())
-            .then(data => {
-                insightsData = data;
-                updateMetrics(data);
-                updateCharts(data);
-                updateAIInsights(data);
-            })
-            .catch(error => {
-                console.error('Error loading insights:', error);
-                showErrorState();
-            });
-    }
-
-    // Update metric cards
-    function updateMetrics(data) {
-        document.getElementById('total-pouches').textContent = data.total_pouches || 0;
-        document.getElementById('daily-average').textContent = data.daily_average ? data.daily_average.toFixed(1) : '--';
-        document.getElementById('peak-day').textContent = data.peak_day || '--';
-        document.getElementById('avg-time-between').textContent = data.average_time_between_pouches || '--';
-        document.getElementById('total-nicotine').textContent = data.total_nicotine ? data.total_nicotine.toFixed(1) : '--';
-        document.getElementById('best-day').textContent = data.best_day || '--';
-        document.getElementById('consistency-score').textContent = data.consistency_score ? data.consistency_score.toFixed(0) + '%' : '--%';
-        document.getElementById('trend-direction').textContent = data.trend_direction || '--';
-    }
-
-    // Aggregate daily data to weekly
-    function aggregateToWeekly(dailyData) {
-        if (!dailyData || dailyData.length === 0) return [];
-        
-        const weeklyData = {};
-        
-        dailyData.forEach(point => {
-            const date = new Date(point.date);
-            const weekStart = new Date(date);
-            weekStart.setDate(date.getDate() - date.getDay()); // Start of week (Sunday)
-            const weekKey = weekStart.toISOString().split('T')[0];
-            
-            if (!weeklyData[weekKey]) {
-                weeklyData[weekKey] = { date: weekKey, value: 0 };
-            }
-            weeklyData[weekKey].value += point.value;
-        });
-        
-        return Object.values(weeklyData).sort((a, b) => new Date(a.date) - new Date(b.date));
-    }
-
-    // Update all charts
-    function updateCharts(data) {
-        // Update trend chart based on current type
-        if (data.consumption_trend) {
-            let trendData = data.consumption_trend;
-            let seriesName = 'Daily Pouches';
-            
-            if (currentTrendType === 'weekly') {
-                trendData = aggregateToWeekly(data.consumption_trend);
-                seriesName = 'Weekly Pouches';
-            }
-            
-            charts.trendChart.updateSeries([{
-                name: seriesName,
-                data: trendData.map(point => ({
-                    x: new Date(point.date).getTime(),
-                    y: point.value
-                }))
-            }]);
-        }
-
-        // Update time of day chart with proper labels
-        if (data.consumption_by_time_of_day) {
-            const timeData = data.consumption_by_time_of_day;
-            const values = Object.values(timeData);
-            const labels = Object.keys(timeData);
-            
-            if (values.length > 0 && values.some(v => v > 0)) {
-                charts.timeChart.updateOptions({ 
-                    labels: labels,
-                    noData: { text: undefined }
-                }, false, true);
-                charts.timeChart.updateSeries(values);
-            } else {
-                charts.timeChart.updateOptions({ 
-                    labels: [],
-                    noData: { text: 'No data available' }
-                }, false, true);
-                charts.timeChart.updateSeries([]);
-            }
-        } else {
-            charts.timeChart.updateOptions({ 
-                labels: [],
-                noData: { text: 'No data available' }
-            }, false, true);
-            charts.timeChart.updateSeries([]);
-        }
-
-        // Update day of week chart
-        if (data.consumption_by_day_of_week) {
-            const dayData = data.consumption_by_day_of_week;
-            const orderedDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-            const orderedValues = orderedDays.map(day => dayData[day] || 0);
-            charts.dayChart.updateSeries([{ name: 'Pouches', data: orderedValues }]);
-        }
-
-        // Update brand chart with proper labels
-        if (data.brand_analysis) {
-            const brandData = data.brand_analysis;
-            const values = Object.values(brandData);
-            const labels = Object.keys(brandData);
-            
-            if (values.length > 0 && values.some(v => v > 0)) {
-                charts.brandChart.updateOptions({ 
-                    labels: labels,
-                    noData: { text: undefined }
-                }, false, true);
-                charts.brandChart.updateSeries(values);
-            } else {
-                charts.brandChart.updateOptions({ 
-                    labels: [],
-                    noData: { text: 'No brand data available' }
-                }, false, true);
-                charts.brandChart.updateSeries([]);
-            }
-        } else {
-            charts.brandChart.updateOptions({ 
-                labels: [],
-                noData: { text: 'No brand data available' }
-            }, false, true);
-            charts.brandChart.updateSeries([]);
-        }
-
-        // Update heatmap
-        if (data.heatmap_data) {
-            charts.heatmapChart.updateSeries(data.heatmap_data);
-        }
-    }
-
-    // Update AI insights
-    function updateAIInsights(data) {
-        const insightsContainer = document.getElementById('ai-insights');
-        insightsContainer.innerHTML = '';
-
-        if (data.ai_insights && data.ai_insights.length > 0) {
-            data.ai_insights.forEach(insight => {
-                const div = document.createElement('div');
-                div.className = 'p-3 border border-gray-200 dark:border-gray-700 rounded-lg';
-                div.innerHTML = `
-                    <div class="flex items-start">
-                        <div class="flex-shrink-0">
-                            <span class="text-lg">${insight.icon || '💡'}</span>
-                        </div>
-                        <div class="ml-3">
-                            <h4 class="text-sm font-medium text-gray-900 dark:text-white">${insight.title}</h4>
-                            <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">${insight.description}</p>
-                            ${insight.recommendation ? `<p class="text-xs text-indigo-600 dark:text-indigo-400 mt-2">${insight.recommendation}</p>` : ''}
-                        </div>
-                    </div>
-                `;
-                insightsContainer.appendChild(div);
-            });
-        } else {
-            insightsContainer.innerHTML = `
-                <div class="text-center py-8">
-                    <div class="text-gray-400 dark:text-gray-500 text-4xl mb-4">🤖</div>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">No insights available yet. Keep tracking to see patterns!</p>
-                </div>
-            `;
-        }
-    }
-
-    // Show error state
-    function showErrorState() {
-        document.querySelectorAll('[id$="-chart"]').forEach(chart => {
-            chart.innerHTML = `
-                <div class="flex items-center justify-center h-full">
-                    <div class="text-center">
-                        <div class="text-gray-400 dark:text-gray-500 text-4xl mb-4">⚠️</div>
-                        <p class="text-sm text-gray-500 dark:text-gray-400">Error loading data</p>
-                    </div>
-                </div>
-            `;
-        });
-    }
-
-    // Event listeners
-    document.querySelectorAll('.dropdown-item').forEach(item => {
-        item.addEventListener('click', function(e) {
-            e.preventDefault();
-            const days = parseInt(this.dataset.days);
-            const text = this.textContent.trim();
-            
-            currentTimeRange = days;
-            document.getElementById('selected-range').textContent = text;
-            
-            // Close dropdown
-            const dropdown = document.querySelector('.hs-dropdown');
-            dropdown.classList.remove('hs-dropdown-open');
-            
-            loadInsights();
-        });
-    });
-
-    document.getElementById('export-data').addEventListener('click', function() {
-        window.open(`/insights/api/export?days=${currentTimeRange}`, '_blank');
-    });
-
-    // Trend toggle buttons
-    document.querySelectorAll('.trend-toggle').forEach(button => {
-        button.addEventListener('click', function() {
-            const newType = this.dataset.type;
-            if (newType === currentTrendType) return;
-            
-            currentTrendType = newType;
-            
-            // Update button styles
-            document.querySelectorAll('.trend-toggle').forEach(b => {
-                b.classList.remove('active', 'bg-white', 'dark:bg-gray-800', 'text-indigo-600', 'dark:text-indigo-400', 'shadow-sm');
-                b.classList.add('text-gray-500', 'dark:text-gray-400', 'hover:text-gray-700', 'dark:hover:text-gray-300');
-            });
-            this.classList.add('active', 'bg-white', 'dark:bg-gray-800', 'text-indigo-600', 'dark:text-indigo-400', 'shadow-sm');
-            this.classList.remove('text-gray-500', 'dark:text-gray-400', 'hover:text-gray-700', 'dark:hover:text-gray-300');
-            
-            // Update chart with current data
-            if (insightsData && insightsData.consumption_trend) {
-                let trendData = insightsData.consumption_trend;
-                let seriesName = 'Daily Pouches';
-                
-                if (currentTrendType === 'weekly') {
-                    trendData = aggregateToWeekly(insightsData.consumption_trend);
-                    seriesName = 'Weekly Pouches';
-                }
-                
-                charts.trendChart.updateSeries([{
-                    name: seriesName,
-                    data: trendData.map(point => ({
-                        x: new Date(point.date).getTime(),
-                        y: point.value
-                    }))
-                }]);
-            }
-        });
-    });
-
-    // Initialize
-    initializeCharts();
-    loadInsights();
-});
-</script>
+{% block analytics_js %}
+<script src="{{ url_for('static', filename='js/apexcharts.min.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/insights.js') }}"></script>
 {% endblock %}

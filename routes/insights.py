@@ -13,7 +13,11 @@ insights_bp = Blueprint('insights', __name__, template_folder="../templates/insi
 @login_required
 def insights_page():
     """Renders the enhanced insights and analytics page."""
-    return render_template('insights.html')
+    initial_insights = get_enhanced_insights(get_current_user().id, 30)
+    return render_template(
+        'insights.html',
+        initial_insights=initial_insights or {},
+    )
 
 @insights_bp.route('/api/insights', methods=['GET'])
 @login_required

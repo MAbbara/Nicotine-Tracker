@@ -37,6 +37,7 @@
   <meta name="apple-mobile-web-app-title" content="Nicotine Tracker">
   <meta name="mobile-web-app-capable" content="yes">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  {% block analytics_head %}{% endblock %}
   {% block head %}{% endblock %}
 </head>
 <body class="app-shell{% block body_class %}{% endblock %}">
@@ -86,6 +87,7 @@
   <script type="module" src="{{ url_for('static', filename='js/shell/theme.js') }}"></script>
   <script type="module" src="{{ url_for('static', filename='js/shell/navigation.js') }}"></script>
   <script type="module" src="{{ url_for('static', filename='js/shell/offline_status.js') }}"></script>
+  {% block analytics_js %}{% endblock %}
   {% block extra_js %}{% endblock %}
 </body>
 </html>

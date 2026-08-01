@@ -249,6 +249,23 @@ def index():
             hour = log_local_datetime(log, resolved_timezone).hour
             hourly_totals[hour] += log.quantity or 0
 
+        analytics_start = today - timedelta(days=29)
+        analytics_summaries = _summaries_for_date_range(
+            user.id, resolved_timezone, analytics_start, today, reset_time
+        )
+        analytics_trend = [
+            {
+                'date': day.isoformat(),
+                'pouches': summary['total_pouches'],
+                'mg': summary['total_mg'],
+            }
+            for day, summary in analytics_summaries.items()
+        ]
+        analytics_hourly = [
+            {'hour': f'{hour:02d}:00', 'pouches': total}
+            for hour, total in enumerate(hourly_totals)
+        ]
+
         if any(hourly_totals):
             hour = max(range(24), key=hourly_totals.__getitem__)
             insights.append(f"Your most active time for intake is around {hour:02d}:00.")
@@ -265,13 +282,22 @@ def index():
                              today=today_str,
                              current_time=current_time_str,
                              insights=insights,
+                             analytics_trend=analytics_trend,
+                             analytics_hourly=analytics_hourly,
                              user=user)
 
         
     except Exception as e:
         current_app.logger.error(f'Dashboard error: {e}')
         user = get_current_user()
-        return render_template('dashboard.html', error="Unable to load dashboard data", user=user, date=date)
+        return render_template(
+            'dashboard.html',
+            error="Unable to load dashboard data",
+            user=user,
+            date=date,
+            analytics_trend=[],
+            analytics_hourly=[],
+        )
 
 
 @dashboard_bp.route('/api/daily_intake_chart')

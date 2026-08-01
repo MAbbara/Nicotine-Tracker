@@ -1,177 +1,135 @@
-document.addEventListener('DOMContentLoaded', function () {
-    const dailyIntakeChartEl = document.getElementById('dailyIntakeChart');
-    const hourlyChartEl = document.getElementById('hourlyChart');
+import { enhanceChart, getEffectiveTheme, setChartFailure } from './analytics/runtime.js';
 
-    if (!dailyIntakeChartEl) {
-        return;
-    }
+function statusFor(target) {
+  return target?.parentElement?.querySelector('.analytics-chart__status') || null;
+}
 
-    let dailyIntakeChart;
-
-    const formatDate = (date) => {
-        const d = new Date(date);
-        let month = '' + (d.getMonth() + 1);
-        let day = '' + d.getDate();
-        const year = d.getFullYear();
-
-        if (month.length < 2) month = '0' + month;
-        if (day.length < 2) day = '0' + day;
-
-        return [year, month, day].join('-');
-    }
-
-    const fetchAndRenderDailyIntakeChart = (startDate, endDate) => {
-        let url = `/api/daily_intake`;
-        if (startDate && endDate) {
-            url += `?start_date=${startDate}&end_date=${endDate}`;
-        }
-
-        fetch(url)
-            .then(response => response.json())
-            .then(data => {
-                const dates = Object.keys(data);
-                const values = Object.values(data);
-
-                const isDark = document.documentElement.classList.contains('dark');
-                const seriesColor = isDark ? '#A78BFA' : '#8B5CF6';
-                const axisColor = isDark ? '#D1D5DB' : '#4B5563';
-                const gridColor = isDark ? '#374151' : '#E5E7EB';
-                const bgColor = isDark ? '#1F2937' : '#FFF';
-
-                const options = {
-                    chart: {
-                        type: 'line',
-                        height: 256,
-                        toolbar: { show: false },
-                        zoom: { enabled: false },
-                        background: bgColor
-                    },
-                    series: [{ name: 'Nicotine Intake', data: values }],
-                    colors: [seriesColor],
-                    stroke: { curve: 'straight', width: 2 },
-                    fill: {
-                        type: 'gradient',
-                        gradient: {
-                            shade: 'dark',
-                            shadeIntensity: 0.2,
-                            opacityFrom: 0.2,
-                            opacityTo: 0.6,
-                            stops: [0, 80, 100]
-                        }
-                    },
-                    xaxis: {
-                        categories: dates.map(d => new Date(d).toLocaleDateString()),
-                        labels: { style: { colors: axisColor, fontSize: '12px' } }
-                    },
-                    yaxis: {
-                        min: 0,
-                        labels: { style: { colors: axisColor, fontSize: '12px' } }
-                    },
-                    grid: {
-                        borderColor: gridColor,
-                        strokeDashArray: 4
-                    },
-                    theme: {
-                        mode: isDark ? 'dark' : 'light'
-                    }
-                };
-
-                if (dailyIntakeChart) {
-                    dailyIntakeChart.updateOptions(options);
-                } else {
-                    dailyIntakeChart = new ApexCharts(dailyIntakeChartEl, options);
-                    dailyIntakeChart.render();
-                }
-            })
-            .catch(err => console.error('Error loading daily intake chart:', err));
-    };
-
-    const loadHourlyChart = () => {
-        if (!hourlyChartEl) return;
-        fetch('/dashboard/api/hourly_distribution?days=30')
-            .then(res => res.json())
-            .then(data => {
-                if (!data.success) return;
-                if (hourlyChartEl._apexcharts) hourlyChartEl._apexcharts.destroy();
-                
-                const isDark = document.documentElement.classList.contains('dark');
-                const seriesColor = isDark ? '#4ADE80' : '#22C55E';
-                const axisColor = isDark ? '#D1D5DB' : '#4B5563';
-                const gridColor = isDark ? '#374151' : '#E5E7EB';
-                const bgColor = isDark ? '#1F2937' : '#FFFFFF';
-
-                const options = {
-                    chart: {
-                        type: 'bar',
-                        height: 256,
-                        toolbar: { show: false },
-                        background: bgColor,
-                    },
-                    series: [{ name: 'Pouches', data: data.data.map(d => d.pouches) }],
-                    colors: [seriesColor],
-                    xaxis: {
-                        categories: data.data.map(d => d.hour),
-                        labels: { style: { colors: axisColor, fontSize: '12px' } }
-                    },
-                    yaxis: {
-                        min: 0,
-                        labels: { style: { colors: axisColor, fontSize: '12px' } }
-                    },
-                    grid: {
-                        borderColor: gridColor,
-                        strokeDashArray: 4
-                    },
-                    theme: {
-                        mode: isDark ? 'dark' : 'light'
-                    }
-                };
-                
-                new ApexCharts(hourlyChartEl, options).render();
-            })
-            .catch(err => console.error('Error loading hourly chart:', err));
-    }
-
-    // Initial load
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(endDate.getDate() - 29);
-    fetchAndRenderDailyIntakeChart(formatDate(startDate), formatDate(endDate));
-    loadHourlyChart();
-
-
-    const customRangeContainer = document.querySelector('#daily-intake-filter-dropdown .px-3.py-2');
-    if (customRangeContainer) {
-        customRangeContainer.addEventListener('click', (e) => e.stopPropagation());
-    }
-
-    document.querySelectorAll('#daily-intake-filter-dropdown a[data-range]').forEach(link => {
-        link.addEventListener('click', function (e) {
-            e.preventDefault();
-            const range = parseInt(this.getAttribute('data-range'));
-            const endDate = new Date();
-            const startDate = new Date();
-            startDate.setDate(endDate.getDate() - (range - 1));
-            fetchAndRenderDailyIntakeChart(formatDate(startDate), formatDate(endDate));
-            document.getElementById('selected-range-text').textContent = this.textContent.trim();
-        });
+function replaceRows(selector, rows, fields) {
+  const body = document.querySelector(selector);
+  if (!body) return;
+  body.replaceChildren();
+  rows.forEach((item) => {
+    const row = body.insertRow();
+    fields.forEach((field, index) => {
+      const cell = index === 0 ? document.createElement('th') : document.createElement('td');
+      if (index === 0) cell.scope = 'row';
+      cell.textContent = String(item[field] ?? 0);
+      row.append(cell);
     });
+  });
+}
 
-    document.getElementById('apply_custom_range').addEventListener('click', function () {
-        const startDate = document.getElementById('start_date_filter').value;
-        const endDate = document.getElementById('end_date_filter').value;
+function chartTheme() {
+  const mode = getEffectiveTheme(document.documentElement);
+  return {
+    mode,
+    foreColor: mode === 'dark' ? '#EEE8D8' : '#1E2A24',
+    gridColor: mode === 'dark' ? '#344139' : '#D7D1C3',
+  };
+}
 
-        if (startDate && endDate) {
-            fetchAndRenderDailyIntakeChart(startDate, endDate);
-            document.getElementById('selected-range-text').textContent = 'Custom Range';
-            const dropdownElement = this.closest('.hs-dropdown');
-            if (dropdownElement && window.HSStaticMethods) {
-                window.HSStaticMethods.close(dropdownElement);
-            }
-        }
+function baseOptions(type, theme) {
+  return {
+    chart: {
+      type,
+      height: 256,
+      toolbar: { show: false },
+      background: 'transparent',
+      fontFamily: 'DM Sans, sans-serif',
+      animations: { enabled: !window.matchMedia('(prefers-reduced-motion: reduce)').matches },
+    },
+    theme: { mode: theme.mode },
+    grid: { borderColor: theme.gridColor, strokeDashArray: 4 },
+    tooltip: { theme: theme.mode },
+  };
+}
+
+async function startDashboardCharts() {
+  const payload = document.getElementById('initial-dashboard-analytics');
+  if (!payload) return;
+  let data = JSON.parse(payload.textContent || '{"trend":[],"hourly":[]}');
+  let charts = [];
+
+  const render = async () => {
+    charts.forEach((chart) => chart?.destroy?.());
+    charts = [];
+    replaceRows('[data-dashboard-table="trend"]', data.trend || [], ['date', 'pouches', 'mg']);
+    replaceRows('[data-dashboard-table="hourly"]', data.hourly || [], ['hour', 'pouches']);
+    const theme = chartTheme();
+    const definitions = [
+      ['dailyIntakeChart', {
+        ...baseOptions('line', theme),
+        series: [{ name: 'Pouches', data: (data.trend || []).map((point) => Number(point.pouches) || 0) }],
+        colors: ['#55755F'],
+        stroke: { curve: 'smooth', width: 3 },
+        xaxis: { categories: (data.trend || []).map((point) => point.date), labels: { style: { colors: theme.foreColor } } },
+        yaxis: { min: 0, labels: { style: { colors: theme.foreColor } } },
+      }],
+      ['hourlyChart', {
+        ...baseOptions('bar', theme),
+        series: [{ name: 'Pouches', data: (data.hourly || []).map((point) => Number(point.pouches) || 0) }],
+        colors: ['#B76343'],
+        xaxis: { categories: (data.hourly || []).map((point) => point.hour), labels: { style: { colors: theme.foreColor } } },
+        yaxis: { min: 0, labels: { style: { colors: theme.foreColor } } },
+      }],
+    ];
+    for (const [id, options] of definitions) {
+      const target = document.getElementById(id);
+      charts.push(await enhanceChart({
+        target,
+        status: statusFor(target),
+        options,
+        ApexChartsClass: window.ApexCharts,
+      }));
+    }
+  };
+
+  const load = async (days) => {
+    try {
+      const [trendResponse, hourlyResponse] = await Promise.all([
+        fetch(`/dashboard/api/daily_intake_chart?days=${days}`),
+        fetch(`/dashboard/api/hourly_distribution?days=${days}`),
+      ]);
+      const [trend, hourly] = await Promise.all([trendResponse.json(), hourlyResponse.json()]);
+      if (!trendResponse.ok || !hourlyResponse.ok || !trend.success || !hourly.success) {
+        throw new Error('Analytics request failed');
+      }
+      data = { trend: trend.data, hourly: hourly.data };
+      await render();
+    } catch (_) {
+      document.querySelectorAll('.analytics-chart__status').forEach((status) => {
+        setChartFailure(status, 'Chart unavailable. Current table values remain available.');
+      });
+    }
+  };
+
+  document.querySelectorAll('#daily-intake-filter-dropdown [data-range]').forEach((link) => {
+    link.addEventListener('click', (event) => {
+      event.preventDefault();
+      const days = Number(link.dataset.range) || 30;
+      const label = document.getElementById('selected-range-text');
+      if (label) label.textContent = link.textContent.trim();
+      load(days);
     });
+  });
+  document.getElementById('hs-dropdown-default')?.addEventListener('click', () => {
+    document.getElementById('daily-intake-filter-dropdown')?.classList.toggle('hidden');
+  });
+  document.getElementById('apply_custom_range')?.addEventListener('click', () => {
+    const start = document.getElementById('start_date_filter')?.value;
+    const end = document.getElementById('end_date_filter')?.value;
+    if (!start || !end) return;
+    const days = Math.max(1, Math.min(365, Math.round((new Date(end) - new Date(start)) / 86400000) + 1));
+    load(days);
+  });
+  window.addEventListener('nicotine-tracker:theme-change', render);
+  await render();
+}
 
-    window.addEventListener('on-hs-appearance-change', () => {
-        fetchAndRenderDailyIntakeChart();
-        loadHourlyChart();
-    });
-});
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => { startDashboardCharts(); }, { once: true });
+  } else {
+    startDashboardCharts();
+  }
+}
