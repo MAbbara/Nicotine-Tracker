@@ -48,6 +48,7 @@ def test_insights_renders_local_enhancement_and_semantic_values(
     soup = _soup(logged_in_client.get("/insights/"))
 
     _assert_local_analytics_assets(soup, "/static/js/insights.js")
+    assert "You have 1 day with logs." in soup.get_text(" ", strip=True)
     chart = soup.select_one("#consumption-trend-chart[role='img'][aria-labelledby]")
     assert chart is not None
     assert soup.select_one(f"#{chart['aria-labelledby']}").get_text(strip=True) == "Consumption Trend"
@@ -85,6 +86,53 @@ def test_insights_renders_local_enhancement_and_semantic_values(
         "heatmap_data",
     } <= payload.keys()
     assert payload["range_days"] == 7
+
+
+def test_insights_uses_editorial_structure_and_retired_legacy_dashboard(
+        logged_in_client):
+    soup = _soup(logged_in_client.get("/insights/"))
+
+    assert len(soup.select("main h1")) == 1
+    assert soup.select_one("main h1").get_text(" ", strip=True) == "Insights"
+    assert soup.select_one(".insights-intro .eyebrow").get_text(" ", strip=True) == "Your patterns"
+    headings = [
+        heading.get_text(" ", strip=True)
+        for heading in soup.select("main h1, main h2")
+    ]
+    assert headings == [
+        "Insights",
+        "What changed",
+        "When it happens",
+        "What you reach for",
+        "Cravings and response",
+        "Detailed data",
+    ]
+    assert [control["data-days"] for control in soup.select("[data-days]")] == [
+        "7", "30", "90", "365",
+    ]
+    export = soup.select_one("#export-data.c-button--quiet")
+    assert export is not None
+    assert export.get_text(" ", strip=True) == "Export CSV"
+    assert soup.select_one("[data-insights-root][data-initial-insights]") is not None
+    assert soup.select_one("[data-insights-headline]") is not None
+    assert soup.select_one("[data-insights-interpretation]") is not None
+    assert soup.select_one("[data-insights-state]") is not None
+    assert soup.select_one("[data-craving-pattern][hidden]") is not None
+    assert all(
+        region.get("tabindex") == "0"
+        and region.get("role") == "region"
+        and region.get("aria-label")
+        for region in soup.select(".analytics-data")
+    )
+
+    markup = str(soup)
+    assert "Advanced Analytics &amp; Insights" not in markup
+    assert "Advanced Analytics & Insights" not in soup.get_text(" ", strip=True)
+    assert "bg-indigo-" not in markup
+    assert "grid-cols-4" not in markup
+    assert not soup.find(string=lambda value: value and any(
+        emoji in value for emoji in ("📊", "📈", "⚡", "⏱️", "📅", "🤖")
+    ))
 
 
 def test_dashboard_renders_local_enhancement_and_semantic_values(

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Advanced Analytics & Insights - Nicotine Tracker{% endblock %}
+{% block title %}Insights - Nicotine Tracker{% endblock %}
 
 {% block analytics_head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/apexcharts.css') }}">
@@ -9,248 +9,188 @@
 {% block preline_js %}{% endblock %}
 
 {% block content %}
-<div class="analytics-page px-4 sm:px-6 lg:px-8">
-    <div class="analytics-toolbar flex items-center justify-between">
-        <div>
-            <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Advanced Analytics & Insights</h1>
-            <p class="text-sm text-gray-700 dark:text-gray-300">Comprehensive analysis of your nicotine consumption patterns</p>
-        </div>
-        <div class="flex space-x-3">
-            <div class="hs-dropdown relative inline-flex">
-                <button id="hs-dropdown-default" type="button" data-analytics-disclosure-trigger aria-expanded="false" aria-controls="insights-range-menu" class="hs-dropdown-toggle py-2 px-3 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-gray-300 bg-white text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:hover:bg-gray-600">
-                    <span id="selected-range">Last 30 days</span>
-                    <svg class="hs-dropdown-open:rotate-180 size-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="m6 9 6 6 6-6"/>
-                    </svg>
-                </button>
+{% set comparison = initial_insights.get('comparison', {}) %}
+{% set sufficiency = initial_insights.get('data_sufficiency', {}) %}
+{% set log_count = initial_insights.get('log_count', 0) %}
+{% set observed_days = initial_insights.get('observed_days', 0) %}
+{% set current_total = comparison.get('current_total', initial_insights.get('total_pouches', 0)) %}
+{% set insight_state = 'empty' if log_count == 0 else ('ready' if sufficiency.get('trend') else 'sparse') %}
 
-                <div id="insights-range-menu" data-analytics-disclosure-menu hidden class="hs-dropdown-menu absolute right-0 top-full z-50 max-h-[calc(100dvh-8rem)] overflow-y-auto transition-[opacity,margin] duration opacity-0 hidden min-w-60 bg-white shadow-md rounded-lg p-2 mt-2 dark:bg-gray-800 dark:border dark:border-gray-700" aria-labelledby="hs-dropdown-default">
-                    <a class="dropdown-item flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:bg-gray-700" href="#" data-days="7">
-                        Last 7 days
-                    </a>
-                    <a class="dropdown-item flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:bg-gray-700" href="#" data-days="30">
-                        Last 30 days
-                    </a>
-                    <a class="dropdown-item flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:bg-gray-700" href="#" data-days="90">
-                        Last 90 days
-                    </a>
-                    <a class="dropdown-item flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:bg-gray-700" href="#" data-days="365">
-                        Last year
-                    </a>
+<div
+    class="insights-page"
+    data-insights-root
+    data-insights-state="{{ insight_state }}"
+    data-initial-insights='{{ initial_insights|tojson|forceescape }}'
+>
+    <header class="insights-intro">
+        <div class="insights-intro__copy">
+            <p class="eyebrow">Your patterns</p>
+            <h1>Insights</h1>
+            <p>See what is changing, where your routine gets harder, and what to adjust next.</p>
+        </div>
+
+        <div class="insights-actions">
+            <div class="insights-range" tabindex="0" role="region" aria-label="Insights date range">
+                <a class="dropdown-item insights-range__option" href="?days=7" data-days="7" aria-label="7 days"><span class="insights-range__short" aria-hidden="true">7d</span><span class="insights-range__long" aria-hidden="true">7 days</span></a>
+                <a class="dropdown-item insights-range__option is-active" href="?days=30" data-days="30" aria-label="30 days" aria-current="true"><span class="insights-range__short" aria-hidden="true">30d</span><span class="insights-range__long" aria-hidden="true">30 days</span></a>
+                <a class="dropdown-item insights-range__option" href="?days=90" data-days="90" aria-label="90 days"><span class="insights-range__short" aria-hidden="true">90d</span><span class="insights-range__long" aria-hidden="true">90 days</span></a>
+                <a class="dropdown-item insights-range__option" href="?days=365" data-days="365" aria-label="1 year"><span class="insights-range__short" aria-hidden="true">1y</span><span class="insights-range__long" aria-hidden="true">1 year</span></a>
+            </div>
+            <button id="export-data" type="button" class="c-button c-button--quiet">Export CSV</button>
+        </div>
+    </header>
+
+    <section class="insights-lead" aria-labelledby="what-changed-title">
+        <div class="insights-lead__narrative">
+            <p class="eyebrow">Direction</p>
+            <h2 id="what-changed-title">What changed</h2>
+            <p class="insights-lead__headline" data-insights-headline>
+                {% if insight_state == 'empty' %}
+                    Your patterns will appear after your first log.
+                {% elif insight_state == 'sparse' %}
+                    Keep logging to reveal a reliable direction.
+                {% elif not comparison.get('available') %}
+                    You logged {{ current_total }} pouches across {{ observed_days }} days.
+                {% elif comparison.get('direction') == 'steady' %}
+                    Your use was steady compared with the previous 30 days.
+                {% elif comparison.get('percent_change') is not none %}
+                    You used {{ comparison.get('percent_change')|abs }}% {{ 'less' if comparison.get('direction') == 'down' else 'more' }} than the previous 30 days.
+                {% else %}
+                    You logged {{ current_total }} pouches in this range.
+                {% endif %}
+            </p>
+            <p class="insights-lead__interpretation" data-insights-interpretation>
+                {% if insight_state == 'empty' %}
+                    Start with one honest entry. This page becomes more useful as your day-to-day pattern takes shape.
+                {% elif insight_state == 'sparse' %}
+                    You have {{ observed_days }} {{ 'day' if observed_days == 1 else 'days' }} with logs. Continue at your own pace so comparisons stay honest.
+                {% elif comparison.get('direction') == 'down' %}
+                    Your recent pattern is moving in the same direction as your plan. Keep the part of your routine that helped.
+                {% elif comparison.get('direction') == 'up' %}
+                    This is useful context, not a verdict. Look for what made this range harder, then choose one adjustment.
+                {% else %}
+                    Use this range as a practical baseline for your next adjustment.
+                {% endif %}
+            </p>
+            <a class="text-link insights-next-step" href="{{ '/journey/' if insight_state == 'ready' else '/today/' }}" data-insights-next-step>
+                {{ 'Review your support plan' if insight_state == 'ready' else 'Log today' }}
+            </a>
+        </div>
+
+        <dl class="insights-measures" aria-label="Current range summary">
+            <div><dt>Pouches in range</dt><dd id="total-pouches">{{ initial_insights.get('total_pouches', 0) }}</dd></div>
+            <div><dt>Daily average</dt><dd id="daily-average">{{ initial_insights.get('daily_average', 0) }}</dd></div>
+            <div><dt>Days with logs</dt><dd>{{ observed_days }}</dd></div>
+        </dl>
+
+        <div class="insights-figure insights-figure--lead">
+            <div class="insights-figure__heading">
+                <h3 id="consumption-trend-title">Consumption Trend</h3>
+                <div class="insights-toggle" aria-label="Trend grouping">
+                    <button class="trend-toggle is-active" type="button" data-type="daily">Daily</button>
+                    <button class="trend-toggle" type="button" data-type="weekly">Weekly</button>
                 </div>
             </div>
-            <button id="export-data" class="inline-flex items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
-                <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                </svg>
-                Export Data
-            </button>
+            <div id="consumption-trend-chart" class="analytics-chart" role="img" aria-labelledby="consumption-trend-title"></div>
+            <p class="analytics-chart__status" role="status" aria-live="polite" hidden></p>
+            <details class="analytics-figure__table">
+                <summary>View consumption trend data</summary>
+                <div class="analytics-data" tabindex="0" role="region" aria-label="Consumption trend data">
+                    <table><caption>Consumption trend data</caption><thead><tr><th scope="col">Date</th><th scope="col">Pouches</th></tr></thead>
+                        <tbody data-analytics-key="trend">{% for point in initial_insights.get('consumption_trend', []) %}<tr><th scope="row">{{ point.date }}</th><td>{{ point.value }}</td></tr>{% else %}<tr><td colspan="2">No consumption logged in this range.</td></tr>{% endfor %}</tbody>
+                    </table>
+                </div>
+            </details>
         </div>
+    </section>
+
+    <div class="insights-patterns">
+        <section class="insights-pattern insights-pattern--time" aria-labelledby="time-pattern-title">
+            <div class="insights-pattern__copy">
+                <p class="eyebrow">Daily rhythm</p>
+                <h2 id="time-pattern-title">When it happens</h2>
+                <p data-insights-time-copy>Logging across the day reveals where a little advance support can help most.</p>
+            </div>
+            <div class="insights-figure">
+                <h3 id="time-of-day-title">Time of day</h3>
+                <div id="time-of-day-chart" class="analytics-chart" role="img" aria-labelledby="time-of-day-title"></div>
+                <p class="analytics-chart__status" role="status" aria-live="polite" hidden></p>
+                <details class="analytics-figure__table">
+                    <summary>View time-of-day data</summary>
+                    <div class="analytics-data" tabindex="0" role="region" aria-label="Time of day distribution data"><table><caption>Time of day distribution data</caption><thead><tr><th scope="col">Time</th><th scope="col">Pouches</th></tr></thead><tbody data-analytics-key="timeOfDay">{% for label, value in initial_insights.get('consumption_by_time_of_day', {}).items() %}<tr><th scope="row">{{ label }}</th><td>{{ value }}</td></tr>{% else %}<tr><td colspan="2">No consumption logged in this range.</td></tr>{% endfor %}</tbody></table></div>
+                </details>
+            </div>
+            <div class="insights-figure insights-figure--secondary">
+                <h3 id="day-of-week-title">Weekly pattern</h3>
+                <div id="day-of-week-chart" class="analytics-chart" role="img" aria-labelledby="day-of-week-title"></div>
+                <p class="analytics-chart__status" role="status" aria-live="polite" hidden></p>
+                <details class="analytics-figure__table">
+                    <summary>View weekly pattern data</summary>
+                    <div class="analytics-data" tabindex="0" role="region" aria-label="Weekly pattern data"><table><caption>Weekly pattern data</caption><thead><tr><th scope="col">Day</th><th scope="col">Pouches</th></tr></thead><tbody data-analytics-key="dayOfWeek">{% for label, value in initial_insights.get('consumption_by_day_of_week', {}).items() %}<tr><th scope="row">{{ label }}</th><td>{{ value }}</td></tr>{% else %}<tr><td colspan="2">No weekly pattern available.</td></tr>{% endfor %}</tbody></table></div>
+                </details>
+            </div>
+        </section>
+
+        <section class="insights-pattern insights-pattern--products" aria-labelledby="product-pattern-title">
+            <div class="insights-pattern__copy">
+                <p class="eyebrow">Products</p>
+                <h2 id="product-pattern-title">What you reach for</h2>
+                <p data-insights-product-copy>Product patterns add context to the moments you are already noticing.</p>
+            </div>
+            <div class="insights-figure">
+                <h3 id="brand-title">Product mix</h3>
+                <div id="brand-chart" class="analytics-chart" role="img" aria-labelledby="brand-title"></div>
+                <p class="analytics-chart__status" role="status" aria-live="polite" hidden></p>
+                <details class="analytics-figure__table">
+                    <summary>View product data</summary>
+                    <div class="analytics-data" tabindex="0" role="region" aria-label="Brand preference data"><table><caption>Brand preference data</caption><thead><tr><th scope="col">Product</th><th scope="col">Pouches</th></tr></thead><tbody data-analytics-key="brands">{% for label, value in initial_insights.get('brand_analysis', {}).items() %}<tr><th scope="row">{{ label }}</th><td>{{ value }}</td></tr>{% else %}<tr><td colspan="2">No product data in this range.</td></tr>{% endfor %}</tbody></table></div>
+                </details>
+            </div>
+        </section>
     </div>
 
-    <!-- Key Metrics Cards -->
-    <div class="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <!-- Total Consumption -->
-        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center">
-                            <span class="text-white font-bold text-sm">📊</span>
-                        </div>
-                    </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-                                Total Pouches
-                            </dt>
-                            <dd class="text-lg font-medium text-gray-900 dark:text-white" id="total-pouches">
-                                --
-                            </dd>
-                        </dl>
-                    </div>
-                </div>
+    <section class="insights-pattern insights-pattern--cravings" aria-labelledby="craving-pattern-title" data-craving-pattern hidden>
+        <div class="insights-pattern__copy">
+            <p class="eyebrow">Support moments</p>
+            <h2 id="craving-pattern-title">Cravings and response</h2>
+            <p data-insights-craving-copy>Craving patterns will appear here when they can suggest a useful response.</p>
+        </div>
+    </section>
+
+    <section class="insights-details" aria-labelledby="detailed-data-title">
+        <div class="insights-details__heading">
+            <div>
+                <p class="eyebrow">For a closer look</p>
+                <h2 id="detailed-data-title">Detailed data</h2>
             </div>
+            <p>Charts are paired with tables so every value remains readable and available without visual interpretation.</p>
         </div>
 
-        <!-- Daily Average -->
-        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
-                            <span class="text-white font-bold text-sm">📈</span>
-                        </div>
-                    </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-                                Daily Average
-                            </dt>
-                            <dd class="text-lg font-medium text-gray-900 dark:text-white" id="daily-average">
-                                --
-                            </dd>
-                        </dl>
-                    </div>
+        <details class="analytics-details">
+            <summary>Open hourly detail and supporting measures</summary>
+            <div class="analytics-details__body">
+                <div class="insights-figure insights-figure--heatmap">
+                    <h3 id="heatmap-title">Day and hour detail</h3>
+                    <div id="heatmap-chart" class="analytics-chart" role="img" aria-labelledby="heatmap-title"></div>
+                    <p class="analytics-chart__status" role="status" aria-live="polite" hidden></p>
+                    <details class="analytics-figure__table">
+                        <summary>View day-and-hour data</summary>
+                        <div class="analytics-data" tabindex="0" role="region" aria-label="Consumption heatmap data"><table><caption>Consumption heatmap data</caption><thead><tr><th scope="col">Day</th>{% for hour in range(24) %}<th scope="col">{{ "%02d:00"|format(hour) }}</th>{% endfor %}</tr></thead><tbody data-analytics-key="heatmap">{% for series in initial_insights.get('heatmap_data', []) %}<tr><th scope="row">{{ series.name }}</th>{% for value in series.data %}<td>{{ value.y if value is mapping else value }}</td>{% endfor %}</tr>{% else %}<tr><td colspan="25">No hourly pattern available.</td></tr>{% endfor %}</tbody></table></div>
+                    </details>
                 </div>
-            </div>
-        </div>
 
-        <!-- Peak Day -->
-        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="w-8 h-8 bg-orange-500 rounded-md flex items-center justify-center">
-                            <span class="text-white font-bold text-sm">⚡</span>
-                        </div>
-                    </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-                                Peak Day
-                            </dt>
-                            <dd class="text-lg font-medium text-gray-900 dark:text-white" id="peak-day">
-                                --
-                            </dd>
-                        </dl>
-                    </div>
-                </div>
+                <dl class="insights-supporting-measures">
+                    <div><dt>Total nicotine</dt><dd><span id="total-nicotine">{{ initial_insights.get('total_nicotine', 0) }}</span> mg</dd></div>
+                    <div><dt>Lowest-use day</dt><dd id="best-day">{{ initial_insights.get('best_day', '--') }}</dd></div>
+                    <div><dt>Consistency</dt><dd id="consistency-score">{{ initial_insights.get('consistency_score', 0) }}%</dd></div>
+                    <div><dt>Legacy trend signal</dt><dd id="trend-direction">{{ initial_insights.get('trend_direction', '--') }}</dd></div>
+                    <div><dt>Peak day</dt><dd id="peak-day">{{ initial_insights.get('peak_day', '--') }}</dd></div>
+                    <div><dt>Average time between</dt><dd id="avg-time-between">{{ initial_insights.get('average_time_between_pouches', '--') }}</dd></div>
+                </dl>
             </div>
-        </div>
-
-        <!-- Avg Time Between -->
-        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="w-8 h-8 bg-purple-500 rounded-md flex items-center justify-center">
-                            <span class="text-white font-bold text-sm">⏱️</span>
-                        </div>
-                    </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-                                Avg Time Between
-                            </dt>
-                            <dd class="text-lg font-medium text-gray-900 dark:text-white" id="avg-time-between">
-                                --
-                            </dd>
-                        </dl>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Charts Grid -->
-    <div class="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <!-- Consumption Trend -->
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <div class="flex items-center justify-between mb-4">
-                <h3 id="consumption-trend-title" class="text-lg font-medium text-gray-900 dark:text-white">Consumption Trend</h3>
-                <div class="inline-flex rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 p-1">
-                    <button class="trend-toggle active rounded-md px-3 py-1 text-xs font-medium bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-sm" data-type="daily">Daily</button>
-                    <button class="trend-toggle rounded-md px-3 py-1 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300" data-type="weekly">Weekly</button>
-                </div>
-            </div>
-            <div id="consumption-trend-chart" class="analytics-chart h-64" role="img" aria-labelledby="consumption-trend-title"></div>
-            <p class="analytics-chart__status" role="status" hidden></p>
-            <div class="analytics-data" tabindex="0" role="region" aria-label="Consumption trend data">
-                <table><caption>Consumption trend data</caption><thead><tr><th scope="col">Date</th><th scope="col">Pouches</th></tr></thead>
-                    <tbody data-analytics-key="trend">{% for point in initial_insights.get('consumption_trend', []) %}<tr><th scope="row">{{ point.date }}</th><td>{{ point.value }}</td></tr>{% else %}<tr><td colspan="2">No consumption logged in this range.</td></tr>{% endfor %}</tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Time of Day Distribution -->
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <h3 id="time-of-day-title" class="text-lg font-medium text-gray-900 dark:text-white mb-4">Time of Day Distribution</h3>
-            <div id="time-of-day-chart" class="analytics-chart h-64" role="img" aria-labelledby="time-of-day-title"></div>
-            <p class="analytics-chart__status" role="status" hidden></p>
-            <div class="analytics-data" tabindex="0" role="region" aria-label="Time of day distribution data"><table><caption>Time of day distribution data</caption><thead><tr><th scope="col">Time</th><th scope="col">Pouches</th></tr></thead><tbody data-analytics-key="timeOfDay">{% for label, value in initial_insights.get('consumption_by_time_of_day', {}).items() %}<tr><th scope="row">{{ label }}</th><td>{{ value }}</td></tr>{% else %}<tr><td colspan="2">No consumption logged in this range.</td></tr>{% endfor %}</tbody></table></div>
-        </div>
-
-        <!-- Day of Week Pattern -->
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <h3 id="day-of-week-title" class="text-lg font-medium text-gray-900 dark:text-white mb-4">Weekly Pattern</h3>
-            <div id="day-of-week-chart" class="analytics-chart h-64" role="img" aria-labelledby="day-of-week-title"></div>
-            <p class="analytics-chart__status" role="status" hidden></p>
-            <div class="analytics-data" tabindex="0" role="region" aria-label="Weekly pattern data"><table><caption>Weekly pattern data</caption><thead><tr><th scope="col">Day</th><th scope="col">Pouches</th></tr></thead><tbody data-analytics-key="dayOfWeek">{% for label, value in initial_insights.get('consumption_by_day_of_week', {}).items() %}<tr><th scope="row">{{ label }}</th><td>{{ value }}</td></tr>{% else %}<tr><td colspan="2">No consumption logged in this range.</td></tr>{% endfor %}</tbody></table></div>
-        </div>
-
-        <!-- Brand Analysis -->
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <h3 id="brand-title" class="text-lg font-medium text-gray-900 dark:text-white mb-4">Brand Preferences</h3>
-            <div id="brand-chart" class="analytics-chart h-64" role="img" aria-labelledby="brand-title"></div>
-            <p class="analytics-chart__status" role="status" hidden></p>
-            <div class="analytics-data" tabindex="0" role="region" aria-label="Brand preference data"><table><caption>Brand preference data</caption><thead><tr><th scope="col">Brand</th><th scope="col">Pouches</th></tr></thead><tbody data-analytics-key="brands">{% for label, value in initial_insights.get('brand_analysis', {}).items() %}<tr><th scope="row">{{ label }}</th><td>{{ value }}</td></tr>{% else %}<tr><td colspan="2">No brand data in this range.</td></tr>{% endfor %}</tbody></table></div>
-        </div>
-    </div>
-
-    <!-- Advanced Analytics -->
-    <div class="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <!-- Consumption Heatmap -->
-        <div class="lg:col-span-2 bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <div class="flex items-center justify-between mb-4">
-                <h3 id="heatmap-title" class="text-lg font-medium text-gray-900 dark:text-white">Consumption Heatmap</h3>
-                <div class="text-xs text-gray-500 dark:text-gray-400">
-                    <span class="inline-flex items-center">
-                        <span class="mr-1">📅</span>
-                        Days vs Hours
-                    </span>
-                </div>
-            </div>
-            <div id="heatmap-chart" class="analytics-chart h-80" role="img" aria-labelledby="heatmap-title"></div>
-            <p class="analytics-chart__status" role="status" hidden></p>
-            <div class="analytics-data" tabindex="0" role="region" aria-label="Consumption heatmap data"><table><caption>Consumption heatmap data</caption><thead><tr><th scope="col">Day</th>{% for hour in range(24) %}<th scope="col">{{ "%02d:00"|format(hour) }}</th>{% endfor %}</tr></thead><tbody data-analytics-key="heatmap">{% for series in initial_insights.get('heatmap_data', []) %}<tr><th scope="row">{{ series.name }}</th>{% for value in series.data %}<td>{{ value.y if value is mapping else value }}</td>{% endfor %}</tr>{% else %}<tr><td colspan="25">No hourly pattern available.</td></tr>{% endfor %}</tbody></table></div>
-            <div class="mt-3 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                <span>12 AM</span>
-                <span>6 AM</span>
-                <span>12 PM</span>
-                <span>6 PM</span>
-                <span>11 PM</span>
-            </div>
-        </div>
-
-        <!-- Insights & Recommendations -->
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">AI Insights</h3>
-            <div id="ai-insights" class="space-y-4">
-                <div class="text-center py-8">
-                    <div class="text-gray-400 dark:text-gray-500 text-4xl mb-4">🤖</div>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Analyzing patterns...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Detailed Statistics -->
-    <div class="mt-8">
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Detailed Statistics</h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div class="text-center">
-                    <div class="text-2xl font-bold text-blue-600 dark:text-blue-400" id="total-nicotine">--</div>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Total Nicotine (mg)</p>
-                </div>
-                <div class="text-center">
-                    <div class="text-2xl font-bold text-green-600 dark:text-green-400" id="best-day">--</div>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Best Day (Lowest)</p>
-                </div>
-                <div class="text-center">
-                    <div class="text-2xl font-bold text-orange-600 dark:text-orange-400" id="consistency-score">--%</div>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Consistency Score</p>
-                </div>
-                <div class="text-center">
-                    <div class="text-2xl font-bold text-purple-600 dark:text-purple-400" id="trend-direction">--</div>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Trend Direction</p>
-                </div>
-            </div>
-        </div>
-    </div>
+        </details>
+    </section>
 </div>
-
 
 <script id="initial-insights-data" type="application/json">{{ initial_insights|tojson }}</script>
 {% endblock %}

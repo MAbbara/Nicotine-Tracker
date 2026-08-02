@@ -78,6 +78,27 @@ test('primary authenticated pages have one h1 and no WCAG A/AA violations', asyn
 });
 
 
+test('Insights editorial figures expose labelled keyboard-accessible data', async ({ page }) => {
+  await login(page, 'today-targeted@example.com');
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto('/insights/');
+
+  await expect(page.getByRole('heading', { name: 'Insights', level: 1 })).toHaveCount(1);
+  expect(await page.evaluate(() => (
+    document.documentElement.scrollWidth - document.documentElement.clientWidth
+  ))).toBeLessThanOrEqual(0);
+  const regions = page.locator('.analytics-data');
+  expect(await regions.count()).toBeGreaterThanOrEqual(5);
+  for (let index = 0; index < await regions.count(); index += 1) {
+    const region = regions.nth(index);
+    await expect(region).toHaveAttribute('role', 'region');
+    await expect(region).toHaveAttribute('tabindex', '0');
+    await expect(region).toHaveAttribute('aria-label', /data/i);
+  }
+  await expectNoWcagViolations(page);
+});
+
+
 test('Data & Privacy has a labelled retention control and no WCAG A/AA violations', async ({ page }) => {
   await page.goto('/auth/login');
   await page.getByLabel('Email address').fill('browser@example.com');
