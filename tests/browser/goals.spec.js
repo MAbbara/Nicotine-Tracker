@@ -101,10 +101,14 @@ test('Goals preserve create, edit, toggle, and delete behavior', async ({ page }
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.locator('article.goal-row[data-goal-state="active"]')).toContainText('6 pouches');
 
-  await page.locator('article.goal-row[data-goal-state="active"]')
-    .getByRole('button', { name: 'Pause goal' }).click();
+  const pauseButton = page.locator('article.goal-row[data-goal-state="active"]')
+    .getByRole('button', { name: 'Pause goal' });
+  await expect(pauseButton).toBeVisible();
+  await pauseButton.click();
   const inactive = page.locator('article.goal-row[data-goal-state="inactive"]', { hasText: 'Daily pouch ceiling' });
   await expect(inactive).toBeVisible();
+  await expect(inactive.getByRole('button', { name: 'Resume goal' })).toHaveCount(0);
+  await expect(inactive.locator('form[action*="/goals/toggle/"]')).toHaveCount(0);
 
   page.once('dialog', (dialog) => dialog.accept());
   await inactive.getByRole('button', { name: 'Delete goal' }).click();

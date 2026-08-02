@@ -156,10 +156,6 @@
             </dl>
 
             <div class="goal-row__actions">
-              <form action="{{ url_for('goals.toggle_goal', goal_id=goal.id) }}" method="post">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button class="c-button c-button--secondary" type="submit">Resume goal</button>
-              </form>
               <a class="c-button c-button--quiet" href="{{ url_for('goals.edit_goal', goal_id=goal.id) }}">Adjust goal</a>
               <form class="goal-delete-form" action="{{ url_for('goals.delete_goal', goal_id=goal.id) }}" method="post" data-confirm="Delete this goal? This cannot be undone.">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -46,6 +46,7 @@ def test_goals_index_uses_editorial_active_and_inactive_rows(
     )
     assert active is not None
     assert active.select_one(f'form[action="/goals/toggle/{test_goal.id}"][method="post"]')
+    assert active.find('button', string='Pause goal')
     assert active.select_one(f'a[href="/goals/edit/{test_goal.id}"]')
     assert active.select_one(f'form.goal-delete-form[action="/goals/delete/{test_goal.id}"]')
 
@@ -53,7 +54,8 @@ def test_goals_index_uses_editorial_active_and_inactive_rows(
         f'article.goal-row[data-goal-id="{inactive_goal.id}"][data-goal-state="inactive"]'
     )
     assert inactive is not None
-    assert inactive.select_one(f'form[action="/goals/toggle/{inactive_goal.id}"]')
+    assert inactive.select_one(f'form[action="/goals/toggle/{inactive_goal.id}"]') is None
+    assert inactive.find('button', string='Resume goal') is None
     assert inactive.select_one(f'a[href="/goals/edit/{inactive_goal.id}"]')
     assert inactive.select_one(f'form.goal-delete-form[action="/goals/delete/{inactive_goal.id}"]')
     assert not document.select('[onsubmit]')
