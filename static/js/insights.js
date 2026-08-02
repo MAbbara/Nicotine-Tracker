@@ -88,8 +88,8 @@ export function selectEligibleChartIds(data = {}, trendType = 'daily', { details
   return eligible;
 }
 
-function renderRows(key, rows, emptyMessage) {
-  const body = document.querySelector(`[data-analytics-key="${key}"]`);
+function renderRows(root, key, rows, emptyMessage) {
+  const body = root.querySelector(`[data-analytics-key="${key}"]`);
   if (!body) return;
   body.replaceChildren();
   if (!rows.length) {
@@ -110,8 +110,8 @@ function renderRows(key, rows, emptyMessage) {
   });
 }
 
-function renderHeatmapRows(rows) {
-  const body = document.querySelector('[data-analytics-key="heatmap"]');
+function renderHeatmapRows(root, rows) {
+  const body = root.querySelector('[data-analytics-key="heatmap"]');
   const head = body?.closest('table')?.querySelector('thead tr');
   if (!body || !head) return;
   const hours = [...new Set(rows.map((row) => row.hour))];
@@ -143,13 +143,13 @@ function renderHeatmapRows(rows) {
   });
 }
 
-function updateAlternatives(data, trendType) {
+function updateAlternatives(root, data, trendType) {
   const model = buildInsightsAlternativeModel(data, trendType);
-  renderRows('trend', model.trend, 'No consumption logged in this range.');
-  renderRows('timeOfDay', model.timeOfDay, 'No consumption logged in this range.');
-  renderRows('dayOfWeek', model.dayOfWeek, 'No weekly pattern available.');
-  renderRows('brands', model.brands, 'No brand data in this range.');
-  renderHeatmapRows(model.heatmap);
+  renderRows(root, 'trend', model.trend, 'No consumption logged in this range.');
+  renderRows(root, 'timeOfDay', model.timeOfDay, 'No consumption logged in this range.');
+  renderRows(root, 'dayOfWeek', model.dayOfWeek, 'No weekly pattern available.');
+  renderRows(root, 'brands', model.brands, 'No brand data in this range.');
+  renderHeatmapRows(root, model.heatmap);
   return model;
 }
 
@@ -293,7 +293,7 @@ export function renderInsights(
 ) {
   updateEditorial(root, viewModel, rangeDays);
   updateMetrics(root, rawData, viewModel);
-  updateAlternatives(rawData, trendType);
+  updateAlternatives(root, rawData, trendType);
   root.querySelectorAll('.trend-toggle').forEach((control) => {
     const selected = control.dataset.type === trendType;
     control.classList.toggle('is-active', selected);
@@ -302,9 +302,49 @@ export function renderInsights(
   const eligible = new Set(selectEligibleChartIds(rawData, trendType, { detailsOpen }));
   root.querySelectorAll('.analytics-chart').forEach((target) => {
     target.hidden = !eligible.has(target.id);
-    if (target.hidden) target.replaceChildren();
+    if (target.hidden) {
+      target.replaceChildren();
+      const status = statusFor(target);
+      if (status) {
+        status.textContent = '';
+        status.hidden = true;
+      }
+    }
   });
   return eligible;
+}
+
+export function createLatestChartRenderer(renderSnapshot) {
+  let requestedGeneration = 0;
+  let activeCharts = [];
+  let queue = Promise.resolve();
+  const destroyCharts = (charts) => {
+    charts.forEach((chart) => chart?.destroy?.());
+  };
+  const render = () => {
+    const generation = ++requestedGeneration;
+    const execute = async () => {
+      if (generation !== requestedGeneration) return;
+      destroyCharts(activeCharts);
+      activeCharts = [];
+      const nextCharts = (await renderSnapshot({
+        isCurrent: () => generation === requestedGeneration,
+      })) || [];
+      if (generation !== requestedGeneration) {
+        destroyCharts(nextCharts);
+        return;
+      }
+      activeCharts = nextCharts.filter(Boolean);
+    };
+    queue = queue.then(execute, execute);
+    return queue;
+  };
+  const destroy = () => {
+    requestedGeneration += 1;
+    destroyCharts(activeCharts);
+    activeCharts = [];
+  };
+  return { render, destroy };
 }
 
 export async function startInsights(scope = document) {
@@ -318,7 +358,6 @@ export async function startInsights(scope = document) {
   let currentData = JSON.parse(payload.textContent || '{}');
   let currentRange = Number(currentData.range_days) || 30;
   let trendType = 'daily';
-  let charts = [];
   let requestGeneration = 0;
   const disclosure = createDisclosure({
     trigger: document.querySelector('[data-analytics-disclosure-trigger]'),
@@ -326,9 +365,8 @@ export async function startInsights(scope = document) {
   });
   const details = root.querySelector('.analytics-details');
 
-  const render = async () => {
-    charts.forEach((chart) => chart?.destroy?.());
-    charts = [];
+  const chartRenderer = createLatestChartRenderer(async ({ isCurrent }) => {
+    const charts = [];
     const viewModel = buildInsightsViewModel(currentData, currentRange);
     const eligible = renderInsights(root, viewModel, currentData, {
       rangeDays: currentRange,
@@ -344,9 +382,12 @@ export async function startInsights(scope = document) {
         options,
         ApexChartsClass: window.ApexCharts,
       });
-      charts.push(chart);
+      if (chart) charts.push(chart);
+      if (!isCurrent()) break;
     }
-  };
+    return charts;
+  });
+  const render = chartRenderer.render;
 
   const loadRange = async (days) => {
     const generation = ++requestGeneration;

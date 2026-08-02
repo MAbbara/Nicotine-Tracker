@@ -369,3 +369,34 @@ test('chart eligibility follows sufficiency, non-zero data, and visible detail',
     heatmap_data: [{ name: 'Monday', data: [0, 0] }],
   }, 'daily', { detailsOpen: true }), []);
 });
+
+test('a delayed chart generation is destroyed before the latest render becomes active', async () => {
+  const { createLatestChartRenderer } = await importModule('static/js/insights.js');
+  let releaseFirst;
+  let markFirstStarted;
+  const firstStarted = new Promise((resolve) => { markFirstStarted = resolve; });
+  const firstGate = new Promise((resolve) => { releaseFirst = resolve; });
+  const runs = [];
+  const destroyed = [];
+  const renderer = createLatestChartRenderer(async () => {
+    const id = runs.length + 1;
+    runs.push(id);
+    const chart = { destroy: () => destroyed.push(id) };
+    if (id === 1) {
+      markFirstStarted();
+      await firstGate;
+    }
+    return [chart];
+  });
+
+  const first = renderer.render();
+  await firstStarted;
+  const latest = renderer.render();
+  releaseFirst();
+  await Promise.all([first, latest]);
+
+  assert.deepEqual(runs, [1, 2]);
+  assert.deepEqual(destroyed, [1]);
+  renderer.destroy();
+  assert.deepEqual(destroyed, [1, 2]);
+});

@@ -331,8 +331,40 @@ test('System theme changes refresh the Insights chart palette without changing i
   const axisLabel = page.locator('#consumption-trend-chart .apexcharts-xaxis-texts-g text').first();
   await expect(axisLabel).toHaveCSS('fill', 'rgb(30, 42, 36)');
 
+  await page.evaluate(() => {
+    const BaseChart = window.ApexCharts;
+    window.__insightsChartConcurrency = { active: 0, maxActive: 0, completed: 0 };
+    window.ApexCharts = class DelayedChart {
+      constructor(target, options) {
+        this.chart = new BaseChart(target, options);
+      }
+      async render() {
+        const audit = window.__insightsChartConcurrency;
+        audit.active += 1;
+        audit.maxActive = Math.max(audit.maxActive, audit.active);
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 60));
+          await this.chart.render();
+          audit.completed += 1;
+        } finally {
+          audit.active -= 1;
+        }
+      }
+      destroy() {
+        this.chart.destroy();
+      }
+    };
+  });
+
   await page.emulateMedia({ colorScheme: 'dark' });
+  await expect.poll(() => page.evaluate(() => window.__insightsChartConcurrency.active)).toBe(1);
+  await page.evaluate(() => {
+    document.documentElement.dispatchEvent(new CustomEvent('nicotine-tracker:theme-change'));
+  });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await expect(axisLabel).toHaveCSS('fill', 'rgb(238, 232, 216)');
+  await expect.poll(() => page.evaluate(() => window.__insightsChartConcurrency.completed)).toBeGreaterThan(1);
+  expect(await page.evaluate(() => window.__insightsChartConcurrency.maxActive)).toBe(1);
+  await expect(page.locator('.analytics-chart:not([hidden]) .apexcharts-canvas')).toHaveCount(4);
   expect(await tableBody.innerText()).toBe(originalRows);
 });
