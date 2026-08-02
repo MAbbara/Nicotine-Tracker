@@ -71,6 +71,21 @@ def test_insights_renders_local_enhancement_and_semantic_values(
     assert hourly_values[10] == "13"
     assert sum(map(int, hourly_values)) == 13
 
+    api_response = logged_in_client.get("/insights/api/insights?days=7")
+    assert api_response.status_code == 200
+    payload = api_response.get_json()
+    assert {
+        "range_days",
+        "observed_days",
+        "log_count",
+        "comparison",
+        "data_sufficiency",
+        "total_pouches",
+        "consumption_trend",
+        "heatmap_data",
+    } <= payload.keys()
+    assert payload["range_days"] == 7
+
 
 def test_dashboard_renders_local_enhancement_and_semantic_values(
         logged_in_client, db_session, test_user, test_pouch):

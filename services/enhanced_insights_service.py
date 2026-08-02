@@ -11,16 +11,25 @@ from services.log_service import (
 from services import timezone_service as tz_service
 import numpy as np
 
-def get_user_logs_df(user_id: int, user_timezone: str, days: int = 30):
+def get_user_logs_df(
+        user_id: int,
+        user_timezone: str,
+        days: int = 30,
+        end_at: datetime = None,
+):
     """Get user logs as DataFrame with timezone conversion"""
-    now = datetime.utcnow()
-    cutoff_date = now - timedelta(days=days)
+    window_end = (
+        tz_service.to_naive_utc(end_at)
+        if end_at is not None
+        else datetime.utcnow()
+    )
+    window_start = window_end - timedelta(days=days)
 
     resolved_tz = tz_service.resolve_timezone(user_timezone)
     logs = Log.query.filter(
         Log.user_id == user_id,
-        Log.log_time >= cutoff_date,
-        Log.log_time < now,
+        Log.log_time >= window_start,
+        Log.log_time < window_end,
     ).order_by(Log.log_time).all()
 
     if not logs:
@@ -43,6 +52,50 @@ def get_user_logs_df(user_id: int, user_timezone: str, days: int = 30):
 
     return pd.DataFrame(rows)
 
+
+def _comparison_metadata(current_df, previous_df, days):
+    current_total = int(current_df['quantity'].sum()) if not current_df.empty else 0
+    previous_total = int(previous_df['quantity'].sum()) if not previous_df.empty else 0
+    observed_days = (
+        int(current_df['user_time'].dt.date.nunique())
+        if not current_df.empty
+        else 0
+    )
+    log_count = int(len(current_df))
+    comparison_available = not current_df.empty and not previous_df.empty
+    absolute_change = current_total - previous_total if comparison_available else None
+    percent_change = None
+    direction = None
+    if comparison_available:
+        if previous_total != 0:
+            percent_change = round((absolute_change / previous_total) * 100, 1)
+        if current_total < previous_total:
+            direction = 'down'
+        elif current_total > previous_total:
+            direction = 'up'
+        else:
+            direction = 'steady'
+
+    return {
+        'range_days': int(days),
+        'observed_days': observed_days,
+        'log_count': log_count,
+        'comparison': {
+            'available': comparison_available,
+            'current_total': current_total,
+            'previous_total': previous_total,
+            'absolute_change': absolute_change,
+            'percent_change': percent_change,
+            'direction': direction,
+        },
+        'data_sufficiency': {
+            'trend': observed_days >= 3 and log_count >= 3,
+            'time_pattern': log_count >= 5,
+            'brand_pattern': log_count >= 3,
+            'heatmap': observed_days >= 7 and log_count >= 7,
+        },
+    }
+
 def get_enhanced_insights(user_id: int, days: int = 30):
     """Get comprehensive insights for the user"""
     user = db.session.get(User, user_id)
@@ -50,7 +103,15 @@ def get_enhanced_insights(user_id: int, days: int = 30):
         return None
 
     user_timezone = user.timezone
-    df = get_user_logs_df(user_id, user_timezone, days)
+    window_end = datetime.utcnow()
+    df = get_user_logs_df(user_id, user_timezone, days, end_at=window_end)
+    previous_df = get_user_logs_df(
+        user_id,
+        user_timezone,
+        days,
+        end_at=window_end - timedelta(days=days),
+    )
+    metadata = _comparison_metadata(df, previous_df, days)
     
     if df.empty:
         return {
@@ -68,7 +129,8 @@ def get_enhanced_insights(user_id: int, days: int = 30):
             'brand_analysis': {},
             'consumption_trend': [],
             'heatmap_data': [],
-            'ai_insights': []
+            'ai_insights': [],
+            **metadata,
         }
 
     # Basic metrics - convert numpy types to Python native types
@@ -136,7 +198,8 @@ def get_enhanced_insights(user_id: int, days: int = 30):
         'brand_analysis': brand_analysis,
         'consumption_trend': consumption_trend,
         'heatmap_data': heatmap_data,
-        'ai_insights': ai_insights
+        'ai_insights': ai_insights,
+        **metadata,
     }
 
 def get_consumption_by_time_of_day_enhanced(df):
