@@ -115,6 +115,30 @@ test('Data & Privacy has a labelled retention control and no WCAG A/AA violation
 });
 
 
+for (const theme of ['light', 'dark']) {
+  test(`Reminders failure feedback meets WCAG A/AA in ${theme} theme`, async ({ page }) => {
+    await useExplicitTheme(page, theme);
+    await page.route('**/settings/test-discord-webhook', async (route) => {
+      await route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: false, message: 'Discord rejected the test.' }),
+      });
+    });
+    await login(page, 'browser@example.com');
+    await page.goto('/settings/notifications');
+    await expectExplicitTheme(page, theme);
+    await page.getByRole('checkbox', { name: 'Discord' }).check();
+    await page.getByLabel('Discord webhook URL').fill(
+      'https://discord.com/api/webhooks/example/token',
+    );
+    await page.getByRole('button', { name: 'Test Discord connection' }).click();
+    await expect(page.locator('#discord-test-status')).toHaveAttribute('data-state', 'error');
+    await expectNoWcagViolations(page);
+  });
+}
+
+
 test('Settings navigation is labelled, scrollable, and keeps one visible current page', async ({ page }) => {
   await login(page, 'browser@example.com');
   await page.setViewportSize({ width: 320, height: 800 });

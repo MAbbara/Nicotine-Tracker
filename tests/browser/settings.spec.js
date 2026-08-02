@@ -111,6 +111,10 @@ test('Preferences update with native controls and persist after reload', async (
 test('Reminders persist and async actions expose success and failure feedback', async ({ page }) => {
   let discordRequests = 0;
   let weeklyRequests = 0;
+  let releaseDiscordSuccess;
+  let releaseWeeklySuccess;
+  const discordSuccessGate = new Promise((resolve) => { releaseDiscordSuccess = resolve; });
+  const weeklySuccessGate = new Promise((resolve) => { releaseWeeklySuccess = resolve; });
   const discordBodies = [];
   const weeklyBodies = [];
   let dialogs = 0;
@@ -124,6 +128,7 @@ test('Reminders persist and async actions expose success and failure feedback', 
     discordBodies.push(route.request().postDataJSON());
     expect(route.request().headers()['x-csrftoken']).toBeTruthy();
     const success = discordRequests === 1;
+    if (success) await discordSuccessGate;
     await route.fulfill({
       status: success ? 200 : 400,
       contentType: 'application/json',
@@ -138,6 +143,7 @@ test('Reminders persist and async actions expose success and failure feedback', 
     weeklyBodies.push(route.request().postDataJSON());
     expect(route.request().headers()['x-csrftoken']).toBeTruthy();
     const success = weeklyRequests === 1;
+    if (success) await weeklySuccessGate;
     await route.fulfill({
       status: success ? 200 : 400,
       contentType: 'application/json',
@@ -169,22 +175,48 @@ test('Reminders persist and async actions expose success and failure feedback', 
   await expect(page.getByLabel('Daily reminder time')).toHaveValue('09:10');
   await expect(page.getByLabel('Delivery frequency')).toHaveValue('weekly');
 
-  const discordButton = page.getByRole('button', { name: 'Test Discord connection' });
+  const discordButton = page.locator('#test-discord-webhook');
   const discordStatus = page.locator('#discord-test-status');
   await discordButton.click();
+  await expect.poll(() => discordRequests).toBe(1);
+  await expect(discordButton).toBeDisabled();
+  await expect(discordButton).toHaveText('Testing…');
+  await expect(discordStatus).toHaveText('Testing…');
+  await expect(discordStatus).toHaveAttribute('data-state', 'loading');
+  await discordButton.evaluate((button) => {
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  await expect.poll(() => discordRequests).toBe(1);
+  await page.getByRole('checkbox', { name: 'Discord' }).uncheck();
+  releaseDiscordSuccess();
   await expect(discordStatus).toHaveText('Discord connection confirmed.');
   await expect(discordStatus).toHaveAttribute('data-state', 'success');
+  await expect(discordButton).toBeDisabled();
+  await page.getByRole('checkbox', { name: 'Discord' }).check();
   await expect(discordButton).toBeEnabled();
   await discordButton.click();
   await expect(discordStatus).toHaveText('Discord rejected the test.');
   await expect(discordStatus).toHaveAttribute('data-state', 'error');
 
-  const weeklyButton = page.getByRole('button', { name: 'Send weekly report' });
+  const weeklyButton = page.locator('#trigger-weekly-report');
   const weeklyStatus = page.locator('#weekly-report-status');
   await expect(weeklyButton).toBeEnabled();
   await weeklyButton.click();
+  await expect.poll(() => weeklyRequests).toBe(1);
+  await expect(weeklyButton).toBeDisabled();
+  await expect(weeklyButton).toHaveText('Sending…');
+  await expect(weeklyStatus).toHaveAttribute('data-state', 'loading');
+  await weeklyButton.evaluate((button) => {
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  await expect.poll(() => weeklyRequests).toBe(1);
+  await page.getByRole('checkbox', { name: 'Weekly progress report' }).uncheck();
+  releaseWeeklySuccess();
   await expect(weeklyStatus).toHaveText('Weekly report queued.');
   await expect(weeklyStatus).toHaveAttribute('data-state', 'success');
+  await expect(weeklyButton).toBeDisabled();
+  await page.getByRole('checkbox', { name: 'Weekly progress report' }).check();
+  await expect(weeklyButton).toBeEnabled();
   await weeklyButton.click();
   await expect(weeklyStatus).toHaveText('Weekly report could not be queued.');
   await expect(weeklyStatus).toHaveAttribute('data-state', 'error');
@@ -197,6 +229,28 @@ test('Reminders persist and async actions expose success and failure feedback', 
   ]);
   expect(weeklyBodies).toEqual([{}, {}]);
   expect(dialogs).toBe(0);
+
+  const viewport = page.viewportSize();
+  if (viewport && viewport.width <= 640) {
+    await weeklyButton.scrollIntoViewIfNeeded();
+    const geometry = await page.evaluate(() => {
+      const nav = document.querySelector('.primary-nav').getBoundingClientRect();
+      const button = document.querySelector('#trigger-weekly-report').getBoundingClientRect();
+      const status = document.querySelector('#weekly-report-status').getBoundingClientRect();
+      return {
+        buttonHeight: button.height,
+        buttonBottom: button.bottom,
+        statusRight: status.right,
+        navTop: nav.top,
+        viewportWidth: window.innerWidth,
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      };
+    });
+    expect(geometry.buttonHeight).toBeGreaterThanOrEqual(44);
+    expect(geometry.buttonBottom).toBeLessThanOrEqual(geometry.navTop);
+    expect(geometry.statusRight).toBeLessThanOrEqual(geometry.viewportWidth);
+    expect(geometry.overflow).toBeLessThanOrEqual(0);
+  }
 
   await page.reload();
   await expect(page.getByRole('checkbox', { name: 'Weekly progress report' })).toBeChecked();
