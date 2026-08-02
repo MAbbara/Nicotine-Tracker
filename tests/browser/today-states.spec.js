@@ -25,6 +25,53 @@ function watchForProblems(page) {
 }
 
 
+test('incomplete check-in cues once and reduced motion keeps the action static', async ({ page }, testInfo) => {
+  const suffix = projectSuffix(testInfo);
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await login(page, `today-checkin-empty-${suffix}@example.com`);
+  const action = page.locator('[data-check-in-action]');
+  await expect(action).toBeVisible();
+  const restingBox = await action.boundingBox();
+
+  await action.scrollIntoViewIfNeeded();
+  await expect(action).toHaveAttribute('data-attention-cue', 'active');
+  const activeMotion = await action.evaluate((element) => {
+    const style = getComputedStyle(element, '::after');
+    return {
+      duration: style.animationDuration,
+      iterations: style.animationIterationCount,
+      pointerEvents: style.pointerEvents,
+      position: style.position,
+    };
+  });
+  expect(Number.parseFloat(activeMotion.duration)).toBeLessThanOrEqual(0.42);
+  expect(activeMotion.iterations).toBe('1');
+  expect(activeMotion.pointerEvents).toBe('none');
+  expect(activeMotion.position).toBe('absolute');
+  await expect(action).not.toHaveAttribute('data-attention-cue', 'active', { timeout: 700 });
+  const settledBox = await action.boundingBox();
+  expect(settledBox.width).toBe(restingBox.width);
+  expect(settledBox.height).toBe(restingBox.height);
+
+  await action.click();
+  await expect(page.locator('[data-check-in-form]')).toBeVisible();
+  await page.getByRole('button', { name: 'Not now' }).click();
+  await expect(action).toBeVisible();
+  await page.waitForTimeout(500);
+  await expect(action).not.toHaveAttribute('data-attention-cue', 'active');
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.reload();
+  await expect(action).toBeVisible();
+  await action.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(500);
+  await expect(action).not.toHaveAttribute('data-attention-cue', 'active');
+  await expect(action).toBeEnabled();
+  await action.focus();
+  await expect(action).toBeFocused();
+});
+
+
 test('optional empty reflection saves once, reconciles one row, and reopens canonical values', async ({ page }, testInfo) => {
   const requests = [];
   await page.route('**/api/check-ins', async (route) => {

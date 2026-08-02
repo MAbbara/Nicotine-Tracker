@@ -87,6 +87,42 @@ function makeTimeline() {
   };
 }
 
+test('check-in attention cues an incomplete action once and never under reduced motion', async () => {
+  const { maybeCueCheckIn } = await loadCheckIn();
+  const offer = { hidden: false };
+  const action = {
+    dataset: {},
+    disabled: false,
+    closest(selector) {
+      return selector === '[data-check-in-offer]' ? offer : null;
+    },
+  };
+  const root = {
+    querySelector(selector) {
+      return selector === '[data-check-in-action]' ? action : null;
+    },
+  };
+  const storage = { shown: false };
+
+  assert.equal(maybeCueCheckIn(root, { reducedMotion: true, storage }), false);
+  assert.equal(action.dataset.attentionCue, undefined);
+  assert.equal(storage.shown, false);
+
+  assert.equal(maybeCueCheckIn(root, { reducedMotion: false, storage }), true);
+  assert.equal(action.dataset.attentionCue, 'active');
+  assert.equal(storage.shown, true);
+
+  delete action.dataset.attentionCue;
+  assert.equal(maybeCueCheckIn(root, { reducedMotion: false, storage }), false);
+  assert.equal(action.dataset.attentionCue, undefined);
+
+  offer.hidden = true;
+  assert.equal(
+    maybeCueCheckIn(root, { reducedMotion: false, storage: { shown: false } }),
+    false,
+  );
+});
+
 test('payload contains exactly four normalized optional fields', async () => {
   const { buildCheckInPayload } = await loadCheckIn();
 

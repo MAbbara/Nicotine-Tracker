@@ -8,6 +8,76 @@ const PUBLIC_FIELDS = ['mood', 'confidence', 'reflection', 'context'];
 const CANONICAL_FIELDS = ['id', 'local_date', ...PUBLIC_FIELDS];
 
 
+export function maybeCueCheckIn(root, { reducedMotion = false, storage = {} } = {}) {
+  const action = root?.matches?.('[data-check-in-action]')
+    ? root
+    : root?.querySelector?.('[data-check-in-action]');
+  const offer = action?.closest?.('[data-check-in-offer]');
+  if (
+    !action
+    || reducedMotion
+    || storage.shown
+    || action.disabled
+    || offer?.hidden
+  ) {
+    return false;
+  }
+  storage.shown = true;
+  action.dataset.attentionCue = 'active';
+  return true;
+}
+
+
+function setupCheckInAttentionCue(section) {
+  const action = section.querySelector('[data-check-in-action]');
+  const offer = action?.closest?.('[data-check-in-offer]');
+  const windowRef = section.ownerDocument?.defaultView;
+  const reducedMotionQuery = windowRef?.matchMedia?.('(prefers-reduced-motion: reduce)');
+  const Observer = windowRef?.IntersectionObserver;
+  if (!action || offer?.hidden || reducedMotionQuery?.matches || typeof Observer !== 'function') {
+    return () => {};
+  }
+
+  const storage = { shown: false };
+  const setTimeoutImpl = windowRef.setTimeout.bind(windowRef);
+  const clearTimeoutImpl = windowRef.clearTimeout.bind(windowRef);
+  let clearTimer = null;
+  let observer = null;
+
+  function clearCue(event) {
+    if (event?.target && event.target !== action) return;
+    if (event?.animationName && event.animationName !== 'check-in-attention') return;
+    delete action.dataset.attentionCue;
+    action.removeEventListener('animationend', clearCue);
+    action.removeEventListener('animationcancel', clearCue);
+    if (clearTimer !== null) clearTimeoutImpl(clearTimer);
+    clearTimer = null;
+  }
+
+  observer = new Observer((entries) => {
+    if (!entries.some((entry) => entry.target === action && entry.isIntersecting)) return;
+    action.addEventListener('animationend', clearCue);
+    action.addEventListener('animationcancel', clearCue);
+    if (!maybeCueCheckIn(section, {
+      reducedMotion: Boolean(reducedMotionQuery?.matches),
+      storage,
+    })) {
+      action.removeEventListener('animationend', clearCue);
+      action.removeEventListener('animationcancel', clearCue);
+      return;
+    }
+    observer.disconnect();
+    clearTimer = setTimeoutImpl(clearCue, 600);
+  });
+  observer.observe(action);
+
+  return () => {
+    observer?.disconnect();
+    clearCue();
+  };
+}
+
+
 export class CheckInValidationError extends Error {
   constructor(fieldErrors) {
     super('Check the highlighted details.');
@@ -462,6 +532,7 @@ export function createCheckInDomView(section) {
   const cancelButton = section.querySelector('[data-check-in-cancel]');
   const refreshMessage = section.querySelector('[data-check-in-refresh-unavailable]');
   const listeners = [];
+  let attentionCleanup = () => {};
 
   function listen(element, event, handler) {
     if (!element) return;
@@ -610,8 +681,11 @@ export function createCheckInDomView(section) {
         event.preventDefault();
         handlers.submit();
       });
+      attentionCleanup = setupCheckInAttentionCue(section);
     },
     cleanup() {
+      attentionCleanup();
+      attentionCleanup = () => {};
       while (listeners.length > 0) listeners.pop()();
     },
     showEditing,
