@@ -659,10 +659,6 @@
     cursor: not-allowed;
   }
 
-  .c-button[aria-disabled="true"] {
-    pointer-events: none;
-  }
-
   .c-button.is-loading {
     cursor: progress;
   }
@@ -744,6 +740,10 @@
     align-items: center;
     gap: var(--space-3);
     cursor: pointer;
+  }
+
+  .c-field__check:has(.c-field__check-input:disabled) {
+    cursor: not-allowed;
   }
 
   .c-field__check-input {

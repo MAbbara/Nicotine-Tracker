@@ -7,7 +7,7 @@
       class="{{ classes }}"
       {% if not inert %}href="{{ href }}"{% endif %}
       {% if aria_label %}aria-label="{{ aria_label }}"{% endif %}
-      {% if inert %}aria-disabled="true" tabindex="-1"{% endif %}
+      {% if inert %}role="link" aria-disabled="true" tabindex="-1"{% endif %}
       {% if loading %}aria-busy="true"{% endif %}
     >
       {%- if loading -%}

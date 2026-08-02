@@ -109,6 +109,19 @@ def test_disabled_link_button_has_no_actionable_href(app):
     assert link.get_text(strip=True) == "View plan"
 
 
+def test_disabled_link_button_keeps_link_role(app):
+    html = render_component(
+        app, "button", label="View plan", href="/plan", disabled=True
+    )
+    soup = BeautifulSoup(html, "html.parser")
+    link = soup.select_one("a.c-button")
+    assert link is not None
+    assert not link.has_attr("href")
+    assert link["role"] == "link"
+    assert link["aria-disabled"] == "true"
+    assert link["tabindex"] == "-1"
+
+
 def test_loading_button_keeps_accessible_name_and_announces_live_state(app):
     html = render_component(app, "button", label="Saving changes", loading=True)
     soup = BeautifulSoup(html, "html.parser")
@@ -121,6 +134,20 @@ def test_loading_button_keeps_accessible_name_and_announces_live_state(app):
     live = control.select_one('[aria-live="polite"], [role="status"]')
     assert live is not None
     assert live.get_text(strip=True)
+
+
+def test_loading_link_button_keeps_link_role(app):
+    html = render_component(
+        app, "button", label="Saving changes", href="/save", loading=True
+    )
+    soup = BeautifulSoup(html, "html.parser")
+    link = soup.select_one("a.c-button.is-loading")
+    assert link is not None
+    assert not link.has_attr("href")
+    assert link["role"] == "link"
+    assert link["aria-disabled"] == "true"
+    assert link["tabindex"] == "-1"
+    assert link["aria-busy"] == "true"
 
 
 def test_loading_link_button_is_inert_and_announces_live_state(app):
@@ -383,6 +410,18 @@ def test_checkbox_input_css_uses_tokens_not_plugin_palette():
 def test_button_css_interaction_guards_cover_anchors():
     css = GENERATED_CSS.read_text().replace('"', "")
     aria_disabled = _css_declarations_for(css, ".c-button[aria-disabled=true]{")
-    assert "pointer-events:none" in aria_disabled
+    assert "pointer-events:none" not in aria_disabled
+    all_button_rules = _css_declarations_for(css, ".c-button")
+    assert "pointer-events:none" not in all_button_rules
     assert ".c-button:active:not(:disabled):not([aria-disabled=true])" in css
     assert ".c-button:not(:disabled):not([aria-disabled=true]):hover" in css
+
+
+def test_checkbox_row_cursor_follows_input_disabled_state():
+    css = GENERATED_CSS.read_text().replace('"', "")
+    row = _css_declarations_for(css, ".c-field__check{")
+    assert "cursor:pointer" in row
+    disabled_row = _css_declarations_for(
+        css, ".c-field__check:has(.c-field__check-input:disabled){"
+    )
+    assert "cursor:not-allowed" in disabled_row
