@@ -1,295 +1,183 @@
 {% extends "base.html" %}
 
-{% block title %}Cravings Analytics - Nicotine Tracker{% endblock %}
+{% block title %}Craving history - Nicotine Tracker{% endblock %}
 
 {% block content %}
-<div class="px-4 sm:px-6 lg:px-8">
-    <div class="flex items-center justify-between">
-        <div>
-            <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Cravings Analytics</h1>
-            <p class="text-sm text-gray-700 dark:text-gray-300">Track and analyze your nicotine cravings patterns</p>
+<div class="cravings-page" data-cravings-page data-timezone="{{ user_timezone }}">
+    <header class="cravings-intro">
+        <div class="cravings-intro__copy">
+            <p class="eyebrow">Detailed record</p>
+            <h1>Craving history</h1>
+            <p>Use this page when you want to capture context and look back. A craving is information—not a verdict on the day.</p>
         </div>
-    </div>
+        <aside class="cravings-support" aria-labelledby="cravings-support-title">
+            <p class="eyebrow">Need help right now?</p>
+            <h2 id="cravings-support-title">Pause before you document</h2>
+            <p>Today offers the quicker guided response when the craving is happening.</p>
+            <a class="c-button c-button--primary" href="{{ url_for('today.index') }}">Get immediate support on Today</a>
+        </aside>
+    </header>
 
-
-
-    <!-- Analytics Dashboard -->
-    <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-
-
-        <!-- Trigger Analysis -->
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Top Triggers</h3>
-            <div id="trigger-analysis" class="space-y-2">
-                <div class="text-center py-8">
-                    <div class="text-gray-400 dark:text-gray-500 text-4xl mb-4">🎯</div>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Loading trigger data...</p>
-                </div>
+    <section class="cravings-entry" aria-labelledby="record-craving-title">
+        <header class="cravings-section-intro">
+            <div>
+                <p class="eyebrow">More context, when useful</p>
+                <h2 id="record-craving-title">Record detailed craving</h2>
             </div>
-        </div>
+            <p>Only intensity is required. Leave anything else blank if it does not help you understand the moment.</p>
+        </header>
 
-        <!-- Success Rate -->
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Resistance Rate</h3>
-            <div class="text-center">
-                <div class="text-3xl font-bold text-green-600 dark:text-green-400" id="resistance-rate">--%</div>
-                <p class="text-sm text-gray-500 dark:text-gray-400">Cravings resisted</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Enhanced Log Craving Form -->
-    <div class="mt-8">
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Log a Craving</h2>
-            <form id="craving-form" class="space-y-4">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <!-- Basic Fields -->
-                    <div>
-                        <label for="intensity" class="block text-sm font-medium text-gray-900 dark:text-white">Intensity (1-10) *</label>
-                        <input type="number" id="intensity" name="intensity" min="1" max="10" required
-                               class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+        <form id="craving-form" class="craving-entry-form" data-endpoint="{{ url_for('cravings.add_craving') }}">
+            <fieldset class="craving-form-section">
+                <legend>What happened</legend>
+                <div class="craving-form-grid craving-form-grid--two">
+                    <div class="c-field">
+                        <label class="c-field__label" for="intensity">Intensity<span aria-hidden="true"> *</span></label>
+                        <p class="c-field__description" id="intensity-description">1 is mild; 10 is overwhelming.</p>
+                        <input class="c-field__control" id="intensity" name="intensity" type="number" min="1" max="10" step="1" inputmode="numeric" required aria-required="true" aria-describedby="intensity-description">
                     </div>
-                    <div>
-                        <label for="trigger" class="block text-sm font-medium text-gray-900 dark:text-white">Trigger</label>
-                        <select id="trigger" name="trigger"
-                                class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
-                            <option value="">Select a trigger</option>
+                    <div class="c-field">
+                        <label class="c-field__label" for="trigger">Trigger</label>
+                        <p class="c-field__description" id="trigger-description">Choose the closest fit, if one stands out.</p>
+                        <select class="c-field__control" id="trigger" name="trigger" aria-describedby="trigger-description">
+                            <option value="">Not sure or not recorded</option>
                             <option value="stress">Stress</option>
                             <option value="boredom">Boredom</option>
                             <option value="social">Social situation</option>
-                            <option value="habit">Habit/routine</option>
+                            <option value="habit">Habit or routine</option>
                             <option value="anxiety">Anxiety</option>
                             <option value="work">Work pressure</option>
-                            <option value="alcohol">Alcohol/drinking</option>
+                            <option value="alcohol">Alcohol or drinking</option>
                             <option value="other">Other</option>
                         </select>
                     </div>
                 </div>
 
-                <!-- Enhanced Fields -->
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                        <label for="mood_before" class="block text-sm font-medium text-gray-900 dark:text-white">Mood Before (1-10)</label>
-                        <input type="number" id="mood_before" name="mood_before" min="1" max="10"
-                               class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                <div class="craving-form-grid craving-form-grid--three">
+                    <div class="c-field">
+                        <label class="c-field__label" for="mood_before">Mood before</label>
+                        <input class="c-field__control" id="mood_before" name="mood_before" type="number" min="1" max="10" step="1" inputmode="numeric" aria-describedby="mood-before-description">
+                        <p class="c-field__description" id="mood-before-description">1–10, if useful.</p>
                     </div>
-                    <div>
-                        <label for="stress_level" class="block text-sm font-medium text-gray-900 dark:text-white">Stress Level (1-10)</label>
-                        <input type="number" id="stress_level" name="stress_level" min="1" max="10"
-                               class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                    <div class="c-field">
+                        <label class="c-field__label" for="stress_level">Stress level</label>
+                        <input class="c-field__control" id="stress_level" name="stress_level" type="number" min="1" max="10" step="1" inputmode="numeric" aria-describedby="stress-level-description">
+                        <p class="c-field__description" id="stress-level-description">1–10, if useful.</p>
                     </div>
-                    <div>
-                        <label for="duration_minutes" class="block text-sm font-medium text-gray-900 dark:text-white">Duration (minutes)</label>
-                        <input type="number" id="duration_minutes" name="duration_minutes" min="0" max="1440"
-                               class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
-                    </div>
-                </div>
-
-                <!-- Physical Symptoms -->
-                <div>
-                    <label class="block text-sm font-medium text-gray-900 dark:text-white mb-2">Physical Symptoms</label>
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-                        <label class="flex items-center">
-                            <input type="checkbox" name="physical_symptoms" value="restlessness" class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 dark:bg-gray-700 dark:border-gray-600">
-                            <span class="ml-2 text-sm text-gray-900 dark:text-white">Restlessness</span>
-                        </label>
-                        <label class="flex items-center">
-                            <input type="checkbox" name="physical_symptoms" value="irritability" class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 dark:bg-gray-700 dark:border-gray-600">
-                            <span class="ml-2 text-sm text-gray-900 dark:text-white">Irritability</span>
-                        </label>
-                        <label class="flex items-center">
-                            <input type="checkbox" name="physical_symptoms" value="difficulty_concentrating" class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 dark:bg-gray-700 dark:border-gray-600">
-                            <span class="ml-2 text-sm text-gray-900 dark:text-white">Difficulty concentrating</span>
-                        </label>
-                        <label class="flex items-center">
-                            <input type="checkbox" name="physical_symptoms" value="increased_appetite" class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 dark:bg-gray-700 dark:border-gray-600">
-                            <span class="ml-2 text-sm text-gray-900 dark:text-white">Increased appetite</span>
-                        </label>
+                    <div class="c-field">
+                        <label class="c-field__label" for="duration_minutes">Duration</label>
+                        <input class="c-field__control" id="duration_minutes" name="duration_minutes" type="number" min="0" max="1440" step="1" inputmode="numeric" aria-describedby="duration-description">
+                        <p class="c-field__description" id="duration-description">Minutes, including 0.</p>
                     </div>
                 </div>
+            </fieldset>
 
-                <!-- Situation Context -->
-                <div>
-                    <label for="situation_context" class="block text-sm font-medium text-gray-900 dark:text-white">Situation Context</label>
-                    <textarea id="situation_context" name="situation_context" rows="2" placeholder="Where were you? Who were you with? What were you doing?"
-                              class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600"></textarea>
+            <fieldset class="craving-form-section">
+                <legend>Body and situation</legend>
+                <div class="c-field">
+                    <span class="c-field__label" id="symptoms-label">Physical symptoms</span>
+                    <p class="c-field__description" id="symptoms-description">Select any you noticed. This is optional.</p>
+                    <div class="craving-symptoms" role="group" aria-labelledby="symptoms-label" aria-describedby="symptoms-description">
+                        {% for value, label in [
+                            ('restlessness', 'Restlessness'),
+                            ('irritability', 'Irritability'),
+                            ('difficulty_concentrating', 'Difficulty concentrating'),
+                            ('increased_appetite', 'Increased appetite')
+                        ] %}
+                        <label class="c-field__check">
+                            <input class="c-field__check-input" type="checkbox" name="physical_symptoms" value="{{ value }}">
+                            <span class="c-field__check-label">{{ label }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
                 </div>
+                <div class="c-field">
+                    <label class="c-field__label" for="situation_context">Situation context</label>
+                    <p class="c-field__description" id="situation-context-description">Where were you, who was nearby, or what were you doing?</p>
+                    <textarea class="c-field__control" id="situation_context" name="situation_context" rows="3" maxlength="2000" aria-describedby="situation-context-description"></textarea>
+                </div>
+            </fieldset>
 
-                <!-- Outcome -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label for="outcome" class="block text-sm font-medium text-gray-900 dark:text-white">Outcome</label>
-                        <select id="outcome" name="outcome"
-                                class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
-                            <option value="">Select outcome</option>
-                            <option value="resisted">Resisted the craving</option>
+            <fieldset class="craving-form-section">
+                <legend>What followed</legend>
+                <div class="craving-form-grid craving-form-grid--two">
+                    <div class="c-field">
+                        <label class="c-field__label" for="outcome">Outcome</label>
+                        <select class="c-field__control" id="outcome" name="outcome">
+                            <option value="">Not recorded yet</option>
+                            <option value="resisted">Did not use nicotine</option>
                             <option value="used_nicotine">Used nicotine</option>
-                            <option value="used_alternative">Used alternative (gum, etc.)</option>
+                            <option value="used_alternative">Used an alternative</option>
                         </select>
                     </div>
-                    <div>
-                        <label for="mood_after" class="block text-sm font-medium text-gray-900 dark:text-white">Mood After (1-10)</label>
-                        <input type="number" id="mood_after" name="mood_after" min="1" max="10"
-                               class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+                    <div class="c-field">
+                        <label class="c-field__label" for="mood_after">Mood after</label>
+                        <input class="c-field__control" id="mood_after" name="mood_after" type="number" min="1" max="10" step="1" inputmode="numeric" aria-describedby="mood-after-description">
+                        <p class="c-field__description" id="mood-after-description">1–10, if the moment has passed.</p>
                     </div>
                 </div>
-
-                <!-- Notes -->
-                <div>
-                    <label for="notes" class="block text-sm font-medium text-gray-900 dark:text-white">Notes</label>
-                    <textarea id="notes" name="notes" rows="3" placeholder="Additional notes about this craving..."
-                              class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600"></textarea>
+                <div class="c-field">
+                    <label class="c-field__label" for="notes">Notes</label>
+                    <p class="c-field__description" id="notes-description">Anything you want to remember about the urge itself.</p>
+                    <textarea class="c-field__control" id="notes" name="notes" rows="3" maxlength="2000" aria-describedby="notes-description"></textarea>
                 </div>
-
-                <div>
-                    <label for="outcome_notes" class="block text-sm font-medium text-gray-900 dark:text-white">What did you do instead? How do you feel now?</label>
-                    <textarea id="outcome_notes" name="outcome_notes" rows="2"
-                              class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600"></textarea>
+                <div class="c-field">
+                    <label class="c-field__label" for="outcome_notes">What helped afterward</label>
+                    <p class="c-field__description" id="outcome-notes-description">What did you do, or how do you feel now?</p>
+                    <textarea class="c-field__control" id="outcome_notes" name="outcome_notes" rows="3" maxlength="2000" aria-describedby="outcome-notes-description"></textarea>
                 </div>
+            </fieldset>
 
-                <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
-                    <button type="submit"
-                            class="rounded-md bg-indigo-600 px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
-                        Log Enhanced Craving
-                    </button>
+            <div class="craving-form-actions">
+                <button class="c-button c-button--primary" type="submit">Record craving</button>
+                <p class="craving-form-status" data-craving-form-status role="status" aria-live="polite" aria-atomic="true"></p>
+            </div>
+        </form>
+    </section>
+
+    <section class="cravings-history" aria-labelledby="recent-cravings-title">
+        <header class="cravings-section-intro">
+            <div>
+                <p class="eyebrow">Latest first</p>
+                <h2 id="recent-cravings-title">Recent cravings</h2>
+            </div>
+            <p>Look for useful context, not a perfect streak. Deeper pattern analysis stays in Insights.</p>
+        </header>
+
+        <div id="cravings-list" class="cravings-list" role="list" aria-live="polite" aria-busy="false">
+            {% for craving in recent_cravings %}
+            <article class="craving-row" role="listitem" data-craving-id="{{ craving.id }}">
+                <div class="craving-row__lead">
+                    <p class="craving-row__intensity">Intensity {{ craving.intensity }} of 10</p>
+                    <time data-craving-time datetime="{{ craving.craving_time.strftime('%Y-%m-%dT%H:%M:%SZ') }}">{{ craving.craving_time.strftime('%b %-d, %Y · %H:%M UTC') }}</time>
                 </div>
-            </form>
+                <dl class="craving-row__facts">
+                    <div><dt>Trigger</dt><dd>{{ craving.trigger.replace('_', ' ')|title if craving.trigger else 'Not recorded' }}</dd></div>
+                    <div><dt>Outcome</dt><dd>{% if craving.outcome == 'resisted' %}Did not use nicotine{% elif craving.outcome == 'used_nicotine' %}Used nicotine{% elif craving.outcome == 'used_alternative' %}Used an alternative{% else %}Not recorded{% endif %}</dd></div>
+                    {% if craving.duration_minutes is not none %}<div><dt>Duration</dt><dd>{{ craving.duration_minutes }} {{ 'minute' if craving.duration_minutes == 1 else 'minutes' }}</dd></div>{% endif %}
+                </dl>
+                {% if craving.situation_context or craving.notes or craving.outcome_notes %}
+                <div class="craving-row__notes">
+                    {% if craving.situation_context %}<p><strong>Context</strong> {{ craving.situation_context }}</p>{% endif %}
+                    {% if craving.notes %}<p><strong>Notes</strong> {{ craving.notes }}</p>{% endif %}
+                    {% if craving.outcome_notes %}<p><strong>What helped</strong> {{ craving.outcome_notes }}</p>{% endif %}
+                </div>
+                {% endif %}
+            </article>
+            {% else %}
+            <div class="cravings-empty" role="listitem" data-cravings-empty>
+                <p class="eyebrow">No detailed entries yet</p>
+                <h3>Your history can start with one honest moment</h3>
+                <p>Record only what feels useful. You can keep the entry as simple as an intensity rating.</p>
+            </div>
+            {% endfor %}
         </div>
-    </div>
-
-    <!-- Cravings List -->
-    <div class="mt-8">
-        <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Recent Cravings</h2>
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <ul id="cravings-list" class="space-y-4">
-                <!-- Cravings will be loaded here -->
-                <div class="text-center py-8">
-                    <div class="text-gray-400 dark:text-gray-500 text-4xl mb-4">🧠</div>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Loading recent cravings...</p>
-                </div>
-            </ul>
-        </div>
-    </div>
+    </section>
 </div>
+{% endblock %}
 
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const cravingForm = document.getElementById('craving-form');
-    const cravingsList = document.getElementById('cravings-list');
+{% block preline_js %}{% endblock %}
 
-    // Load analytics data
-    function loadAnalytics() {
-        fetch('/cravings/api/analytics')
-            .then(response => response.json())
-            .then(data => {
-                // Update resistance rate
-                const resistanceRate = data.consumption_correlation?.resistance_rate || 0;
-                document.getElementById('resistance-rate').textContent = resistanceRate + '%';
-
-                // Update trigger analysis
-                const triggerAnalysis = document.getElementById('trigger-analysis');
-                triggerAnalysis.innerHTML = '';
-                const triggers = data.trigger_analysis || {};
-                
-                if (Object.keys(triggers).length === 0) {
-                    triggerAnalysis.innerHTML = `
-                        <div class="text-center py-8">
-                            <div class="text-gray-400 dark:text-gray-500 text-4xl mb-4">🎯</div>
-                            <p class="text-sm text-gray-500 dark:text-gray-400">No trigger data yet. Start logging cravings!</p>
-                        </div>
-                    `;
-                } else {
-                    Object.entries(triggers).slice(0, 5).forEach(([trigger, analysis]) => {
-                        const div = document.createElement('div');
-                        div.className = 'flex justify-between items-center p-2 border-b border-gray-200 dark:border-gray-700 last:border-b-0';
-                        div.innerHTML = `
-                            <span class="text-sm font-medium text-gray-900 dark:text-white">${trigger}</span>
-                            <span class="text-sm text-gray-500 dark:text-gray-400">${analysis.count} times</span>
-                        `;
-                        triggerAnalysis.appendChild(div);
-                    });
-                }
-
-
-            })
-            .catch(error => console.error('Analytics error:', error));
-    }
-
-    // Fetch and display cravings
-    function loadCravings() {
-        fetch('/cravings/api/cravings')
-            .then(response => response.json())
-            .then(data => {
-                cravingsList.innerHTML = '';
-                
-                if (data.length === 0) {
-                    cravingsList.innerHTML = `
-                        <div class="text-center py-8">
-                            <div class="text-gray-400 dark:text-gray-500 text-4xl mb-4">🧠</div>
-                            <p class="text-sm text-gray-500 dark:text-gray-400">No cravings logged yet. Start tracking to see patterns!</p>
-                        </div>
-                    `;
-                } else {
-                    data.slice(0, 10).forEach(craving => {
-                        const li = document.createElement('li');
-                        li.className = 'p-4 border border-gray-200 dark:border-gray-700 rounded-lg';
-                        li.innerHTML = `
-                            <div class="flex justify-between mb-2">
-                                <span class="font-semibold text-gray-900 dark:text-white">Intensity: ${craving.intensity}/10</span>
-                                <span class="text-sm text-gray-500 dark:text-gray-400">${new Date(craving.craving_time).toLocaleString()}</span>
-                            </div>
-                            ${craving.trigger ? `<p class="text-sm text-gray-700 dark:text-gray-300"><strong>Trigger:</strong> ${craving.trigger}</p>` : ''}
-                            ${craving.outcome ? `<p class="text-sm text-gray-700 dark:text-gray-300"><strong>Outcome:</strong> ${craving.outcome.replace('_', ' ')}</p>` : ''}
-                            ${craving.mood_before ? `<p class="text-sm text-gray-700 dark:text-gray-300"><strong>Mood Before:</strong> ${craving.mood_before}/10</p>` : ''}
-                            ${craving.duration_minutes ? `<p class="text-sm text-gray-700 dark:text-gray-300"><strong>Duration:</strong> ${craving.duration_minutes} minutes</p>` : ''}
-                            ${craving.notes ? `<p class="text-sm mt-2 text-gray-700 dark:text-gray-300"><strong>Notes:</strong> ${craving.notes}</p>` : ''}
-                        `;
-                        cravingsList.appendChild(li);
-                    });
-                }
-            })
-            .catch(error => console.error('Cravings error:', error));
-    }
-
-    // Handle form submission
-    cravingForm.addEventListener('submit', function(event) {
-        event.preventDefault();
-        const formData = new FormData(cravingForm);
-        const data = Object.fromEntries(formData.entries());
-        
-        // Handle checkboxes for physical symptoms
-        const symptoms = Array.from(formData.getAll('physical_symptoms'));
-        data.physical_symptoms = symptoms;
-
-        fetch('/cravings/api/cravings', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
-            },
-            body: JSON.stringify(data)
-        })
-        .then(response => response.json())
-        .then(result => {
-            if (result.error) {
-                alert('Error: ' + result.error);
-            } else {
-                cravingForm.reset();
-                loadCravings();
-                loadAnalytics();
-                alert('Craving logged successfully!');
-            }
-        })
-        .catch(error => {
-            console.error('Submit error:', error);
-            alert('Error logging craving. Please try again.');
-        });
-    });
-
-    // Initial load
-    loadCravings();
-    loadAnalytics();
-});
-</script>
+{% block extra_js %}
+<script type="module" src="{{ url_for('static', filename='js/cravings/page.js') }}"></script>
 {% endblock %}

@@ -1,0 +1,177 @@
+const { test, expect } = require('@playwright/test');
+const AxeBuilder = require('@axe-core/playwright').default;
+
+
+function deterministicEmail(testInfo) {
+  const source = `${testInfo.project.name}:${testInfo.title}:${testInfo.repeatEachIndex}:cravings-page`;
+  let hash = 0;
+  for (const character of source) hash = ((hash * 31) + character.charCodeAt(0)) >>> 0;
+  return `cravings-page-${hash}@example.com`;
+}
+
+
+async function register(page, testInfo) {
+  await page.goto('/auth/register');
+  await page.getByLabel('Email address').fill(deterministicEmail(testInfo));
+  await page.locator('#password').fill('browser-password');
+  await page.locator('#confirm_password').fill('browser-password');
+  await page.getByLabel(/I understand this is a personal tracking tool/i).check();
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page).toHaveURL(/\/journey\/onboarding\/?$/);
+}
+
+
+async function expectNoWcagViolations(page) {
+  const results = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa'])
+    .analyze();
+  expect(results.violations).toEqual([]);
+}
+
+
+test('Craving history records complete and minimal entries in chronological order', async ({ page }, testInfo) => {
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.stack || error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+  await register(page, testInfo);
+  await page.goto('/cravings/cravings');
+
+  await expect(page.getByRole('heading', { name: 'Craving history', level: 1 })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Get immediate support on Today/i })).toHaveAttribute('href', '/today/');
+
+  const form = page.locator('#craving-form');
+  await form.getByLabel('Intensity').fill('8');
+  await form.getByLabel('Trigger').selectOption('stress');
+  await form.getByLabel('Mood before').fill('4');
+  await form.getByLabel('Stress level').fill('9');
+  await form.getByLabel('Duration').fill('12');
+  await form.getByLabel('Restlessness').check();
+  await form.getByLabel('Irritability').check();
+  await form.getByLabel('Situation context').fill('After a difficult meeting');
+  await form.getByLabel('Outcome').selectOption('used_alternative');
+  await form.getByLabel('Mood after').fill('6');
+  await form.getByLabel('Notes').fill('The urge eased gradually');
+  await form.getByLabel('What helped afterward').fill('Walked outside and had water');
+  await form.getByRole('button', { name: 'Record craving' }).click();
+
+  await expect(form.locator('[data-craving-form-status]')).toContainText('Craving recorded');
+  const completeRow = page.locator('.craving-row', { hasText: 'After a difficult meeting' });
+  await expect(completeRow).toContainText('Intensity 8 of 10');
+  await expect(completeRow).toContainText('Used an alternative');
+  await expect(completeRow).toContainText('12 minutes');
+
+  await form.getByLabel('Intensity').fill('3');
+  await form.getByRole('button', { name: 'Record craving' }).click();
+  await expect(page.locator('.craving-row')).toHaveCount(2);
+  await expect(page.locator('.craving-row').first()).toContainText('Intensity 3 of 10');
+  expect(errors).toEqual([]);
+});
+
+
+test('Craving history exposes native validation and recoverable server feedback', async ({ page }, testInfo) => {
+  await register(page, testInfo);
+  await page.goto('/cravings/cravings');
+  const form = page.locator('#craving-form');
+
+  await form.getByRole('button', { name: 'Record craving' }).click();
+  await expect(form.getByLabel('Intensity')).toBeFocused();
+  expect(await form.getByLabel('Intensity').evaluate((input) => input.validity.valueMissing)).toBe(true);
+
+  await page.route('**/cravings/api/cravings', async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Temporary test failure.' }) });
+      return;
+    }
+    await route.continue();
+  });
+  await form.getByLabel('Intensity').fill('6');
+  await form.getByRole('button', { name: 'Record craving' }).click();
+  await expect(form.locator('[data-craving-form-status]')).toContainText('Temporary test failure');
+  await expect(form.getByRole('button', { name: 'Record craving' })).toBeEnabled();
+  await expect(form.getByLabel('Intensity')).toHaveValue('6');
+});
+
+
+for (const theme of ['light', 'dark']) {
+  test(`Craving history meets WCAG A/AA in explicit ${theme} theme`, async ({ page }, testInfo) => {
+    await page.addInitScript((value) => {
+      localStorage.setItem('nicotine-tracker-theme', value);
+    }, theme);
+    await register(page, testInfo);
+    await page.goto('/cravings/cravings');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    await expectNoWcagViolations(page);
+  });
+}
+
+
+test('Craving history remains keyboard reachable without mobile overflow', async ({ page }, testInfo) => {
+  await register(page, testInfo);
+  await page.goto('/cravings/cravings');
+  await page.getByLabel('Intensity').focus();
+  await page.keyboard.press('Tab');
+  await expect(page.getByLabel('Trigger')).toBeFocused();
+  expect(await page.evaluate(() => (
+    document.documentElement.scrollWidth - document.documentElement.clientWidth
+  ))).toBeLessThanOrEqual(0);
+  if (testInfo.project.name.includes('mobile')) {
+    const paddingBottom = await page.locator('main').evaluate((element) => (
+      parseFloat(getComputedStyle(element).paddingBottom)
+    ));
+    expect(paddingBottom).toBeGreaterThanOrEqual(80);
+  }
+});
+
+
+test('Craving history remains usable at 320px, 200% text, and reduced motion', async ({ page }, testInfo) => {
+  await page.addInitScript(() => localStorage.setItem('nicotine-tracker-theme', 'dark'));
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 320, height: 844 });
+  await register(page, testInfo);
+  await page.goto('/cravings/cravings');
+  await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+
+  const form = page.locator('#craving-form');
+  const submit = form.getByRole('button', { name: 'Record craving' });
+  await submit.focus();
+  const focus = await submit.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const bounds = element.getBoundingClientRect();
+    return {
+      height: bounds.height,
+      outlineStyle: style.outlineStyle,
+      width: bounds.width,
+    };
+  });
+  expect(focus.height).toBeGreaterThanOrEqual(44);
+  expect(focus.width).toBeGreaterThanOrEqual(44);
+  expect(focus.outlineStyle).not.toBe('none');
+
+  const overflow = await page.evaluate(() => ({
+    pageClient: document.documentElement.clientWidth,
+    pageScroll: document.documentElement.scrollWidth,
+    offenders: [...document.querySelectorAll('body *')]
+      .filter((element) => element.getBoundingClientRect().right > document.documentElement.clientWidth + 1)
+      .slice(0, 12)
+      .map((element) => ({
+        className: String(element.className || ''),
+        right: Math.round(element.getBoundingClientRect().right),
+        tag: element.tagName,
+        width: Math.round(element.getBoundingClientRect().width),
+      })),
+  }));
+  expect(overflow.pageScroll, JSON.stringify(overflow.offenders)).toBeLessThanOrEqual(overflow.pageClient + 1);
+
+  const motion = await page.locator('.cravings-page, .cravings-page *').evaluateAll((elements) => (
+    elements.map((element) => {
+      const style = getComputedStyle(element);
+      return `${style.animationDuration},${style.transitionDuration}`;
+    })
+  ));
+  expect(motion.every((value) => value.split(',').every((duration) => {
+    const parsed = parseFloat(duration) || 0;
+    return duration.trim().endsWith('ms') ? parsed <= 1 : parsed <= 0.001;
+  }))).toBe(true);
+});

@@ -480,11 +480,14 @@
     inset-block-start: var(--space-3);
     inset-inline-start: var(--space-3);
     z-index: var(--z-toast);
+    box-sizing: border-box;
+    max-width: calc(100vw - (2 * var(--space-3)));
     padding: var(--space-3) var(--space-4);
     border-radius: var(--radius-control);
     background: var(--color-ink);
     color: var(--color-canvas);
     font-weight: 700;
+    overflow-wrap: anywhere;
     transform: translateY(-160%);
     transition: transform var(--duration-feedback) var(--ease-out-expo);
   }
@@ -547,11 +550,19 @@
   .app-account-link,
   .marketing-actions > a:not(.c-button) {
     display: inline-flex;
+    min-width: 0;
     min-height: 2.75rem;
     align-items: center;
     color: var(--color-text-muted);
     font-size: var(--text-small);
     font-weight: 650;
+  }
+
+  .app-account-link {
+    max-width: 50%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .app-content {
@@ -1409,6 +1420,13 @@
     height: 1.2rem;
   }
 
+  .primary-nav__link > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .primary-nav__link[aria-current="page"] {
     background: var(--color-constructive-soft);
     color: var(--color-ink);
@@ -1800,6 +1818,17 @@
 
     .goal-card .text-link {
       grid-column: 3;
+    }
+  }
+
+  @media (max-width: 63.999rem) {
+    .primary-nav {
+      box-sizing: border-box;
+      width: 100vw;
+      max-width: 100vw;
+      min-width: 0;
+      padding-inline: 0;
+      overflow: hidden;
     }
   }
 
@@ -5474,6 +5503,300 @@
     .logbook-quick__action,
     .log-dialog,
     .log-dialog * {
+      transition: none !important;
+      animation: none !important;
+    }
+  }
+}
+
+@layer components {
+  .cravings-page {
+    display: grid;
+    width: min(100%, 70rem);
+    min-width: 0;
+    margin-inline: auto;
+    gap: var(--space-section);
+  }
+
+  .cravings-page > * {
+    min-width: 0;
+  }
+
+  .cravings-intro,
+  .cravings-intro__copy,
+  .cravings-support,
+  .cravings-entry,
+  .cravings-history,
+  .cravings-section-intro,
+  .craving-entry-form,
+  .craving-form-section,
+  .craving-form-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cravings-intro {
+    gap: var(--space-8);
+  }
+
+  .cravings-intro__copy {
+    align-content: start;
+    gap: var(--space-3);
+    padding-block-end: var(--space-8);
+    border-block-end: 1px solid var(--color-border-strong);
+  }
+
+  .cravings-intro__copy > p:last-child,
+  .cravings-support > p,
+  .cravings-section-intro > p,
+  .cravings-empty > p:last-child {
+    margin: 0;
+    color: var(--color-text-muted);
+  }
+
+  .cravings-support {
+    align-content: start;
+    justify-items: start;
+    gap: var(--space-3);
+    padding: clamp(1.25rem, 4vw, 2rem);
+    border: 1px solid var(--color-border);
+    border-inline-start: .3rem solid var(--color-attention);
+    border-radius: var(--radius-surface);
+    background: var(--color-attention-soft);
+  }
+
+  .cravings-support h2 {
+    font-size: var(--text-lead);
+  }
+
+  .cravings-support .c-button {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .cravings-support > p {
+    color: var(--color-ink);
+  }
+
+  .cravings-entry,
+  .cravings-history {
+    gap: var(--space-6);
+  }
+
+  .cravings-section-intro {
+    gap: var(--space-3);
+  }
+
+  .cravings-section-intro > div {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .cravings-section-intro h2 {
+    font-size: clamp(1.6rem, 1.35rem + 1vw, 2.25rem);
+  }
+
+  .craving-entry-form {
+    gap: var(--space-8);
+    padding: clamp(1.25rem, 4vw, 2.5rem);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-surface);
+    background: var(--color-surface);
+  }
+
+  .craving-form-section {
+    min-width: 0;
+    gap: var(--space-5);
+    padding: 0 0 var(--space-8);
+    border: 0;
+    border-block-end: 1px solid var(--color-border);
+  }
+
+  .craving-form-section:last-of-type {
+    padding-block-end: 0;
+    border-block-end: 0;
+  }
+
+  .craving-form-section > legend {
+    width: 100%;
+    margin-block-end: var(--space-5);
+    color: var(--color-ink);
+    font-family: var(--font-display);
+    font-size: var(--text-lead);
+    font-weight: 520;
+  }
+
+  .craving-form-grid {
+    gap: var(--space-5);
+  }
+
+  .craving-symptoms {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-2) var(--space-5);
+  }
+
+  .cravings-page .c-field {
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cravings-page .c-field__check-label {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .craving-form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-4);
+  }
+
+  .craving-form-status {
+    min-width: min(100%, 18rem);
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: var(--text-small);
+    font-weight: 680;
+  }
+
+  .craving-form-status[data-state="success"] {
+    color: var(--color-constructive);
+  }
+
+  .craving-form-status[data-state="error"] {
+    color: var(--color-danger);
+  }
+
+  .cravings-list {
+    border-block-start: 1px solid var(--color-border-strong);
+  }
+
+  .craving-row {
+    display: grid;
+    min-width: 0;
+    gap: var(--space-5);
+    padding-block: var(--space-6);
+    border-block-end: 1px solid var(--color-border);
+  }
+
+  .craving-row__lead {
+    display: grid;
+    align-content: start;
+    gap: var(--space-2);
+  }
+
+  .craving-row__intensity {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: var(--text-lead);
+    font-weight: 560;
+  }
+
+  .craving-row time {
+    color: var(--color-text-muted);
+    font-size: var(--text-small);
+  }
+
+  .craving-row__facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+    margin: 0;
+  }
+
+  .craving-row__facts > div {
+    display: grid;
+    align-content: start;
+    gap: var(--space-1);
+  }
+
+  .craving-row__facts dt {
+    color: var(--color-text-muted);
+    font-size: var(--text-caption);
+    font-weight: 720;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+
+  .craving-row__facts dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+    font-weight: 680;
+  }
+
+  .craving-row__notes {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-4);
+    border-inline-start: .25rem solid var(--color-constructive);
+    background: var(--color-constructive-soft);
+  }
+
+  .craving-row__notes p {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .craving-row__notes strong {
+    margin-inline-end: var(--space-1);
+  }
+
+  .cravings-empty {
+    display: grid;
+    justify-items: start;
+    gap: var(--space-3);
+    padding: clamp(1.25rem, 4vw, 2.5rem);
+    border: 1px dashed var(--color-border-strong);
+    border-radius: var(--radius-surface);
+    background: var(--color-surface);
+  }
+
+  .cravings-empty h3 {
+    font-size: var(--text-lead);
+  }
+
+  @media (min-width: 40rem) {
+    .cravings-section-intro {
+      grid-template-columns: minmax(15rem, .75fr) minmax(18rem, 1fr);
+      align-items: end;
+    }
+
+    .craving-form-grid--two,
+    .craving-symptoms {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .craving-form-grid--three {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .craving-row {
+      grid-template-columns: minmax(11rem, .65fr) minmax(18rem, 1fr);
+    }
+
+    .craving-row__notes {
+      grid-column: 1 / -1;
+    }
+  }
+
+  @media (min-width: 60rem) {
+    .cravings-intro {
+      grid-template-columns: minmax(0, 1.2fr) minmax(19rem, .8fr);
+      align-items: start;
+    }
+
+    .cravings-intro__copy {
+      padding-block-end: var(--space-12);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cravings-page *,
+    .cravings-page *::before,
+    .cravings-page *::after {
       transition: none !important;
       animation: none !important;
     }

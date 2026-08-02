@@ -76,21 +76,29 @@ def _first_validation_message(exc):
 @cravings_bp.route('/cravings', methods=['GET'])
 @login_required
 def cravings_page():
-    """Renders the enhanced craving tracker page with analytics."""
+    """Render the detailed craving-entry fallback and recent history."""
     try:
         user = get_current_user()
-        
-        # Get comprehensive analytics
-        analytics = get_comprehensive_craving_analytics(user.id)
-        
-        return render_template('cravings/cravings.html', 
-                             analytics=analytics,
-                             user=user)
+        recent_cravings = Craving.query.filter_by(user_id=user.id).order_by(
+            Craving.craving_time.desc(), Craving.id.desc()
+        ).limit(20).all()
+        return render_template(
+            'cravings/cravings.html',
+            recent_cravings=recent_cravings,
+            user=user,
+            user_timezone=resolve_timezone(user.timezone).zone,
+        )
     except Exception as e:
         current_app.logger.error(f'Cravings page error: {e}')
-        return render_template('cravings/cravings.html', 
-                             analytics={},
-                             user=get_current_user())
+        user = get_current_user()
+        return render_template(
+            'cravings/cravings.html',
+            recent_cravings=[],
+            user=user,
+            user_timezone=resolve_timezone(
+                user.timezone if user else None
+            ).zone,
+        )
 
 
 @cravings_bp.route('/api/cravings', methods=['POST'])
