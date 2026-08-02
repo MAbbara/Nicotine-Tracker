@@ -98,11 +98,19 @@ def test_preferences_uses_native_described_controls_and_selected_values(
 
 def test_preferences_post_preserves_all_mutations(
         logged_in_client, db_session, test_user, test_pouch):
+    second_pouch = Pouch(
+        brand="Second Test Brand",
+        nicotine_mg=Decimal("8.00"),
+        is_default=False,
+        created_by=test_user.id,
+    )
+    db_session.add(second_pouch)
+    db_session.commit()
     response = logged_in_client.post("/settings/preferences", data={
         "units_preference": "percentage",
         "timezone": "Asia/Riyadh",
         "daily_reset_time": "04:30",
-        "preferred_brands": ["Test Brand"],
+        "preferred_brands": ["Test Brand", "Second Test Brand"],
     })
 
     assert response.status_code == 302
@@ -111,7 +119,7 @@ def test_preferences_post_preserves_all_mutations(
     db_session.refresh(test_user)
     assert preferences.units_preference == "percentage"
     assert preferences.daily_reset_time == time(4, 30)
-    assert preferences.preferred_brands == ["Test Brand"]
+    assert preferences.preferred_brands == ["Test Brand", "Second Test Brand"]
     assert test_user.timezone == "Asia/Riyadh"
 
     persisted = logged_in_client.get("/settings/preferences")
@@ -126,6 +134,23 @@ def test_preferences_post_preserves_all_mutations(
     assert soup.select_one(
         'input[name="preferred_brands"][value="Test Brand"][checked]'
     )
+    assert soup.select_one(
+        'input[name="preferred_brands"][value="Second Test Brand"][checked]'
+    )
+
+    cleared = logged_in_client.post("/settings/preferences", data={
+        "units_preference": "percentage",
+        "timezone": "Asia/Riyadh",
+        "daily_reset_time": "04:30",
+    })
+    assert cleared.status_code == 302
+    db_session.refresh(preferences)
+    assert preferences.preferred_brands == []
+    cleared_page = BeautifulSoup(
+        logged_in_client.get("/settings/preferences").data,
+        "html.parser",
+    )
+    assert not cleared_page.select('input[name="preferred_brands"][checked]')
 
 
 def test_preferences_template_retires_preline_and_legacy_palette():

@@ -782,6 +782,18 @@
     color: var(--color-ink);
   }
 
+  .c-field__control:focus {
+    border-color: var(--color-border-strong);
+    outline: none;
+    box-shadow: none;
+  }
+
+  .c-field__control:focus-visible {
+    border-color: var(--color-focus);
+    outline: 0.1875rem solid var(--color-focus);
+    outline-offset: 0.125rem;
+  }
+
   textarea.c-field__control {
     min-height: 6rem;
     resize: vertical;

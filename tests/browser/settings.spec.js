@@ -55,7 +55,9 @@ test('Preferences update with native controls and persist after reload', async (
   await page.getByLabel('Daily reset time').fill('04:30');
 
   const preferredBrand = page.getByRole('checkbox', { name: 'Steady Mint' });
-  await preferredBrand.check();
+  await preferredBrand.focus();
+  await page.keyboard.press('Space');
+  await expect(preferredBrand).toBeChecked();
   await page.getByRole('button', { name: 'Save preferences' }).click();
 
   await expect(page).toHaveURL(/\/settings\/preferences$/);
@@ -82,6 +84,27 @@ test('Preferences update with native controls and persist after reload', async (
   expect(nativeControls.every((control) => !control.hidden)).toBe(true);
   expect(nativeControls.every((control) => control.height >= 44)).toBe(true);
   await expect(page.locator('label.c-field__check', { has: preferredBrand })).toHaveCSS('min-height', '44px');
+
+  const units = page.getByLabel('Units', { exact: true });
+  await units.focus();
+  const focusStyle = await units.evaluate((control) => {
+    const style = getComputedStyle(control);
+    return {
+      borderColor: style.borderColor,
+      boxShadow: style.boxShadow,
+      outlineColor: style.outlineColor,
+    };
+  });
+  expect(focusStyle.borderColor).toBe('rgb(47, 107, 74)');
+  expect(focusStyle.outlineColor).toBe('rgb(47, 107, 74)');
+  expect(focusStyle.boxShadow).toBe('none');
+
+  await preferredBrand.focus();
+  await page.keyboard.press('Space');
+  await expect(preferredBrand).not.toBeChecked();
+  await page.getByRole('button', { name: 'Save preferences' }).click();
+  await page.reload();
+  await expect(page.getByRole('checkbox', { name: 'Steady Mint' })).not.toBeChecked();
 });
 
 
