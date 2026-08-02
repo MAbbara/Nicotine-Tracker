@@ -132,9 +132,13 @@ export function buildInsightsViewModel(data = {}, rangeDays = 30) {
     sections: { timePattern, productPattern },
     nextStep: state === 'ready'
       ? {
-        label: 'Review your support plan',
+        label: timePattern.available
+          ? `Plan for ${timePattern.leadingLabel}`
+          : 'Review your support plan',
         href: '/journey/',
-        description: 'Use this pattern to choose one practical adjustment.',
+        description: timePattern.available
+          ? 'Review your support plan and add help before this window begins.'
+          : 'Use this pattern to choose one practical adjustment.',
       }
       : {
         label: 'Log today',

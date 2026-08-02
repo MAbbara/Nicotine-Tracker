@@ -212,6 +212,8 @@ test('progress-first model frames lower use as movement with the plan', async ()
   assert.equal(model.sections.timePattern.leadingLabel, 'Evening (6PM-12AM)');
   assert.equal(model.sections.productPattern.leadingLabel, 'Steady Mint');
   assert.doesNotMatch(JSON.stringify(model), /Ignore me|Unverified legacy copy/);
+  assert.equal(model.nextStep.label, 'Plan for Evening (6PM-12AM)');
+  assert.match(model.nextStep.description, /before this window begins/i);
   assert.equal(model.nextStep.href, '/journey/');
 });
 
