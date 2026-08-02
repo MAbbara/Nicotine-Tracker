@@ -149,6 +149,57 @@ test('Craving history remains usable at 320px, 200% text, and reduced motion', a
   expect(focus.width).toBeGreaterThanOrEqual(44);
   expect(focus.outlineStyle).not.toBe('none');
 
+  const primaryNavigation = page.getByRole('navigation', { name: 'Primary' });
+  const navigationLinks = primaryNavigation.getByRole('link');
+  const navigationLayout = await primaryNavigation.evaluate((navigation) => {
+    const style = getComputedStyle(navigation);
+    const clippedLabels = [...navigation.querySelectorAll('.primary-nav__link > span')]
+      .filter((label) => {
+        const labelStyle = getComputedStyle(label);
+        const labelBounds = label.getBoundingClientRect();
+        const textRange = document.createRange();
+        textRange.selectNodeContents(label);
+        const textBounds = textRange.getBoundingClientRect();
+        return (
+          labelStyle.overflowX === 'hidden'
+          || labelStyle.textOverflow === 'ellipsis'
+          || labelStyle.whiteSpace === 'nowrap'
+          || textBounds.left < labelBounds.left - 1
+          || textBounds.right > labelBounds.right + 1
+          || textBounds.top < labelBounds.top - 1
+          || textBounds.bottom > labelBounds.bottom + 1
+        );
+      })
+      .map((label) => label.textContent.trim());
+    return {
+      clippedLabels,
+      paddingInlineEnd: parseFloat(style.paddingInlineEnd),
+      paddingInlineStart: parseFloat(style.paddingInlineStart),
+    };
+  });
+  expect(navigationLayout.clippedLabels).toEqual([]);
+  expect(navigationLayout.paddingInlineStart).toBeGreaterThan(0);
+  expect(navigationLayout.paddingInlineEnd).toBeGreaterThan(0);
+
+  for (const edgeLink of [navigationLinks.first(), navigationLinks.last()]) {
+    await edgeLink.focus();
+    await expect(edgeLink).toBeFocused();
+    const focusClearance = await edgeLink.evaluate((link) => {
+      const navigationBounds = link.closest('.primary-nav').getBoundingClientRect();
+      const linkBounds = link.getBoundingClientRect();
+      const style = getComputedStyle(link);
+      const outlineExtent = parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset);
+      return {
+        left: linkBounds.left - outlineExtent - navigationBounds.left,
+        outlineStyle: style.outlineStyle,
+        right: navigationBounds.right - linkBounds.right - outlineExtent,
+      };
+    });
+    expect(focusClearance.outlineStyle).not.toBe('none');
+    expect(focusClearance.left).toBeGreaterThanOrEqual(0);
+    expect(focusClearance.right).toBeGreaterThanOrEqual(0);
+  }
+
   const overflow = await page.evaluate(() => ({
     pageClient: document.documentElement.clientWidth,
     pageScroll: document.documentElement.scrollWidth,

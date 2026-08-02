@@ -1422,9 +1422,10 @@
 
   .primary-nav__link > span {
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    text-align: center;
+    white-space: normal;
   }
 
   .primary-nav__link[aria-current="page"] {
@@ -1824,11 +1825,14 @@
   @media (max-width: 63.999rem) {
     .primary-nav {
       box-sizing: border-box;
-      width: 100vw;
-      max-width: 100vw;
+      width: 100%;
+      max-width: 100%;
       min-width: 0;
-      padding-inline: 0;
-      overflow: hidden;
+      overflow: visible;
+    }
+
+    .primary-nav__link {
+      flex-wrap: wrap;
     }
   }
 
