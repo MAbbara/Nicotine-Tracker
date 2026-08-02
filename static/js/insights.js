@@ -5,6 +5,8 @@ import {
 } from './analytics/runtime.js';
 import { createDisclosure } from './analytics/disclosure.js';
 
+export { buildInsightsViewModel } from './insights/view_model.js';
+
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 function aggregateToWeekly(points) {

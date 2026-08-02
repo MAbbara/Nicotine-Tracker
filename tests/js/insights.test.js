@@ -23,6 +23,14 @@ async function importModule(relativePath) {
     const disclosureUrl = `data:text/javascript;base64,${Buffer.from(disclosureSource).toString('base64')}`;
     source = source.replace("'./analytics/disclosure.js'", `'${disclosureUrl}'`);
   }
+  if (source.includes("'./insights/view_model.js'")) {
+    const viewModelSource = fs.readFileSync(
+      path.join(projectRoot, 'static/js/insights/view_model.js'),
+      'utf8',
+    );
+    const viewModelUrl = `data:text/javascript;base64,${Buffer.from(viewModelSource).toString('base64')}`;
+    source = source.replace("'./insights/view_model.js'", `'${viewModelUrl}'`);
+  }
   return import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 }
 
@@ -165,4 +173,147 @@ test('trend data labels are limited to short readable series', async () => {
   assert.equal(shouldShowTrendDataLabels(14), true);
   assert.equal(shouldShowTrendDataLabels(15), false);
   assert.equal(shouldShowTrendDataLabels(365), false);
+});
+
+test('progress-first model frames lower use as movement with the plan', async () => {
+  const { buildInsightsViewModel } = await importModule('static/js/insights/view_model.js');
+  const model = buildInsightsViewModel({
+    total_pouches: 21,
+    daily_average: 0.7,
+    observed_days: 30,
+    log_count: 30,
+    comparison: {
+      available: true,
+      current_total: 21,
+      previous_total: 28,
+      percent_change: -25,
+      direction: 'down',
+    },
+    data_sufficiency: {
+      trend: true,
+      time_pattern: true,
+      brand_pattern: true,
+      heatmap: true,
+    },
+    consumption_by_time_of_day: {
+      'Morning (6AM-12PM)': 5,
+      'Evening (6PM-12AM)': 16,
+    },
+    brand_analysis: { 'Steady Mint': 18, 'Calm Citrus': 3 },
+    ai_insights: [{ title: 'Ignore me', description: 'Unverified legacy copy.' }],
+  }, 30);
+
+  assert.equal(model.state, 'ready');
+  assert.equal(model.headline, 'You used 25% less than the previous 30 days.');
+  assert.match(model.interpretation, /moving in the same direction as your plan/i);
+  assert.deepEqual(model.metrics.map(({ key }) => key), [
+    'current-use', 'daily-average', 'days-observed',
+  ]);
+  assert.equal(model.sections.timePattern.leadingLabel, 'Evening (6PM-12AM)');
+  assert.equal(model.sections.productPattern.leadingLabel, 'Steady Mint');
+  assert.doesNotMatch(JSON.stringify(model), /Ignore me|Unverified legacy copy/);
+  assert.equal(model.nextStep.href, '/journey/');
+});
+
+test('progress-first model uses candid neutral language for higher and steady use', async () => {
+  const { buildInsightsViewModel } = await importModule('static/js/insights/view_model.js');
+  const base = {
+    total_pouches: 28,
+    observed_days: 7,
+    log_count: 7,
+    data_sufficiency: { trend: true, time_pattern: false, brand_pattern: false },
+  };
+  const higher = buildInsightsViewModel({
+    ...base,
+    comparison: {
+      available: true,
+      current_total: 28,
+      previous_total: 25,
+      percent_change: 12,
+      direction: 'up',
+    },
+  }, 7);
+  const steady = buildInsightsViewModel({
+    ...base,
+    comparison: {
+      available: true,
+      current_total: 28,
+      previous_total: 28,
+      percent_change: 0,
+      direction: 'steady',
+    },
+  }, 7);
+
+  assert.equal(higher.headline, 'You used 12% more than the previous 7 days.');
+  assert.doesNotMatch(`${higher.headline} ${higher.interpretation}`, /fail/i);
+  assert.equal(steady.headline, 'Your use was steady compared with the previous 7 days.');
+  assert.equal(higher.sections.timePattern.available, false);
+  assert.equal(higher.sections.productPattern.available, false);
+});
+
+test('sparse and empty models invite continued logging without inventing direction', async () => {
+  const { buildInsightsViewModel } = await importModule('static/js/insights/view_model.js');
+  const sparse = buildInsightsViewModel({
+    total_pouches: 4,
+    observed_days: 2,
+    log_count: 2,
+    comparison: { available: false, current_total: 4 },
+    data_sufficiency: { trend: false, time_pattern: false, brand_pattern: false },
+  }, 30);
+  const empty = buildInsightsViewModel({
+    total_pouches: 0,
+    observed_days: 0,
+    log_count: 0,
+    comparison: { available: false, current_total: 0 },
+    data_sufficiency: { trend: false, time_pattern: false, brand_pattern: false },
+  }, 30);
+
+  assert.equal(sparse.state, 'sparse');
+  assert.equal(sparse.headline, 'Keep logging to reveal a reliable direction.');
+  assert.match(sparse.interpretation, /4 pouches across 2 days/i);
+  assert.doesNotMatch(sparse.interpretation, /less|more|steady/i);
+  assert.equal(sparse.nextStep.href, '/today/');
+  assert.equal(empty.state, 'empty');
+  assert.match(empty.headline, /first log/i);
+  assert.equal(empty.nextStep.href, '/today/');
+});
+
+test('missing comparison reports the observed fact without claiming a trend', async () => {
+  const { buildInsightsViewModel } = await importModule('static/js/insights/view_model.js');
+  const model = buildInsightsViewModel({
+    total_pouches: 18,
+    daily_average: 4.5,
+    observed_days: 4,
+    log_count: 6,
+    comparison: { available: false, current_total: 18 },
+    data_sufficiency: { trend: true, time_pattern: true, brand_pattern: true },
+    consumption_by_time_of_day: { Morning: 0, Afternoon: 6, Evening: 12 },
+    brand_analysis: { Mint: 7, Citrus: 11 },
+  }, 7);
+
+  assert.equal(model.state, 'ready');
+  assert.equal(model.headline, 'You logged 18 pouches across 4 days.');
+  assert.doesNotMatch(`${model.headline} ${model.interpretation}`, /less|more|steady/i);
+  assert.equal(model.sections.timePattern.leadingLabel, 'Evening');
+  assert.equal(model.sections.productPattern.leadingLabel, 'Citrus');
+});
+
+test('a zero previous total never becomes a false zero-percent comparison', async () => {
+  const { buildInsightsViewModel } = await importModule('static/js/insights/view_model.js');
+  const model = buildInsightsViewModel({
+    total_pouches: 2,
+    observed_days: 3,
+    log_count: 3,
+    comparison: {
+      available: true,
+      current_total: 2,
+      previous_total: 0,
+      percent_change: null,
+      direction: 'up',
+    },
+    data_sufficiency: { trend: true, time_pattern: false, brand_pattern: false },
+  }, 7);
+
+  assert.equal(model.headline, 'You logged 2 pouches; the previous 7 days had none.');
+  assert.doesNotMatch(model.headline, /0%/);
 });
