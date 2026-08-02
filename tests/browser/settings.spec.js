@@ -108,6 +108,102 @@ test('Preferences update with native controls and persist after reload', async (
 });
 
 
+test('Reminders persist and async actions expose success and failure feedback', async ({ page }) => {
+  let discordRequests = 0;
+  let weeklyRequests = 0;
+  const discordBodies = [];
+  const weeklyBodies = [];
+  let dialogs = 0;
+  page.on('dialog', async (dialog) => {
+    dialogs += 1;
+    await dialog.dismiss();
+  });
+
+  await page.route('**/settings/test-discord-webhook', async (route) => {
+    discordRequests += 1;
+    discordBodies.push(route.request().postDataJSON());
+    expect(route.request().headers()['x-csrftoken']).toBeTruthy();
+    const success = discordRequests === 1;
+    await route.fulfill({
+      status: success ? 200 : 400,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success,
+        message: success ? 'Discord connection confirmed.' : 'Discord rejected the test.',
+      }),
+    });
+  });
+  await page.route('**/settings/notifications/trigger-weekly', async (route) => {
+    weeklyRequests += 1;
+    weeklyBodies.push(route.request().postDataJSON());
+    expect(route.request().headers()['x-csrftoken']).toBeTruthy();
+    const success = weeklyRequests === 1;
+    await route.fulfill({
+      status: success ? 200 : 400,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success,
+        message: success ? 'Weekly report queued.' : 'Weekly report could not be queued.',
+      }),
+    });
+  });
+
+  await login(page);
+  await page.goto('/settings/notifications');
+  await page.getByRole('checkbox', { name: 'Email' }).check();
+  await page.getByRole('checkbox', { name: 'Discord' }).check();
+  await page.getByRole('checkbox', { name: 'Goal progress' }).check();
+  await page.getByRole('checkbox', { name: 'Milestones' }).check();
+  await page.getByRole('checkbox', { name: 'Daily logging reminder' }).check();
+  await page.getByRole('checkbox', { name: 'Weekly progress report' }).check();
+  await page.getByLabel('Discord webhook URL').fill('https://discord.com/api/webhooks/example/token');
+  await page.getByLabel('Daily reminder time').fill('09:10');
+  await page.getByLabel('Quiet hours start').fill('21:30');
+  await page.getByLabel('Quiet hours end').fill('06:15');
+  await page.getByLabel('Delivery frequency').selectOption('weekly');
+  await page.getByRole('button', { name: 'Save reminders' }).click();
+
+  await expect(page).toHaveURL(/\/settings\/notifications$/);
+  await expect(page.getByRole('status').filter({ hasText: 'Notification settings updated successfully!' })).toBeVisible();
+  await expect(page.getByRole('checkbox', { name: 'Discord' })).toBeChecked();
+  await expect(page.getByLabel('Daily reminder time')).toHaveValue('09:10');
+  await expect(page.getByLabel('Delivery frequency')).toHaveValue('weekly');
+
+  const discordButton = page.getByRole('button', { name: 'Test Discord connection' });
+  const discordStatus = page.locator('#discord-test-status');
+  await discordButton.click();
+  await expect(discordStatus).toHaveText('Discord connection confirmed.');
+  await expect(discordStatus).toHaveAttribute('data-state', 'success');
+  await expect(discordButton).toBeEnabled();
+  await discordButton.click();
+  await expect(discordStatus).toHaveText('Discord rejected the test.');
+  await expect(discordStatus).toHaveAttribute('data-state', 'error');
+
+  const weeklyButton = page.getByRole('button', { name: 'Send weekly report' });
+  const weeklyStatus = page.locator('#weekly-report-status');
+  await expect(weeklyButton).toBeEnabled();
+  await weeklyButton.click();
+  await expect(weeklyStatus).toHaveText('Weekly report queued.');
+  await expect(weeklyStatus).toHaveAttribute('data-state', 'success');
+  await weeklyButton.click();
+  await expect(weeklyStatus).toHaveText('Weekly report could not be queued.');
+  await expect(weeklyStatus).toHaveAttribute('data-state', 'error');
+
+  expect(discordRequests).toBe(2);
+  expect(weeklyRequests).toBe(2);
+  expect(discordBodies).toEqual([
+    { webhook_url: 'https://discord.com/api/webhooks/example/token' },
+    { webhook_url: 'https://discord.com/api/webhooks/example/token' },
+  ]);
+  expect(weeklyBodies).toEqual([{}, {}]);
+  expect(dialogs).toBe(0);
+
+  await page.reload();
+  await expect(page.getByRole('checkbox', { name: 'Weekly progress report' })).toBeChecked();
+  await expect(page.getByLabel('Quiet hours start')).toHaveValue('21:30');
+});
+
+
 test('Account rejects incorrect credentials without losing the form', async ({ page }) => {
   await login(page);
   await page.goto('/settings/account');
