@@ -321,6 +321,58 @@
     margin-inline: auto;
     align-content: center;
     padding: clamp(1.5rem, 5vw, 4rem) clamp(1rem, 4vw, 2rem) var(--space-16);
+    padding-inline-start: max(clamp(1rem, 4vw, 2rem), env(safe-area-inset-left));
+    padding-inline-end: max(clamp(1rem, 4vw, 2rem), env(safe-area-inset-right));
+    padding-block-end: max(var(--space-16), env(safe-area-inset-bottom));
+  }
+
+  .auth-panel {
+    display: grid;
+    gap: var(--space-8);
+    padding: clamp(1.5rem, 4vw, 3rem);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-surface);
+    background: var(--color-surface);
+  }
+
+  .auth-panel__intro {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .auth-panel__intro h1 {
+    font-size: clamp(1.75rem, 1.45rem + 1.4vw, 2.5rem);
+  }
+
+  .auth-panel__purpose,
+  .auth-panel__footer {
+    margin: 0;
+    color: var(--color-text-muted);
+  }
+
+  .auth-panel__footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-small);
+  }
+
+  .auth-form {
+    display: grid;
+    gap: var(--space-6);
+  }
+
+  .auth-form__row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-4);
+  }
+
+  .auth-form__submit {
+    width: 100%;
   }
 
   .marketing-header {

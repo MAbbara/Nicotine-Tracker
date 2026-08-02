@@ -34,6 +34,53 @@ test('public landing exposes one promise and working account actions', async ({ 
     level: 1,
     name: 'Sign in to your account',
   })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+  await expect(page.locator('.auth-panel')).toHaveCount(1);
+
+  const submit = page.locator('.auth-panel').getByRole('button', { name: 'Sign in', exact: true });
+  const submitSize = await submit.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    return { width: box.width, height: box.height };
+  });
+  expect(submitSize.height).toBeGreaterThanOrEqual(44);
+});
+
+
+test('registration validates inline without dialogs or console errors', async ({ page }) => {
+  const consoleErrors = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  page.on('pageerror', (error) => consoleErrors.push(String(error)));
+  let dialogSeen = false;
+  page.on('dialog', async (dialog) => {
+    dialogSeen = true;
+    await dialog.dismiss();
+  });
+
+  await page.goto('/auth/register');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+  await expect(page.locator('.auth-panel')).toHaveCount(1);
+
+  await page.fill('#email', 'runner@example.com');
+  await page.fill('#password', 'short');
+  await page.fill('#confirm_password', 'short');
+  await page.check('#terms');
+  await page.getByRole('button', { name: 'Create account', exact: true }).click();
+
+  await expect(page.locator('#password-error')).toHaveText('Use at least 6 characters.');
+  await expect(page).toHaveURL(/\/auth\/register$/);
+  expect(dialogSeen).toBe(false);
+
+  await page.fill('#password', 'long-enough');
+  await page.fill('#confirm_password', 'different');
+  await page.getByRole('button', { name: 'Create account', exact: true }).click();
+
+  await expect(page.locator('#password-error')).toHaveText('');
+  await expect(page.locator('#confirm_password-error')).toHaveText('Passwords do not match.');
+  await expect(page).toHaveURL(/\/auth\/register$/);
+  expect(dialogSeen).toBe(false);
+  expect(consoleErrors).toEqual([]);
 });
 
 

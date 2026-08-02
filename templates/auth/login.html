@@ -1,69 +1,32 @@
 {% extends "layouts/auth.html" %}
+{% from "components/button.html" import button %}
+{% from "components/field.html" import field, checkbox_field %}
 
-{% block title %}Login - Nicotine Tracker{% endblock %}
+{% block title %}Login — Nicotine Tracker{% endblock %}
 
 {% block content %}
-<div class="flex min-h-full flex-col justify-center px-6 py-12 lg:px-8">
-    <div class="sm:mx-auto sm:w-full sm:max-w-sm">
-        <h1 class="mt-10 text-center text-2xl font-bold leading-9 tracking-tight text-gray-900 dark:text-white">
-            Sign in to your account
-        </h1>
+<section class="auth-panel" aria-labelledby="auth-title">
+  <header class="auth-panel__intro">
+    <h1 id="auth-title">Sign in to your account</h1>
+    <p class="auth-panel__purpose">Pick up where you left off. Today’s plan is waiting.</p>
+  </header>
+
+  <form class="auth-form" method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {{ field('email', 'Email address', type='email', autocomplete='email', required=True,
+             placeholder='you@example.com') }}
+    {{ field('password', 'Password', type='password', autocomplete='current-password',
+             required=True) }}
+    <div class="auth-form__row">
+      {{ checkbox_field('remember_me', 'Remember me') }}
+      <a class="text-link" href="{{ url_for('auth.forgot_password') }}">Forgot password?</a>
     </div>
+    {{ button('Sign in', type='submit', class_name='auth-form__submit') }}
+  </form>
 
-    <div class="mt-10 sm:mx-auto sm:w-full sm:max-w-sm">
-        <form class="space-y-6" method="POST">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div>
-                <label for="email" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">
-                    Email address
-                </label>
-                <div class="mt-2">
-                    <input id="email" name="email" type="email" autocomplete="email" required 
-                           class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600 dark:placeholder:text-gray-400"
-                           placeholder="Enter your email">
-                </div>
-            </div>
-
-            <div>
-                <div class="flex items-center justify-between">
-                    <label for="password" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">
-                        Password
-                    </label>
-                    <div class="text-sm">
-                        <a href="{{ url_for('auth.forgot_password') }}" class="font-semibold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400">
-                            Forgot password?
-                        </a>
-                    </div>
-                </div>
-                <div class="mt-2">
-                    <input id="password" name="password" type="password" autocomplete="current-password" required 
-                           class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600 dark:placeholder:text-gray-400"
-                           placeholder="Enter your password">
-                </div>
-            </div>
-
-            <div class="flex items-center">
-                <input id="remember_me" name="remember_me" type="checkbox" 
-                       class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 dark:border-gray-600 dark:bg-gray-700">
-                <label for="remember_me" class="ml-3 block text-sm leading-6 text-gray-900 dark:text-white">
-                    Remember me
-                </label>
-            </div>
-
-            <div>
-                <button type="submit"
-                        class="flex w-full justify-center rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-semibold leading-6 text-white shadow-sm hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 cursor-pointer">
-                    Sign in
-                </button>
-            </div>
-        </form>
-
-        <p class="mt-10 text-center text-sm text-gray-600 dark:text-gray-300">
-            Don't have an account?
-            <a href="{{ url_for('auth.register') }}" class="font-semibold leading-6 text-indigo-600 hover:text-indigo-500 dark:text-indigo-400">
-                Create one here
-            </a>
-        </p>
-    </div>
-</div>
+  <p class="auth-panel__footer">
+    Don’t have an account?
+    <a class="text-link" href="{{ url_for('auth.register') }}">Create one here</a>
+  </p>
+</section>
 {% endblock %}
