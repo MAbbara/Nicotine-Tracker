@@ -1,271 +1,50 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, jsonify
-from datetime import date, datetime, time, timedelta
-import pytz
-from models import DailyCheckIn, User, Goal, Log
+from datetime import datetime, timedelta
+from models import Goal
 from services.goal_service import (
     ActiveGoalConflict,
     create_goal as create_goal_service,
     get_all_goals,
     get_goal_analytics,
-    set_goal_active,
+    toggle_goal_active,
+    update_goal as update_goal_service,
+)
+from services.goal_evaluation_service import (
+    HISTORY_LIVE,
+    HISTORY_UI,
+    batch_goal_progress,
+    effective_day_for_user,
+    evaluate_goal_period,
+    goal_threshold_notice,
+    latest_completed_week,
 )
 
-from services.timezone_service import (
-    get_current_user_time, 
-    get_user_date_boundaries, 
-    get_user_week_boundaries,
-    convert_utc_to_user_time,
-    get_user_day_window,
-    get_user_week_window,
-    resolve_timezone,
-)
-from services.log_service import (
-    group_logs_by_effective_day,
-    logs_for_user_interval,
-    logs_for_user_window,
-    summarize_logs,
-)
+from services.timezone_service import resolve_timezone
 from extensions import db
 from routes.auth import login_required, get_current_user
-from sqlalchemy import desc, func
+from sqlalchemy import desc
 
 goals_bp = Blueprint('goals', __name__, template_folder="../templates/goals")
 
 
-def _user_reset_time(user):
-    preferences = user.preferences
-    if preferences and preferences.daily_reset_time:
-        return preferences.daily_reset_time
-    return time.min
-
-
 def _current_effective_day(user, resolved_timezone, now_utc=None):
-    """Return the active reset-aware user day from one UTC instant."""
-    now_utc = now_utc or datetime.now(pytz.UTC)
-    if now_utc.tzinfo is None:
-        now_utc = pytz.UTC.localize(now_utc)
-    else:
-        now_utc = now_utc.astimezone(pytz.UTC)
-    reset_time = _user_reset_time(user)
-    candidate = now_utc.astimezone(resolved_timezone).date()
-    candidate_window = get_user_day_window(
-        resolved_timezone.zone, candidate, reset_time
+    return effective_day_for_user(
+        user, now_utc=now_utc, resolved_timezone=resolved_timezone
     )
-    if now_utc < candidate_window.start_utc:
-        candidate -= timedelta(days=1)
-    return candidate
 
 
 def _latest_completed_week(today):
-    return today - timedelta(days=today.weekday() + 7)
-
-
-def _daily_history_dates(goal, today):
-    end_date = min(today - timedelta(days=1), goal.end_date or today)
-    start_date = max(
-        end_date - timedelta(days=29),
-        goal.start_date or end_date - timedelta(days=29),
-    )
-    if end_date < start_date:
-        return []
-    return [
-        start_date + timedelta(days=offset)
-        for offset in range((end_date - start_date).days + 1)
-    ]
-
-
-def _weekly_history_dates(goal, today):
-    horizon_end = min(today - timedelta(days=1), goal.end_date or today)
-    horizon_start = max(
-        horizon_end - timedelta(days=29),
-        goal.start_date or horizon_end - timedelta(days=29),
-    )
-    first_week = horizon_start + timedelta(days=(-horizon_start.weekday()) % 7)
-    latest_week = _latest_completed_week(today)
-    dates = []
-    week = first_week
-    while week <= latest_week:
-        week_end = week + timedelta(days=6)
-        if week_end <= horizon_end:
-            dates.append(week)
-        week += timedelta(days=7)
-    return dates
-
-
-def _route_periods(goals, today, *, history):
-    periods = {}
-    for goal in goals:
-        if goal.goal_type == 'weekly_reduction':
-            candidates = (
-                _weekly_history_dates(goal, today)
-                if history else [_latest_completed_week(today)]
-            )
-            periods[goal.id] = [
-                week for week in candidates
-                if (goal.start_date is None or week >= goal.start_date)
-                and (
-                    goal.end_date is None
-                    or week + timedelta(days=6) <= goal.end_date
-                )
-            ]
-        else:
-            periods[goal.id] = (
-                _daily_history_dates(goal, today) if history else [today]
-            )
-    return periods
-
-
-def _load_route_evidence(user, periods_by_goal, goals, resolved_timezone, today):
-    reset_time = _user_reset_time(user)
-    evidence_dates = []
-    goals_by_id = {goal.id: goal for goal in goals}
-    for goal_id, periods in periods_by_goal.items():
-        goal = goals_by_id[goal_id]
-        for period in periods:
-            if goal.goal_type == 'weekly_reduction':
-                evidence_dates.extend([
-                    period - timedelta(days=7),
-                    period + timedelta(days=6),
-                ])
-            else:
-                evidence_dates.append(period)
-    if not evidence_dates:
-        evidence_dates = [today]
-    start_date = min(evidence_dates)
-    end_date = max(evidence_dates)
-    start_window = get_user_day_window(
-        resolved_timezone.zone, start_date, reset_time
-    )
-    end_window = get_user_day_window(
-        resolved_timezone.zone, end_date, reset_time
-    )
-    logs = logs_for_user_interval(
-        user.id, start_window.start_utc, end_window.end_utc
-    )
-    grouped_logs = group_logs_by_effective_day(
-        logs, resolved_timezone, reset_time
-    )
-    check_in_dates = {
-        row.local_date
-        for row in DailyCheckIn.query.with_entities(DailyCheckIn.local_date).filter(
-            DailyCheckIn.user_id == user.id,
-            DailyCheckIn.local_date >= start_date,
-            DailyCheckIn.local_date <= end_date,
-        ).all()
-    }
-    return grouped_logs, check_in_dates
-
-
-def _progress_from_evidence(
-        goal, target_date, grouped_logs, check_in_dates, *, provisional=False
-):
-    target = goal.target_value
-    unknown_strength_count = 0
-    reason = None
-    if goal.goal_type in ('daily_pouches', 'daily_mg'):
-        logs = grouped_logs.get(target_date, ())
-        observed = bool(logs) or (
-            not provisional and target_date in check_in_dates
-        )
-        if not observed:
-            return {
-                'achieved': None,
-                'available': False,
-                'provisional': provisional,
-                'reason': 'no_evidence',
-                'current': None,
-                'target': target,
-                'percentage': 0,
-                'unknown_strength_count': 0,
-            }
-        summary = summarize_logs(logs)
-        unknown_strength_count = summary['unknown_strength_count']
-        if goal.goal_type == 'daily_mg' and unknown_strength_count:
-            return {
-                'achieved': None,
-                'available': False,
-                'provisional': provisional,
-                'reason': 'unknown_strength',
-                'current': None,
-                'target': target,
-                'percentage': 0,
-                'unknown_strength_count': unknown_strength_count,
-            }
-        current = (
-            float(summary['total_mg'])
-            if goal.goal_type == 'daily_mg'
-            else summary['total_pouches']
-        )
-        achieved = None if provisional else current <= target
-        percentage = current / target * 100 if target > 0 else 0
-    elif goal.goal_type == 'weekly_reduction':
-        previous_pouches = sum(
-            log.quantity or 0
-            for offset in range(-7, 0)
-            for log in grouped_logs.get(target_date + timedelta(days=offset), ())
-        )
-        current_pouches = sum(
-            log.quantity or 0
-            for offset in range(7)
-            for log in grouped_logs.get(target_date + timedelta(days=offset), ())
-        )
-        if previous_pouches <= 0:
-            return {
-                'achieved': None,
-                'available': False,
-                'provisional': False,
-                'reason': 'missing_baseline',
-                'current': None,
-                'target': target,
-                'percentage': 0,
-                'unknown_strength_count': 0,
-            }
-        current = (
-            (previous_pouches - current_pouches) / previous_pouches * 100
-        )
-        achieved = current >= target
-        percentage = current / target * 100 if target > 0 else 0
-    else:
-        return {
-            'achieved': None,
-            'available': False,
-            'provisional': provisional,
-            'reason': 'unsupported',
-            'current': None,
-            'target': target,
-            'percentage': 0,
-            'unknown_strength_count': 0,
-        }
-    return {
-        'achieved': achieved,
-        'available': True,
-        'provisional': provisional,
-        'reason': reason,
-        'current': round(current, 1),
-        'target': target,
-        'percentage': min(percentage, 999),
-        'unknown_strength_count': unknown_strength_count,
-    }
+    return latest_completed_week(today)
 
 
 def _batch_goal_progress(user, goals, today, resolved_timezone, *, history):
-    periods_by_goal = _route_periods(goals, today, history=history)
-    grouped_logs, check_in_dates = _load_route_evidence(
-        user, periods_by_goal, goals, resolved_timezone, today
+    return batch_goal_progress(
+        user,
+        goals,
+        today,
+        resolved_timezone,
+        history_mode=HISTORY_UI if history else HISTORY_LIVE,
     )
-    results = {}
-    for goal in goals:
-        results[goal.id] = [
-            _progress_from_evidence(
-                goal,
-                period,
-                grouped_logs,
-                check_in_dates,
-                provisional=(not history and goal.goal_type != 'weekly_reduction'),
-            ) | {'date': period}
-            for period in periods_by_goal[goal.id]
-        ]
-    return results
 
 
 @goals_bp.route('/')
@@ -356,29 +135,24 @@ def create_goal():
                     flash('Invalid end date format.', 'error')
                     return render_template('create_goal.html')
 
-            # Check for existing active goal of same type
-            existing_goal = Goal.query.filter_by(
-                user_id=user.id,
-                goal_type=goal_type,
-                is_active=True
-            ).first()
-
-            if existing_goal:
-                flash(f'You already have an active {goal_type.replace("_", " ")} goal. '
-                      'Please deactivate it first or modify the existing one.', 'warning')
+            try:
+                new_goal = create_goal_service(
+                    user_id=user.id,
+                    goal_type=goal_type,
+                    target_value=target_value,
+                    start_date=effective_day,
+                    end_date=end_date,
+                    enable_notifications=enable_notifications,
+                    notification_threshold=notification_threshold,
+                )
+            except ActiveGoalConflict:
+                flash(
+                    f'You already have an active '
+                    f'{goal_type.replace("_", " ")} goal. Pause it before '
+                    'creating another active goal of this type.',
+                    'warning',
+                )
                 return redirect(url_for('goals.index'))
-
-            # Create new goal via service layer. The Goal model defines default
-            # start_date and is_active values, so we rely on those defaults.
-            new_goal = create_goal_service(
-                user_id=user.id,
-                goal_type=goal_type,
-                target_value=target_value,
-                start_date=effective_day,
-                end_date=end_date,
-                enable_notifications=enable_notifications,
-                notification_threshold=notification_threshold
-            )
 
 
             current_app.logger.info(f'Goal created for user {user.email}: {goal_type} - {target_value}')
@@ -432,8 +206,14 @@ def edit_goal(goal_id):
                     return render_template('edit_goal.html', goal=goal)
             
             try:
-                goal = set_goal_active(
-                    user.id, goal.id, is_active, commit=False
+                goal = update_goal_service(
+                    user.id,
+                    goal.id,
+                    target_value=target_value,
+                    end_date=end_date,
+                    enable_notifications=enable_notifications,
+                    notification_threshold=notification_threshold,
+                    is_active=is_active,
                 )
             except ActiveGoalConflict:
                 db.session.rollback()
@@ -445,14 +225,6 @@ def edit_goal(goal_id):
                 )
                 return redirect(url_for('goals.index'))
 
-            goal.target_value = target_value
-            goal.end_date = end_date
-            goal.enable_notifications = enable_notifications
-            goal.notification_threshold = notification_threshold
-            goal.updated_at = datetime.utcnow()
-
-            db.session.commit()
-            
             current_app.logger.info(f'Goal updated for user {user.email}: goal_id {goal_id}')
             flash('Goal updated successfully!', 'success')
             return redirect(url_for('goals.index'))
@@ -506,11 +278,8 @@ def toggle_goal(goal_id):
             flash('Goal not found.', 'error')
             return redirect(url_for('goals.index'))
         
-        requested_state = not goal.is_active
         try:
-            goal = set_goal_active(
-                user.id, goal.id, requested_state, commit=True
-            )
+            goal = toggle_goal_active(user.id, goal.id)
         except ActiveGoalConflict:
             db.session.rollback()
             flash(
@@ -642,35 +411,9 @@ def check_notifications():
             if not batched[goal.id]:
                 continue
             progress = batched[goal.id][0]
-            if not progress['available']:
-                continue
-
-            threshold = goal.notification_threshold * 100
-            if progress['percentage'] < threshold:
-                continue
-            if goal.goal_type == 'weekly_reduction':
-                notifications.append({
-                    'type': 'success',
-                    'goal_id': goal.id,
-                    'message': (
-                        f'The latest completed week reached a '
-                        f'{progress["current"]:.0f}% reduction against your '
-                        f'{progress["target"]:.0f}% guide.'
-                    ),
-                })
-            else:
-                label = (
-                    'nicotine ceiling' if goal.goal_type == 'daily_mg'
-                    else 'pouch ceiling'
-                )
-                notifications.append({
-                    'type': 'warning',
-                    'goal_id': goal.id,
-                    'message': (
-                        f'Today is at {progress["percentage"]:.0f}% of your '
-                        f'{label} ({progress["current"]}/{progress["target"]}).'
-                    ),
-                })
+            notice = goal_threshold_notice(goal, progress)
+            if notice is not None:
+                notifications.append(notice)
         
         return jsonify({
             'success': True,
@@ -717,16 +460,8 @@ def calculate_goal_progress(user, goal, target_date, resolved_timezone=None):
     try:
         if resolved_timezone is None:
             resolved_timezone = resolve_timezone(user.timezone)
-        period_date = (
-            target_date - timedelta(days=target_date.weekday())
-            if goal.goal_type == 'weekly_reduction' else target_date
-        )
-        periods = {goal.id: [period_date]}
-        grouped_logs, check_in_dates = _load_route_evidence(
-            user, periods, [goal], resolved_timezone, period_date
-        )
-        result = _progress_from_evidence(
-            goal, period_date, grouped_logs, check_in_dates
+        result = evaluate_goal_period(
+            user, goal, target_date, resolved_timezone
         )
         if result['reason'] == 'unknown_strength' and result['current'] is None:
             result = {**result, 'current': 0}

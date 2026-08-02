@@ -6,7 +6,9 @@ from unittest.mock import patch
 
 import pytest
 
-from models import Craving, Goal, Log, Pouch, User, UserPreferences
+from models import (
+    Craving, DailyCheckIn, Goal, Log, Pouch, User, UserPreferences,
+)
 from routes import dashboard as dashboard_routes
 from routes import goals as goals_routes
 from routes import settings as settings_routes
@@ -212,26 +214,26 @@ def test_recalculate_streaks_uses_canonical_goal_progress(
     today = datetime.utcnow().date()
     goal = Goal(
         user_id=test_user.id,
-        goal_type='weekly_reduction',
+        goal_type='daily_pouches',
         target_value=10,
-        start_date=today,
+        start_date=today - timedelta(days=1),
         is_active=True,
     )
-    db_session.add(goal)
+    db_session.add_all([
+        goal,
+        DailyCheckIn(
+            user_id=test_user.id,
+            local_date=today - timedelta(days=1),
+        ),
+    ])
     db_session.commit()
-    canonical = {
-        'achieved': True, 'current': 20, 'target': 10, 'percentage': 200,
-    }
 
     with patch.object(
         Goal, 'check_goal_progress', side_effect=AssertionError('unsafe path')
-    ), patch.object(
-        goals_routes, 'calculate_goal_progress', return_value=canonical
-    ) as calculate:
+    ):
         updated = recalculate_goal_streaks(test_user)
 
     assert updated == 1
-    assert calculate.called
     assert goal.current_streak == 1
     assert goal.best_streak == 1
 

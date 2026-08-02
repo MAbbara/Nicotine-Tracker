@@ -3,8 +3,21 @@ Defines the Goal ORM model used to track user-defined consumption targets.
 """
 from datetime import datetime, date
 from extensions import db
+from sqlalchemy import event
 
 class Goal(db.Model):
+    __table_args__ = (
+        db.CheckConstraint(
+            '(is_active = 1 AND active_slot = 1) OR '
+            '(is_active = 0 AND active_slot IS NULL)',
+            name='ck_goal_active_slot_state',
+        ),
+        db.UniqueConstraint(
+            'user_id', 'goal_type', 'active_slot',
+            name='uq_goal_user_type_active_slot',
+        ),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -19,7 +32,8 @@ class Goal(db.Model):
     # Goal period
     start_date = db.Column(db.Date, default=date.today)
     end_date = db.Column(db.Date)
-    is_active = db.Column(db.Boolean, default=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    active_slot = db.Column(db.Integer, nullable=True)
 
     # Notifications
     enable_notifications = db.Column(db.Boolean, default=True)
@@ -62,3 +76,10 @@ class Goal(db.Model):
 
     def __repr__(self) -> str:
         return f'<Goal {self.user_id} - {self.goal_type}: {self.target_value}>'
+
+
+@event.listens_for(Goal, 'before_insert')
+@event.listens_for(Goal, 'before_update')
+def _synchronize_active_slot(_mapper, _connection, goal):
+    """Keep ORM writes inside the database active-slot state contract."""
+    goal.active_slot = 1 if goal.is_active is True else None

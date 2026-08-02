@@ -1,12 +1,14 @@
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+import re
 
 from bs4 import BeautifulSoup
+from sqlalchemy import event
 from werkzeug.datastructures import MultiDict
 
 from models import DailyCheckIn, Goal, Log, Pouch, UserPreferences
-from routes.settings import _retention_cutoff_utc
+from routes.settings import _retention_cutoff_utc, recalculate_goal_streaks
 from services.log_service import assign_log_product
 
 
@@ -467,6 +469,83 @@ def test_recalculate_button_changes_only_goal_streaks(
     assert b'Recalculated streaks for 1 goals.' in response.data
     assert (test_goal.current_streak, test_goal.best_streak) == (1, 1)
     _assert_state_unchanged_except(before, after, 'goal_streaks')
+
+
+def test_recalculate_goal_streaks_uses_full_lifetime_with_bounded_queries(
+        logged_in_client, db_session, test_user, test_goal):
+    today = datetime.utcnow().date()
+    test_goal.start_date = today - timedelta(days=45)
+    test_goal.end_date = None
+    test_goal.target_value = 10
+    db_session.add_all([
+        DailyCheckIn(
+            user_id=test_user.id,
+            local_date=today - timedelta(days=offset),
+        )
+        for offset in range(1, 46)
+    ])
+    db_session.commit()
+    statements = []
+    engine = db_session.get_bind()
+
+    def capture(_connection, _cursor, statement, _parameters, _context, _many):
+        if statement.lstrip().upper().startswith('SELECT'):
+            statements.append(' '.join(statement.casefold().split()))
+
+    event.listen(engine, 'before_cursor_execute', capture)
+    try:
+        updated = recalculate_goal_streaks(test_user)
+    finally:
+        event.remove(engine, 'before_cursor_execute', capture)
+    db_session.refresh(test_goal)
+    log_selects = [
+        statement for statement in statements
+        if re.search(r'\bfrom\s+"?log"?\b', statement)
+    ]
+    check_in_selects = [
+        statement for statement in statements
+        if 'from daily_check_in' in statement
+    ]
+
+    assert updated == 1
+    assert (test_goal.current_streak, test_goal.best_streak) == (45, 45)
+    assert len(log_selects) == 1
+    assert len(check_in_selects) == 1
+
+
+def test_recalculate_goal_streaks_preserves_lifetime_failure_and_unavailable_boundaries(
+        logged_in_client, db_session, test_user, test_goal):
+    today = datetime.utcnow().date()
+    test_goal.start_date = today - timedelta(days=45)
+    test_goal.end_date = None
+    test_goal.target_value = 10
+    missing_offset = 25
+    failing_offset = 10
+    db_session.add_all([
+        DailyCheckIn(
+            user_id=test_user.id,
+            local_date=today - timedelta(days=offset),
+        )
+        for offset in range(1, 46)
+        if offset != missing_offset
+    ])
+    db_session.add(Log(
+        user_id=test_user.id,
+        quantity=20,
+        log_time=datetime.combine(
+            today - timedelta(days=failing_offset), datetime.min.time()
+        ),
+        nicotine_mg_snapshot=4,
+        product_brand_snapshot='Observed miss',
+    ))
+    db_session.commit()
+
+    response = _submit_data_button(logged_in_client, 'Recalculate')
+    db_session.refresh(test_goal)
+
+    assert response.status_code == 200
+    assert test_goal.current_streak == 9
+    assert test_goal.best_streak == 20
 
 
 def test_anonymize_button_requires_exact_confirmation_and_anonymizes_only_profile_data(

@@ -105,6 +105,13 @@ class TestLogModel:
 class TestGoalModel:
     """Test cases for the Goal model."""
 
+    def test_active_slot_schema_allows_one_active_and_many_inactive_goals(self):
+        constraints = {constraint.name for constraint in Goal.__table__.constraints}
+
+        assert Goal.__table__.c.active_slot.nullable is True
+        assert 'uq_goal_user_type_active_slot' in constraints
+        assert 'ck_goal_active_slot_state' in constraints
+
     def test_goal_creation(self, db_session, test_user):
         """Test creating a new goal."""
         start_date = date.today()

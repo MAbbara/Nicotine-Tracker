@@ -265,6 +265,55 @@ class TestUpgradeDowngradeReUpgrade:
         assert diffs == [], f'unexpected schema diff after re-upgrade: {harness.render_diffs(diffs)}'
 
 
+class TestGoalActiveSlotMigration:
+    def test_upgrade_keeps_lowest_active_goal_and_preserves_inactive_history(
+            self, prepare):
+        db = prepare(harness.SPECS_BY_KEY['legacy'])
+        db.upgrade('8a2d1c4e6f90')
+        # This test is intentionally anchored to the pre-residual head. Once
+        # the residual migration exists, its down_revision is the prior head
+        # and the new head differs from this fixture setup revision.
+        pre_residual_head = db.stamp()
+        existing = db.rows(
+            "SELECT id FROM goal WHERE user_id = 1 "
+            "AND goal_type = 'daily_pouches' AND is_active = 1 ORDER BY id"
+        )
+        assert existing, 'fixture must carry one active daily pouch goal'
+        db.execute(
+            "INSERT INTO goal "
+            "(id, user_id, goal_type, target_value, start_date, is_active, "
+            "enable_notifications, notification_threshold) VALUES "
+            "(101, 1, 'daily_pouches', 7, '2026-01-01', 1, 1, 0.8), "
+            "(102, 1, 'daily_pouches', 6, '2026-01-02', 1, 1, 0.8), "
+            "(103, 1, 'daily_pouches', 5, '2026-01-03', 0, 1, 0.8)"
+        )
+        before_ids = [row['id'] for row in existing] + [101, 102]
+
+        db.upgrade('head')
+
+        assert db.stamp() != pre_residual_head
+        rows = db.rows(
+            "SELECT id, is_active, active_slot FROM goal "
+            "WHERE user_id = 1 AND goal_type = 'daily_pouches' ORDER BY id"
+        )
+        active_rows = [row for row in rows if row['is_active']]
+        assert [row['id'] for row in active_rows] == [min(before_ids)]
+        assert active_rows[0]['active_slot'] == 1
+        assert all(
+            row['active_slot'] is None
+            for row in rows if not row['is_active']
+        )
+        inspector = sa.inspect(db.connection)
+        assert 'uq_goal_user_type_active_slot' in {
+            constraint['name']
+            for constraint in inspector.get_unique_constraints('goal')
+        }
+        assert 'ck_goal_active_slot_state' in {
+            constraint['name']
+            for constraint in inspector.get_check_constraints('goal')
+        }
+
+
 class TestMySQLFractionalRoundTrip:
     """MySQL INTEGER cannot recover an already-truncated legacy fraction, so
     instead assert that a new post-upgrade fractional value round-trips."""

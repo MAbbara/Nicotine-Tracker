@@ -115,7 +115,7 @@
                           {% elif not day.available %}
                             Not enough evidence
                           {% elif goal.goal_type == 'weekly_reduction' %}
-                            {{ 'Reduction met' if day.achieved else 'Still in progress' }}
+                            {{ 'Reduction met' if day.achieved else 'Guide not reached' }}
                           {% else %}
                             {{ 'Within the guide' if day.achieved else 'Worth reviewing' }}
                           {% endif %}

@@ -24,6 +24,10 @@ from services.api_errors import (
 from services.user_preferences_service import UserPreferencesService
 from services.notification_service import NotificationService
 from services.email_verification_service import EmailVerificationService
+from services.goal_evaluation_service import (
+    HISTORY_FULL,
+    batch_goal_progress,
+)
 import json
 from datetime import date, datetime, time, timedelta
 
@@ -751,14 +755,16 @@ def merge_similar_pouches(user):
 def recalculate_goal_streaks(user):
     """Recalculate goal streaks for all user goals"""
     try:
-        from routes.goals import _batch_goal_progress
-
         goals = user.goals.all()
         updated_count = 0
         resolved_timezone = resolve_timezone(user.timezone)
         today = _current_effective_day(user, resolved_timezone)
-        batched = _batch_goal_progress(
-            user, goals, today, resolved_timezone, history=True
+        batched = batch_goal_progress(
+            user,
+            goals,
+            today,
+            resolved_timezone,
+            history_mode=HISTORY_FULL,
         ) if goals else {}
         
         for goal in goals:
