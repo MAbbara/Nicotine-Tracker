@@ -1,3 +1,4 @@
+import { activateActionEnhancement } from './action_enhancement.js';
 import { createTimelineDomAdapter } from './timeline.js';
 import { getOfflineQueueRuntime } from './offline_queue.js';
 
@@ -1334,22 +1335,51 @@ export function bootstrapQuickLog(documentRef = document) {
   const root = documentRef.querySelector('[data-today-root]');
   const dialog = root?.querySelector('[data-quick-log-dialog]');
   if (!root || !dialog) return null;
-  const controller = ensureQuickLogController(root, () => {
-    const timeline = createTimelineDomAdapter(root);
-    if (!timeline) return null;
-    const view = createQuickLogDomView(root, dialog);
-    const csrfToken = documentRef.querySelector('meta[name="csrf-token"]')?.content || '';
-    const queueRuntime = getOfflineQueueRuntime({
-      doc: documentRef,
-      win: documentRef.defaultView || globalThis.window,
+  try {
+    const controller = ensureQuickLogController(root, () => {
+      const timeline = createTimelineDomAdapter(root);
+      if (!timeline) return null;
+      const view = createQuickLogDomView(root, dialog);
+      const csrfToken = documentRef.querySelector('meta[name="csrf-token"]')?.content || '';
+      const queueRuntime = getOfflineQueueRuntime({
+        doc: documentRef,
+        win: documentRef.defaultView || globalThis.window,
+      });
+      return createQuickLogController({
+        view, timeline, csrfToken, queueRuntime,
+      });
     });
-    return createQuickLogController({
-      view, timeline, csrfToken, queueRuntime,
-    });
-  });
-  if (!controller) return null;
-  controller.initialize();
-  return controller;
+    if (!controller) return null;
+    controller.initialize();
+    // Activation is deliberately the last bootstrap step: the slot only
+    // gains data-controller-ready="true" after the timeline adapter, the
+    // dialog view, the offline queue runtime, and the controller all exist
+    // and the enhanced click listener is attached inside
+    // activateActionEnhancement. Repeated bootstraps reuse the WeakMap
+    // controller and the existing activation, so no duplicate listeners.
+    const slot = root.querySelector('[data-log-action-slot]');
+    activateActionEnhancement(slot, () => openQuickLogFromEnhancedTrigger(controller, slot));
+    return controller;
+  } catch (error) {
+    // Recoverable: the server-rendered fallback link stays visible and
+    // keeps its plain navigation behavior, so the action still works.
+    console.error(
+      'Quick Log enhancement is unavailable; the standard logging link remains active.',
+      error,
+    );
+    return null;
+  }
+}
+
+function openQuickLogFromEnhancedTrigger(controller, slot) {
+  const trigger = slot?.querySelector('[data-action-enhanced]');
+  const pouchId = Number(trigger?.dataset.smartDefaultPouchId);
+  if (!trigger || !Number.isInteger(pouchId) || pouchId <= 0) return false;
+  return controller.open({
+    pouchId,
+    brand: trigger.dataset.smartDefaultBrand,
+    nicotineMg: trigger.dataset.smartDefaultStrength,
+  }, trigger);
 }
 
 if (typeof document !== 'undefined') bootstrapQuickLog(document);

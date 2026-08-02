@@ -10,6 +10,12 @@ async function loadQuickLog() {
     path.join(projectRoot, 'static', 'js', 'today', 'quick_log.js'),
     'utf8',
   );
+  const actionEnhancementPath = path.join(projectRoot, 'static', 'js', 'today', 'action_enhancement.js');
+  if (source.includes("'./action_enhancement.js'")) {
+    const actionEnhancementSource = fs.readFileSync(actionEnhancementPath, 'utf8');
+    const actionEnhancementUrl = `data:text/javascript;base64,${Buffer.from(actionEnhancementSource).toString('base64')}`;
+    source = source.replace("'./action_enhancement.js'", `'${actionEnhancementUrl}'`);
+  }
   const timelinePath = path.join(projectRoot, 'static', 'js', 'today', 'timeline.js');
   if (source.includes("'./timeline.js'")) {
     const timelineSource = fs.readFileSync(timelinePath, 'utf8');
@@ -2604,4 +2610,158 @@ test('Undo publishes that only the linked log was removed while the craving rema
     deletedLogId: 31,
     today: unlinkedToday,
   });
+});
+
+function makeBootstrapElement() {
+  return {
+    dataset: {},
+    hidden: false,
+    disabled: false,
+    open: false,
+    textContent: '',
+    value: '',
+    options: [],
+    selectedOptions: [],
+    ownerDocument: null,
+    listeners: new Map(),
+    selectors: new Map(),
+    querySelector(selector) {
+      return this.selectors.has(selector) ? this.selectors.get(selector) : null;
+    },
+    querySelectorAll() { return []; },
+    addEventListener(type, handler) {
+      if (!this.listeners.has(type)) this.listeners.set(type, []);
+      this.listeners.get(type).push(handler);
+    },
+    removeEventListener(type, handler) {
+      const handlers = this.listeners.get(type) || [];
+      const index = handlers.indexOf(handler);
+      if (index >= 0) handlers.splice(index, 1);
+    },
+    dispatchEvent(event) {
+      for (const handler of [...(this.listeners.get(event.type) || [])]) handler(event);
+      return true;
+    },
+    listenerCount(type) { return (this.listeners.get(type) || []).length; },
+    setAttribute() {},
+    removeAttribute() {},
+    append() {},
+    replaceChildren() {},
+    remove() {},
+    focus() {},
+    showModal() { this.open = true; },
+    close() { this.open = false; },
+    contains() { return false; },
+  };
+}
+
+function makeBootstrapDocument({ withTimeline = true, throwOnMeta = false } = {}) {
+  const root = makeBootstrapElement();
+  const dialog = makeBootstrapElement();
+  // The dialog view lazily resolves every field it needs; auto-vivify one
+  // fake element per selector so open/render code paths have real targets.
+  dialog.querySelector = (selector) => {
+    if (!dialog.selectors.has(selector)) dialog.selectors.set(selector, makeBootstrapElement());
+    return dialog.selectors.get(selector);
+  };
+  const section = makeBootstrapElement();
+  const slot = makeBootstrapElement();
+  const fallback = makeBootstrapElement();
+  const enhanced = makeBootstrapElement();
+  enhanced.hidden = true;
+  enhanced.dataset.smartDefaultPouchId = '12';
+  enhanced.dataset.smartDefaultBrand = 'Steady Mint';
+  enhanced.dataset.smartDefaultStrength = '6.00';
+  slot.selectors.set('[data-action-fallback]', fallback);
+  slot.selectors.set('[data-action-enhanced]', enhanced);
+  root.selectors.set('[data-quick-log-dialog]', dialog);
+  if (withTimeline) root.selectors.set('[data-today-timeline-section]', section);
+  root.selectors.set('[data-log-action-slot]', slot);
+  const documentRef = {
+    defaultView: undefined,
+    querySelector(selector) {
+      if (selector === '[data-today-root]') return root;
+      if (throwOnMeta && selector.startsWith('meta[')) {
+        throw new Error('meta-lookup-failed');
+      }
+      return null;
+    },
+  };
+  section.ownerDocument = documentRef;
+  return {
+    documentRef, root, dialog, section, slot, fallback, enhanced,
+  };
+}
+
+test('Quick Log bootstrap marks the slot ready only after construction and opens through the enhanced control', async () => {
+  const { bootstrapQuickLog } = await loadQuickLog();
+  const { documentRef, slot, fallback, enhanced } = makeBootstrapDocument();
+
+  const controller = bootstrapQuickLog(documentRef);
+
+  assert.ok(controller);
+  assert.equal(slot.dataset.controllerReady, 'true');
+  assert.equal(fallback.hidden, true);
+  assert.equal(enhanced.hidden, false);
+  assert.equal(enhanced.listenerCount('click'), 1);
+
+  enhanced.dispatchEvent({ type: 'click' });
+
+  assert.equal(controller.getState().status, 'editing');
+  assert.equal(controller.getState().draft.pouchId, 12);
+  assert.equal(controller.getState().draft.brand, 'Steady Mint');
+  assert.equal(controller.getState().draft.nicotineMg, '6.00');
+  await new Promise((resolve) => setImmediate(resolve));
+});
+
+test('Quick Log bootstrap reuses the WeakMap controller and never duplicates activation listeners', async () => {
+  const { bootstrapQuickLog } = await loadQuickLog();
+  const { documentRef, root, slot, enhanced } = makeBootstrapDocument();
+
+  const first = bootstrapQuickLog(documentRef);
+  const second = bootstrapQuickLog(documentRef);
+
+  assert.equal(first, second);
+  assert.equal(enhanced.listenerCount('click'), 1);
+  assert.equal(root.listenerCount('click'), 1);
+  assert.equal(slot.dataset.controllerReady, 'true');
+
+  enhanced.dispatchEvent({ type: 'click' });
+  assert.equal(first.getState().status, 'editing');
+  await new Promise((resolve) => setImmediate(resolve));
+});
+
+test('Quick Log bootstrap keeps the fallback usable when the timeline adapter is missing', async () => {
+  const { bootstrapQuickLog } = await loadQuickLog();
+  const { documentRef, slot, fallback, enhanced } = makeBootstrapDocument({ withTimeline: false });
+
+  const controller = bootstrapQuickLog(documentRef);
+
+  assert.equal(controller, null);
+  assert.equal(slot.dataset.controllerReady, undefined);
+  assert.equal(fallback.hidden, false);
+  assert.equal(enhanced.hidden, true);
+  assert.equal(enhanced.listenerCount('click'), 0);
+});
+
+test('Quick Log bootstrap reports a recoverable error and preserves the fallback when construction throws', async () => {
+  const { bootstrapQuickLog } = await loadQuickLog();
+  const { documentRef, slot, fallback, enhanced } = makeBootstrapDocument({ throwOnMeta: true });
+  const reported = [];
+  const originalError = console.error;
+  console.error = (...args) => { reported.push(args); };
+  let controller;
+  try {
+    controller = bootstrapQuickLog(documentRef);
+  } finally {
+    console.error = originalError;
+  }
+
+  assert.equal(controller, null);
+  assert.equal(reported.length, 1);
+  assert.match(String(reported[0][0]), /Quick Log enhancement/);
+  assert.equal(slot.dataset.controllerReady, undefined);
+  assert.equal(fallback.hidden, false);
+  assert.equal(enhanced.hidden, true);
+  assert.equal(enhanced.listenerCount('click'), 0);
 });

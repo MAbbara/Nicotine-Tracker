@@ -27,6 +27,42 @@ function quickLogTrigger(page) {
   return page.locator('#today-log-action');
 }
 
+test('Quick Log fallback remains usable while enhancement is delayed', async ({ page }) => {
+  await page.route('**/static/js/today/quick_log.js', async (route) => {
+    await new Promise((resolve) => { setTimeout(resolve, 1200); });
+    await route.continue();
+  });
+  await login(page, 'today-targeted@example.com');
+  const slot = page.locator('[data-log-action-slot]');
+
+  // Before the delayed module activates the controller, the enhanced
+  // control must stay hidden and the slot must not claim readiness.
+  await expect(slot).not.toHaveAttribute('data-controller-ready', 'true');
+  await expect(slot.locator('[data-action-enhanced]')).toBeHidden();
+
+  await slot.locator('[data-action-fallback]').click();
+  await expect(page).toHaveURL(/\/log\/(?:add|view)/);
+});
+
+test('Quick Log enhanced control waits for controller-ready and opens the dialog without navigation', async ({ page }) => {
+  await login(page, 'today-targeted@example.com');
+  const slot = page.locator('[data-log-action-slot]');
+
+  await expect(slot).toHaveAttribute('data-controller-ready', 'true');
+  const fallback = slot.locator('[data-action-fallback]');
+  await expect(fallback).toBeHidden();
+  const enhanced = slot.locator('[data-action-enhanced]');
+  await expect(enhanced).toBeVisible();
+
+  await enhanced.click();
+
+  await expect(page).toHaveURL(/\/today\/?$/);
+  const dialog = page.getByRole('dialog', { name: 'Log nicotine use' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('Steady Mint');
+  await expect(dialog).toContainText('6.00 mg');
+});
+
 test.afterEach(async ({ page }) => {
   await page.unrouteAll({ behavior: 'wait' });
   const createdLogIds = await page

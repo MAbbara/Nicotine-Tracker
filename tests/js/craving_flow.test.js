@@ -15,7 +15,7 @@ async function loadCravingFlow() {
       path.join(projectRoot, 'static', 'js', 'today', 'quick_log.js'),
       'utf8',
     );
-    for (const dependency of ['timeline.js', 'offline_queue.js']) {
+    for (const dependency of ['action_enhancement.js', 'timeline.js', 'offline_queue.js']) {
       const dependencySource = fs.readFileSync(
         path.join(projectRoot, 'static', 'js', 'today', dependency),
         'utf8',
