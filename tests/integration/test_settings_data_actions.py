@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 import re
@@ -8,6 +8,7 @@ from sqlalchemy import event
 from werkzeug.datastructures import MultiDict
 
 from models import DailyCheckIn, Goal, Log, Pouch, UserPreferences
+import routes.settings as settings_routes
 from routes.settings import _retention_cutoff_utc, recalculate_goal_streaks
 from services.log_service import assign_log_product
 
@@ -471,10 +472,31 @@ def test_recalculate_button_changes_only_goal_streaks(
     _assert_state_unchanged_except(before, after, 'goal_streaks')
 
 
-def test_recalculate_goal_streaks_uses_full_lifetime_with_bounded_queries(
-        logged_in_client, db_session, test_user, test_goal):
-    today = datetime.utcnow().date()
-    test_goal.start_date = today - timedelta(days=45)
+class _FrozenSettingsDateTime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        instant = cls(2030, 3, 20, 12, 0, tzinfo=timezone.utc)
+        return instant if tz is None else instant.astimezone(tz)
+
+    @classmethod
+    def utcnow(cls):
+        return cls(2030, 3, 20, 12, 0)
+
+
+def test_recalculate_goal_streaks_uses_null_start_account_creation_floor(
+        logged_in_client, db_session, test_user, test_goal, monkeypatch):
+    today = datetime(2030, 3, 20).date()
+    test_user.timezone = 'UTC'
+    # Before the 04:00 reset, 2030-02-04 belongs to account day 2030-02-03,
+    # exactly 45 completed account days before the frozen current day.
+    test_user.created_at = datetime(2030, 2, 4, 2, 0)
+    db_session.add(UserPreferences(
+        user_id=test_user.id,
+        daily_reset_time=time(4),
+        preferred_brands=[],
+    ))
+    test_goal.start_date = None
+    test_goal.created_at = datetime(2030, 3, 1, 12, 0)
     test_goal.end_date = None
     test_goal.target_value = 10
     db_session.add_all([
@@ -485,6 +507,9 @@ def test_recalculate_goal_streaks_uses_full_lifetime_with_bounded_queries(
         for offset in range(1, 46)
     ])
     db_session.commit()
+    monkeypatch.setattr(
+        settings_routes, 'datetime', _FrozenSettingsDateTime
+    )
     statements = []
     engine = db_session.get_bind()
 
@@ -513,10 +538,18 @@ def test_recalculate_goal_streaks_uses_full_lifetime_with_bounded_queries(
     assert len(check_in_selects) == 1
 
 
-def test_recalculate_goal_streaks_preserves_lifetime_failure_and_unavailable_boundaries(
-        logged_in_client, db_session, test_user, test_goal):
-    today = datetime.utcnow().date()
-    test_goal.start_date = today - timedelta(days=45)
+def test_recalculate_goal_streaks_uses_null_start_goal_creation_fallback(
+        logged_in_client, db_session, test_user, test_goal, monkeypatch):
+    today = datetime(2030, 3, 20).date()
+    test_user.timezone = 'UTC'
+    test_user.created_at = None
+    db_session.add(UserPreferences(
+        user_id=test_user.id,
+        daily_reset_time=time(4),
+        preferred_brands=[],
+    ))
+    test_goal.start_date = None
+    test_goal.created_at = datetime(2030, 2, 3, 12, 0)
     test_goal.end_date = None
     test_goal.target_value = 10
     missing_offset = 25
@@ -533,19 +566,42 @@ def test_recalculate_goal_streaks_preserves_lifetime_failure_and_unavailable_bou
         user_id=test_user.id,
         quantity=20,
         log_time=datetime.combine(
-            today - timedelta(days=failing_offset), datetime.min.time()
+            today - timedelta(days=failing_offset), time(12)
         ),
         nicotine_mg_snapshot=4,
         product_brand_snapshot='Observed miss',
     ))
     db_session.commit()
+    monkeypatch.setattr(
+        settings_routes, 'datetime', _FrozenSettingsDateTime
+    )
+    statements = []
+    engine = db_session.get_bind()
 
-    response = _submit_data_button(logged_in_client, 'Recalculate')
+    def capture(_connection, _cursor, statement, _parameters, _context, _many):
+        if statement.lstrip().upper().startswith('SELECT'):
+            statements.append(' '.join(statement.casefold().split()))
+
+    event.listen(engine, 'before_cursor_execute', capture)
+    try:
+        updated = recalculate_goal_streaks(test_user)
+    finally:
+        event.remove(engine, 'before_cursor_execute', capture)
     db_session.refresh(test_goal)
+    log_selects = [
+        statement for statement in statements
+        if re.search(r'\bfrom\s+"?log"?\b', statement)
+    ]
+    check_in_selects = [
+        statement for statement in statements
+        if 'from daily_check_in' in statement
+    ]
 
-    assert response.status_code == 200
+    assert updated == 1
     assert test_goal.current_streak == 9
     assert test_goal.best_streak == 20
+    assert len(log_selects) == 1
+    assert len(check_in_selects) == 1
 
 
 def test_anonymize_button_requires_exact_confirmation_and_anonymizes_only_profile_data(

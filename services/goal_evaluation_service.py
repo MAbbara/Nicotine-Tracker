@@ -52,13 +52,25 @@ def latest_completed_week(effective_day):
     return effective_day - timedelta(days=effective_day.weekday() + 7)
 
 
-def _daily_history_dates(goal, effective_day, *, full_history):
+def _full_history_floor(user, goal, resolved_timezone, fallback_start):
+    created_at = user.created_at or goal.created_at
+    if created_at is None:
+        return fallback_start
+    return effective_day_for_user(
+        user,
+        now_utc=created_at,
+        resolved_timezone=resolved_timezone,
+    )
+
+
+def _daily_history_dates(
+        goal, effective_day, *, full_history, history_floor=None):
     end_date = min(
         effective_day - timedelta(days=1), goal.end_date or effective_day
     )
     fallback_start = end_date - timedelta(days=29)
     if full_history:
-        start_date = goal.start_date or fallback_start
+        start_date = goal.start_date or history_floor or fallback_start
     else:
         start_date = max(fallback_start, goal.start_date or fallback_start)
     if end_date < start_date:
@@ -69,13 +81,14 @@ def _daily_history_dates(goal, effective_day, *, full_history):
     ]
 
 
-def _weekly_history_dates(goal, effective_day, *, full_history):
+def _weekly_history_dates(
+        goal, effective_day, *, full_history, history_floor=None):
     horizon_end = min(
         effective_day - timedelta(days=1), goal.end_date or effective_day
     )
     fallback_start = horizon_end - timedelta(days=29)
     if full_history:
-        horizon_start = goal.start_date or fallback_start
+        horizon_start = goal.start_date or history_floor or fallback_start
     else:
         horizon_start = max(
             fallback_start, goal.start_date or fallback_start
@@ -94,11 +107,20 @@ def _weekly_history_dates(goal, effective_day, *, full_history):
     return dates
 
 
-def _periods_for_goals(goals, effective_day, history_mode):
+def _periods_for_goals(
+        user, goals, effective_day, resolved_timezone, history_mode):
     if history_mode not in _HISTORY_MODES:
         raise ValueError(f'unsupported goal history mode: {history_mode}')
     periods = {}
     for goal in goals:
+        history_floor = None
+        if history_mode == HISTORY_FULL and goal.start_date is None:
+            history_floor = _full_history_floor(
+                user,
+                goal,
+                resolved_timezone,
+                effective_day - timedelta(days=30),
+            )
         if goal.goal_type == 'weekly_reduction':
             if history_mode == HISTORY_LIVE:
                 candidates = [latest_completed_week(effective_day)]
@@ -107,6 +129,7 @@ def _periods_for_goals(goals, effective_day, history_mode):
                     goal,
                     effective_day,
                     full_history=history_mode == HISTORY_FULL,
+                    history_floor=history_floor,
                 )
             periods[goal.id] = [
                 week for week in candidates
@@ -123,6 +146,7 @@ def _periods_for_goals(goals, effective_day, history_mode):
                 goal,
                 effective_day,
                 full_history=history_mode == HISTORY_FULL,
+                history_floor=history_floor,
             )
     return periods
 
@@ -264,7 +288,7 @@ def batch_goal_progress(
     goals = list(goals)
     resolved_timezone = resolved_timezone or resolve_timezone(user.timezone)
     periods_by_goal = _periods_for_goals(
-        goals, effective_day, history_mode
+        user, goals, effective_day, resolved_timezone, history_mode
     )
     grouped_logs, check_in_dates = _load_evidence(
         user, periods_by_goal, goals, resolved_timezone, effective_day

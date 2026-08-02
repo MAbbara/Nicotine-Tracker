@@ -5,6 +5,8 @@ import pytest
 from datetime import datetime, timezone, timedelta, date
 from models import User, Pouch, Log, Goal
 from extensions import db
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 class TestUserModel:
     """Test cases for the User model."""
@@ -109,8 +111,63 @@ class TestGoalModel:
         constraints = {constraint.name for constraint in Goal.__table__.constraints}
 
         assert Goal.__table__.c.active_slot.nullable is True
+        assert Goal.__table__.c.goal_type.nullable is False
         assert 'uq_goal_user_type_active_slot' in constraints
         assert 'ck_goal_active_slot_state' in constraints
+
+    @pytest.mark.parametrize(
+        ('is_active', 'active_slot'),
+        [(True, None), (False, 1)],
+    )
+    def test_database_rejects_invalid_active_slot_state(
+            self, db_session, test_user, is_active, active_slot):
+        with pytest.raises(IntegrityError):
+            db_session.execute(text(
+                'INSERT INTO goal '
+                '(user_id, goal_type, target_value, is_active, active_slot) '
+                'VALUES (:user_id, :goal_type, :target, :active, :slot)'
+            ), {
+                'user_id': test_user.id,
+                'goal_type': 'daily_pouches',
+                'target': 7,
+                'active': is_active,
+                'slot': active_slot,
+            })
+            db_session.commit()
+        db_session.rollback()
+
+    def test_database_rejects_null_goal_type(
+            self, db_session, test_user):
+        with pytest.raises(IntegrityError):
+            db_session.execute(text(
+                'INSERT INTO goal '
+                '(user_id, goal_type, target_value, is_active, active_slot) '
+                'VALUES (:user_id, NULL, :target, 1, 1)'
+            ), {'user_id': test_user.id, 'target': 7})
+            db_session.commit()
+        db_session.rollback()
+
+    def test_orm_default_active_goals_share_the_unique_active_slot(
+            self, db_session, test_user):
+        first = Goal(
+            user_id=test_user.id,
+            goal_type='daily_mg',
+            target_value=20,
+        )
+        db_session.add(first)
+        db_session.commit()
+
+        assert first.is_active is True
+        assert first.active_slot == 1
+
+        db_session.add(Goal(
+            user_id=test_user.id,
+            goal_type='daily_mg',
+            target_value=18,
+        ))
+        with pytest.raises(IntegrityError):
+            db_session.commit()
+        db_session.rollback()
 
     def test_goal_creation(self, db_session, test_user):
         """Test creating a new goal."""

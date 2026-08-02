@@ -261,6 +261,41 @@ def test_goal_progress_respects_start_date_and_repeated_get_is_read_only(
         ).get_text(' ', strip=True)
 
 
+def test_null_start_goal_ui_history_remains_capped_at_30_days(
+        logged_in_client, db_session, test_user, test_goal):
+    today = goals_routes._current_effective_day(
+        test_user, goals_routes.resolve_timezone(test_user.timezone)
+    )
+    test_user.created_at = datetime.combine(
+        today - timedelta(days=60), time(12), timezone.utc
+    ).replace(tzinfo=None)
+    test_goal.start_date = None
+    test_goal.created_at = test_user.created_at
+    db_session.add_all([
+        DailyCheckIn(
+            user_id=test_user.id,
+            local_date=today - timedelta(days=offset),
+        )
+        for offset in range(1, 61)
+    ])
+    db_session.commit()
+
+    response = logged_in_client.get('/goals/progress')
+    document = BeautifulSoup(response.data, 'html.parser')
+    periods = document.select(
+        f'[data-goal-id="{test_goal.id}"] [data-progress-period]'
+    )
+
+    assert response.status_code == 200
+    assert len(periods) == 30
+    assert periods[0]['data-period-end'] == (
+        today - timedelta(days=30)
+    ).isoformat()
+    assert periods[-1]['data-period-end'] == (
+        today - timedelta(days=1)
+    ).isoformat()
+
+
 def test_daily_history_requires_logs_or_check_in_and_excludes_active_day(
         logged_in_client, db_session, test_user, test_goal, test_pouch):
     today = goals_routes._current_effective_day(

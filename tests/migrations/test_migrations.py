@@ -266,7 +266,7 @@ class TestUpgradeDowngradeReUpgrade:
 
 
 class TestGoalActiveSlotMigration:
-    def test_upgrade_keeps_lowest_active_goal_and_preserves_inactive_history(
+    def test_null_type_normalization_and_active_reconciliation_survive_roundtrip(
             self, prepare):
         db = prepare(harness.SPECS_BY_KEY['legacy'])
         db.upgrade('8a2d1c4e6f90')
@@ -285,17 +285,21 @@ class TestGoalActiveSlotMigration:
             "enable_notifications, notification_threshold) VALUES "
             "(101, 1, 'daily_pouches', 7, '2026-01-01', 1, 1, 0.8), "
             "(102, 1, 'daily_pouches', 6, '2026-01-02', 1, 1, 0.8), "
-            "(103, 1, 'daily_pouches', 5, '2026-01-03', 0, 1, 0.8)"
+            "(103, 1, 'daily_pouches', 5, '2026-01-03', 0, 1, 0.8), "
+            "(104, 1, NULL, 4, '2026-01-04', 1, 1, 0.8), "
+            "(105, 1, NULL, 3, '2026-01-05', 1, 1, 0.8)"
         )
-        before_ids = [row['id'] for row in existing] + [101, 102]
+        before_ids = [row['id'] for row in existing] + [101, 102, 104, 105]
 
         db.upgrade('head')
 
         assert db.stamp() != pre_residual_head
         rows = db.rows(
-            "SELECT id, is_active, active_slot FROM goal "
+            "SELECT id, goal_type, is_active, active_slot FROM goal "
             "WHERE user_id = 1 AND goal_type = 'daily_pouches' ORDER BY id"
         )
+        assert {row['id'] for row in rows} >= {101, 102, 103, 104, 105}
+        assert all(row['goal_type'] == 'daily_pouches' for row in rows)
         active_rows = [row for row in rows if row['is_active']]
         assert [row['id'] for row in active_rows] == [min(before_ids)]
         assert active_rows[0]['active_slot'] == 1
@@ -312,6 +316,47 @@ class TestGoalActiveSlotMigration:
             constraint['name']
             for constraint in inspector.get_check_constraints('goal')
         }
+        assert db.columns('goal')['goal_type']['nullable'] is False
+
+        invalid_rows = (
+            (201, "'daily_mg'", 1, 'NULL'),
+            (202, "'daily_mg'", 0, '1'),
+            (203, 'NULL', 1, '1'),
+        )
+        for row_id, goal_type, is_active, active_slot in invalid_rows:
+            with pytest.raises(sa.exc.IntegrityError):
+                db.execute(
+                    'INSERT INTO goal '
+                    '(id, user_id, goal_type, target_value, is_active, '
+                    'active_slot) VALUES '
+                    f'({row_id}, 1, {goal_type}, 7, {is_active}, '
+                    f'{active_slot})'
+                )
+            db.connection.rollback()
+
+        db.downgrade('8a2d1c4e6f90')
+        downgraded_columns = db.columns('goal')
+        assert 'active_slot' not in downgraded_columns
+        assert downgraded_columns['goal_type']['nullable'] is True
+        db.execute(
+            "UPDATE goal SET goal_type = NULL, is_active = 1 WHERE id = 101"
+        )
+        db.execute(
+            "UPDATE goal SET goal_type = 'daily_pouches', is_active = 1 "
+            "WHERE id = 102"
+        )
+
+        db.upgrade('head')
+
+        rerun_rows = db.rows(
+            "SELECT id, goal_type, is_active, active_slot FROM goal "
+            "WHERE user_id = 1 AND goal_type = 'daily_pouches' ORDER BY id"
+        )
+        assert all(row['goal_type'] == 'daily_pouches' for row in rerun_rows)
+        assert [
+            row['id'] for row in rerun_rows if row['is_active']
+        ] == [min(row['id'] for row in rerun_rows)]
+        assert db.columns('goal')['goal_type']['nullable'] is False
 
 
 class TestMySQLFractionalRoundTrip:

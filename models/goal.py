@@ -8,7 +8,8 @@ from sqlalchemy import event
 class Goal(db.Model):
     __table_args__ = (
         db.CheckConstraint(
-            '(is_active = 1 AND active_slot = 1) OR '
+            '(is_active = 1 AND active_slot IS NOT NULL '
+            'AND active_slot = 1) OR '
             '(is_active = 0 AND active_slot IS NULL)',
             name='ck_goal_active_slot_state',
         ),
@@ -24,7 +25,9 @@ class Goal(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Goal settings
-    goal_type = db.Column(db.String(20), default='daily_pouches')
+    goal_type = db.Column(
+        db.String(20), nullable=False, default='daily_pouches'
+    )
     target_value = db.Column(db.Integer, nullable=False)
     current_streak = db.Column(db.Integer, default=0)
     best_streak = db.Column(db.Integer, default=0)
@@ -79,7 +82,14 @@ class Goal(db.Model):
 
 
 @event.listens_for(Goal, 'before_insert')
+def _initialize_active_slot(_mapper, _connection, goal):
+    """Apply the active column default before synchronizing its slot."""
+    if goal.is_active is None:
+        goal.is_active = True
+    goal.active_slot = 1 if goal.is_active is True else None
+
+
 @event.listens_for(Goal, 'before_update')
 def _synchronize_active_slot(_mapper, _connection, goal):
-    """Keep ORM writes inside the database active-slot state contract."""
+    """Keep ORM updates inside the database active-slot state contract."""
     goal.active_slot = 1 if goal.is_active is True else None

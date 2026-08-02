@@ -8,6 +8,8 @@ The nullable active slot preserves unlimited inactive history while its
 three-column unique constraint serializes concurrent activation. Existing
 duplicates are reconciled deterministically: the lowest Goal ID remains
 active for each (user_id, goal_type), and later duplicates become inactive.
+Legacy NULL goal types are normalized before reconciliation so they cannot
+escape or collide with the active daily-pouches invariant.
 """
 
 from alembic import op
@@ -36,6 +38,11 @@ def upgrade():
     connection.execute(
         goal.update().where(goal.c.is_active.is_(None)).values(
             is_active=False, active_slot=None
+        )
+    )
+    connection.execute(
+        goal.update().where(goal.c.goal_type.is_(None)).values(
+            goal_type='daily_pouches'
         )
     )
     active_rows = connection.execute(
@@ -69,9 +76,15 @@ def upgrade():
             existing_type=sa.Boolean(),
             nullable=False,
         )
+        batch.alter_column(
+            'goal_type',
+            existing_type=sa.String(length=20),
+            nullable=False,
+        )
         batch.create_check_constraint(
             'ck_goal_active_slot_state',
-            '(is_active = 1 AND active_slot = 1) OR '
+            '(is_active = 1 AND active_slot IS NOT NULL '
+            'AND active_slot = 1) OR '
             '(is_active = 0 AND active_slot IS NULL)',
         )
         batch.create_unique_constraint(
@@ -89,6 +102,11 @@ def downgrade():
         batch.alter_column(
             'is_active',
             existing_type=sa.Boolean(),
+            nullable=True,
+        )
+        batch.alter_column(
+            'goal_type',
+            existing_type=sa.String(length=20),
             nullable=True,
         )
         batch.drop_column('active_slot')
