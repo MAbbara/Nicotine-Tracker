@@ -21,6 +21,7 @@ from models import (  # noqa: E402
     PlanDay,
     PlanRevision,
     PlanStatusEvent,
+    PasswordReset,
     Pouch,
     ReductionPlan,
     User,
@@ -53,18 +54,24 @@ with app.app_context():
     )
     user.set_password('browser-password')
     db.session.add(user)
+    db.session.flush()
     default_pouch = Pouch(
         brand='Steady Mint',
         nicotine_mg=Decimal('6.00'),
         is_default=True,
     )
-    foreign_custom_pouch = Pouch(
-        brand='Other User Custom',
+    owned_custom_pouch = Pouch(
+        brand='Browser Owned',
         nicotine_mg=Decimal('9.00'),
         is_default=False,
         created_by=user.id,
     )
-    db.session.add_all([default_pouch, foreign_custom_pouch])
+    valid_reset = PasswordReset(
+        user_id=user.id,
+        token='browser-accessibility-reset-token',
+        expires_at=datetime.utcnow() + timedelta(days=1),
+    )
+    db.session.add_all([default_pouch, owned_custom_pouch, valid_reset])
     db.session.commit()
 
     empty_smart_user = User(

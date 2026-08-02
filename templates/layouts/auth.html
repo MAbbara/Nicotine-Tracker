@@ -20,7 +20,7 @@
 </head>
 <body class="auth-shell{% block body_class %}{% endblock %}">
   <a class="skip-link" href="#main-content">Skip to main content</a>
-  <header class="auth-brand"><a class="wordmark" href="{{ url_for('index') }}"><span aria-hidden="true">N/T</span><span>Nicotine Tracker</span></a></header>
+  <header class="auth-brand"><a class="wordmark" href="{{ url_for('index') }}" aria-label="Nicotine Tracker home"><span aria-hidden="true">N/T</span><span>Nicotine Tracker</span></a></header>
   <div id="flash-messages" class="flash-region" aria-live="polite" aria-atomic="true">
     {% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<div class="flash-message flash-message--{{ category }}" role="status">{{ message }}</div>{% endfor %}{% endwith %}
   </div>

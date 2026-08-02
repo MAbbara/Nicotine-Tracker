@@ -16,10 +16,19 @@
 
 @layer components {
   .goals-page,
+  .goals-section,
+  .goals-list,
+  .goal-progress-page .c-chart,
   .goal-form-page {
     width: min(100%, 72rem);
     min-width: 0;
     margin-inline: auto;
+  }
+
+  .goals-section,
+  .goals-list,
+  .goal-progress-page .c-chart {
+    max-width: 100%;
   }
 
   .goals-page,
@@ -926,6 +935,42 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .app-account-link__full {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .app-account-link__short {
+    display: none;
+  }
+
+  @media (max-width: 30rem) {
+    .wordmark {
+      min-width: 44px;
+      justify-content: center;
+    }
+
+    .wordmark > span:last-child {
+      display: none;
+    }
+
+    .app-account-link {
+      min-width: 44px;
+      max-width: 44px;
+      flex: 0 0 44px;
+      justify-content: center;
+    }
+
+    .app-account-link__full {
+      display: none;
+    }
+
+    .app-account-link__short {
+      display: inline;
+      font-size: var(--text-caption);
+    }
   }
 
   .app-content {
@@ -5065,7 +5110,7 @@
 
 .insights-range__option {
   display: inline-flex;
-  min-width: max-content;
+  min-width: 44px;
   min-height: 2.75rem;
   align-items: center;
   padding-inline: var(--space-3);

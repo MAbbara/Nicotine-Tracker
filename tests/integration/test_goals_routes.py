@@ -1,12 +1,13 @@
 """Goals route behavior and Journey-aligned interface contracts."""
 
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
 from bs4 import BeautifulSoup
 
-from models import Goal
+from models import Goal, Log
 import routes.goals as goals_routes
+from services import log_service
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -250,6 +251,103 @@ def test_goal_progress_respects_start_date_and_repeated_get_is_read_only(
         assert '7 days' in document.select_one(
             f'[data-goal-id="{test_goal.id}"] [data-evaluated-periods]'
         ).get_text(' ', strip=True)
+
+
+def test_daily_mg_progress_treats_unknown_strength_as_unavailable_evidence(
+        logged_in_client, db_session, test_user, test_goal, test_pouch):
+    today = goals_routes._current_effective_day(
+        test_user, goals_routes.resolve_timezone(test_user.timezone)
+    )
+    test_goal.goal_type = 'daily_mg'
+    test_goal.target_value = 10
+    test_goal.start_date = today - timedelta(days=1)
+    test_goal.enable_notifications = True
+    test_goal.notification_threshold = .5
+
+    known_log = Log(
+        user_id=test_user.id,
+        quantity=1,
+        log_time=datetime.combine(
+            today - timedelta(days=1), time(12), timezone.utc
+        ),
+    )
+    log_service.assign_log_product(known_log, pouch_id=test_pouch.id)
+    unknown_log = Log(
+        user_id=test_user.id,
+        quantity=2,
+        log_time=datetime.combine(today, time(12), timezone.utc),
+        product_brand_snapshot='Strength not saved',
+    )
+    db_session.add_all([known_log, unknown_log])
+    db_session.commit()
+
+    progress = goals_routes.calculate_goal_progress(
+        test_user,
+        test_goal,
+        today,
+        goals_routes.resolve_timezone(test_user.timezone),
+    )
+    notification_response = logged_in_client.get(
+        '/goals/api/check_notifications'
+    )
+
+    assert progress['available'] is False
+    assert progress['achieved'] is None
+    assert progress['unknown_strength_count'] == 1
+    assert notification_response.status_code == 200
+    assert notification_response.get_json() == {
+        'success': True,
+        'notifications': [],
+    }
+
+
+def test_daily_mg_progress_page_explains_missing_strength_without_zero_reading(
+        logged_in_client, db_session, test_user, test_goal, test_pouch):
+    today = goals_routes._current_effective_day(
+        test_user, goals_routes.resolve_timezone(test_user.timezone)
+    )
+    yesterday = today - timedelta(days=1)
+    test_goal.goal_type = 'daily_mg'
+    test_goal.target_value = 10
+    test_goal.start_date = yesterday
+
+    known_log = Log(
+        user_id=test_user.id,
+        quantity=1,
+        log_time=datetime.combine(yesterday, time(12), timezone.utc),
+    )
+    log_service.assign_log_product(known_log, pouch_id=test_pouch.id)
+    unknown_log = Log(
+        user_id=test_user.id,
+        quantity=2,
+        log_time=datetime.combine(today, time(12), timezone.utc),
+        product_brand_snapshot='Strength not saved',
+    )
+    db_session.add_all([known_log, unknown_log])
+    db_session.commit()
+
+    response = logged_in_client.get('/goals/progress')
+    document = BeautifulSoup(response.data, 'html.parser')
+    goal_row = document.select_one(f'[data-goal-id="{test_goal.id}"]')
+    today_row = goal_row.select_one(
+        f'[data-progress-period][data-period-end="{today.isoformat()}"]'
+    )
+
+    assert response.status_code == 200
+    assert goal_row.select_one('[data-current-streak]').get_text(
+        ' ', strip=True
+    ) == '0 days'
+    assert '100% across 1 day' in goal_row.select_one(
+        '[data-evaluated-periods]'
+    ).get_text(' ', strip=True)
+    assert 'Nicotine total unavailable' in today_row.get_text(' ', strip=True)
+    assert 'Missing strength data for 1 logged pouch' in today_row.get_text(
+        ' ', strip=True
+    )
+    assert today_row.select('td')[0].get_text(
+        ' ', strip=True
+    ) == 'Nicotine total unavailable'
+    assert 'Worth reviewing' not in today_row.get_text(' ', strip=True)
 
 
 def test_weekly_goal_progress_uses_distinct_weeks_and_marks_missing_baseline(

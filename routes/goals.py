@@ -346,7 +346,10 @@ def progress():
                     'available': daily_progress.get('available', True),
                     'current': daily_progress['current'],
                     'target': daily_progress['target'],
-                    'percentage': daily_progress['percentage']
+                    'percentage': daily_progress['percentage'],
+                    'unknown_strength_count': daily_progress.get(
+                        'unknown_strength_count', 0
+                    ),
                 })
 
             # Calculate streak information
@@ -506,7 +509,8 @@ def calculate_goal_progress(user, goal, target_date, resolved_timezone=None):
             unknown_strength_count = summary['unknown_strength_count']
             current = float(summary['total_mg'])
             target = goal.target_value
-            achieved = unknown_strength_count == 0 and current <= target
+            available = unknown_strength_count == 0
+            achieved = current <= target if available else None
             percentage = (current / target * 100) if target > 0 else 0
             
         elif goal.goal_type == 'weekly_reduction':
@@ -541,7 +545,7 @@ def calculate_goal_progress(user, goal, target_date, resolved_timezone=None):
             target = goal.target_value
             percentage = 0
 
-        if goal.goal_type != 'weekly_reduction':
+        if goal.goal_type not in ('daily_mg', 'weekly_reduction'):
             available = True
 
         return {

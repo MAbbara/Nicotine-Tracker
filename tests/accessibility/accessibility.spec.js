@@ -4,10 +4,62 @@ const AxeBuilder = require('@axe-core/playwright').default;
 
 async function expectNoWcagViolations(page) {
   const results = await new AxeBuilder({ page })
-    .withTags(['wcag2a', 'wcag2aa'])
+    .withTags(['wcag2a', 'wcag2aa', 'wcag22aa'])
     .analyze();
 
   expect(results.violations).toEqual([]);
+  await expectProjectTouchTargets(page);
+}
+
+
+async function expectProjectTouchTargets(page) {
+  const undersized = await page.locator([
+    'a[href]',
+    'button:not([disabled])',
+    'input:not([type="hidden"]):not([disabled])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    '[role="button"]:not([aria-disabled="true"])',
+    '[role="link"]:not([aria-disabled="true"])',
+    'summary',
+  ].join(',')).evaluateAll((elements) => elements.flatMap((element) => {
+    const style = getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    if (
+      style.display === 'none'
+      || style.visibility === 'hidden'
+      || rect.width === 0
+      || rect.height === 0
+    ) return [];
+
+    const isInlineProseLink = element.matches('a[href]')
+      && style.display === 'inline'
+      && !element.classList.contains('c-button')
+      && Boolean(element.closest('p, dd, dt, figcaption, small'));
+    if (isInlineProseLink) return [];
+
+    let target = element;
+    if (
+      element.matches('input[type="checkbox"], input[type="radio"]')
+      && element.labels?.length
+    ) {
+      target = element.labels[0];
+    }
+    const targetRect = target.getBoundingClientRect();
+    if (targetRect.width >= 44 && targetRect.height >= 44) return [];
+
+    return [{
+      tag: element.tagName.toLowerCase(),
+      id: element.id,
+      classes: [...element.classList],
+      text: (element.textContent || element.getAttribute('aria-label') || '')
+        .trim().slice(0, 80),
+      width: Math.round(targetRect.width * 10) / 10,
+      height: Math.round(targetRect.height * 10) / 10,
+    }];
+  }));
+
+  expect(undersized).toEqual([]);
 }
 
 
@@ -116,10 +168,15 @@ test('login page has semantic structure, natural tab order, and no WCAG A/AA vio
 });
 
 
-for (const path of ['/', '/auth/register', '/auth/forgot_password']) {
+for (const [path, heading] of [
+  ['/', 'Start with the next useful action.'],
+  ['/auth/register', 'Create your account'],
+  ['/auth/forgot_password', 'Reset your password'],
+  ['/auth/reset_password/browser-accessibility-reset-token', 'Choose a new password'],
+]) {
   test(`public page ${path} has no WCAG A/AA violations`, async ({ page }) => {
     await page.goto(path);
-    await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+    await expect(page.getByRole('heading', { name: heading, level: 1 })).toHaveCount(1);
     await expectNoWcagViolations(page);
   });
 }
@@ -143,6 +200,7 @@ test('primary authenticated pages have one h1 and no WCAG A/AA violations', asyn
 test('remaining first-party route matrix has one h1, clean console, and no WCAG A/AA violations', async ({ page }) => {
   const errors = collectBrowserErrors(page);
   await login(page, 'browser@example.com');
+  let editPouchHref = null;
 
   for (const [path, heading] of [
     ['/today', 'Today'],
@@ -170,7 +228,12 @@ test('remaining first-party route matrix has one h1, clean console, and no WCAG 
     if (path === '/log/add') {
       await expect(page.getByRole('dialog', { name: 'Add a log' })).toBeVisible();
     }
+    if (path === '/catalog/') {
+      editPouchHref = await page.getByRole('link', { name: 'Edit' })
+        .first().getAttribute('href');
+    }
   }
+  await auditRoute(page, errors, editPouchHref, 'Edit pouch');
 });
 
 
@@ -206,6 +269,58 @@ test('populated analytics, edit forms, and goal progress pass the full accessibi
   }
 
   await auditRoute(page, errors, editGoalHref, 'Adjust goal');
+});
+
+
+test('Goal progress supports narrow dark 200% text and reduced motion without page overflow', async ({ page }, testInfo) => {
+  test.setTimeout(60_000);
+  const errors = collectBrowserErrors(page);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await useExplicitTheme(page, 'dark');
+  await page.setViewportSize({ width: 320, height: 800 });
+  const project = testInfo.project.name.includes('mobile') ? 'mobile' : 'desktop';
+  await login(page, `journey-review-${project}@example.com`);
+  await page.goto('/goals/progress');
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = '200%';
+  });
+
+  await expectExplicitTheme(page, 'dark');
+  await expect(page.getByRole('heading', { name: 'Goal progress', level: 1 })).toHaveCount(1);
+  expect(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true);
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior)).toBe('auto');
+  const pageOverflow = await page.evaluate(() => {
+    const viewportWidth = document.documentElement.clientWidth;
+    return {
+      delta: document.documentElement.scrollWidth - viewportWidth,
+      elements: [...document.querySelectorAll('body *')].flatMap((element) => {
+        const rect = element.getBoundingClientRect();
+        if (rect.right <= viewportWidth + 1 && rect.left >= -1) return [];
+        const containingScroller = element.parentElement?.closest(
+          '.journey-table-scroll, [data-horizontal-scroll]',
+        );
+        if (containingScroller) {
+          const overflow = getComputedStyle(containingScroller).overflowX;
+          if (overflow === 'auto' || overflow === 'scroll') return [];
+        }
+        return [{
+          tag: element.tagName.toLowerCase(),
+          classes: [...element.classList].slice(0, 4),
+          left: Math.round(rect.left),
+          right: Math.round(rect.right),
+          width: Math.round(rect.width),
+        }];
+      }).slice(0, 12),
+    };
+  });
+  expect(pageOverflow).toEqual({ delta: 0, elements: [] });
+
+  const history = page.getByRole('region', { name: 'Thirty-day goal record' }).first();
+  await expect(history).toBeVisible();
+  await expect(history).toHaveAttribute('tabindex', '0');
+  expect(await history.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+  await expectNoWcagViolations(page);
+  expectNoUnexpectedBrowserErrors(errors);
 });
 
 
