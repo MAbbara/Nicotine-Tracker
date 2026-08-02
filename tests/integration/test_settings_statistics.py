@@ -1,8 +1,12 @@
 """Editorial Statistics page contracts."""
 
+from datetime import datetime
+
 from pathlib import Path
 
 from bs4 import BeautifulSoup
+
+from models import Log
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -46,3 +50,27 @@ def test_statistics_template_retires_dashboard_card_grid_and_palette():
         'shadow rounded-lg',
     ):
         assert token not in source
+
+
+def test_recent_unknown_strength_note_does_not_double_count_overlapping_windows(
+        logged_in_client, db_session, test_user):
+    db_session.add(Log(
+        user_id=test_user.id,
+        quantity=1,
+        log_time=datetime.utcnow(),
+        product_brand_snapshot='Unknown strength',
+        nicotine_mg_snapshot=None,
+    ))
+    db_session.commit()
+
+    response = logged_in_client.get('/settings/statistics')
+    document = BeautifulSoup(response.data, 'html.parser')
+    recent_note = document.select_one('.statistics-recent-completeness')
+
+    assert response.status_code == 200
+    assert recent_note is not None
+    assert '1 unknown-strength entry' in recent_note.get_text(' ', strip=True)
+    assert '2 unknown-strength' not in recent_note.get_text(' ', strip=True)
+
+    source = (PROJECT_ROOT / 'templates/settings/statistics.html').read_text()
+    assert 'week_unknown_strength_count + stats.month_unknown_strength_count' not in source

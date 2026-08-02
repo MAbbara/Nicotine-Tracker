@@ -129,6 +129,37 @@ def test_data_page_orders_actions_by_risk_and_explains_recoverability(
     assert forms['export_data'].select_one('button.c-button--secondary')
     assert not forms['export_data'].select_one('.c-button--danger')
 
+    cleanup = forms['cleanup_duplicates']
+    cleanup_confirmation = cleanup.select_one(
+        'input[name="confirm_cleanup_duplicates"][pattern="CLEANUP"][required]'
+    )
+    assert cleanup_confirmation is not None
+    assert 'confirm-cleanup-description' in cleanup_confirmation.get(
+        'aria-describedby', ''
+    )
+    assert cleanup.select_one('button.c-button--danger')
+    cleanup_copy = cleanup.get_text(' ', strip=True).casefold()
+    assert 'permanent' in cleanup_copy
+    assert 'cannot be recovered' in cleanup_copy
+    assert 'keeps one' in cleanup_copy
+
+    merge = forms['merge_custom_pouches']
+    merge_confirmation = merge.select_one(
+        'input[name="confirm_merge_pouches"][pattern="MERGE"][required]'
+    )
+    assert merge_confirmation is not None
+    assert 'confirm-merge-description' in merge_confirmation.get(
+        'aria-describedby', ''
+    )
+    assert merge.select_one('button.c-button--danger')
+    merge_copy = merge.get_text(' ', strip=True).casefold()
+    assert 'permanent' in merge_copy
+    assert 'cannot be recovered' in merge_copy
+    assert 'reconnect' in merge_copy
+
+    assert forms['recalculate_goals'].select_one('button.c-button--secondary')
+    assert not forms['recalculate_goals'].select_one('.c-button--danger')
+
     offline = document.select_one(
         'input#offline_queue_enabled[type="checkbox"]'
         '[data-endpoint="/settings/privacy/offline-queue"]'
@@ -307,13 +338,45 @@ def test_cleanup_button_removes_only_duplicate_logs(
     before = _snapshot_data_state(test_user)
     before_ids = {row[0] for row in before['logs']}
 
-    response = _submit_data_button(logged_in_client, 'Cleanup')
+    response = _submit_data_button(
+        logged_in_client,
+        'Cleanup',
+        overrides={'confirm_cleanup_duplicates': 'CLEANUP'},
+    )
 
     after = _snapshot_data_state(test_user)
     assert response.status_code == 200
     assert b'Removed 1 duplicate log entries.' in response.data
     assert {row[0] for row in after['logs']} == before_ids - {duplicates[1].id}
     _assert_state_unchanged_except(before, after, 'logs')
+
+
+def test_cleanup_button_rejects_inexact_confirmation_without_mutation(
+    logged_in_client, db_session, test_user, test_pouch, test_goal,
+):
+    _seed_common_state(db_session, test_user, test_pouch, test_goal)
+    duplicate_time = datetime(2026, 1, 2, 9, 30)
+    for _ in range(2):
+        duplicate = Log(
+            user_id=test_user.id,
+            quantity=2,
+            log_time=duplicate_time,
+            notes='same note',
+        )
+        assign_log_product(duplicate, pouch_id=test_pouch.id)
+        db_session.add(duplicate)
+    db_session.commit()
+    before = _snapshot_data_state(test_user)
+
+    response = _submit_data_button(
+        logged_in_client,
+        'Cleanup',
+        overrides={'confirm_cleanup_duplicates': 'cleanup'},
+    )
+
+    assert response.status_code == 200
+    assert b'Type CLEANUP to confirm duplicate log removal.' in response.data
+    assert _snapshot_data_state(test_user) == before
 
 
 def test_merge_button_merges_only_matching_custom_pouches(
@@ -339,7 +402,11 @@ def test_merge_button_merges_only_matching_custom_pouches(
     db_session.commit()
     before = _snapshot_data_state(test_user)
 
-    response = _submit_data_button(logged_in_client, 'Merge')
+    response = _submit_data_button(
+        logged_in_client,
+        'Merge',
+        overrides={'confirm_merge_pouches': 'MERGE'},
+    )
 
     after = _snapshot_data_state(test_user)
     assert response.status_code == 200
@@ -350,6 +417,31 @@ def test_merge_button_merges_only_matching_custom_pouches(
     assert tuple((row[0], row[2], row[3]) for row in after['logs']) == tuple(
         (row[0], row[2], row[3]) for row in before['logs']
     )
+
+
+def test_merge_button_rejects_inexact_confirmation_without_mutation(
+    logged_in_client, db_session, test_user, test_pouch, test_goal,
+):
+    _seed_common_state(db_session, test_user, test_pouch, test_goal)
+    duplicate_pouch = Pouch(
+        brand=' test brand ',
+        nicotine_mg=Decimal('4.00'),
+        is_default=False,
+        created_by=test_user.id,
+    )
+    db_session.add(duplicate_pouch)
+    db_session.commit()
+    before = _snapshot_data_state(test_user)
+
+    response = _submit_data_button(
+        logged_in_client,
+        'Merge',
+        overrides={'confirm_merge_pouches': 'merge'},
+    )
+
+    assert response.status_code == 200
+    assert b'Type MERGE to confirm merging duplicate pouch records.' in response.data
+    assert _snapshot_data_state(test_user) == before
 
 
 def test_recalculate_button_changes_only_goal_streaks(

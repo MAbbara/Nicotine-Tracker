@@ -127,6 +127,24 @@ test('Statistics has an editorial fact list and no WCAG A/AA violations', async 
 
 
 for (const theme of ['light', 'dark']) {
+  test(`Data and Statistics meet WCAG A/AA in explicit ${theme} theme`, async ({ page }) => {
+    await useExplicitTheme(page, theme);
+    await login(page, 'browser@example.com');
+
+    for (const [path, heading] of [
+      ['/settings/data', 'Data & privacy'],
+      ['/settings/statistics', 'Statistics'],
+    ]) {
+      await page.goto(path);
+      await expectExplicitTheme(page, theme);
+      await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible();
+      await expectNoWcagViolations(page);
+    }
+  });
+}
+
+
+for (const theme of ['light', 'dark']) {
   test(`Reminders failure feedback meets WCAG A/AA in ${theme} theme`, async ({ page }) => {
     await useExplicitTheme(page, theme);
     await page.route('**/settings/test-discord-webhook', async (route) => {

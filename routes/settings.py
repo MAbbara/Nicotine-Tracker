@@ -370,10 +370,22 @@ def data():
                 return export_user_data(user)
 
             elif action == 'cleanup_duplicates':
+                if request.form.get('confirm_cleanup_duplicates') != 'CLEANUP':
+                    flash(
+                        'Type CLEANUP to confirm duplicate log removal.',
+                        'error',
+                    )
+                    return redirect(url_for('settings.data'))
                 duplicates_removed = cleanup_duplicate_logs(user)
                 flash(f'Removed {duplicates_removed} duplicate log entries.' if duplicates_removed > 0 else 'No duplicate entries found.', 'success' if duplicates_removed > 0 else 'info')
-                    
+
             elif action == 'merge_custom_pouches':
+                if request.form.get('confirm_merge_pouches') != 'MERGE':
+                    flash(
+                        'Type MERGE to confirm merging duplicate pouch records.',
+                        'error',
+                    )
+                    return redirect(url_for('settings.data'))
                 merged_count = merge_similar_pouches(user)
                 flash(f'Merged {merged_count} similar pouch entries.' if merged_count > 0 else 'No similar pouches found to merge.', 'success' if merged_count > 0 else 'info')
                     

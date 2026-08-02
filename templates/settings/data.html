@@ -25,18 +25,44 @@
             </header>
 
             <div class="data-maintenance__actions space-y-4">
-                <form method="POST" action="{{ url_for('settings.data') }}" class="space-y-2">
+                <form method="POST" action="{{ url_for('settings.data') }}" class="space-y-4">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="action" value="cleanup_duplicates">
-                    <p>Review exact duplicate log entries. {{ data_stats.potential_duplicates }} potential {{ 'group' if data_stats.potential_duplicates == 1 else 'groups' }} found.</p>
-                    <button type="submit" class="c-button c-button--secondary">Cleanup</button>
+                    <p>Remove exact duplicate log rows permanently. Cleanup keeps one copy of each matching entry. {{ data_stats.potential_duplicates }} potential {{ 'group' if data_stats.potential_duplicates == 1 else 'groups' }} found. Removed copies cannot be recovered.</p>
+                    <div class="c-field">
+                        <label class="c-field__label" for="confirm_cleanup_duplicates">Type CLEANUP to confirm</label>
+                        <p class="c-field__description" id="confirm-cleanup-description">Only exact duplicates are removed, but this deletion is permanent.</p>
+                        <input
+                            class="c-field__control"
+                            id="confirm_cleanup_duplicates"
+                            name="confirm_cleanup_duplicates"
+                            autocomplete="off"
+                            required
+                            pattern="CLEANUP"
+                            aria-describedby="confirm-cleanup-description"
+                        >
+                    </div>
+                    <button type="submit" class="c-button c-button--danger">Cleanup</button>
                 </form>
 
-                <form method="POST" action="{{ url_for('settings.data') }}" class="space-y-2">
+                <form method="POST" action="{{ url_for('settings.data') }}" class="space-y-4">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="action" value="merge_custom_pouches">
-                    <p>Combine your custom products when brand and nicotine strength match. {{ data_stats.similar_pouches }} similar {{ 'entry' if data_stats.similar_pouches == 1 else 'entries' }} found.</p>
-                    <button type="submit" class="c-button c-button--secondary">Merge</button>
+                    <p>Reconnect logs to one retained custom product when brand and nicotine strength match, then permanently remove the duplicate product records. {{ data_stats.similar_pouches }} similar {{ 'entry' if data_stats.similar_pouches == 1 else 'entries' }} found. Removed records cannot be recovered.</p>
+                    <div class="c-field">
+                        <label class="c-field__label" for="confirm_merge_pouches">Type MERGE to confirm</label>
+                        <p class="c-field__description" id="confirm-merge-description">Your logs remain, but duplicate custom product records are removed permanently.</p>
+                        <input
+                            class="c-field__control"
+                            id="confirm_merge_pouches"
+                            name="confirm_merge_pouches"
+                            autocomplete="off"
+                            required
+                            pattern="MERGE"
+                            aria-describedby="confirm-merge-description"
+                        >
+                    </div>
+                    <button type="submit" class="c-button c-button--danger">Merge</button>
                 </form>
 
                 <form method="POST" action="{{ url_for('settings.data') }}" class="space-y-2">

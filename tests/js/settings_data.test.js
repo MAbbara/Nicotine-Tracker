@@ -74,3 +74,36 @@ test('updateOfflineQueue restores the previous value when persistence fails', as
   assert.equal(status.dataset.state, 'error');
   assert.match(status.textContent, /could not be saved/i);
 });
+
+test('updateOfflineQueue rejects duplicate submissions while one request is pending', async () => {
+  const { updateOfflineQueue } = await loadModule();
+  const { checkbox, status } = controls(false);
+  let resolveRequest;
+  const requestResult = new Promise((resolve) => { resolveRequest = resolve; });
+  let requestCount = 0;
+  const request = async () => {
+    requestCount += 1;
+    return requestResult;
+  };
+
+  const first = updateOfflineQueue({ checkbox, status, request });
+  const duplicate = await updateOfflineQueue({ checkbox, status, request });
+
+  assert.equal(duplicate, false);
+  assert.equal(requestCount, 1);
+  resolveRequest({ success: true, enabled: false });
+  assert.equal(await first, true);
+});
+
+test('updateOfflineQueue restores the previous value when the server rejects the payload', async () => {
+  const { updateOfflineQueue } = await loadModule();
+  const { checkbox, status } = controls(false);
+
+  assert.equal(await updateOfflineQueue({
+    checkbox,
+    status,
+    request: async () => ({ success: false }),
+  }), false);
+  assert.equal(checkbox.checked, true);
+  assert.equal(status.dataset.state, 'error');
+});

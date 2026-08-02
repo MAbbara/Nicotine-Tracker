@@ -286,6 +286,36 @@ test('Data privacy controls persist and Statistics hands off to Insights', async
   await expect(offlineToggle).toBeChecked();
   await expect(page.locator('meta[name="offline-queue-enabled"]')).toHaveAttribute('content', 'true');
 
+  let offlineRequestCount = 0;
+  let offlineRequestBody;
+  let offlineCsrfToken;
+  let releaseFailure;
+  const heldFailure = new Promise((resolve) => { releaseFailure = resolve; });
+  await page.route('**/settings/privacy/offline-queue', async (route) => {
+    offlineRequestCount += 1;
+    offlineRequestBody = route.request().postDataJSON();
+    offlineCsrfToken = route.request().headers()['x-csrftoken'];
+    await heldFailure;
+    await route.fulfill({
+      status: 500,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: false }),
+    });
+  });
+  await offlineToggle.uncheck();
+  await expect(offlineToggle).toBeDisabled();
+  await expect(offlineStatus).toHaveAttribute('data-state', 'loading');
+  await offlineToggle.evaluate((element) => {
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await expect.poll(() => offlineRequestCount).toBe(1);
+  expect(offlineRequestBody).toEqual({ enabled: false });
+  expect(offlineCsrfToken).toBeTruthy();
+  releaseFailure();
+  await expect(offlineStatus).toHaveAttribute('data-state', 'error');
+  await expect(offlineToggle).toBeChecked();
+  await expect(offlineToggle).toBeEnabled();
+
   const accountDeletion = page.getByRole('link', { name: 'Review account deletion' });
   await expect(accountDeletion).toHaveAttribute('href', '/settings/account#account-delete-title');
 

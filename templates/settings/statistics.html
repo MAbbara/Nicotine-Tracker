@@ -42,10 +42,14 @@
             <div><dt>Pouches · 30 days</dt><dd>{{ stats.month_pouches }}</dd></div>
         </dl>
 
-        {% set recent_unknown = stats.week_unknown_strength_count + stats.month_unknown_strength_count %}
-        {% if recent_unknown %}
-        <p>{{ recent_unknown }} unknown-strength {{ 'entry appears' if recent_unknown == 1 else 'entries appear' }} across these windows. Pouch counts remain available, while nicotine totals should be read with that limitation.</p>
-        {% endif %}
+        {% set recent_unknown = stats.month_unknown_strength_count %}
+        <p class="statistics-recent-completeness">
+            {% if recent_unknown %}
+            {{ recent_unknown }} unknown-strength {{ 'entry appears' if recent_unknown == 1 else 'entries appear' }} in the 30-day window, including any from the last 7 days. Pouch counts remain available, while nicotine totals should be read with that limitation.
+            {% else %}
+            Every entry in the 30-day window has a saved nicotine strength.
+            {% endif %}
+        </p>
 
         <a class="c-button c-button--secondary" href="{{ url_for('insights.insights_page') }}">Explore patterns in Insights</a>
     </section>
