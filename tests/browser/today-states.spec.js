@@ -55,9 +55,30 @@ test('incomplete check-in cues once and reduced motion keeps the action static',
 
   await action.click();
   await expect(page.locator('[data-check-in-form]')).toBeVisible();
+  await action.evaluate((element) => {
+    const observation = { activations: 0 };
+    observation.observer = new MutationObserver((records) => {
+      observation.activations += records.filter(
+        (record) => record.oldValue !== 'active',
+      ).length;
+    });
+    observation.observer.observe(element, {
+      attributes: true,
+      attributeFilter: ['data-attention-cue'],
+      attributeOldValue: true,
+    });
+    window.__checkInRepeatCueObservation = observation;
+  });
   await page.getByRole('button', { name: 'Not now' }).click();
   await expect(action).toBeVisible();
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(700);
+  const repeatCueActivations = await page.evaluate(() => {
+    const observation = window.__checkInRepeatCueObservation;
+    observation.observer.disconnect();
+    delete window.__checkInRepeatCueObservation;
+    return observation.activations;
+  });
+  expect(repeatCueActivations).toBe(0);
   await expect(action).not.toHaveAttribute('data-attention-cue', 'active');
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
