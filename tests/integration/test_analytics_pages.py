@@ -116,6 +116,8 @@ def test_insights_uses_editorial_structure_and_retired_legacy_dashboard(
     assert soup.select_one("[data-insights-root][data-initial-insights]") is not None
     assert soup.select_one("[data-insights-headline]") is not None
     assert soup.select_one("[data-insights-interpretation]") is not None
+    assert soup.select_one("[data-insights-weekly-copy]") is not None
+    assert soup.select_one("[data-insights-hourly-copy]") is not None
     assert soup.select_one("[data-insights-state]") is not None
     assert soup.select_one("[data-craving-pattern][hidden]") is not None
     assert all(
@@ -133,6 +135,20 @@ def test_insights_uses_editorial_structure_and_retired_legacy_dashboard(
     assert not soup.find(string=lambda value: value and any(
         emoji in value for emoji in ("📊", "📈", "⚡", "⏱️", "📅", "🤖")
     ))
+
+
+def test_insights_page_honors_supported_direct_ranges_and_defaults_invalid_values(
+        logged_in_client):
+    seven_day = _soup(logged_in_client.get("/insights/?days=7"))
+    seven_payload = seven_day.select_one("#initial-insights-data")
+    assert '"range_days": 7' in seven_payload.get_text()
+    assert seven_day.select_one('[data-days="7"]').get("aria-current") == "true"
+    assert seven_day.select_one('[data-days="30"]').get("aria-current") is None
+
+    invalid = _soup(logged_in_client.get("/insights/?days=13"))
+    invalid_payload = invalid.select_one("#initial-insights-data")
+    assert '"range_days": 30' in invalid_payload.get_text()
+    assert invalid.select_one('[data-days="30"]').get("aria-current") == "true"
 
 
 def test_dashboard_renders_local_enhancement_and_semantic_values(

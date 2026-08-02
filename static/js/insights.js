@@ -255,7 +255,9 @@ function updateEditorial(root, viewModel, rangeDays) {
   setText('[data-insights-headline]', viewModel.headline);
   setText('[data-insights-interpretation]', viewModel.interpretation);
   setText('[data-insights-time-copy]', viewModel.sections.timePattern.interpretation);
+  setText('[data-insights-weekly-copy]', viewModel.sections.weeklyPattern.interpretation);
   setText('[data-insights-product-copy]', viewModel.sections.productPattern.interpretation);
+  setText('[data-insights-hourly-copy]', viewModel.sections.hourlyDetail.interpretation);
   const nextStep = root.querySelector('[data-insights-next-step]');
   if (nextStep) {
     nextStep.textContent = viewModel.nextStep.label;

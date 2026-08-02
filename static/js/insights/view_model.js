@@ -21,6 +21,23 @@ function leadingEntry(values) {
   }, null);
 }
 
+function leadingHeatmapEntry(series) {
+  return (series || []).reduce((leader, daySeries) => {
+    return (daySeries.data || []).reduce((dayLeader, point, index) => {
+      const value = finiteNumber(typeof point === 'object' ? point.y : point);
+      if (value <= 0 || (dayLeader && value <= dayLeader.value)) return dayLeader;
+      const hour = typeof point === 'object' && point.x != null
+        ? String(point.x)
+        : `${String(index).padStart(2, '0')}:00`;
+      return {
+        day: String(daySeries.name || 'Unknown day'),
+        hour,
+        value,
+      };
+    }, leader);
+  }, null);
+}
+
 function comparisonHeadline(data, rangeDays) {
   const comparison = data.comparison || {};
   const total = finiteNumber(comparison.current_total, finiteNumber(data.total_pouches));
@@ -107,6 +124,25 @@ export function buildInsightsViewModel(data = {}, rangeDays = 30) {
     availableCopy: ({ label }) => `${label} appears most often in this range. Use that context when you adjust your plan.`,
     unavailableCopy: 'A few more product logs will reveal what you reach for most often.',
   });
+  const weeklyPattern = patternSection({
+    available: Boolean(sufficiency.trend),
+    values: data.consumption_by_day_of_week,
+    heading: 'Weekly pattern',
+    availableCopy: ({ label }) => `${label} has the most logged pouches in this range. Use it as a cue to plan support, not a verdict.`,
+    unavailableCopy: 'Log across more complete days to reveal a dependable weekly pattern.',
+  });
+  const hourlyLeader = sufficiency.heatmap
+    ? leadingHeatmapEntry(data.heatmap_data)
+    : null;
+  const hourlyDetail = {
+    available: Boolean(hourlyLeader),
+    heading: 'Day and hour detail',
+    leadingLabel: hourlyLeader ? `${hourlyLeader.day} at ${hourlyLeader.hour}` : null,
+    leadingValue: hourlyLeader?.value || 0,
+    interpretation: hourlyLeader
+      ? `${hourlyLeader.day} around ${hourlyLeader.hour} has the highest logged use in this detail. Consider support before that time.`
+      : 'Log across more days and times to reveal a dependable hourly pattern.',
+  };
 
   return {
     state,
@@ -129,7 +165,7 @@ export function buildInsightsViewModel(data = {}, rangeDays = 30) {
         value: formatNumber(observedDays),
       },
     ],
-    sections: { timePattern, productPattern },
+    sections: { timePattern, weeklyPattern, productPattern, hourlyDetail },
     nextStep: state === 'ready'
       ? {
         label: timePattern.available

@@ -221,10 +221,44 @@ test('progress-first model frames lower use as movement with the plan', async ()
   ]);
   assert.equal(model.sections.timePattern.leadingLabel, 'Evening (6PM-12AM)');
   assert.equal(model.sections.productPattern.leadingLabel, 'Steady Mint');
+  assert.equal(model.sections.weeklyPattern.leadingLabel, null);
+  assert.equal(model.sections.hourlyDetail.leadingLabel, null);
   assert.doesNotMatch(JSON.stringify(model), /Ignore me|Unverified legacy copy/);
   assert.equal(model.nextStep.label, 'Plan for Evening (6PM-12AM)');
   assert.match(model.nextStep.description, /before this window begins/i);
   assert.equal(model.nextStep.href, '/journey/');
+});
+
+test('weekly and hourly figures receive honest sufficiency-gated interpretations', async () => {
+  const { buildInsightsViewModel } = await importModule('static/js/insights/view_model.js');
+  const ready = buildInsightsViewModel({
+    total_pouches: 12,
+    observed_days: 7,
+    log_count: 12,
+    data_sufficiency: { trend: true, time_pattern: true, brand_pattern: true, heatmap: true },
+    consumption_by_day_of_week: { Monday: 2, Friday: 6, Sunday: 4 },
+    heatmap_data: [
+      { name: 'Monday', data: [{ x: '08:00', y: 2 }] },
+      { name: 'Friday', data: [{ x: '18:00', y: 6 }] },
+    ],
+  }, 7);
+  const sparse = buildInsightsViewModel({
+    total_pouches: 2,
+    observed_days: 1,
+    log_count: 2,
+    data_sufficiency: { trend: false, heatmap: false },
+    consumption_by_day_of_week: { Friday: 2 },
+    heatmap_data: [{ name: 'Friday', data: [{ x: '18:00', y: 2 }] }],
+  }, 7);
+
+  assert.equal(ready.sections.weeklyPattern.leadingLabel, 'Friday');
+  assert.match(ready.sections.weeklyPattern.interpretation, /Friday has the most logged pouches/i);
+  assert.equal(ready.sections.hourlyDetail.leadingLabel, 'Friday at 18:00');
+  assert.match(ready.sections.hourlyDetail.interpretation, /Friday around 18:00/i);
+  assert.equal(sparse.sections.weeklyPattern.available, false);
+  assert.match(sparse.sections.weeklyPattern.interpretation, /more complete days/i);
+  assert.equal(sparse.sections.hourlyDetail.available, false);
+  assert.match(sparse.sections.hourlyDetail.interpretation, /more days and times/i);
 });
 
 test('progress-first model uses candid neutral language for higher and steady use', async () => {

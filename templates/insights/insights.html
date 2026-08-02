@@ -14,7 +14,27 @@
 {% set log_count = initial_insights.get('log_count', 0) %}
 {% set observed_days = initial_insights.get('observed_days', 0) %}
 {% set current_total = comparison.get('current_total', initial_insights.get('total_pouches', 0)) %}
+{% set range_days = initial_insights.get('range_days', 30) %}
 {% set insight_state = 'empty' if log_count == 0 else ('ready' if sufficiency.get('trend') else 'sparse') %}
+{% set weekly_leader = namespace(label=none, value=0) %}
+{% for label, value in initial_insights.get('consumption_by_day_of_week', {}).items() %}
+    {% if value|float > weekly_leader.value %}
+        {% set weekly_leader.label = label %}
+        {% set weekly_leader.value = value|float %}
+    {% endif %}
+{% endfor %}
+{% set hourly_leader = namespace(day=none, hour=none, value=0) %}
+{% for series in initial_insights.get('heatmap_data', []) %}
+    {% for point in series.data %}
+        {% set point_value = point.y if point is mapping else point %}
+        {% set point_hour = point.x if point is mapping else "%02d:00"|format(loop.index0) %}
+        {% if point_value|float > hourly_leader.value %}
+            {% set hourly_leader.day = series.name %}
+            {% set hourly_leader.hour = point_hour %}
+            {% set hourly_leader.value = point_value|float %}
+        {% endif %}
+    {% endfor %}
+{% endfor %}
 
 <div
     class="insights-page"
@@ -31,10 +51,10 @@
 
         <div class="insights-actions">
             <div class="insights-range" tabindex="0" role="region" aria-label="Insights date range">
-                <a class="dropdown-item insights-range__option" href="?days=7" data-days="7" aria-label="7 days"><span class="insights-range__short" aria-hidden="true">7d</span><span class="insights-range__long" aria-hidden="true">7 days</span></a>
-                <a class="dropdown-item insights-range__option is-active" href="?days=30" data-days="30" aria-label="30 days" aria-current="true"><span class="insights-range__short" aria-hidden="true">30d</span><span class="insights-range__long" aria-hidden="true">30 days</span></a>
-                <a class="dropdown-item insights-range__option" href="?days=90" data-days="90" aria-label="90 days"><span class="insights-range__short" aria-hidden="true">90d</span><span class="insights-range__long" aria-hidden="true">90 days</span></a>
-                <a class="dropdown-item insights-range__option" href="?days=365" data-days="365" aria-label="1 year"><span class="insights-range__short" aria-hidden="true">1y</span><span class="insights-range__long" aria-hidden="true">1 year</span></a>
+                <a class="dropdown-item insights-range__option{% if range_days == 7 %} is-active{% endif %}" href="?days=7" data-days="7" aria-label="7 days"{% if range_days == 7 %} aria-current="true"{% endif %}><span class="insights-range__short" aria-hidden="true">7d</span><span class="insights-range__long" aria-hidden="true">7 days</span></a>
+                <a class="dropdown-item insights-range__option{% if range_days == 30 %} is-active{% endif %}" href="?days=30" data-days="30" aria-label="30 days"{% if range_days == 30 %} aria-current="true"{% endif %}><span class="insights-range__short" aria-hidden="true">30d</span><span class="insights-range__long" aria-hidden="true">30 days</span></a>
+                <a class="dropdown-item insights-range__option{% if range_days == 90 %} is-active{% endif %}" href="?days=90" data-days="90" aria-label="90 days"{% if range_days == 90 %} aria-current="true"{% endif %}><span class="insights-range__short" aria-hidden="true">90d</span><span class="insights-range__long" aria-hidden="true">90 days</span></a>
+                <a class="dropdown-item insights-range__option{% if range_days == 365 %} is-active{% endif %}" href="?days=365" data-days="365" aria-label="1 year"{% if range_days == 365 %} aria-current="true"{% endif %}><span class="insights-range__short" aria-hidden="true">1y</span><span class="insights-range__long" aria-hidden="true">1 year</span></a>
             </div>
             <button id="export-data" type="button" class="c-button c-button--quiet">Export CSV</button>
         </div>
@@ -52,9 +72,9 @@
                 {% elif not comparison.get('available') %}
                     You logged {{ current_total }} pouches across {{ observed_days }} days.
                 {% elif comparison.get('direction') == 'steady' %}
-                    Your use was steady compared with the previous 30 days.
+                    Your use was steady compared with the previous {{ range_days }} days.
                 {% elif comparison.get('percent_change') is not none %}
-                    You used {{ comparison.get('percent_change')|abs }}% {{ 'less' if comparison.get('direction') == 'down' else 'more' }} than the previous 30 days.
+                    You used {{ comparison.get('percent_change')|abs }}% {{ 'less' if comparison.get('direction') == 'down' else 'more' }} than the previous {{ range_days }} days.
                 {% else %}
                     You logged {{ current_total }} pouches in this range.
                 {% endif %}
@@ -122,6 +142,13 @@
             </div>
             <div class="insights-figure insights-figure--secondary">
                 <h3 id="day-of-week-title">Weekly pattern</h3>
+                <p data-insights-weekly-copy>
+                    {% if sufficiency.get('trend') and weekly_leader.label %}
+                        {{ weekly_leader.label }} has the most logged pouches in this range. Use it as a cue to plan support, not a verdict.
+                    {% else %}
+                        Log across more complete days to reveal a dependable weekly pattern.
+                    {% endif %}
+                </p>
                 <div id="day-of-week-chart" class="analytics-chart" role="img" aria-labelledby="day-of-week-title"></div>
                 <p class="analytics-chart__status" role="status" aria-live="polite" hidden></p>
                 <details class="analytics-figure__table">
@@ -171,6 +198,13 @@
             <div class="analytics-details__body">
                 <div class="insights-figure insights-figure--heatmap">
                     <h3 id="heatmap-title">Day and hour detail</h3>
+                    <p data-insights-hourly-copy>
+                        {% if sufficiency.get('heatmap') and hourly_leader.day %}
+                            {{ hourly_leader.day }} around {{ hourly_leader.hour }} has the highest logged use in this detail. Consider support before that time.
+                        {% else %}
+                            Log across more days and times to reveal a dependable hourly pattern.
+                        {% endif %}
+                    </p>
                     <div id="heatmap-chart" class="analytics-chart" role="img" aria-labelledby="heatmap-title"></div>
                     <p class="analytics-chart__status" role="status" aria-live="polite" hidden></p>
                     <details class="analytics-figure__table">

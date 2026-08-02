@@ -78,6 +78,17 @@ for (const destination of ['/dashboard/']) {
 }
 
 
+test('Insights direct range URLs keep server data, selection, and export aligned', async ({ page }) => {
+  await login(page);
+  await page.goto('/insights/?days=7');
+
+  await expect(page.locator('[data-days="7"]')).toHaveAttribute('aria-current', 'true');
+  await expect(page.locator('[data-days="30"]')).not.toHaveAttribute('aria-current', 'true');
+  await expect(page.locator('#export-data')).toHaveAttribute('data-export-href', '/insights/api/export?days=7');
+  const payload = JSON.parse(await page.locator('#initial-insights-data').textContent());
+  expect(payload.range_days).toBe(7);
+});
+
 test('Insights sparse state keeps guidance and tables without blank chart frames', async ({ page }, testInfo) => {
   if (testInfo.project.name.includes('mobile')) {
     await page.setViewportSize({ width: 320, height: 800 });

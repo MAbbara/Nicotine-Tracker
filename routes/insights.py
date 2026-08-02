@@ -8,12 +8,21 @@ from services.enhanced_insights_service import get_enhanced_insights
 from services.insights_service import get_all_insights  # Keep for backward compatibility
 
 insights_bp = Blueprint('insights', __name__, template_folder="../templates/insights")
+SUPPORTED_RANGES = frozenset({7, 30, 90, 365})
+
+
+def _requested_range_days():
+    days = request.args.get('days', 30, type=int)
+    return days if days in SUPPORTED_RANGES else 30
 
 @insights_bp.route('/', methods=['GET'])
 @login_required
 def insights_page():
     """Renders the enhanced insights and analytics page."""
-    initial_insights = get_enhanced_insights(get_current_user().id, 30)
+    initial_insights = get_enhanced_insights(
+        get_current_user().id,
+        _requested_range_days(),
+    )
     return render_template(
         'insights.html',
         initial_insights=initial_insights or {},
@@ -23,11 +32,7 @@ def insights_page():
 @login_required
 def get_insights():
     """API endpoint to get enhanced analytical insights."""
-    days = request.args.get('days', 30, type=int)
-    
-    # Validate days parameter
-    if days not in [7, 30, 90, 365]:
-        days = 30
+    days = _requested_range_days()
     
     insights = get_enhanced_insights(get_current_user().id, days)
     if not insights:
@@ -39,7 +44,7 @@ def get_insights():
 @login_required
 def export_insights_data():
     """Export insights data as CSV."""
-    days = request.args.get('days', 30, type=int)
+    days = _requested_range_days()
     user = get_current_user()
     
     # Get the raw data for export
