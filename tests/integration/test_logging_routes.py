@@ -5,6 +5,7 @@ from pathlib import Path
 
 from bs4 import BeautifulSoup
 
+from extensions import db
 from models import Log, User, UserPreferences
 from services.log_service import assign_log_product
 
@@ -149,6 +150,40 @@ def test_logbook_daily_total_is_complete_when_pagination_splits_one_day(
         assert response.status_code == 200
         assert heading is not None
         assert '3 pouches' in heading.get_text(' ', strip=True)
+
+
+def test_logbook_daily_totals_use_a_bounded_number_of_queries(
+        app, logged_in_client, db_session, test_user, test_pouch):
+    from sqlalchemy import event
+
+    app.config['LOGS_PER_PAGE'] = 20
+    for day in range(1, 21):
+        log = Log(
+            user_id=test_user.id,
+            quantity=1,
+            log_time=datetime(2026, 1, day, 9, 0),
+            notes=f'query-count day {day}',
+        )
+        assign_log_product(log, pouch_id=test_pouch.id)
+        db_session.add(log)
+    db_session.commit()
+
+    selects = []
+
+    def count_selects(connection, cursor, statement, parameters, context, many):
+        if statement.lstrip().upper().startswith('SELECT'):
+            selects.append(statement)
+
+    event.listen(db.engine, 'before_cursor_execute', count_selects)
+    try:
+        response = logged_in_client.get('/log/view')
+    finally:
+        event.remove(db.engine, 'before_cursor_execute', count_selects)
+
+    assert response.status_code == 200
+    assert len(selects) <= 10, (
+        f'expected one batched totals query, observed {len(selects)} SELECTs'
+    )
 
 
 def test_editing_notes_without_changing_rendered_time_preserves_timestamp(

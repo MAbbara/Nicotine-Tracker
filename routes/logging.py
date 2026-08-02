@@ -364,15 +364,30 @@ def view_logs():
             logs.items, resolved_timezone, reset_time
         )
         daily_totals = {}
-        for date_key in grouped_logs:
-            window = get_user_day_window(
+        displayed_windows = [
+            get_user_day_window(
                 resolved_timezone.zone, date_key, reset_time
             )
-            complete_day_logs = query.filter(
-                Log.log_time >= to_naive_utc(window.start_utc),
-                Log.log_time < to_naive_utc(window.end_utc),
+            for date_key in grouped_logs
+        ]
+        complete_grouped_logs = {}
+        if displayed_windows:
+            displayed_day_predicates = [
+                db.and_(
+                    Log.log_time >= to_naive_utc(window.start_utc),
+                    Log.log_time < to_naive_utc(window.end_utc),
+                )
+                for window in displayed_windows
+            ]
+            complete_day_rows = query.filter(
+                db.or_(*displayed_day_predicates)
             ).all()
-            summary = summarize_logs(complete_day_logs)
+            complete_grouped_logs = group_logs_by_effective_day(
+                complete_day_rows, resolved_timezone, reset_time
+            )
+
+        for date_key in grouped_logs:
+            summary = summarize_logs(complete_grouped_logs.get(date_key, []))
             daily_totals[date_key] = {
                 'pouches': summary['total_pouches'],
                 'mg': summary['total_mg'],
