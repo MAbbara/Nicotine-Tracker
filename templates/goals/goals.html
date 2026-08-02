@@ -89,15 +89,27 @@
 
             {% if progress %}
               <div class="goal-row__progress">
-                <div>
-                  <span>Today’s progress</span>
-                  <strong>{{ progress.current }} / {{ progress.target }}{% if goal.goal_type == 'daily_mg' %} mg{% elif goal.goal_type == 'daily_pouches' %} pouches{% else %}%{% endif %}</strong>
-                </div>
-                <progress max="100" value="{{ progress.percentage if progress.percentage < 100 else 100 }}">{{ progress.percentage|round|int }}%</progress>
-                {% if goal.goal_type == 'daily_mg' and progress.unknown_strength_count %}
-                  <p>{{ progress.unknown_strength_count }} logged pouch{% if progress.unknown_strength_count != 1 %}es have{% else %} has{% endif %} no saved strength, so today’s mg total is incomplete.</p>
-                {% elif progress.percentage > 100 %}
-                  <p>This is useful information, not a failed day. Notice what made the limit difficult and choose the next steady step.</p>
+                {% if progress.available %}
+                  <div>
+                    <span>{% if goal.goal_type == 'weekly_reduction' %}Latest completed week{% else %}Live guidance{% endif %}</span>
+                    <strong>
+                      {% if goal.goal_type == 'daily_mg' %}{{ progress.current }} / {{ progress.target }} mg
+                      {% elif goal.goal_type == 'daily_pouches' %}{{ progress.current }} / {{ progress.target }} pouches
+                      {% else %}{{ progress.current }}% reduction / {{ progress.target }}% guide{% endif %}
+                    </strong>
+                  </div>
+                  <progress max="100" value="{{ progress.percentage if progress.percentage < 100 else 100 }}">{{ progress.percentage|round|int }}%</progress>
+                  {% if progress.provisional %}
+                    <p>Today is still in progress. Use this as live guidance, not a completed result.</p>
+                  {% elif progress.percentage > 100 and goal.goal_type != 'weekly_reduction' %}
+                    <p>This is useful information, not a failed day. Notice what made the limit difficult and choose the next steady step.</p>
+                  {% endif %}
+                {% elif goal.goal_type == 'daily_mg' and progress.unknown_strength_count %}
+                  <p>Nicotine guidance is unavailable because strength data is missing from {{ progress.unknown_strength_count }} log {{ 'entry' if progress.unknown_strength_count == 1 else 'entries' }}.</p>
+                {% elif goal.goal_type == 'weekly_reduction' %}
+                  <p>No completed weekly comparison is available yet. A prior full week is needed for a baseline.</p>
+                {% else %}
+                  <p>No intake evidence yet for this account day. Log an entry to see live guidance.</p>
                 {% endif %}
               </div>
             {% endif %}

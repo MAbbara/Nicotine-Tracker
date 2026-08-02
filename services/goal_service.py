@@ -2,7 +2,7 @@
 
 These helpers encapsulate operations for creating and managing goals.
 """
-from datetime import date
+from datetime import date, datetime
 from typing import Dict, Iterable, Optional
 
 
@@ -11,6 +11,33 @@ from extensions import db
 
 # Import the Goal model from the models package aggregator
 from models import Goal
+
+
+class ActiveGoalConflict(ValueError):
+    """Activating a goal would duplicate an active user-owned goal type."""
+
+
+def set_goal_active(
+        user_id: int, goal_id: int, is_active: bool, *, commit: bool = True
+) -> Optional[Goal]:
+    """Set one owned goal's state while enforcing one active goal per type."""
+    goal = Goal.query.filter_by(id=goal_id, user_id=user_id).with_for_update().first()
+    if goal is None:
+        return None
+    if is_active:
+        sibling = Goal.query.filter(
+            Goal.user_id == user_id,
+            Goal.goal_type == goal.goal_type,
+            Goal.is_active.is_(True),
+            Goal.id != goal.id,
+        ).with_for_update().first()
+        if sibling is not None:
+            raise ActiveGoalConflict(goal.goal_type)
+    goal.is_active = bool(is_active)
+    goal.updated_at = datetime.utcnow()
+    if commit:
+        db.session.commit()
+    return goal
 
 def create_goal(user_id: int,
                 goal_type: str,

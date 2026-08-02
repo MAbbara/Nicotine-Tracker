@@ -5,7 +5,7 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 from werkzeug.datastructures import MultiDict
 
-from models import Goal, Log, Pouch, UserPreferences
+from models import DailyCheckIn, Goal, Log, Pouch, UserPreferences
 from routes.settings import _retention_cutoff_utc
 from services.log_service import assign_log_product
 
@@ -448,9 +448,14 @@ def test_recalculate_button_changes_only_goal_streaks(
     logged_in_client, db_session, test_user, test_pouch, test_goal,
 ):
     _seed_common_state(db_session, test_user, test_pouch, test_goal)
-    test_goal.start_date = datetime.utcnow().date()
+    completed_day = datetime.utcnow().date() - timedelta(days=1)
+    test_goal.start_date = completed_day
     test_goal.end_date = None
     test_goal.target_value = 10
+    db_session.add(DailyCheckIn(
+        user_id=test_user.id,
+        local_date=completed_day,
+    ))
     db_session.commit()
     before = _snapshot_data_state(test_user)
 

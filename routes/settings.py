@@ -751,39 +751,37 @@ def merge_similar_pouches(user):
 def recalculate_goal_streaks(user):
     """Recalculate goal streaks for all user goals"""
     try:
-        from routes.goals import calculate_goal_progress
+        from routes.goals import _batch_goal_progress
 
         goals = user.goals.all()
         updated_count = 0
         resolved_timezone = resolve_timezone(user.timezone)
         today = _current_effective_day(user, resolved_timezone)
+        batched = _batch_goal_progress(
+            user, goals, today, resolved_timezone, history=True
+        ) if goals else {}
         
         for goal in goals:
             # Reset streaks
             goal.current_streak = 0
             goal.best_streak = 0
             
-            # Recalculate from start date or 30 days ago.
-            start_date = goal.start_date or (today - timedelta(days=30))
-            current_date = start_date
             current_streak = 0
             best_streak = 0
 
             achievements = []
-            while current_date <= today:
-                progress = calculate_goal_progress(
-                    user, goal, current_date, resolved_timezone
+            for progress in batched[goal.id]:
+                achieved = bool(
+                    progress['available'] and progress['achieved']
                 )
-                achieved = bool(progress['achieved'])
                 achievements.append(achieved)
                 if achieved:
                     current_streak += 1
                     best_streak = max(best_streak, current_streak)
                 else:
                     current_streak = 0
-                current_date += timedelta(days=1)
 
-            # Current streak is the trailing run through the active day.
+            # Current streak is the trailing run of completed observations.
             current_streak = 0
             for achieved in reversed(achievements):
                 if achieved:

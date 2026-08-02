@@ -61,6 +61,7 @@ test('Goals console and analytics stay clean when no analytics target is present
 
 
 test('Goals controls stop transform motion when reduced motion is requested', async ({ page }, testInfo) => {
+  const errors = collectBrowserErrors(page);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await register(page, testInfo);
   await page.goto('/goals/');
@@ -75,6 +76,7 @@ test('Goals controls stop transform motion when reduced motion is requested', as
   await createButton.hover();
   await expect(createButton).toHaveCSS('transition-duration', '0s');
   await expect(createButton).toHaveCSS('transform', 'none');
+  expect(errors).toEqual([]);
 });
 
 
@@ -118,6 +120,7 @@ test('Goals preserve create, edit, toggle, and delete behavior', async ({ page }
 
 
 test('Goals remain accessible in dark theme, at 320px, and at 200% text', async ({ page }, testInfo) => {
+  const errors = collectBrowserErrors(page);
   await page.addInitScript(() => {
     localStorage.setItem('nicotine-tracker-theme', 'dark');
   });
@@ -169,4 +172,5 @@ test('Goals remain accessible in dark theme, at 320px, and at 200% text', async 
     });
     expect(clearance).toBeGreaterThanOrEqual(0);
   }
+  expect(errors).toEqual([]);
 });

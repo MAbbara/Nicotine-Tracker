@@ -149,9 +149,8 @@ def test_goals_progress_compatibility_view_renders_route_context(
     assert document.select_one(
         f'article.goal-row[data-goal-id="{test_goal.id}"]'
     )
-    assert len(document.select("[data-progress-period]")) == 1
-    assert document.select_one("[data-progress-period] time")["datetime"] \
-        == test_goal.start_date.isoformat()
+    assert document.select("[data-progress-period]") == []
+    assert 'Not enough data yet' in document.get_text(' ', strip=True)
     assert document.select_one('a.c-button.c-button--secondary[href="/goals/"]')
     scripts = [script.get("src", "") for script in document.select("script[src]")]
     assert not any(source.endswith("/static/js/preline.js") for source in scripts)

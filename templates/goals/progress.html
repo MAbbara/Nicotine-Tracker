@@ -110,8 +110,10 @@
                           <span class="c-status__mark" aria-hidden="true"></span>
                           {% if not day.available and goal.goal_type == 'daily_mg' and day.unknown_strength_count %}
                             Strength data missing from {{ day.unknown_strength_count }} log {{ 'entry' if day.unknown_strength_count == 1 else 'entries' }}
-                          {% elif not day.available %}
+                          {% elif not day.available and day.reason == 'missing_baseline' %}
                             Not enough baseline
+                          {% elif not day.available %}
+                            Not enough evidence
                           {% elif goal.goal_type == 'weekly_reduction' %}
                             {{ 'Reduction met' if day.achieved else 'Still in progress' }}
                           {% else %}

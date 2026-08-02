@@ -93,7 +93,8 @@ def test_daily_mg_goal_is_incomplete_when_strength_is_unknown(
 
     assert progress['current'] == 0
     assert progress['unknown_strength_count'] == 1
-    assert progress['achieved'] is False
+    assert progress['achieved'] is None
+    assert progress['available'] is False
 
 
 def test_enhanced_insights_exclude_future_logs(db_session, test_user):

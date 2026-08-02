@@ -2,12 +2,15 @@
 
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
+import re
 
 from bs4 import BeautifulSoup
+from sqlalchemy import event
 
-from models import Goal, Log
+from models import DailyCheckIn, Goal, Log, UserPreferences
 import routes.goals as goals_routes
 from services import log_service
+from services import goal_service
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -213,6 +216,10 @@ def test_goal_progress_respects_start_date_and_repeated_get_is_read_only(
     test_goal.current_streak = 4
     test_goal.best_streak = 9
     test_goal.enable_notifications = True
+    db_session.add_all([
+        DailyCheckIn(user_id=test_goal.user_id, local_date=today - timedelta(days=offset))
+        for offset in range(1, 7)
+    ])
     db_session.commit()
 
     commit_calls = []
@@ -245,12 +252,296 @@ def test_goal_progress_respects_start_date_and_repeated_get_is_read_only(
         periods = document.select(
             f'[data-goal-id="{test_goal.id}"] [data-progress-period]'
         )
-        assert len(periods) == 7
+        assert len(periods) == 6
         assert periods[0].select_one('time')['datetime'] == test_goal.start_date.isoformat()
-        assert periods[-1].select_one('time')['datetime'] == today.isoformat()
-        assert '7 days' in document.select_one(
+        assert periods[-1].select_one('time')['datetime'] == (today - timedelta(days=1)).isoformat()
+        assert '6 days' in document.select_one(
             f'[data-goal-id="{test_goal.id}"] [data-evaluated-periods]'
         ).get_text(' ', strip=True)
+
+
+def test_daily_history_requires_logs_or_check_in_and_excludes_active_day(
+        logged_in_client, db_session, test_user, test_goal, test_pouch):
+    today = goals_routes._current_effective_day(
+        test_user, goals_routes.resolve_timezone(test_user.timezone)
+    )
+    test_goal.start_date = today - timedelta(days=3)
+    db_session.add(DailyCheckIn(
+        user_id=test_user.id,
+        local_date=today - timedelta(days=3),
+    ))
+    for target_date, quantity in (
+        (today - timedelta(days=1), 2),
+        (today, 1),
+    ):
+        log = Log(
+            user_id=test_user.id,
+            quantity=quantity,
+            log_time=datetime.combine(target_date, time(12), timezone.utc),
+        )
+        log_service.assign_log_product(log, pouch_id=test_pouch.id)
+        db_session.add(log)
+    db_session.commit()
+
+    response = logged_in_client.get('/goals/progress')
+    document = BeautifulSoup(response.data, 'html.parser')
+    goal_row = document.select_one(f'[data-goal-id="{test_goal.id}"]')
+    periods = goal_row.select('[data-progress-period]')
+
+    assert response.status_code == 200
+    assert [period['data-period-end'] for period in periods] == [
+        (today - timedelta(days=3)).isoformat(),
+        (today - timedelta(days=2)).isoformat(),
+        (today - timedelta(days=1)).isoformat(),
+    ]
+    assert '0 pouches' in periods[0].get_text(' ', strip=True)
+    assert 'Not enough evidence' in periods[1].get_text(' ', strip=True)
+    assert '2 pouches' in periods[2].get_text(' ', strip=True)
+    assert today.isoformat() not in [period['data-period-end'] for period in periods]
+    assert '100% across 2 days' in goal_row.select_one(
+        '[data-evaluated-periods]'
+    ).get_text(' ', strip=True)
+
+
+def test_goals_index_marks_live_and_missing_daily_evidence_without_false_bar(
+        logged_in_client, db_session, test_user, test_goal):
+    response = logged_in_client.get('/goals/')
+    document = BeautifulSoup(response.data, 'html.parser')
+    row = document.select_one(f'[data-goal-id="{test_goal.id}"]')
+
+    assert response.status_code == 200
+    assert 'No intake evidence yet for this account day' in row.get_text(' ', strip=True)
+    assert row.select_one('progress') is None
+
+
+def test_weekly_index_and_notice_use_latest_completed_week_constructively(
+        logged_in_client, db_session, test_user, test_goal):
+    today = goals_routes._current_effective_day(
+        test_user, goals_routes.resolve_timezone(test_user.timezone)
+    )
+    current_monday = today - timedelta(days=today.weekday())
+    baseline_monday = current_monday - timedelta(days=14)
+    latest_monday = current_monday - timedelta(days=7)
+    test_goal.is_active = False
+    weekly = Goal(
+        user_id=test_user.id,
+        goal_type='weekly_reduction',
+        target_value=20,
+        start_date=baseline_monday,
+        is_active=True,
+        enable_notifications=True,
+        notification_threshold=.8,
+    )
+    db_session.add(weekly)
+    db_session.add_all([
+        Log(
+            user_id=test_user.id,
+            quantity=10,
+            log_time=datetime.combine(baseline_monday, time(12), timezone.utc),
+            nicotine_mg_snapshot=4,
+            product_brand_snapshot='Baseline',
+        ),
+        Log(
+            user_id=test_user.id,
+            quantity=5,
+            log_time=datetime.combine(latest_monday, time(12), timezone.utc),
+            nicotine_mg_snapshot=4,
+            product_brand_snapshot='Latest',
+        ),
+    ])
+    db_session.commit()
+
+    index = BeautifulSoup(logged_in_client.get('/goals/').data, 'html.parser')
+    row = index.select_one(f'[data-goal-id="{weekly.id}"]')
+    notices = logged_in_client.get('/goals/api/check_notifications').get_json()
+
+    assert 'Latest completed week' in row.get_text(' ', strip=True)
+    assert 'Today’s progress' not in row.get_text(' ', strip=True)
+    assert '50.0% reduction' in row.get_text(' ', strip=True)
+    assert len(notices['notifications']) == 1
+    notice = notices['notifications'][0]
+    assert notice['goal_id'] == weekly.id
+    assert notice['type'] not in {'danger', 'warning'}
+    assert 'latest completed week' in notice['message'].casefold()
+    assert 'exceeded' not in notice['message'].casefold()
+
+
+class _FrozenDateTime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        instant = cls(2030, 1, 2, 10, 30, tzinfo=timezone.utc)
+        return instant if tz is None else instant.astimezone(tz)
+
+
+class _FrozenHostDate(date):
+    @classmethod
+    def today(cls):
+        return cls(2030, 1, 2)
+
+
+def _configure_reset_mismatch(db_session, test_user):
+    test_user.timezone = 'America/Los_Angeles'
+    db_session.add(UserPreferences(
+        user_id=test_user.id,
+        daily_reset_time=time(4),
+        preferred_brands=[],
+    ))
+    db_session.commit()
+
+
+def test_create_goal_uses_reset_aware_account_day_for_dates(
+        logged_in_client, db_session, test_user, test_goal, monkeypatch):
+    _configure_reset_mismatch(db_session, test_user)
+    monkeypatch.setattr(goals_routes, 'datetime', _FrozenDateTime)
+    monkeypatch.setattr(goals_routes, 'date', _FrozenHostDate)
+    monkeypatch.setattr(goal_service, 'date', _FrozenHostDate)
+
+    response = logged_in_client.post('/goals/create', data={
+        'goal_type': 'daily_mg',
+        'target_value': '20',
+        'end_date': '2030-01-02',
+        'notification_threshold': '80',
+    })
+    created = Goal.query.filter_by(
+        user_id=test_user.id, goal_type='daily_mg'
+    ).one_or_none()
+
+    assert response.status_code == 302
+    assert created is not None
+    assert created.start_date == date(2030, 1, 1)
+    assert created.end_date == date(2030, 1, 2)
+
+
+def test_edit_goal_uses_reset_aware_account_day_for_review_date(
+        logged_in_client, db_session, test_user, test_goal, monkeypatch):
+    _configure_reset_mismatch(db_session, test_user)
+    monkeypatch.setattr(goals_routes, 'datetime', _FrozenDateTime)
+    monkeypatch.setattr(goals_routes, 'date', _FrozenHostDate)
+
+    response = logged_in_client.post(f'/goals/edit/{test_goal.id}', data={
+        'target_value': '9',
+        'end_date': '2030-01-02',
+        'notification_threshold': '80',
+        'is_active': 'on',
+    })
+    db_session.refresh(test_goal)
+
+    assert response.status_code == 302
+    assert test_goal.target_value == 9
+    assert test_goal.end_date == date(2030, 1, 2)
+
+
+def test_edit_activation_rejects_an_active_sibling_in_same_transaction(
+        logged_in_client, db_session, test_user, test_goal):
+    paused = Goal(
+        user_id=test_user.id,
+        goal_type=test_goal.goal_type,
+        target_value=4,
+        start_date=test_goal.start_date,
+        is_active=False,
+    )
+    db_session.add(paused)
+    db_session.commit()
+
+    response = logged_in_client.post(
+        f'/goals/edit/{paused.id}',
+        data={
+            'target_value': '3',
+            'notification_threshold': '80',
+            'is_active': 'on',
+        },
+        follow_redirects=True,
+    )
+    db_session.refresh(paused)
+
+    assert response.status_code == 200
+    assert paused.is_active is False
+    assert paused.target_value == 4
+    assert 'already have an active daily pouches goal' in response.get_data(
+        as_text=True
+    ).casefold()
+
+
+def test_direct_toggle_rejects_active_sibling_but_preserves_pause(
+        logged_in_client, db_session, test_user, test_goal):
+    paused = Goal(
+        user_id=test_user.id,
+        goal_type=test_goal.goal_type,
+        target_value=4,
+        start_date=test_goal.start_date,
+        is_active=False,
+    )
+    db_session.add(paused)
+    db_session.commit()
+
+    rejected = logged_in_client.post(
+        f'/goals/toggle/{paused.id}', follow_redirects=True
+    )
+    db_session.refresh(paused)
+    assert paused.is_active is False
+    assert 'already have an active daily pouches goal' in rejected.get_data(
+        as_text=True
+    ).casefold()
+
+    paused_active = logged_in_client.post(f'/goals/toggle/{test_goal.id}')
+    db_session.refresh(test_goal)
+    assert paused_active.status_code == 302
+    assert test_goal.is_active is False
+
+
+def test_goal_routes_use_one_log_and_one_check_in_select_with_multiple_goals(
+        app, logged_in_client, db_session, test_user, test_goal):
+    test_goal.start_date = date.today() - timedelta(days=29)
+    db_session.add_all([
+        Goal(
+            user_id=test_user.id,
+            goal_type='daily_mg',
+            target_value=30,
+            start_date=test_goal.start_date,
+            is_active=True,
+        ),
+        Goal(
+            user_id=test_user.id,
+            goal_type='weekly_reduction',
+            target_value=10,
+            start_date=test_goal.start_date,
+            is_active=True,
+        ),
+    ])
+    db_session.add(Log(
+        user_id=test_user.id,
+        quantity=2,
+        log_time=datetime.now(timezone.utc) - timedelta(days=8),
+        nicotine_mg_snapshot=4,
+        product_brand_snapshot='Query baseline',
+    ))
+    db_session.commit()
+    engine = db_session.get_bind()
+
+    counts = {}
+    for path in ('/goals/', '/goals/progress'):
+        statements = []
+
+        def capture(_connection, _cursor, statement, _parameters, _context, _many):
+            normalized = ' '.join(statement.casefold().split())
+            if statement.lstrip().upper().startswith('SELECT'):
+                statements.append(normalized)
+
+        event.listen(engine, 'before_cursor_execute', capture)
+        try:
+            response = logged_in_client.get(path)
+        finally:
+            event.remove(engine, 'before_cursor_execute', capture)
+        assert response.status_code == 200
+        counts[path] = {
+            'logs': sum(bool(re.search(r'\bfrom\s+"?log"?\b', item)) for item in statements),
+            'check_ins': sum('from daily_check_in' in item for item in statements),
+        }
+
+    assert counts == {
+        '/goals/': {'logs': 1, 'check_ins': 1},
+        '/goals/progress': {'logs': 1, 'check_ins': 1},
+    }
 
 
 def test_daily_mg_progress_treats_unknown_strength_as_unavailable_evidence(
@@ -307,20 +598,21 @@ def test_daily_mg_progress_page_explains_missing_strength_without_zero_reading(
         test_user, goals_routes.resolve_timezone(test_user.timezone)
     )
     yesterday = today - timedelta(days=1)
+    two_days_ago = today - timedelta(days=2)
     test_goal.goal_type = 'daily_mg'
     test_goal.target_value = 10
-    test_goal.start_date = yesterday
+    test_goal.start_date = two_days_ago
 
     known_log = Log(
         user_id=test_user.id,
         quantity=1,
-        log_time=datetime.combine(yesterday, time(12), timezone.utc),
+        log_time=datetime.combine(two_days_ago, time(12), timezone.utc),
     )
     log_service.assign_log_product(known_log, pouch_id=test_pouch.id)
     unknown_log = Log(
         user_id=test_user.id,
         quantity=2,
-        log_time=datetime.combine(today, time(12), timezone.utc),
+        log_time=datetime.combine(yesterday, time(12), timezone.utc),
         product_brand_snapshot='Strength not saved',
     )
     db_session.add_all([known_log, unknown_log])
@@ -329,8 +621,8 @@ def test_daily_mg_progress_page_explains_missing_strength_without_zero_reading(
     response = logged_in_client.get('/goals/progress')
     document = BeautifulSoup(response.data, 'html.parser')
     goal_row = document.select_one(f'[data-goal-id="{test_goal.id}"]')
-    today_row = goal_row.select_one(
-        f'[data-progress-period][data-period-end="{today.isoformat()}"]'
+    unknown_row = goal_row.select_one(
+        f'[data-progress-period][data-period-end="{yesterday.isoformat()}"]'
     )
 
     assert response.status_code == 200
@@ -340,14 +632,14 @@ def test_daily_mg_progress_page_explains_missing_strength_without_zero_reading(
     assert '100% across 1 day' in goal_row.select_one(
         '[data-evaluated-periods]'
     ).get_text(' ', strip=True)
-    assert 'Nicotine total unavailable' in today_row.get_text(' ', strip=True)
-    assert 'Strength data missing from 1 log entry' in today_row.get_text(
+    assert 'Nicotine total unavailable' in unknown_row.get_text(' ', strip=True)
+    assert 'Strength data missing from 1 log entry' in unknown_row.get_text(
         ' ', strip=True
     )
-    assert today_row.select('td')[0].get_text(
+    assert unknown_row.select('td')[0].get_text(
         ' ', strip=True
     ) == 'Nicotine total unavailable'
-    assert 'Worth reviewing' not in today_row.get_text(' ', strip=True)
+    assert 'Worth reviewing' not in unknown_row.get_text(' ', strip=True)
 
 
 def test_weekly_goal_progress_uses_distinct_weeks_and_marks_missing_baseline(
