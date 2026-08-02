@@ -14,6 +14,11 @@ from models.goal import Goal
 from services.log_service import logs_for_user_window, summarize_logs
 from services.user_preferences_service import UserPreferencesService
 from services import timezone_service as tz_service
+from services.goal_evaluation_service import (
+    effective_day_for_user,
+    evaluate_goal_period,
+    latest_completed_week,
+)
 
 
 class NotificationService:
@@ -46,7 +51,7 @@ class NotificationService:
             return ''
         return re.sub(r'<[^>]+>', '', content)
 
-    def queue_weekly_report(self, user):
+    def queue_weekly_report(self, user, *, now_utc=None):
         """Generate and queue a weekly report notification for a user."""
         try:
             resolved_tz = tz_service.resolve_timezone(user.timezone)
@@ -59,70 +64,82 @@ class NotificationService:
 
             reset_time = preferences.daily_reset_time or time.min
 
-            local_now, local_today, _ = tz_service.get_current_user_time(resolved_zone)
-            previous_week_date = local_today - timedelta(days=7)
+            if now_utc is None:
+                local_now, _, _ = tz_service.get_current_user_time(
+                    resolved_zone
+                )
+                now_utc = local_now
+            effective_day = effective_day_for_user(
+                user,
+                now_utc=now_utc,
+                resolved_timezone=resolved_tz,
+            )
+            previous_week_date = latest_completed_week(effective_day)
             week_window = tz_service.get_user_week_window(
                 resolved_zone, previous_week_date, reset_time
             )
-            if local_now < week_window.end_utc:
-                previous_week_date -= timedelta(days=7)
-                week_window = tz_service.get_user_week_window(
-                    resolved_zone, previous_week_date, reset_time
-                )
             last_week_start_local = week_window.week_start_date
             last_week_end_local = last_week_start_local + timedelta(days=6)
 
             week_logs = logs_for_user_window(user.id, week_window)
             summary = summarize_logs(week_logs)
             total_pouches = summary['total_pouches']
-            total_nicotine = float(summary['total_mg'])
             unknown_strength_count = summary['unknown_strength_count']
+            nicotine_available = unknown_strength_count == 0
+            total_nicotine = (
+                float(summary['total_mg']) if nicotine_available else None
+            )
             daily_avg_pouches = total_pouches / 7.0
-            daily_avg_mg = total_nicotine / 7.0
+            daily_avg_mg = (
+                total_nicotine / 7.0 if nicotine_available else None
+            )
 
             active_goals = Goal.query.filter_by(user_id=user.id, is_active=True).all()
             goals_summary = []
 
-            calculate_goal_progress = None
-            try:
-                from routes.goals import calculate_goal_progress as goal_progress_fn
-                calculate_goal_progress = goal_progress_fn
-            except Exception as import_error:
-                current_app.logger.error(f'Unable to import goal progress helper: {import_error}')
-
             for goal in active_goals:
-                if callable(calculate_goal_progress):
-                    progress = calculate_goal_progress(
-                        user,
-                        goal,
-                        last_week_end_local,
-                        resolved_timezone=resolved_tz,
-                    )
-                    goals_summary.append({
-                        'type': goal.goal_type.replace('_', ' ').title(),
-                        'target': goal.target_value,
-                        'current': progress['current'],
-                        'achieved': progress['achieved']
-                    })
-                else:
-                    goals_summary.append({
-                        'type': goal.goal_type.replace('_', ' ').title(),
-                        'target': goal.target_value,
-                        'current': 0,
-                        'achieved': False
-                    })
+                progress = evaluate_goal_period(
+                    user,
+                    goal,
+                    (
+                        last_week_start_local
+                        if goal.goal_type == 'weekly_reduction'
+                        else last_week_end_local
+                    ),
+                    resolved_timezone=resolved_tz,
+                )
+                goals_summary.append({
+                    'type': goal.goal_type.replace('_', ' ').title(),
+                    'target': goal.target_value,
+                    'current': progress['current'],
+                    'achieved': progress['achieved'],
+                    'available': progress['available'],
+                    'reason': progress['reason'],
+                    'unknown_strength_count': progress[
+                        'unknown_strength_count'
+                    ],
+                })
 
             goals_on_track = sum(1 for g in goals_summary if g.get('achieved'))
             active_streaks = sum(1 for g in active_goals if getattr(g, 'current_streak', 0) > 0)
 
             subject = "Your Weekly Progress Report"
+            nicotine_line = (
+                f"  <li><strong>Total Nicotine:</strong> "
+                f"{total_nicotine:.1f}mg</li>\n"
+                if nicotine_available else
+                "  <li><strong>Total Nicotine:</strong> unavailable — "
+                f"strength data is missing from {unknown_strength_count} "
+                f"log {'entry' if unknown_strength_count == 1 else 'entries'}"
+                ".</li>\n"
+            )
             message = (
                 f"<h3>Week of {last_week_start_local.strftime('%B %d')} - "
                 f"{last_week_end_local.strftime('%B %d, %Y')}</h3>\n\n"
                 "<h4>Usage Summary</h4>\n"
                 "<ul>\n"
                 f"  <li><strong>Total Pouches:</strong> {total_pouches}</li>\n"
-                f"  <li><strong>Total Nicotine:</strong> {total_nicotine:.1f}mg</li>\n"
+                f"{nicotine_line}"
                 f"  <li><strong>Daily Average:</strong> {daily_avg_pouches:.1f} pouches</li>\n"
                 "</ul>\n\n"
                 "<h4>Goals Progress</h4>\n"
@@ -131,10 +148,29 @@ class NotificationService:
             if goals_summary:
                 message += "<ul>"
                 for goal_summary in goals_summary:
-                    status = "Achieved" if goal_summary['achieved'] else "In Progress"
+                    if not goal_summary['available']:
+                        if goal_summary['reason'] == 'unknown_strength':
+                            count = goal_summary['unknown_strength_count']
+                            status = (
+                                'Unavailable — strength data is missing from '
+                                f'{count} log '
+                                f'{"entry" if count == 1 else "entries"}'
+                            )
+                        else:
+                            status = 'Not enough evidence'
+                        reading = ''
+                    else:
+                        status = (
+                            'Guide met' if goal_summary['achieved']
+                            else 'Guide not reached'
+                        )
+                        reading = (
+                            f'{goal_summary["current"]}/'
+                            f'{goal_summary["target"]} — '
+                        )
                     message += (
                         f"<li><strong>{goal_summary['type']}:</strong> "
-                        f"{goal_summary['current']}/{goal_summary['target']} - {status}</li>"
+                        f"{reading}{status}</li>"
                     )
                 message += "</ul>"
             else:
@@ -148,10 +184,16 @@ class NotificationService:
                 'week_start': last_week_start_local.isoformat(),
                 'week_end': last_week_end_local.isoformat(),
                 'total_pouches': total_pouches,
-                'total_nicotine': round(total_nicotine, 1),
+                'total_nicotine': (
+                    round(total_nicotine, 1)
+                    if total_nicotine is not None else None
+                ),
                 'unknown_strength_count': unknown_strength_count,
                 'daily_average_pouches': round(daily_avg_pouches, 1),
-                'daily_average_mg': round(daily_avg_mg, 1),
+                'daily_average_mg': (
+                    round(daily_avg_mg, 1)
+                    if daily_avg_mg is not None else None
+                ),
                 'total_logs': summary['total_logs'],
                 'goals_count': len(goals_summary),
                 'goals_on_track': goals_on_track,
@@ -447,8 +489,11 @@ class NotificationService:
                         'goals_on_track': ed.get('goals_on_track', ed.get('goals_count', 0)),
                         'active_streaks': ed.get('active_streaks', 0),
                         'total_pouches': ed.get('total_pouches', 0),
-                        'total_nicotine': ed.get('total_nicotine', 0),
-                        'daily_average_mg': ed.get('daily_average_mg', 0)
+                        'total_nicotine': ed.get('total_nicotine'),
+                        'daily_average_mg': ed.get('daily_average_mg'),
+                        'unknown_strength_count': ed.get(
+                            'unknown_strength_count', 0
+                        ),
                     })
                 
                 # Add specific context for goal achievements
@@ -499,9 +544,14 @@ class NotificationService:
                 "value": str(ed.get('total_pouches', 0)),
                 "inline": True
             })
+            total_nicotine = ed.get('total_nicotine')
             fields.append({
                 "name": "Total Nicotine",
-                "value": f"{ed.get('total_nicotine', 0):.1f} mg",
+                "value": (
+                    f"{total_nicotine:.1f} mg"
+                    if total_nicotine is not None
+                    else "Unavailable — strength data missing"
+                ),
                 "inline": True
             })
             fields.append({
@@ -509,11 +559,13 @@ class NotificationService:
                 "value": f"{ed.get('daily_average_pouches', 0):.1f}",
                 "inline": True
             })
-            fields.append({
-                "name": "Daily Avg (Nicotine)",
-                "value": f"{ed.get('daily_average_mg', 0):.1f} mg",
-                "inline": True
-            })
+            daily_average_mg = ed.get('daily_average_mg')
+            if daily_average_mg is not None:
+                fields.append({
+                    "name": "Daily Avg (Nicotine)",
+                    "value": f"{daily_average_mg:.1f} mg",
+                    "inline": True
+                })
             fields.append({
                 "name": "Goals On Track",
                 "value": f"{ed.get('goals_on_track', 0)}/{ed.get('goals_count', 0)}",

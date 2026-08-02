@@ -1064,16 +1064,30 @@ def test_weekly_report_uses_snapshots_and_counts_unknown_events(
     assert payload['total_pouches'] == 6, (
         f"1 + 2 + 3 pouches regardless of strength knowledge; got {payload['total_pouches']!r}"
     )
-    assert payload['total_nicotine'] == 6.0, (
-        'only known snapshots count: 1 x 6.00 plus the known 0.00 snapshot; '
-        'the NULL-snapshot row must be excluded, never back-filled from the '
-        f"live 9.00mg pouch; got {payload['total_nicotine']!r}"
+    assert payload['total_nicotine'] is None, (
+        'a weekly report with any unknown-strength log must not present the '
+        f"known subtotal as a complete nicotine total; got {payload['total_nicotine']!r}"
     )
+    assert payload['daily_average_mg'] is None
     assert payload.get('unknown_strength_count') == 1, (
         'the payload must expose an explicit unknown-strength event count: '
         'exactly the one NULL-snapshot row despite its live pouch; the zero '
         f"snapshot is known; got {payload.get('unknown_strength_count')!r}"
     )
+    message = row.message.casefold()
+    assert 'nicotine:</strong> unavailable' in message
+    assert 'strength data is missing from 1 log entry' in message
+    assert '<strong>total nicotine:</strong> 0.0mg' not in message
+    assert '<strong>total nicotine:</strong> 6.0mg' not in message
+    service = NotificationService()
+    email_html = service._format_email_html(row).casefold()
+    assert 'total nicotine:</strong> unavailable' in email_html
+    assert 'strength data is missing from 1 log entry' in email_html
+    assert 'daily nicotine average' not in email_html
+    discord = service._format_discord_embed(row)
+    fields = {field['name']: field['value'] for field in discord['fields']}
+    assert fields['Total Nicotine'] == 'Unavailable — strength data missing'
+    assert 'Daily Avg (Nicotine)' not in fields
 
 
 def test_weekly_report_blank_timezone_warns_once_with_request_id(

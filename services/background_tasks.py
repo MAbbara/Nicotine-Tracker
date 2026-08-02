@@ -4,7 +4,7 @@ Handles periodic tasks like processing notification queue and sending scheduled 
 import schedule
 import time
 import logging
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import current_app
 from extensions import db
 from models.user import User
@@ -14,6 +14,12 @@ from services.notification_service import NotificationService
 from services.user_preferences_service import UserPreferencesService
 from services.email_verification_service import EmailVerificationService
 from services import timezone_service as tz_service
+from services.goal_evaluation_service import (
+    HISTORY_LIVE,
+    batch_goal_progress,
+    effective_day_for_user,
+    goal_threshold_notice,
+)
 
 
 logger = logging.getLogger('background_tasks')
@@ -132,11 +138,15 @@ class BackgroundTaskProcessor:
         logger.info("Running weekly report job...")
         try:
             with self.app.app_context():
+                now_utc = datetime.now(timezone.utc)
                 # Get users with weekly reports enabled
                 users_with_reports = db.session.query(User).join(UserPreferences).filter(
                     UserPreferences.weekly_reports == True,
-                    db.func.json_length(UserPreferences.notification_channel) > 0
                 ).all()
+                users_with_reports = [
+                    user for user in users_with_reports
+                    if user.preferences.notification_channel
+                ]
                 logger.debug(f"Found {len(users_with_reports)} users with weekly reports enabled.")
 
 
@@ -144,7 +154,9 @@ class BackgroundTaskProcessor:
                 sent_count = 0
                 for user in users_with_reports:
                     logger.debug(f"Generating weekly report for user {user.id}")
-                    success = self._send_weekly_report(user)
+                    success = self._send_weekly_report(
+                        user, now_utc=now_utc
+                    )
                     if success:
                         sent_count += 1
                 
@@ -170,48 +182,74 @@ class BackgroundTaskProcessor:
                 logger.debug(f"Found {len(active_goals)} active goals with notifications on.")
                 
                 notifications_sent = 0
-                today = date.today()
-                
+                now_utc = datetime.now(timezone.utc)
+                goals_by_user = {}
                 for goal in active_goals:
-                    user = goal.user
-                    logger.debug(f"Checking goal {goal.id} for user {user.id}")
-                    
-                    # Calculate current progress
-                    from routes.goals import calculate_goal_progress
-                    progress = calculate_goal_progress(user, goal, today)
-                    
-                    # Check if approaching threshold (and not already exceeded)
-                    threshold_percentage = goal.notification_threshold * 100
-                    logger.debug(f"Goal {goal.id}: Progress={progress['percentage']:.2f}%, Threshold={threshold_percentage:.2f}%")
-                    if (progress['percentage'] >= threshold_percentage and 
-                        progress['percentage'] <= 100):
-                        
-                        # Check if we haven't sent a notification recently
-                        if not self._recently_notified(user.id, 'goal_reminder', hours=4):
-                            logger.info(f"Goal {goal.id} for user {user.id} has crossed threshold. Sending notification.")
-                            subject = f"⚠️ Goal Threshold Alert"
-                            message = f"You're at {progress['percentage']:.0f}% of your {goal.goal_type.replace('_', ' ')} goal ({progress['current']}/{progress['target']}). Stay mindful of your usage!"
-                            
-                            extra_data = {
-                                'goal_type': goal.goal_type,
-                                'progress': progress['percentage'],
-                                'current': progress['current'],
-                                'target': progress['target']
-                            }
-                            
-                            # The service will filter based on user prefs.
-                            self.notification_service.queue_notification(
-                                user_id=user.id,
-                                category='goal_reminder',
-                                subject=subject,
-                                message=message,
-                                priority=2,
-                                extra_data=extra_data
-                            )
-                            notifications_sent += 1
+                    goals_by_user.setdefault(goal.user_id, []).append(goal)
 
-                        else:
-                            logger.debug(f"Goal {goal.id} for user {user.id} crossed threshold, but recently notified. Skipping.")
+                for user_goals in goals_by_user.values():
+                    user = user_goals[0].user
+                    resolved_timezone = tz_service.resolve_timezone(
+                        user.timezone
+                    )
+                    effective_day = effective_day_for_user(
+                        user,
+                        now_utc=now_utc,
+                        resolved_timezone=resolved_timezone,
+                    )
+                    progress_by_goal = batch_goal_progress(
+                        user,
+                        user_goals,
+                        effective_day,
+                        resolved_timezone,
+                        history_mode=HISTORY_LIVE,
+                    )
+                    for goal in user_goals:
+                        logger.debug(
+                            f"Checking goal {goal.id} for user {user.id}"
+                        )
+                        if not progress_by_goal[goal.id]:
+                            continue
+                        progress = progress_by_goal[goal.id][0]
+                        notice = goal_threshold_notice(goal, progress)
+                        if notice is None:
+                            continue
+                        logger.debug(
+                            "Goal %s: Progress=%.2f%%, Threshold=%.2f%%",
+                            goal.id,
+                            progress['percentage'],
+                            goal.notification_threshold * 100,
+                        )
+                        if self._recently_notified(
+                                user.id, 'goal_reminder', hours=4):
+                            logger.debug(
+                                "Goal %s for user %s crossed threshold, but "
+                                "was recently notified. Skipping.",
+                                goal.id,
+                                user.id,
+                            )
+                            continue
+                        subject = (
+                            'Weekly reduction update'
+                            if goal.goal_type == 'weekly_reduction'
+                            else 'Goal threshold update'
+                        )
+                        extra_data = {
+                            'goal_type': goal.goal_type,
+                            'progress': progress['percentage'],
+                            'current': progress['current'],
+                            'target': progress['target'],
+                            'period_date': progress['date'].isoformat(),
+                        }
+                        self.notification_service.queue_notification(
+                            user_id=user.id,
+                            category='goal_reminder',
+                            subject=subject,
+                            message=notice['message'],
+                            priority=2,
+                            extra_data=extra_data,
+                        )
+                        notifications_sent += 1
                 
                 if notifications_sent > 0:
                     logger.info(f"Sent goal threshold notifications for {notifications_sent} goal(s)")
@@ -223,11 +261,13 @@ class BackgroundTaskProcessor:
 
 
     
-    def _send_weekly_report(self, user):
+    def _send_weekly_report(self, user, *, now_utc=None):
         """Send weekly progress report to a user"""
         try:
             logger.debug(f"Calculating weekly stats for user {user.id}")
-            queued = self.notification_service.queue_weekly_report(user)
+            queued = self.notification_service.queue_weekly_report(
+                user, now_utc=now_utc
+            )
             if queued:
                 logger.info(f"Queued weekly report for user {user.id}")
             else:

@@ -17,9 +17,15 @@
 <ul>
     <li>📝 <strong>Total Logs:</strong> {{ total_logs }} entries</li>
     <li>🎒 <strong>Total Pouches:</strong> {{ total_pouches }} used</li>
+    {% if total_nicotine is none %}
+    <li>💧 <strong>Total Nicotine:</strong> Unavailable — strength data is missing from {{ unknown_strength_count }} log {{ 'entry' if unknown_strength_count == 1 else 'entries' }}.</li>
+    {% else %}
     <li>💧 <strong>Total Nicotine:</strong> {{ total_nicotine }} mg</li>
+    {% endif %}
     <li>📊 <strong>Daily Average:</strong> {{ daily_average }} pouches</li>
+    {% if daily_average_mg is not none %}
     <li>⚖️ <strong>Daily Nicotine Average:</strong> {{ daily_average_mg }} mg</li>
+    {% endif %}
     <li>🎯 <strong>Goals Progress:</strong> {{ goals_on_track }} goals on track</li>
     <li>🔥 <strong>Active Streaks:</strong> {{ active_streaks }} ongoing</li>
 </ul>
