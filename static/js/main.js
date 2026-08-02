@@ -25,14 +25,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Set current time as default
-    const timeInput = document.getElementById('log_time');
-    if (timeInput) {
-        const now = new Date();
-        const currentTime = now.getHours().toString().padStart(2, '0') + ':' + 
-                           now.getMinutes().toString().padStart(2, '0');
-        timeInput.value = currentTime;
-    }
 });
 
 function initializeApp() {

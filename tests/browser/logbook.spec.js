@@ -141,6 +141,7 @@ test('Logbook uses readable rows without mobile overflow or bottom-navigation ov
     document.documentElement.scrollWidth - document.documentElement.clientWidth
   ))).toBeLessThanOrEqual(0);
   if (testInfo.project.name.includes('mobile')) {
+    await page.locator('.logbook-row').scrollIntoViewIfNeeded();
     const geometry = await page.evaluate(() => {
       const row = document.querySelector('.logbook-row');
       const nav = document.querySelector('.primary-nav');
@@ -151,5 +152,49 @@ test('Logbook uses readable rows without mobile overflow or bottom-navigation ov
       };
     });
     expect(geometry.paddingBottom).toBeGreaterThanOrEqual(80);
+    expect(geometry.rowBottom).toBeLessThanOrEqual(geometry.navTop);
   }
+});
+
+
+test.describe('when the browser and account use different timezones', () => {
+  test.use({ timezoneId: 'America/Los_Angeles' });
+
+  test('server defaults and an existing edit time remain in the UTC account timezone', async ({ page }, testInfo) => {
+    await register(page, testInfo);
+    await page.goto('/log/view');
+    await page.getByRole('button', { name: 'Add log', exact: true }).click();
+    const modal = page.getByRole('dialog', { name: 'Add a log' });
+    const modalTime = await modal.getByLabel('Time').inputValue();
+    const clocks = await page.evaluate(() => ({
+      device: `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`,
+      utc: new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'UTC',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      }).format(new Date()),
+    }));
+    expect(modalTime).toBe(clocks.utc);
+    expect(modalTime).not.toBe(clocks.device);
+
+    await modal.getByLabel('Date').fill('2026-01-12');
+    await modal.getByLabel('Time').fill('07:20');
+    await modal.getByLabel('Product').selectOption({ index: 1 });
+    await modal.getByLabel('Quantity').fill('1');
+    await modal.getByLabel('Notes').fill('timezone edit marker');
+    await modal.getByRole('button', { name: 'Add entry' }).click();
+
+    const row = page.locator('.logbook-row', { hasText: 'timezone edit marker' });
+    await row.getByRole('link', { name: 'Edit' }).click();
+    await expect(page.getByLabel('Time')).toHaveValue('07:20');
+    await page.getByLabel('Quantity').fill('2');
+    await page.getByLabel('Notes').fill('timezone edit preserved');
+    await page.getByRole('button', { name: 'Save changes' }).click();
+
+    const edited = page.locator('.logbook-row', { hasText: 'timezone edit preserved' });
+    await expect(edited).toContainText('07:20');
+    await edited.getByRole('link', { name: 'Edit' }).click();
+    await expect(page.getByLabel('Time')).toHaveValue('07:20');
+  });
 });

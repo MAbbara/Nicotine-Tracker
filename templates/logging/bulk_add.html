@@ -14,7 +14,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="c-field">
       <label class="c-field__label" for="log_date">Date for these entries</label>
-      <input class="c-field__control" type="date" name="log_date" id="log_date" value="{{ date.today().isoformat() }}">
+      <input class="c-field__control" type="date" name="log_date" id="log_date" value="{{ request.form.get('log_date') or today.isoformat() }}">
       <p class="c-field__description">If left blank, the server uses today in your account timezone.</p>
     </div>
 

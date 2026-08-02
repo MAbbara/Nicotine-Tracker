@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, jsonify, session
-from datetime import datetime, time, timedelta
+from datetime import datetime, time
 from datetime import date
 import pytz
 from models import User, Log, Pouch
@@ -10,7 +10,12 @@ from services.log_service import (
     parse_nicotine_strength,
     summarize_logs,
 )
-from services.timezone_service import get_current_user_time, resolve_timezone
+from services.timezone_service import (
+    get_current_user_time,
+    get_user_day_window,
+    resolve_timezone,
+    to_naive_utc,
+)
 from services.pouch_service import get_sorted_pouches
 from extensions import db
 from routes.auth import login_required, get_current_user
@@ -153,50 +158,64 @@ def bulk_add():
     """Add multiple log entries at once"""
     try:
         user = get_current_user()
-        
+        _, account_today, _ = get_current_user_time(user.timezone)
+
         if request.method == 'POST':
             bulk_text = request.form.get('bulk_text', '').strip()
-            log_date_str = request.form.get('log_date', date.today().isoformat())
-            
+            log_date_str = request.form.get('log_date', '').strip()
+
             if not bulk_text:
                 flash('Please enter bulk log data.', 'error')
-                return render_template('bulk_add.html', date=date)
-            
-            # Parse date (in user's timezone)
-            try:
-                log_date = datetime.strptime(log_date_str, '%Y-%m-%d').date()
-            except ValueError:
-                flash('Invalid date format.', 'error')
-                return render_template('bulk_add.html', date=date)
-            
-            # Parse bulk text
+                return render_template('bulk_add.html', today=account_today)
+
+            if log_date_str:
+                try:
+                    log_date = datetime.strptime(
+                        log_date_str, '%Y-%m-%d'
+                    ).date()
+                except ValueError:
+                    flash('Invalid date format.', 'error')
+                    return render_template('bulk_add.html', today=account_today)
+            else:
+                log_date = account_today
+
             entries = parse_bulk_text(bulk_text)
-            
             if not entries:
                 flash('No valid entries found in bulk text.', 'error')
-                return render_template('bulk_add.html', date=date)
-            
-            # Use service layer to process all entries at once with timezone
+                return render_template('bulk_add.html', today=account_today)
+
             try:
-                added_count = add_bulk_logs(user_id=user.id, entries=entries, log_date=log_date, user_timezone=user.timezone)
+                added_count = add_bulk_logs(
+                    user_id=user.id,
+                    entries=entries,
+                    log_date=log_date,
+                    user_timezone=user.timezone,
+                )
                 if added_count > 0:
-                    current_app.logger.info(f'Bulk log entries added for user {user.email}: {added_count} entries')
-                    flash(f'Successfully added {added_count} log entries!', 'success')
+                    current_app.logger.info(
+                        'Bulk log entries added for user %s: %s entries',
+                        user.email,
+                        added_count,
+                    )
+                    flash(
+                        f'Successfully added {added_count} log entries!',
+                        'success',
+                    )
                 else:
                     flash('No entries could be processed.', 'error')
                 return redirect(url_for('logging.view_logs'))
             except Exception as e:
                 current_app.logger.error(f'Bulk add error: {e}')
                 flash('An error occurred during bulk entry.', 'error')
-                return render_template('bulk_add.html', date=date)
-        
-        return render_template('bulk_add.html', date=date)
-        
+                return render_template('bulk_add.html', today=account_today)
+
+        return render_template('bulk_add.html', today=account_today)
+
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f'Bulk add error: {e}')
         flash('An error occurred during bulk entry.', 'error')
-        return render_template('bulk_add.html', date=date)
+        return render_template('bulk_add.html', today=date.today())
 
 def parse_bulk_text(text):
     """Parse bulk text input into log entries"""
@@ -315,12 +334,11 @@ def view_logs():
                 local_date = datetime.strptime(value, '%Y-%m-%d').date()
             except ValueError:
                 return None
-            if end:
-                local_date += timedelta(days=1)
-            local_value = resolved_timezone.localize(
-                datetime.combine(local_date, time.min)
+            window = get_user_day_window(
+                resolved_timezone.zone, local_date, reset_time
             )
-            return local_value.astimezone(pytz.UTC).replace(tzinfo=None)
+            boundary = window.end_utc if end else window.start_utc
+            return to_naive_utc(boundary)
 
         from_boundary = local_boundary(from_date_value)
         to_boundary = local_boundary(to_date_value, end=True)
@@ -346,8 +364,15 @@ def view_logs():
             logs.items, resolved_timezone, reset_time
         )
         daily_totals = {}
-        for date_key, day_logs in grouped_logs.items():
-            summary = summarize_logs(day_logs)
+        for date_key in grouped_logs:
+            window = get_user_day_window(
+                resolved_timezone.zone, date_key, reset_time
+            )
+            complete_day_logs = query.filter(
+                Log.log_time >= to_naive_utc(window.start_utc),
+                Log.log_time < to_naive_utc(window.end_utc),
+            ).all()
+            summary = summarize_logs(complete_day_logs)
             daily_totals[date_key] = {
                 'pouches': summary['total_pouches'],
                 'mg': summary['total_mg'],
@@ -431,10 +456,22 @@ def edit_log(log_id):
                     flash('Invalid time format. Use HH:MM format.', 'error')
                     return render_template('edit_log.html', log=log_entry, user_timezone=user.timezone)
             
-            # Convert user's date/time to UTC for storage
+            # Keep the original instant when the rendered minute was not
+            # changed; otherwise a notes-only edit would discard seconds.
             from services.timezone_service import convert_user_time_to_utc
             if user_time is not None:
-                utc_datetime, _, _ = convert_user_time_to_utc(user.timezone, user_date, user_time)
+                existing_local = log_entry.get_user_datetime(user.timezone)
+                same_rendered_minute = (
+                    existing_local.date() == user_date
+                    and existing_local.hour == user_time.hour
+                    and existing_local.minute == user_time.minute
+                )
+                if same_rendered_minute:
+                    utc_datetime = log_entry.log_time
+                else:
+                    utc_datetime, _, _ = convert_user_time_to_utc(
+                        user.timezone, user_date, user_time
+                    )
             else:
                 # Use current time if no time specified
                 _, current_date, current_time = get_current_user_time(user.timezone)

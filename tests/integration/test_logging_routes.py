@@ -1,11 +1,11 @@
 """Logging route and editorial Logbook contracts."""
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 from bs4 import BeautifulSoup
 
-from models import Log
+from models import Log, User, UserPreferences
 from services.log_service import assign_log_product
 
 
@@ -38,6 +38,7 @@ def test_logbook_renders_editorial_rows_filters_and_one_add_action(
     row = document.select_one('article.logbook-row')
     assert row is not None
     assert row.select_one('time[datetime]')
+    assert row.select_one('time[datetime]')['datetime'].endswith('Z')
     assert 'Test Brand' in row.get_text(' ', strip=True)
     assert 'Test log entry' in row.get_text(' ', strip=True)
     assert document.select_one('.horizontal-scroll-region') is None
@@ -76,6 +77,138 @@ def test_logbook_filter_is_user_scoped_and_keeps_local_date_bounds(
     assert document.select_one('input[name="q"]')['value'] == 'evening'
     assert document.select_one('input[name="from_date"]')['value'] == '2026-01-08'
     assert document.select_one('input[name="to_date"]')['value'] == '2026-01-08'
+
+
+def test_logbook_date_filter_uses_effective_day_boundary_and_stays_user_scoped(
+        logged_in_client, db_session, test_user, test_pouch):
+    test_user.timezone = 'Asia/Riyadh'
+    db_session.add(UserPreferences(
+        user_id=test_user.id,
+        daily_reset_time=time(4, 0),
+    ))
+    other = User(
+        email='other-logbook@example.com',
+        email_verified=True,
+        timezone='Asia/Riyadh',
+    )
+    other.set_password('password123')
+    db_session.add(other)
+    db_session.flush()
+
+    # 23:30 UTC is 02:30 on January 10 in Riyadh, before the 04:00 reset,
+    # and therefore belongs to the effective January 9 user day.
+    owned = Log(
+        user_id=test_user.id,
+        quantity=1,
+        log_time=datetime(2026, 1, 9, 23, 30),
+        notes='owned reset-boundary marker',
+    )
+    foreign = Log(
+        user_id=other.id,
+        quantity=1,
+        log_time=datetime(2026, 1, 9, 23, 30),
+        notes='foreign reset-boundary marker',
+        product_brand_snapshot='Foreign product',
+        nicotine_mg_snapshot=4,
+    )
+    assign_log_product(owned, pouch_id=test_pouch.id)
+    db_session.add_all([owned, foreign])
+    db_session.commit()
+
+    response = logged_in_client.get(
+        '/log/view?from_date=2026-01-09&to_date=2026-01-09'
+    )
+    document = BeautifulSoup(response.data, 'html.parser')
+    text = document.get_text(' ', strip=True)
+
+    assert response.status_code == 200
+    assert len(document.select('article.logbook-row')) == 1
+    assert 'owned reset-boundary marker' in text
+    assert 'foreign reset-boundary marker' not in text
+    assert 'Friday, January 9' in text
+
+
+def test_logbook_daily_total_is_complete_when_pagination_splits_one_day(
+        app, logged_in_client, db_session, test_user, test_pouch):
+    app.config['LOGS_PER_PAGE'] = 2
+    for minute in range(3):
+        log = Log(
+            user_id=test_user.id,
+            quantity=1,
+            log_time=datetime(2026, 1, 10, 9, minute),
+            notes=f'page split {minute}',
+        )
+        assign_log_product(log, pouch_id=test_pouch.id)
+        db_session.add(log)
+    db_session.commit()
+
+    for page in (1, 2):
+        response = logged_in_client.get(f'/log/view?page={page}')
+        document = BeautifulSoup(response.data, 'html.parser')
+        heading = document.select_one('.logbook-day__heading')
+        assert response.status_code == 200
+        assert heading is not None
+        assert '3 pouches' in heading.get_text(' ', strip=True)
+
+
+def test_editing_notes_without_changing_rendered_time_preserves_timestamp(
+        logged_in_client, db_session, test_log):
+    original_timestamp = test_log.log_time
+    response = logged_in_client.post(f'/log/edit/{test_log.id}', data={
+        'log_date': test_log.get_user_date('UTC').isoformat(),
+        'log_time': test_log.get_user_time('UTC').strftime('%H:%M'),
+        'quantity': str(test_log.quantity),
+        'notes': 'notes only update',
+    })
+
+    db_session.refresh(test_log)
+    assert response.status_code == 302
+    assert test_log.log_time == original_timestamp
+    assert test_log.notes == 'notes only update'
+
+
+def test_bulk_blank_date_uses_account_local_today(
+        logged_in_client, monkeypatch, test_user):
+    import routes.logging as logging_routes
+
+    test_user.timezone = 'Asia/Tokyo'
+    fixed_local = datetime(2026, 1, 11, 0, 30)
+    monkeypatch.setattr(
+        logging_routes,
+        'get_current_user_time',
+        lambda timezone_name: (fixed_local, date(2026, 1, 11), time(0, 30)),
+    )
+    captured = {}
+
+    def capture_bulk(*, user_id, entries, log_date, user_timezone):
+        captured.update({
+            'user_id': user_id,
+            'entries': entries,
+            'log_date': log_date,
+            'user_timezone': user_timezone,
+        })
+        return len(entries)
+
+    monkeypatch.setattr(logging_routes, 'add_bulk_logs', capture_bulk)
+
+    get_response = logged_in_client.get('/log/bulk')
+    get_document = BeautifulSoup(get_response.data, 'html.parser')
+    post_response = logged_in_client.post('/log/bulk', data={
+        'log_date': '',
+        'bulk_text': '1 pouch at 09:00',
+    })
+
+    assert get_response.status_code == 200
+    assert get_document.select_one('input[name="log_date"]')['value'] == '2026-01-11'
+    assert post_response.status_code == 302
+    assert captured['log_date'] == date(2026, 1, 11)
+    assert captured['user_timezone'] == 'Asia/Tokyo'
+
+
+def test_global_javascript_never_overwrites_logging_time_fields():
+    source = (PROJECT_ROOT / 'static' / 'js' / 'main.js').read_text()
+    assert "getElementById('log_time')" not in source
+    assert 'Set current time as default' not in source
 
 
 def test_add_modal_and_logging_forms_preserve_submission_contracts(

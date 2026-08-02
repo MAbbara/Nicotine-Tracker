@@ -102,7 +102,7 @@
           {% set local_time = log.get_user_time(user_timezone) if log.log_time and user_timezone else (log.log_time.time() if log.log_time else none) %}
           <article class="logbook-row">
             <div class="logbook-row__primary">
-              <time datetime="{{ log.log_time.isoformat() if log.log_time else local_date.isoformat() }}">
+              <time datetime="{{ log.log_time.strftime('%Y-%m-%dT%H:%M:%SZ') if log.log_time else local_date.isoformat() }}">
                 {{ local_time.strftime('%H:%M') if local_time else 'Time not recorded' }}
               </time>
               <h4>{{ log.get_brand_name() or 'Product not recorded' }}</h4>
