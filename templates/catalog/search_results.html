@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "catalog/_pouch_row.html" import pouch_row with context %}
+
+{% block title %}Search pouches - Nicotine Tracker{% endblock %}
+
+{% block content %}
+<div class="catalog-page catalog-page--search">
+    <header class="catalog-intro">
+        <div class="catalog-intro__copy">
+            <a class="catalog-back-link" href="{{ url_for('catalog.index') }}">← Back to all pouches</a>
+            <p class="eyebrow">Product library</p>
+            <h1>Search pouches</h1>
+            <p>Showing products whose brand matches “{{ query }}”.</p>
+        </div>
+    </header>
+
+    <form class="catalog-search" action="{{ url_for('catalog.search') }}" method="get" role="search">
+        <div class="c-field">
+            <label class="c-field__label" for="catalog-search">Search pouches</label>
+            <input class="c-field__control" id="catalog-search" name="q" type="search" value="{{ query }}" autocomplete="off" required>
+        </div>
+        <button class="c-button c-button--secondary" type="submit">Search</button>
+    </form>
+
+    {% set result_count = custom_results|length + default_results|length %}
+    <section class="catalog-section" aria-labelledby="search-results-title">
+        <header class="catalog-section__intro">
+            <div>
+                <p class="eyebrow">{{ result_count }} result{{ '' if result_count == 1 else 's' }}</p>
+                <h2 id="search-results-title">Matching pouches</h2>
+            </div>
+            <p>Your saved products appear first, followed by matching shared products.</p>
+        </header>
+        {% if result_count %}
+            <div class="catalog-list" role="list">
+                {% for pouch in custom_results %}
+                    {{ pouch_row(pouch, 'custom', true) }}
+                {% endfor %}
+                {% for pouch in default_results %}
+                    {{ pouch_row(pouch, 'catalog', false) }}
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="catalog-empty">
+                <p class="eyebrow">No match</p>
+                <h3>Try a shorter brand name</h3>
+                <p>If the product is not in the shared catalog, you can add it to your own library.</p>
+                <a class="c-button c-button--secondary" href="{{ url_for('catalog.add_pouch') }}">Add this pouch</a>
+            </div>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}
+
+{% block preline_js %}{% endblock %}
+
+{% block extra_js %}
+<script type="module" src="{{ url_for('static', filename='js/catalog/page.js') }}"></script>
+{% endblock %}

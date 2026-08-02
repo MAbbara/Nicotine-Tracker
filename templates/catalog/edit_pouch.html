@@ -1,33 +1,44 @@
 {% extends "base.html" %}
 
-{% block title %}Edit Custom Pouch - Nicotine Tracker{% endblock %}
+{% block title %}Edit pouch - Nicotine Tracker{% endblock %}
 
 {% block content %}
-<div class="px-4 sm:px-6 lg:px-8 max-w-lg mx-auto">
-    <h1 class="text-2xl font-semibold leading-6 text-gray-900 dark:text-white mb-6">Edit Custom Pouch</h1>
-    
-    <form method="POST" action="{{ url_for('catalog.edit_pouch', pouch_id=pouch.id) }}" class="space-y-6" data-validate>
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div>
-            <label for="brand" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">Brand Name</label>
-            <input type="text" name="brand" id="brand" required
-                   class="mt-2 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600"
-                   placeholder="Enter brand name"
-                   value="{{ pouch.brand }}">
+<div class="catalog-form-page">
+    <header class="catalog-form-page__intro">
+        <a class="catalog-back-link" href="{{ url_for('catalog.index') }}">← Your pouches</a>
+        <p class="eyebrow">Saved product</p>
+        <h1>Edit pouch</h1>
+        <p>Correct this saved product without changing the product details preserved in earlier logs.</p>
+    </header>
+
+    <form class="catalog-form" method="post" action="{{ url_for('catalog.edit_pouch', pouch_id=pouch.id) }}" data-validate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="c-field">
+            <label class="c-field__label" for="brand">Brand<span aria-hidden="true"> *</span></label>
+            <p class="c-field__description" id="brand-description">Use the name printed on the container.</p>
+            <input class="c-field__control" id="brand" name="brand" type="text" value="{{ request.form.get('brand', pouch.brand) }}" autocomplete="off" required aria-required="true" aria-describedby="brand-description">
         </div>
-        
-        <div>
-            <label for="nicotine_mg" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">Nicotine Content (mg)</label>
-            <input type="number" name="nicotine_mg" id="nicotine_mg" min="1" max="100" required
-                   class="mt-2 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600"
-                   placeholder="Enter nicotine content in mg"
-                   value="{{ pouch.nicotine_mg }}">
+
+        <div class="c-field">
+            <label class="c-field__label" for="nicotine_mg">Nicotine strength<span aria-hidden="true"> *</span></label>
+            <p class="c-field__description" id="nicotine-mg-description">Enter milligrams per pouch. Decimals are supported.</p>
+            <div class="catalog-strength-control">
+                <input class="c-field__control" id="nicotine_mg" name="nicotine_mg" type="number" value="{{ request.form.get('nicotine_mg', pouch.nicotine_mg_display()) }}" min="0.01" step="0.01" inputmode="decimal" required aria-required="true" aria-describedby="nicotine-mg-description">
+                <span aria-hidden="true">mg</span>
+            </div>
         </div>
-        
-        <div class="flex gap-3">
-            <button type="submit" class="flex-1 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 cursor-pointer">Update Pouch</button>
-            <a href="{{ url_for('catalog.index') }}" class="rounded-md bg-white dark:bg-gray-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 cursor-pointer">Cancel</a>
+
+        <div class="catalog-form__note" aria-label="History safety">
+            <p class="eyebrow">Earlier logs stay accurate</p>
+            <p>Past entries keep the brand and strength recorded at that time. This edit only affects future selections.</p>
+        </div>
+
+        <div class="catalog-form__actions">
+            <button type="submit" class="c-button c-button--primary">Save changes</button>
+            <a href="{{ url_for('catalog.index') }}" class="c-button c-button--secondary">Cancel</a>
         </div>
     </form>
 </div>
 {% endblock %}
+
+{% block preline_js %}{% endblock %}

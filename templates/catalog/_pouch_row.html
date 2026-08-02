@@ -1,0 +1,32 @@
+{% macro pouch_row(pouch, source, editable=false) -%}
+<article class="catalog-row" data-source="{{ source }}" role="listitem">
+    <div class="catalog-row__identity">
+        <h3>{{ pouch.brand }}</h3>
+        <p class="catalog-row__source">
+            <span class="catalog-row__source-mark" aria-hidden="true"></span>
+            {{ 'Your pouch' if source == 'custom' else 'Shared catalog' }}
+        </p>
+    </div>
+    <dl class="catalog-row__facts">
+        <div>
+            <dt>Strength</dt>
+            <dd>{{ pouch.nicotine_mg_display() }} mg</dd>
+        </div>
+        <div>
+            <dt>Available in</dt>
+            <dd>Quick Log</dd>
+        </div>
+    </dl>
+    {% if editable %}
+        <div class="catalog-row__actions" aria-label="Actions for {{ pouch.brand }} {{ pouch.nicotine_mg_display() }} mg">
+            <a class="c-button c-button--quiet" href="{{ url_for('catalog.edit_pouch', pouch_id=pouch.id) }}">Edit</a>
+            <form class="catalog-delete-form" action="{{ url_for('catalog.delete_pouch', pouch_id=pouch.id) }}" method="post" data-confirm="Delete {{ pouch.brand }} from your saved pouches? Earlier logs will remain unchanged.">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="c-button c-button--quiet catalog-action--danger" type="submit">Delete</button>
+            </form>
+        </div>
+    {% else %}
+        <p class="catalog-row__ready">Ready to log</p>
+    {% endif %}
+</article>
+{%- endmacro %}
