@@ -34,6 +34,14 @@ async function loadCravingFlow() {
     const timelineUrl = `data:text/javascript;base64,${Buffer.from(timelineSource).toString('base64')}`;
     source = source.replace("'./timeline.js'", `'${timelineUrl}'`);
   }
+  if (source.includes("'./action_enhancement.js'")) {
+    const enhancementSource = fs.readFileSync(
+      path.join(projectRoot, 'static', 'js', 'today', 'action_enhancement.js'),
+      'utf8',
+    );
+    const enhancementUrl = `data:text/javascript;base64,${Buffer.from(enhancementSource).toString('base64')}`;
+    source = source.replace("'./action_enhancement.js'", `'${enhancementUrl}'`);
+  }
   return import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 }
 
@@ -1758,4 +1766,165 @@ test('pause announcements are limited to start, minute boundaries, final ten, an
   tick();
   assert.match(view.announcements.at(-1), /Pause complete/);
   assert.equal(view.announcements.length, 4);
+});
+
+function makeCravingBootstrapElement() {
+  return {
+    dataset: {},
+    hidden: false,
+    disabled: false,
+    open: false,
+    textContent: '',
+    value: '',
+    checked: false,
+    ownerDocument: null,
+    listeners: new Map(),
+    selectors: new Map(),
+    classList: { toggle() {} },
+    querySelector(selector) {
+      return this.selectors.has(selector) ? this.selectors.get(selector) : null;
+    },
+    querySelectorAll() { return []; },
+    addEventListener(type, handler) {
+      if (!this.listeners.has(type)) this.listeners.set(type, []);
+      this.listeners.get(type).push(handler);
+    },
+    removeEventListener(type, handler) {
+      const handlers = this.listeners.get(type) || [];
+      const index = handlers.indexOf(handler);
+      if (index >= 0) handlers.splice(index, 1);
+    },
+    dispatchEvent(event) {
+      if (!event.currentTarget) event.currentTarget = this;
+      for (const handler of [...(this.listeners.get(event.type) || [])]) handler(event);
+      return true;
+    },
+    listenerCount(type) { return (this.listeners.get(type) || []).length; },
+    setAttribute() {},
+    removeAttribute() {},
+    append() {},
+    replaceChildren() {},
+    remove() {},
+    reset() {},
+    focus() {},
+    showModal() { this.open = true; },
+    close() { this.open = false; },
+    contains() { return true; },
+  };
+}
+
+function makeCravingBootstrapDocument({ failFirstRootListener = false } = {}) {
+  const root = makeCravingBootstrapElement();
+  if (failFirstRootListener) {
+    const addRootListener = root.addEventListener.bind(root);
+    let shouldFail = true;
+    root.addEventListener = (...args) => {
+      if (shouldFail) {
+        shouldFail = false;
+        throw new Error('craving-listener-bind-failed');
+      }
+      addRootListener(...args);
+    };
+  }
+  const dialog = makeCravingBootstrapElement();
+  const checkInStep = makeCravingBootstrapElement();
+  checkInStep.dataset.cravingStep = 'check_in';
+  checkInStep.querySelector = () => makeCravingBootstrapElement();
+  dialog.querySelector = (selector) => {
+    if (selector === '[data-craving-step]:not([hidden])') {
+      return checkInStep.hidden ? null : checkInStep;
+    }
+    if (!dialog.selectors.has(selector)) {
+      dialog.selectors.set(selector, makeCravingBootstrapElement());
+    }
+    return dialog.selectors.get(selector);
+  };
+  dialog.querySelectorAll = (selector) => (
+    selector === '[data-craving-step]' ? [checkInStep] : []
+  );
+  const section = makeCravingBootstrapElement();
+  const slot = makeCravingBootstrapElement();
+  const fallback = makeCravingBootstrapElement();
+  const enhanced = makeCravingBootstrapElement();
+  enhanced.hidden = true;
+  slot.selectors.set('[data-action-fallback]', fallback);
+  slot.selectors.set('[data-action-enhanced]', enhanced);
+  root.selectors.set('[data-craving-flow-dialog]', dialog);
+  root.selectors.set('[data-today-timeline-section]', section);
+  root.selectors.set('[data-craving-action-slot]', slot);
+  root.selectors.set('[data-craving-live]', makeCravingBootstrapElement());
+  const documentRef = makeCravingBootstrapElement();
+  documentRef.defaultView = undefined;
+  documentRef.querySelector = (selector) => {
+    if (selector === '[data-today-root]') return root;
+    return null;
+  };
+  documentRef.createElement = () => makeCravingBootstrapElement();
+  section.ownerDocument = documentRef;
+  return {
+    documentRef, root, dialog, slot, fallback, enhanced,
+  };
+}
+
+test('Craving bootstrap reuses one controller and activation without duplicate listeners', async () => {
+  const { bootstrapCravingFlow } = await loadCravingFlow();
+  const {
+    documentRef, root, dialog, slot, fallback, enhanced,
+  } = makeCravingBootstrapDocument();
+
+  const first = bootstrapCravingFlow(documentRef);
+  const second = bootstrapCravingFlow(documentRef);
+
+  assert.ok(first);
+  assert.equal(second, first);
+  assert.equal(slot.dataset.controllerReady, 'true');
+  assert.equal(fallback.hidden, true);
+  assert.equal(enhanced.hidden, false);
+  assert.equal(enhanced.listenerCount('click'), 1);
+  assert.equal(root.listenerCount('click'), 1);
+  assert.equal(documentRef.listenerCount('visibilitychange'), 1);
+
+  enhanced.dispatchEvent({ type: 'click' });
+  assert.equal(dialog.open, true);
+  assert.equal(first.getState().status, 'check_in');
+  const clientEventId = first.getState().clientEventId;
+  assert.ok(clientEventId);
+
+  first.close();
+  enhanced.dispatchEvent({ type: 'click' });
+  assert.notEqual(first.getState().clientEventId, clientEventId);
+});
+
+test('Craving bootstrap rolls back a partial initialization before a natural retry', async () => {
+  const { bootstrapCravingFlow } = await loadCravingFlow();
+  const {
+    documentRef, root, slot, fallback, enhanced,
+  } = makeCravingBootstrapDocument({ failFirstRootListener: true });
+  const reported = [];
+  const originalError = console.error;
+  console.error = (...args) => { reported.push(args); };
+  let first;
+  try {
+    first = bootstrapCravingFlow(documentRef);
+  } finally {
+    console.error = originalError;
+  }
+
+  assert.equal(first, null);
+  assert.equal(reported.length, 1);
+  assert.equal(slot.dataset.controllerReady, undefined);
+  assert.equal(fallback.hidden, false);
+  assert.equal(enhanced.hidden, true);
+  assert.equal(enhanced.listenerCount('click'), 0);
+  assert.equal(root.listenerCount('click'), 0);
+
+  const second = bootstrapCravingFlow(documentRef);
+
+  assert.ok(second);
+  assert.equal(slot.dataset.controllerReady, 'true');
+  assert.equal(enhanced.listenerCount('click'), 1);
+  for (const eventType of ['click', 'submit', 'input', 'change', 'cancel']) {
+    assert.equal(root.listenerCount(eventType), 1, `${eventType} is rebound exactly once`);
+  }
+  assert.equal(documentRef.listenerCount('visibilitychange'), 1);
 });

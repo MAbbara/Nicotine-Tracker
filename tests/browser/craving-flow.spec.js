@@ -59,6 +59,35 @@ async function openAndRecordCraving(page, { intensity = 7, trigger = '' } = {}) 
   return dialog;
 }
 
+test('Craving fallback remains usable while enhancement is delayed', async ({ page }) => {
+  await page.route('**/static/js/today/craving_flow.js', async (route) => {
+    await new Promise((resolve) => { setTimeout(resolve, 1200); });
+    await route.continue();
+  });
+  await login(page);
+  const slot = page.locator('[data-craving-action-slot]');
+
+  await expect(slot).not.toHaveAttribute('data-controller-ready', 'true');
+  await expect(slot.locator('[data-action-enhanced]')).toBeHidden();
+  await slot.locator('[data-action-fallback]').click();
+
+  await expect(page).toHaveURL(/\/cravings\/cravings$/);
+});
+
+test('Craving enhancement waits for readiness and opens support without navigation', async ({ page }) => {
+  await login(page);
+  const slot = page.locator('[data-craving-action-slot]');
+
+  await expect(slot).toHaveAttribute('data-controller-ready', 'true');
+  await expect(slot.locator('[data-action-fallback]')).toBeHidden();
+  const enhanced = slot.locator('[data-action-enhanced]');
+  await expect(enhanced).toBeVisible();
+  await enhanced.click();
+
+  await expect(page).toHaveURL(/\/today\/?$/);
+  await expect(page.getByRole('dialog', { name: 'Take the next useful step' })).toBeVisible();
+});
+
 test.afterEach(async ({ page }) => {
   await page.unrouteAll({ behavior: 'wait' });
   if (!/\/today\/?$/.test(new URL(page.url()).pathname)) return;
@@ -337,6 +366,8 @@ test('outcome and detail recovery copy survives close and the same-payload Retry
     return route.continue();
   });
   await login(page);
+  await expect(page.locator('[data-craving-action-slot]'))
+    .toHaveAttribute('data-controller-ready', 'true');
   const trigger = page.locator('#today-craving-action');
   const dialog = await openAndRecordCraving(page, { intensity: 7 });
   await dialog.getByRole('button', { name: /Drink some water/ }).click();

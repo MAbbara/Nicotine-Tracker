@@ -1,7 +1,29 @@
 import { bootstrapQuickLog, formatOffsetIso, toDateTimeLocal } from './quick_log.js';
 import { createTimelineDomAdapter } from './timeline.js';
+import { activateActionEnhancement } from './action_enhancement.js';
 
 const OUTCOMES = new Set(['resisted', 'used_nicotine', 'used_alternative']);
+const CRAVING_FLOW_CONTROLLERS = new WeakMap();
+
+function ensureCravingFlowController(root, factory) {
+  const existing = CRAVING_FLOW_CONTROLLERS.get(root);
+  if (existing) return existing;
+  const controller = factory();
+  CRAVING_FLOW_CONTROLLERS.set(root, controller);
+  return controller;
+}
+
+function rollbackCravingFlowController(root, controller) {
+  if (!controller || CRAVING_FLOW_CONTROLLERS.get(root) !== controller) return;
+  try {
+    controller.cleanup();
+  } catch {
+    // Cleanup is best-effort; eviction still prevents reuse of a partial controller.
+  }
+  if (CRAVING_FLOW_CONTROLLERS.get(root) === controller) {
+    CRAVING_FLOW_CONTROLLERS.delete(root);
+  }
+}
 
 export class CravingFlowValidationError extends Error {
   constructor(fieldErrors) {
@@ -1370,30 +1392,48 @@ export function bootstrapCravingFlow(documentRef = document) {
   const root = documentRef.querySelector('[data-today-root]');
   const dialog = root?.querySelector('[data-craving-flow-dialog]');
   if (!root || !dialog) return null;
-  const timeline = createTimelineDomAdapter(root);
-  if (!timeline) return null;
-  const logTrigger = root.querySelector('[data-today-action="log-nicotine"]');
-  const pouchId = Number(logTrigger?.dataset.smartDefaultPouchId);
-  const smartDefault = Number.isInteger(pouchId) && pouchId > 0
-    ? {
-      pouchId,
-      brand: logTrigger.dataset.smartDefaultBrand,
-      nicotineMg: logTrigger.dataset.smartDefaultStrength,
-    }
-    : null;
-  const view = createCravingFlowDomView(root, dialog);
-  const quickLogController = bootstrapQuickLog(documentRef);
-  const csrfToken = documentRef.querySelector('meta[name="csrf-token"]')?.content || '';
-  const controller = createCravingFlowController({
-    view,
-    timeline,
-    quickLogController,
-    smartDefault,
-    csrfToken,
-    visibility: documentRef,
-  });
-  controller.initialize();
-  return controller;
+  let controller = null;
+  try {
+    controller = ensureCravingFlowController(root, () => {
+      const timeline = createTimelineDomAdapter(root);
+      if (!timeline) return null;
+      const logTrigger = root.querySelector('[data-today-action="log-nicotine"]');
+      const pouchId = Number(logTrigger?.dataset.smartDefaultPouchId);
+      const smartDefault = Number.isInteger(pouchId) && pouchId > 0
+        ? {
+          pouchId,
+          brand: logTrigger.dataset.smartDefaultBrand,
+          nicotineMg: logTrigger.dataset.smartDefaultStrength,
+        }
+        : null;
+      const view = createCravingFlowDomView(root, dialog);
+      const quickLogController = bootstrapQuickLog(documentRef);
+      const csrfToken = documentRef.querySelector('meta[name="csrf-token"]')?.content || '';
+      return createCravingFlowController({
+        view,
+        timeline,
+        quickLogController,
+        smartDefault,
+        csrfToken,
+        visibility: documentRef,
+      });
+    });
+    if (!controller) return null;
+    controller.initialize();
+    const slot = root.querySelector('[data-craving-action-slot]');
+    activateActionEnhancement(
+      slot,
+      (event) => controller.open(event.currentTarget),
+    );
+    return controller;
+  } catch (error) {
+    rollbackCravingFlowController(root, controller);
+    console.error(
+      'Craving support enhancement is unavailable; the standard craving link remains active.',
+      error,
+    );
+    return null;
+  }
 }
 
 if (typeof document !== 'undefined') bootstrapCravingFlow(document);
