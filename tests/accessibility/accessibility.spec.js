@@ -136,6 +136,16 @@ test('Settings navigation is labelled, scrollable, and keeps one visible current
       document.documentElement.scrollWidth - document.documentElement.clientWidth
     ))).toBeLessThanOrEqual(0);
   }
+
+  await page.setViewportSize({ width: 800, height: 900 });
+  await page.goto('/settings/profile');
+  const savePadding = await page.evaluate(() => {
+    const row = document.createElement('div');
+    row.className = 'settings-save-row';
+    document.querySelector('.settings-content').append(row);
+    return parseFloat(getComputedStyle(row).paddingBottom);
+  });
+  expect(savePadding).toBeGreaterThanOrEqual(76);
 });
 
 

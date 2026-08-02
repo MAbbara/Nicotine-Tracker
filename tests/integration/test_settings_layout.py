@@ -60,7 +60,15 @@ def test_settings_layout_css_keeps_actions_in_flow_with_mobile_clearance():
     source = (PROJECT_ROOT / "static/css/tailwind.css").read_text()
 
     assert ".settings-save-row" in source
+    assert "--space-5: 1.25rem" in source
     assert "env(safe-area-inset-bottom)" in source
     assert ".settings-nav" in source
     mobile_nav_rule = source.split(".settings-nav {", 1)[1].split("}", 1)[0]
     assert "position: sticky" not in mobile_nav_rule
+    settings_source = source.split(
+        "/* Settings is a reading surface", 1
+    )[1].split("/* Insights is an editorial review", 1)[0]
+    tablet_rules = settings_source.split("@media (min-width: 48rem)", 1)[1]
+    assert ".settings-save-row" not in tablet_rules.split("@media (min-width: 64rem)", 1)[0]
+    desktop_rules = tablet_rules.split("@media (min-width: 64rem)", 1)[1]
+    assert ".settings-save-row" in desktop_rules
