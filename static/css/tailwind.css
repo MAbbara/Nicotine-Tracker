@@ -2734,6 +2734,16 @@
     gap: var(--space-3);
   }
 
+  .today-actions__slot {
+    display: grid;
+    min-width: 0;
+  }
+
+  .today-actions__slot > .today-action {
+    width: 100%;
+    min-width: 0;
+  }
+
   .today-action.c-button {
     display: grid;
     min-height: 5rem;

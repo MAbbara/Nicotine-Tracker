@@ -70,9 +70,16 @@ function makeSlot() {
       readiness.push(`${String(key)}=${value}`);
       return true;
     },
+    deleteProperty(target, key) {
+      delete target[key];
+      readiness.push(`delete:${String(key)}`);
+      log.push(`delete:${String(key)}`);
+      return true;
+    },
   });
   const attachLog = [];
   const originalAdd = enhanced.addEventListener.bind(enhanced);
+  const originalRemove = enhanced.removeEventListener.bind(enhanced);
   enhanced.addEventListener = (type, handler) => {
     attachLog.push({
       type,
@@ -82,6 +89,10 @@ function makeSlot() {
     });
     log.push('attach');
     originalAdd(type, handler);
+  };
+  enhanced.removeEventListener = (type, handler) => {
+    log.push('detach');
+    originalRemove(type, handler);
   };
   log.length = 0;
   return { slot, fallback, enhanced, log, attachLog, readiness };
@@ -194,4 +205,79 @@ test('a slot can be re-activated after cleanup', async () => {
   enhanced.dispatchEvent({ type: 'click' });
   assert.deepEqual(calls, ['second']);
   second();
+});
+
+test('cleanup restores the safe server-rendered state in a safe synchronous order', async () => {
+  const { activateActionEnhancement } = await loadActionEnhancement();
+  const { slot, fallback, enhanced, log } = makeSlot();
+  const calls = [];
+  const cleanup = activateActionEnhancement(slot, (event) => calls.push(event));
+  log.length = 0;
+
+  cleanup();
+
+  // Teardown must never leave a visible enhanced control without its
+  // handler or a stale readiness marker. Readiness is removed first,
+  // the fallback is restored before the enhanced control is hidden (so
+  // the slot is never empty), and the listener is removed last, so at
+  // no intermediate point is a visible control missing its handler.
+  assert.deepEqual(log, [
+    'delete:controllerReady',
+    'a:hidden=false',
+    'button:hidden=true',
+    'detach',
+  ]);
+  assert.equal(fallback.hidden, false);
+  assert.equal(enhanced.hidden, true);
+  assert.equal(slot.dataset.controllerReady, undefined);
+  assert.equal(Object.hasOwn(slot.dataset, 'controllerReady'), false);
+
+  enhanced.dispatchEvent({ type: 'click' });
+  assert.equal(calls.length, 0);
+});
+
+test('double cleanup keeps the restored server state and stays a no-op', async () => {
+  const { activateActionEnhancement } = await loadActionEnhancement();
+  const { slot, fallback, enhanced, log } = makeSlot();
+  let calls = 0;
+  const cleanup = activateActionEnhancement(slot, () => { calls += 1; });
+
+  cleanup();
+  const logAfterFirst = [...log];
+  assert.doesNotThrow(() => cleanup());
+
+  assert.deepEqual(log, logAfterFirst);
+  assert.equal(fallback.hidden, false);
+  assert.equal(enhanced.hidden, true);
+  assert.equal(slot.dataset.controllerReady, undefined);
+  enhanced.dispatchEvent({ type: 'click' });
+  assert.equal(calls, 0);
+});
+
+test('re-activation after cleanup re-enhances the slot and teardown restores it again', async () => {
+  const { activateActionEnhancement } = await loadActionEnhancement();
+  const { slot, fallback, enhanced } = makeSlot();
+  const calls = [];
+
+  const first = activateActionEnhancement(slot, () => calls.push('first'));
+  first();
+  assert.equal(fallback.hidden, false);
+  assert.equal(enhanced.hidden, true);
+  assert.equal(slot.dataset.controllerReady, undefined);
+
+  const second = activateActionEnhancement(slot, () => calls.push('second'));
+  assert.notEqual(second, first);
+  assert.equal(fallback.hidden, true);
+  assert.equal(enhanced.hidden, false);
+  assert.equal(slot.dataset.controllerReady, 'true');
+
+  enhanced.dispatchEvent({ type: 'click' });
+  assert.deepEqual(calls, ['second']);
+
+  second();
+  assert.equal(fallback.hidden, false);
+  assert.equal(enhanced.hidden, true);
+  assert.equal(slot.dataset.controllerReady, undefined);
+  enhanced.dispatchEvent({ type: 'click' });
+  assert.deepEqual(calls, ['second']);
 });

@@ -33,6 +33,14 @@ export function activateActionEnhancement(root, onActivate) {
   const cleanup = () => {
     if (!active) return;
     active = false;
+    // Teardown mirrors activation in reverse so no intermediate state is
+    // unsafe: drop the readiness marker first, restore the fallback
+    // before hiding the enhanced control (the slot is never left empty),
+    // and only then detach the listener, so a visible control always has
+    // its handler. Finally unregister so re-activation starts fresh.
+    delete root.dataset.controllerReady;
+    fallback.hidden = false;
+    enhanced.hidden = true;
     enhanced.removeEventListener('click', activate);
     activations.delete(root);
   };

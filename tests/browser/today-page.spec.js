@@ -154,6 +154,78 @@ test('populated targeted Today presents status, coaching, timeline, and reflecti
 });
 
 
+test('action slot controls fill their slot before and after enhancement with no horizontal overflow', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('nicotine-tracker-theme', 'light'));
+  const problems = watchForProductProblems(page);
+  await login(page, 'today-empty-smart@example.com');
+
+  const slots = page.locator('[data-action-slot]');
+  await expect(slots).toHaveCount(2);
+  await expect(page.locator('[data-log-action-slot]')).toHaveCount(1);
+  await expect(page.locator('[data-craving-action-slot]')).toHaveCount(1);
+
+  const measure = () => page.evaluate(() => (
+    [...document.querySelectorAll('[data-action-slot]')].map((slot) => {
+      const slotBox = slot.getBoundingClientRect();
+      const controls = [...slot.querySelectorAll('[data-action-fallback], [data-action-enhanced]')];
+      const visible = controls.find((control) => !control.hidden);
+      const controlBox = visible.getBoundingClientRect();
+      return {
+        kind: slot.hasAttribute('data-log-action-slot') ? 'log' : 'craving',
+        controlTag: visible.tagName,
+        slotLeft: slotBox.left,
+        slotRight: slotBox.right,
+        slotWidth: slotBox.width,
+        controlLeft: controlBox.left,
+        controlRight: controlBox.right,
+        controlWidth: controlBox.width,
+        controlHeight: controlBox.height,
+      };
+    })
+  ));
+
+  const expectControlsFillSlots = (phase, entries) => {
+    expect(entries.map((entry) => entry.kind).sort(), phase).toEqual(['craving', 'log']);
+    for (const entry of entries) {
+      const detail = JSON.stringify({ phase, ...entry });
+      expect(entry.controlWidth, detail).toBeGreaterThanOrEqual(entry.slotWidth - 2);
+      expect(Math.abs(entry.controlLeft - entry.slotLeft), detail).toBeLessThanOrEqual(2);
+      expect(entry.controlRight, detail).toBeLessThanOrEqual(entry.slotRight + 2);
+      expect(entry.controlHeight, detail).toBeGreaterThanOrEqual(44);
+    }
+  };
+
+  const before = await measure();
+  expect(before.every((entry) => entry.controlTag === 'A')).toBe(true);
+  expectControlsFillSlots('server-rendered fallback', before);
+
+  // Activate both slots through the real enhancement helper, exactly as
+  // the Tasks 2/3 bootstraps will, so the enhanced control is the one
+  // measured against its slot.
+  await page.evaluate(async () => {
+    const { activateActionEnhancement } = await import('/static/js/today/action_enhancement.js');
+    document.querySelectorAll('[data-action-slot]').forEach((slot) => {
+      activateActionEnhancement(slot, (event) => event.preventDefault());
+    });
+  });
+  await expect(page.locator('[data-action-slot][data-controller-ready="true"]')).toHaveCount(2);
+
+  const after = await measure();
+  expect(after.every((entry) => entry.controlTag === 'BUTTON')).toBe(true);
+  expectControlsFillSlots('enhanced control', after);
+
+  const overflow = await page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }));
+  expect(overflow.scrollWidth, JSON.stringify(overflow)).toBeLessThanOrEqual(
+    overflow.clientWidth + 1,
+  );
+  expect(problems.errors).toEqual([]);
+  expect(problems.forbiddenRequests).toEqual([]);
+});
+
+
 test('Today supports dark theme, visible focus, 200% text, and reduced motion', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('nicotine-tracker-theme', 'dark'));
   await page.emulateMedia({ reducedMotion: 'reduce' });
