@@ -20,6 +20,68 @@ async function login(page, email) {
 }
 
 
+async function relogin(page, email) {
+  await page.context().clearCookies();
+  await login(page, email);
+}
+
+
+function collectBrowserErrors(page) {
+  const errors = [];
+  page.on('pageerror', (error) => errors.push({
+    kind: 'pageerror',
+    text: error.stack || error.message,
+    url: page.url(),
+  }));
+  page.on('console', (message) => {
+    if (message.type() === 'error') {
+      errors.push({
+        kind: 'console',
+        text: message.text(),
+        url: message.location().url,
+      });
+    }
+  });
+  return errors;
+}
+
+
+function expectNoUnexpectedBrowserErrors(
+  errors,
+  allowedStatus = null,
+  expectedPath = null,
+) {
+  const unexpected = errors.filter((error) => {
+    if (!allowedStatus) return true;
+    let errorPath = null;
+    try {
+      errorPath = new URL(error.url).pathname;
+    } catch {
+      return true;
+    }
+    const isExpectedNavigationError = error.kind === 'console'
+      && error.text.includes(`status of ${allowedStatus}`)
+      && errorPath === new URL(expectedPath, 'http://browser.test').pathname;
+    return !isExpectedNavigationError;
+  });
+  expect(unexpected).toEqual([]);
+  errors.length = 0;
+}
+
+
+async function auditRoute(page, errors, path, heading, options = {}) {
+  const response = await page.goto(path);
+  if (options.status) expect(response.status()).toBe(options.status);
+  await expect(page.getByRole('heading', { name: heading, level: 1 })).toHaveCount(1);
+  await expectNoWcagViolations(page);
+  expectNoUnexpectedBrowserErrors(
+    errors,
+    options.status >= 400 ? options.status : null,
+    path,
+  );
+}
+
+
 async function useExplicitTheme(page, theme) {
   await page.addInitScript((value) => {
     localStorage.setItem('nicotine-tracker-theme', value);
@@ -74,6 +136,87 @@ test('primary authenticated pages have one h1 and no WCAG A/AA violations', asyn
     await page.goto(path);
     await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
     await expectNoWcagViolations(page);
+  }
+});
+
+
+test('remaining first-party route matrix has one h1, clean console, and no WCAG A/AA violations', async ({ page }) => {
+  const errors = collectBrowserErrors(page);
+  await login(page, 'browser@example.com');
+
+  for (const [path, heading] of [
+    ['/today', 'Today'],
+    ['/journey/onboarding', 'Shape a plan you can learn from'],
+    ['/insights/', 'Insights'],
+    ['/you', 'You'],
+    ['/settings/profile', 'Profile'],
+    ['/settings/account', 'Account'],
+    ['/settings/preferences', 'Preferences'],
+    ['/settings/notifications', 'Reminders'],
+    ['/settings/data', 'Data & privacy'],
+    ['/settings/statistics', 'Statistics'],
+    ['/log/view', 'Logbook'],
+    ['/log/add', 'Logbook'],
+    ['/log/bulk', 'Bulk add logs'],
+    ['/catalog/', 'Your pouches'],
+    ['/catalog/add', 'Add a pouch'],
+    ['/catalog/search?q=Steady', 'Search pouches'],
+    ['/cravings/cravings', 'Craving history'],
+    ['/goals/', 'Goals'],
+    ['/goals/create', 'Create a goal'],
+    ['/dashboard/', 'Dashboard'],
+  ]) {
+    await auditRoute(page, errors, path, heading);
+    if (path === '/log/add') {
+      await expect(page.getByRole('dialog', { name: 'Add a log' })).toBeVisible();
+    }
+  }
+});
+
+
+test('populated analytics, edit forms, and goal progress pass the full accessibility contract', async ({ page }, testInfo) => {
+  test.setTimeout(60_000);
+  const errors = collectBrowserErrors(page);
+  await login(page, 'today-targeted@example.com');
+
+  for (const [path, heading] of [
+    ['/today', 'Today'],
+    ['/insights/', 'Insights'],
+    ['/dashboard/', 'Dashboard'],
+    ['/log/view', 'Logbook'],
+  ]) {
+    await auditRoute(page, errors, path, heading);
+  }
+
+  const editLogHref = await page.getByRole('link', { name: 'Edit' }).first().getAttribute('href');
+  await auditRoute(page, errors, editLogHref, 'Edit log');
+
+  const project = testInfo.project.name.includes('mobile') ? 'mobile' : 'desktop';
+  await relogin(page, `journey-review-${project}@example.com`);
+  let editGoalHref = null;
+  for (const [path, heading] of [
+    ['/journey/', 'Journey'],
+    ['/goals/', 'Goals'],
+    ['/goals/progress', 'Goal progress'],
+  ]) {
+    await auditRoute(page, errors, path, heading);
+    if (path === '/goals/') {
+      editGoalHref = await page.getByRole('link', { name: 'Adjust goal' }).first().getAttribute('href');
+    }
+  }
+
+  await auditRoute(page, errors, editGoalHref, 'Adjust goal');
+});
+
+
+test('400, 404, and 500 pages pass the accessibility and console contract', async ({ page }) => {
+  const errors = collectBrowserErrors(page);
+  for (const [path, heading, status] of [
+    ['/__test__/error/400', 'Refresh and try again', 400],
+    ['/missing-accessibility-fixture', 'Page not found', 404],
+    ['/__test__/error/500', 'Something went wrong on our end', 500],
+  ]) {
+    await auditRoute(page, errors, path, heading, { status });
   }
 });
 
@@ -220,7 +363,8 @@ for (const theme of ['light', 'dark']) {
     await page.goto('/dashboard/');
 
     await expectExplicitTheme(page, theme);
-    await expect(page.getByRole('table', { name: /recent logs/i })).toBeVisible();
+    await expect(page.locator('[data-dashboard-today]')).toBeVisible();
+    await expect(page.locator('[data-dashboard-trend]')).toBeVisible();
     await expectNoWcagViolations(page);
   });
 
@@ -230,7 +374,7 @@ for (const theme of ['light', 'dark']) {
     await page.goto('/log/view');
 
     await expectExplicitTheme(page, theme);
-    await expect(page.getByRole('table', { name: /log history/i })).toBeVisible();
+    await expect(page.locator('.logbook-row')).toBeVisible();
     await expectNoWcagViolations(page);
   });
 
@@ -254,22 +398,6 @@ test('populated Journey mobile overflow is keyboard accessible', async ({ page }
   const schedule = page.locator('.journey-table-scroll');
   await expect(schedule).toBeVisible();
   await expectKeyboardScrollable(schedule);
-});
-
-
-test('populated dashboard and log history mobile overflows are keyboard accessible', async ({ page }, testInfo) => {
-  test.skip(!testInfo.project.name.includes('mobile'), 'Overflow geometry is mobile-specific');
-  await login(page, 'today-targeted@example.com');
-  await page.goto('/dashboard/');
-
-  const recentLogs = page.locator('.horizontal-scroll-region', { has: page.getByRole('table', { name: /recent logs/i }) });
-  await expect(recentLogs).toBeVisible();
-  await expectKeyboardScrollable(recentLogs);
-
-  await page.goto('/log/view');
-  const logHistory = page.locator('.horizontal-scroll-region', { has: page.getByRole('table', { name: /log history/i }) });
-  await expect(logHistory).toBeVisible();
-  await expectKeyboardScrollable(logHistory);
 });
 
 

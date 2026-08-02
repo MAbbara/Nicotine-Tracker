@@ -32,20 +32,7 @@ function initializeApp() {
     initializeTooltips();
     initializeFormValidations();
 
-    // Dashboard charts and insights
-    if (document.getElementById('dailyIntakeChart')) {
-        const openModalBtn = document.getElementById('openAddLogModal');
-
-        const closeModalBtn = document.getElementById('closeAddLogModal');
-        const addLogModal = document.getElementById('addLogModal');
-        if (openModalBtn && closeModalBtn && addLogModal) {
-            openModalBtn.addEventListener('click', () => addLogModal.classList.remove('hidden'));
-            closeModalBtn.addEventListener('click', () => addLogModal.classList.add('hidden'));
-        }
-    }
-
     initializeQuickAdd();
-    checkNotifications();
 }
 
 // Tooltip helper functions
@@ -167,7 +154,6 @@ function handleQuickAdd(event) {
                 window.location.reload();
                 return;
             }
-            addQuickLogToTable(data.log);
             if (typeof refreshDashboard === 'function') {
                 refreshDashboard();
             }
@@ -183,73 +169,6 @@ function handleQuickAdd(event) {
         button.textContent = originalText;
         button.disabled = false;
     });
-}
-
-// Inject a new quick-add log row at the top of the logs table (if present)
-function addQuickLogToTable(log) {
-    const tableBody = document.getElementById('logs-table-body');
-    if (!tableBody || !log) return;
-
-    const dateStr = log.display_date || log.log_date || '';
-    const timeStr = log.display_time || (log.log_time ? log.log_time.slice(0, 5) : '-');
-    const brand = log.brand_name || (log.pouch && log.pouch.brand) || 'Unknown';
-    const nicotineContent = log.nicotine_content ?? (log.pouch && log.pouch.nicotine_mg) ?? log.custom_nicotine_mg ?? 0;
-    const totalNicotine = log.total_nicotine ?? (nicotineContent || 0) * (log.quantity || 0);
-    const notes = log.notes || '-';
-
-    const baseCell = 'px-6 py-4 whitespace-nowrap text-sm';
-    const mutedText = 'text-gray-500 dark:text-gray-400';
-
-    const row = document.createElement('tr');
-
-    const dateTd = document.createElement('td');
-    dateTd.className = `${baseCell} font-medium text-gray-900 dark:text-white`;
-    dateTd.textContent = dateStr;
-
-    const timeTd = document.createElement('td');
-    timeTd.className = `${baseCell} ${mutedText}`;
-    timeTd.textContent = timeStr;
-
-    const brandTd = document.createElement('td');
-    brandTd.className = `${baseCell} ${mutedText}`;
-    brandTd.textContent = brand;
-
-    const qtyTd = document.createElement('td');
-    qtyTd.className = `${baseCell} ${mutedText}`;
-    qtyTd.textContent = log.quantity;
-
-    const nicotineTd = document.createElement('td');
-    nicotineTd.className = `${baseCell} ${mutedText}`;
-    nicotineTd.textContent = nicotineContent;
-
-    const totalTd = document.createElement('td');
-    totalTd.className = `${baseCell} ${mutedText}`;
-    totalTd.textContent = totalNicotine;
-
-    const notesTd = document.createElement('td');
-    notesTd.className = `${baseCell} ${mutedText}`;
-    notesTd.textContent = notes;
-
-    const actionsTd = document.createElement('td');
-    actionsTd.className = `${baseCell} ${mutedText}`;
-    actionsTd.innerHTML = `
-        <a href="${log.edit_url || '#'}" class="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-600">Edit</a>
-        <span class="mx-2 text-gray-300 dark:text-gray-600">|</span>
-        <form action="${log.delete_url || '#'}" method="POST" class="inline" onsubmit="return confirm('Are you sure you want to delete this log?');">
-            <button type="submit" class="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-600">Delete</button>
-        </form>
-    `;
-    const deleteForm = actionsTd.querySelector('form');
-    if (deleteForm) {
-        const csrfInput = document.createElement('input');
-        csrfInput.type = 'hidden';
-        csrfInput.name = 'csrf_token';
-        csrfInput.value = getCsrfToken();
-        deleteForm.prepend(csrfInput);
-    }
-
-    row.append(dateTd, timeTd, brandTd, qtyTd, nicotineTd, totalTd, notesTd, actionsTd);
-    tableBody.prepend(row);
 }
 
 // Notification helpers
@@ -278,7 +197,7 @@ function getNotificationClasses(type) {
         case 'success': return 'bg-green-50 border border-green-200 text-green-800';
         case 'error': return 'bg-red-50 border border-red-200 text-red-800';
         case 'warning': return 'bg-yellow-50 border border-yellow-200 text-yellow-800';
-        default: return 'bg-blue-50 border border-blue-200 text-blue-800';
+        default: return 'bg-white border border-gray-300 text-gray-800';
     }
 }
 
@@ -291,23 +210,7 @@ function getNotificationIcon(type) {
         case 'warning':
             return '<svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>';
         default:
-            return '<svg class="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/></svg>';
-    }
-}
-
-// Notifications checker
-function checkNotifications() {
-    if (window.location.pathname.includes('/dashboard') || window.location.pathname.includes('/goals')) {
-        fetch('/goals/api/check_notifications')
-            .then(response => response.json())
-            .then(data => {
-                if (data.success && data.notifications.length > 0) {
-                    data.notifications.forEach(notification => {
-                        showNotification(notification.message, notification.type);
-                    });
-                }
-            })
-            .catch(err => console.error('Error checking notifications:', err));
+            return '<svg class="h-5 w-5 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/></svg>';
     }
 }
 
@@ -342,15 +245,6 @@ document.addEventListener('submit', function(event) {
 });
 
 // Global promise rejection handler
-window.addEventListener('unhandledrejection', function(event) {
-    console.error('Unhandled promise rejection:', event.reason);
-    showNotification('An unexpected error occurred. Please try again.', 'error');
-});
-
-// Optional autosave helpers and dark mode toggles remain unchanged
-
-
-// Handle AJAX errors globally
 window.addEventListener('unhandledrejection', function(event) {
     console.error('Unhandled promise rejection:', event.reason);
     showNotification('An unexpected error occurred. Please try again.', 'error');

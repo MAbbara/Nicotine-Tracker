@@ -116,3 +116,75 @@ test('goal delete confirmation binds once and preserves cancellation', async () 
   assert.equal(prevented, true);
   assert.equal(form.dataset.confirmBound, 'true');
 });
+
+
+test('goal notifications are fetched once and rendered inside their scoped region', async () => {
+  const { initGoalNotifications } = await loadModule();
+  const created = [];
+  const documentRef = {
+    createElement(tagName) {
+      const element = {
+        tagName,
+        children: [],
+        append(...children) { this.children.push(...children); },
+      };
+      created.push(element);
+      return element;
+    },
+  };
+  const region = {
+    dataset: { endpoint: '/goals/api/check_notifications' },
+    hidden: true,
+    ownerDocument: documentRef,
+    replaceChildren(...children) { this.children = children; },
+  };
+  const root = {
+    querySelector(selector) {
+      assert.equal(selector, '[data-goals-notifications]');
+      return region;
+    },
+  };
+  let requests = 0;
+  const request = async (endpoint) => {
+    requests += 1;
+    assert.equal(endpoint, '/goals/api/check_notifications');
+    return {
+      ok: true,
+      async json() {
+        return {
+          success: true,
+          notifications: [{ type: 'warning', message: 'Close to today’s guide.' }],
+        };
+      },
+    };
+  };
+
+  assert.equal(await initGoalNotifications(root, request), true);
+  assert.equal(await initGoalNotifications(root, request), false);
+  assert.equal(requests, 1);
+  assert.equal(region.hidden, false);
+  assert.equal(region.dataset.notificationsState, 'ready');
+  assert.equal(region.children[0].children[0].textContent, 'Close to today’s guide.');
+  assert.equal(created.some((element) => element.tagName === 'ul'), true);
+});
+
+
+test('goal notification polling contains network failures without retrying or throwing', async () => {
+  const { initGoalNotifications } = await loadModule();
+  const region = {
+    dataset: { endpoint: '/goals/api/check_notifications' },
+    hidden: true,
+  };
+  const root = { querySelector: () => region };
+  let requests = 0;
+  const request = async () => {
+    requests += 1;
+    throw new Error('offline');
+  };
+
+  assert.equal(await initGoalNotifications(root, request), false);
+  assert.equal(await initGoalNotifications(root, request), false);
+  assert.equal(requests, 1);
+  assert.equal(region.hidden, true);
+  assert.equal(region.dataset.notificationsState, 'error');
+});

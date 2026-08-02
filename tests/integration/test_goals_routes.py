@@ -6,6 +6,7 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 
 from models import Goal
+import routes.goals as goals_routes
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -200,3 +201,127 @@ def test_goal_pages_do_not_load_the_unused_legacy_preline_runtime(
         document = BeautifulSoup(logged_in_client.get(path).data, 'html.parser')
         scripts = [script.get('src', '') for script in document.select('script[src]')]
         assert not any(source.endswith('/static/js/preline.js') for source in scripts)
+
+
+def test_goal_progress_respects_start_date_and_repeated_get_is_read_only(
+        logged_in_client, db_session, test_goal, monkeypatch):
+    today = goals_routes._current_effective_day(
+        test_goal.user, goals_routes.resolve_timezone(test_goal.user.timezone)
+    )
+    test_goal.start_date = today - timedelta(days=6)
+    test_goal.current_streak = 4
+    test_goal.best_streak = 9
+    test_goal.enable_notifications = True
+    db_session.commit()
+
+    commit_calls = []
+    notification_calls = []
+
+    class RecordingNotificationService:
+        def send_goal_achievement_notification(self, *args):
+            notification_calls.append(args)
+
+    monkeypatch.setattr(
+        goals_routes, 'NotificationService', RecordingNotificationService,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        goals_routes.db.session, 'commit', lambda: commit_calls.append(True)
+    )
+
+    responses = [
+        logged_in_client.get('/goals/progress'),
+        logged_in_client.get('/goals/progress'),
+    ]
+
+    assert [response.status_code for response in responses] == [200, 200]
+    assert commit_calls == []
+    assert notification_calls == []
+    assert test_goal.current_streak == 4
+    assert test_goal.best_streak == 9
+    for response in responses:
+        document = BeautifulSoup(response.data, 'html.parser')
+        periods = document.select(
+            f'[data-goal-id="{test_goal.id}"] [data-progress-period]'
+        )
+        assert len(periods) == 7
+        assert periods[0].select_one('time')['datetime'] == test_goal.start_date.isoformat()
+        assert periods[-1].select_one('time')['datetime'] == today.isoformat()
+        assert '7 days' in document.select_one(
+            f'[data-goal-id="{test_goal.id}"] [data-evaluated-periods]'
+        ).get_text(' ', strip=True)
+
+
+def test_weekly_goal_progress_uses_distinct_weeks_and_marks_missing_baseline(
+        logged_in_client, db_session, test_user, test_goal):
+    today = goals_routes._current_effective_day(
+        test_user, goals_routes.resolve_timezone(test_user.timezone)
+    )
+    current_monday = today - timedelta(days=today.weekday())
+    test_goal.is_active = False
+    weekly_goal = Goal(
+        user_id=test_user.id,
+        goal_type='weekly_reduction',
+        target_value=20,
+        start_date=current_monday - timedelta(days=26),
+        end_date=current_monday - timedelta(days=2),
+        is_active=True,
+        enable_notifications=False,
+    )
+    open_weekly_goal = Goal(
+        user_id=test_user.id,
+        goal_type='weekly_reduction',
+        target_value=15,
+        start_date=current_monday - timedelta(days=14),
+        is_active=True,
+        enable_notifications=False,
+    )
+    db_session.add_all([weekly_goal, open_weekly_goal])
+    db_session.commit()
+
+    response = logged_in_client.get('/goals/progress')
+    document = BeautifulSoup(response.data, 'html.parser')
+    goal_row = document.select_one(f'[data-goal-id="{weekly_goal.id}"]')
+    periods = goal_row.select('[data-progress-period][data-period-unit="week"]')
+    dates = [period.select_one('time')['datetime'] for period in periods]
+    ends = [period['data-period-end'] for period in periods]
+    open_goal_row = document.select_one(f'[data-goal-id="{open_weekly_goal.id}"]')
+    open_dates = [
+        period.select_one('time')['datetime']
+        for period in open_goal_row.select(
+            '[data-progress-period][data-period-unit="week"]'
+        )
+    ]
+
+    assert response.status_code == 200
+    assert dates == [
+        (current_monday - timedelta(days=21)).isoformat(),
+        (current_monday - timedelta(days=14)).isoformat(),
+    ]
+    assert ends == [
+        (current_monday - timedelta(days=15)).isoformat(),
+        (current_monday - timedelta(days=8)).isoformat(),
+    ]
+    assert all(date.fromisoformat(value) >= weekly_goal.start_date for value in dates)
+    assert all(date.fromisoformat(value) <= weekly_goal.end_date for value in ends)
+    assert open_dates == [
+        (current_monday - timedelta(days=14)).isoformat(),
+        (current_monday - timedelta(days=7)).isoformat(),
+    ]
+    assert current_monday.isoformat() not in open_dates
+    assert 'weeks' in goal_row.select_one('[data-current-streak]').get_text(' ', strip=True)
+    assert 'Not enough baseline' in goal_row.get_text(' ', strip=True)
+    assert 'Reduction met' not in goal_row.get_text(' ', strip=True)
+
+
+def test_goal_notifications_are_owned_only_by_the_scoped_goals_page(
+        logged_in_client):
+    goals = logged_in_client.get('/goals/').get_data(as_text=True)
+    dashboard = logged_in_client.get('/dashboard/').get_data(as_text=True)
+
+    assert 'data-goals-notifications' in goals
+    assert 'data-endpoint="/goals/api/check_notifications"' in goals
+    assert '/static/js/goals/page.js' in goals
+    assert 'data-goals-notifications' not in dashboard
+    assert '/static/js/goals/page.js' not in dashboard
+    assert '/goals/api/check_notifications' not in dashboard

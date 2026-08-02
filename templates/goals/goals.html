@@ -13,6 +13,15 @@
     <a class="c-button c-button--primary" href="{{ url_for('goals.create_goal') }}">Create a goal</a>
   </header>
 
+  <section
+    class="goals-section"
+    aria-label="Goal notices"
+    aria-live="polite"
+    data-goals-notifications
+    data-endpoint="{{ url_for('goals.check_notifications') }}"
+    hidden
+  ></section>
+
   <aside
     class="goals-analytics"
     aria-labelledby="goals-practice-title"

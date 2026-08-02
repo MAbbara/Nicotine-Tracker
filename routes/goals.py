@@ -18,7 +18,6 @@ from services.timezone_service import (
     resolve_timezone,
 )
 from services.log_service import logs_for_user_window, summarize_logs
-from services.notification_service import NotificationService
 from extensions import db
 from routes.auth import login_required, get_current_user
 from sqlalchemy import desc, func
@@ -290,80 +289,106 @@ def progress():
             flash('No active goals found. Create a goal to track your progress!', 'info')
             return redirect(url_for('goals.create_goal'))
         
-        # Calculate detailed progress for each goal (using user's timezone)
+        # Calculate a read-only history using the user's canonical day/week
+        # windows. Goal creation and notification workflows own persistence.
         progress_data = {}
         resolved_timezone = resolve_timezone(user.timezone)
         today = _current_effective_day(user, resolved_timezone)
-        
+
         for goal in active_goals:
-            # Get last 30 days of progress
+            end_date = min(today, goal.end_date) if goal.end_date else today
+            history_start = max(
+                end_date - timedelta(days=29),
+                goal.start_date or end_date - timedelta(days=29),
+            )
+
+            if end_date < history_start:
+                period_dates = []
+            elif goal.goal_type == 'weekly_reduction':
+                # A reduction reading is meaningful only for a completed
+                # Monday-Sunday period wholly inside the goal/horizon. The
+                # active week and partial boundary weeks are not observations.
+                first_week = history_start + timedelta(
+                    days=(-history_start.weekday()) % 7
+                )
+                last_completed_day = min(
+                    end_date,
+                    today - timedelta(days=today.weekday() + 1),
+                )
+                last_week_end = last_completed_day - timedelta(
+                    days=(last_completed_day.weekday() + 1) % 7
+                )
+                last_week = last_week_end - timedelta(days=6)
+                period_dates = []
+                period_date = first_week
+                while period_date <= last_week:
+                    period_dates.append(period_date)
+                    period_date += timedelta(days=7)
+            else:
+                period_dates = [
+                    history_start + timedelta(days=offset)
+                    for offset in range((end_date - history_start).days + 1)
+                ]
+
             progress_history = []
-            for i in range(30):
-                check_date = today - timedelta(days=i)
+            for check_date in period_dates:
                 daily_progress = calculate_goal_progress(
                     user, goal, check_date, resolved_timezone
                 )
                 progress_history.append({
                     'date': check_date.isoformat(),
+                    'period_end': (
+                        check_date + timedelta(days=6)
+                        if goal.goal_type == 'weekly_reduction'
+                        else check_date
+                    ).isoformat(),
                     'achieved': daily_progress['achieved'],
+                    'available': daily_progress.get('available', True),
                     'current': daily_progress['current'],
                     'target': daily_progress['target'],
                     'percentage': daily_progress['percentage']
                 })
-            
-            progress_history.reverse()  # Show oldest to newest
-            
+
             # Calculate streak information
             current_streak = 0
             best_streak = 0
             temp_streak = 0
-            
-            for day in progress_history:
-                if day['achieved']:
+
+            for period in progress_history:
+                if period['available'] and period['achieved']:
                     temp_streak += 1
                     best_streak = max(best_streak, temp_streak)
                 else:
                     temp_streak = 0
-            
+
             # Current streak is the most recent consecutive achievements
-            for day in reversed(progress_history):
-                if day['achieved']:
+            for period in reversed(progress_history):
+                if period['available'] and period['achieved']:
                     current_streak += 1
                 else:
                     break
-            
-            # Update goal streaks
-            goal.current_streak = current_streak
-            goal.best_streak = max(goal.best_streak, best_streak)
-            
-            # Check for achievements and send notifications
-            if goal.enable_notifications:
-                notification_service = NotificationService()
-                
-                # Check if user achieved a new streak milestone
-                if current_streak > 0 and current_streak % 7 == 0:  # Weekly milestone
-                    notification_service.send_goal_achievement_notification(
-                        user.id, goal, "milestone"
-                    )
-                
-                # Check if user completed their goal (reached end date with good progress)
-                if goal.end_date and goal.end_date <= today:
-                    success_rate = sum(1 for day in progress_history if day['achieved']) / len(progress_history) * 100
-                    if success_rate >= 80:  # 80% success rate considered completion
-                        notification_service.send_goal_achievement_notification(
-                            user.id, goal, "completed"
-                        )
-            
+
+            evaluated_periods = [
+                period for period in progress_history if period['available']
+            ]
+            success_rate = (
+                sum(1 for period in evaluated_periods if period['achieved'])
+                / len(evaluated_periods) * 100
+                if evaluated_periods else 0
+            )
+
             progress_data[goal.id] = {
                 'goal': goal,
                 'history': progress_history,
                 'current_streak': current_streak,
                 'best_streak': best_streak,
-                'success_rate': sum(1 for day in progress_history if day['achieved']) / len(progress_history) * 100
+                'success_rate': success_rate,
+                'evaluated_periods': len(evaluated_periods),
+                'period_unit': (
+                    'week' if goal.goal_type == 'weekly_reduction' else 'day'
+                ),
             }
-        
-        db.session.commit()
-        
+
         return render_template('progress.html', progress_data=progress_data)
         
     except Exception as e:
@@ -393,6 +418,8 @@ def check_notifications():
             progress = calculate_goal_progress(
                 user, goal, today, resolved_timezone
             )
+            if not progress.get('available', True):
+                continue
             
             # Check if approaching threshold
             if progress['percentage'] >= (goal.notification_threshold * 100):
@@ -500,20 +527,26 @@ def calculate_goal_progress(user, goal, target_date, resolved_timezone=None):
                 current = reduction_percentage
                 target = goal.target_value
                 percentage = (reduction_percentage / goal.target_value * 100) if goal.target_value > 0 else 0
+                available = True
             else:
-                achieved = True
+                achieved = None
                 current = 0
                 target = goal.target_value
-                percentage = 100
-        
+                percentage = 0
+                available = False
+
         else:
             achieved = False
             current = 0
             target = goal.target_value
             percentage = 0
-        
+
+        if goal.goal_type != 'weekly_reduction':
+            available = True
+
         return {
             'achieved': achieved,
+            'available': available,
             'current': round(current, 1),
             'target': target,
             'percentage': min(percentage, 999),  # Cap at 999% for display
@@ -524,6 +557,7 @@ def calculate_goal_progress(user, goal, target_date, resolved_timezone=None):
         current_app.logger.error(f'Calculate goal progress error: {e}')
         return {
             'achieved': False,
+            'available': False,
             'current': 0,
             'target': goal.target_value,
             'percentage': 0,

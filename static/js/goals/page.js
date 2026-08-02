@@ -21,6 +21,62 @@ function renderGoalAnalytics(region, analytics) {
 }
 
 
+function renderGoalNotifications(region, notifications) {
+  if (!region || !Array.isArray(notifications)) return false;
+  const messages = notifications.filter(
+    (notification) => typeof notification?.message === 'string'
+      && notification.message.trim(),
+  );
+  if (messages.length === 0) {
+    region.replaceChildren();
+    region.hidden = true;
+    return true;
+  }
+
+  const documentRef = region.ownerDocument;
+  const list = documentRef.createElement('ul');
+  messages.forEach((notification) => {
+    const item = documentRef.createElement('li');
+    item.className = notification.type === 'danger'
+      ? 'c-alert c-alert--danger'
+      : 'c-alert c-alert--attention';
+    item.textContent = notification.message;
+    list.append(item);
+  });
+  region.replaceChildren(list);
+  region.hidden = false;
+  return true;
+}
+
+
+async function initGoalNotifications(root = document, fetchImpl = fetch) {
+  const region = root.querySelector('[data-goals-notifications]');
+  if (!region || region.dataset.notificationsState) return false;
+
+  region.dataset.notificationsState = 'loading';
+  const response = await Promise.resolve()
+    .then(() => fetchImpl(region.dataset.endpoint, {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' },
+    }))
+    .catch(() => null);
+  if (!response?.ok) {
+    region.dataset.notificationsState = 'error';
+    return false;
+  }
+
+  const payload = await response.json().catch(() => null);
+  if (payload?.success !== true || !Array.isArray(payload.notifications)) {
+    region.dataset.notificationsState = 'error';
+    return false;
+  }
+
+  const rendered = renderGoalNotifications(region, payload.notifications);
+  region.dataset.notificationsState = rendered ? 'ready' : 'error';
+  return rendered;
+}
+
+
 async function initGoalsPage(
   root = document,
   fetchImpl = fetch,
@@ -67,6 +123,7 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
       window.fetch.bind(window),
       window.confirm.bind(window),
     );
+    void initGoalNotifications(document, window.fetch.bind(window));
   };
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', start, { once: true });
@@ -76,4 +133,10 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
 }
 
 
-export { bindGoalDeleteConfirmations, initGoalsPage, renderGoalAnalytics };
+export {
+  bindGoalDeleteConfirmations,
+  initGoalNotifications,
+  initGoalsPage,
+  renderGoalAnalytics,
+  renderGoalNotifications,
+};

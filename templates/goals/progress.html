@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% from "components/chart.html" import chart_frame %}
+
+{% block title %}Goal progress - Nicotine Tracker{% endblock %}
+
+{% block content %}
+<div class="goals-page goal-progress-page">
+  <header class="goals-intro">
+    <div class="goals-intro__copy">
+      <p class="eyebrow">A wider view</p>
+      <h1>Goal progress</h1>
+      <p>Look across the last 30 days for patterns worth keeping or adjusting. A difficult day is context for the next choice, not a verdict.</p>
+    </div>
+    <a class="c-button c-button--secondary" href="{{ url_for('goals.index') }}">Back to goals</a>
+  </header>
+
+  <section class="goals-section" aria-labelledby="progress-overview-title">
+    <div class="goals-section__intro">
+      <div>
+        <p class="eyebrow">Recent practice</p>
+        <h2 id="progress-overview-title">Your 30-day view</h2>
+      </div>
+      <p>Daily ceilings and weekly reductions work differently, so each entry says what the result means instead of treating every percentage as the same kind of score.</p>
+    </div>
+
+    <div class="goals-list">
+      {% for item in progress_data.values() %}
+        {% set goal = item.goal %}
+        <article class="goal-row" data-goal-id="{{ goal.id }}">
+          <div class="goal-row__identity">
+            <span class="c-status"><span class="c-status__mark" aria-hidden="true"></span>Active guide</span>
+            {% if goal.goal_type == 'daily_pouches' %}
+              <h3>Daily pouch ceiling</h3>
+              <p>Stay at or below {{ goal.target_value }} pouch{% if goal.target_value != 1 %}es{% endif %} a day.</p>
+            {% elif goal.goal_type == 'daily_mg' %}
+              <h3>Daily nicotine ceiling</h3>
+              <p>Stay at or below {{ goal.target_value }} mg a day.</p>
+            {% else %}
+              <h3>Weekly reduction</h3>
+              <p>Aim for {{ goal.target_value }}% fewer pouches than the previous week.</p>
+            {% endif %}
+          </div>
+
+          <dl class="goal-row__facts">
+            <div>
+              <dt>Target</dt>
+              <dd>
+                {% if goal.goal_type == 'daily_pouches' %}{{ goal.target_value }} pouches / day
+                {% elif goal.goal_type == 'daily_mg' %}{{ goal.target_value }} mg / day
+                {% else %}{{ goal.target_value }}% / week{% endif %}
+              </dd>
+            </div>
+            <div>
+              <dt>Current streak</dt>
+              <dd data-current-streak>{{ item.current_streak }} {{ item.period_unit }}{% if item.current_streak != 1 %}s{% endif %}</dd>
+            </div>
+            <div>
+              <dt>Best run in this view</dt>
+              <dd>{{ item.best_streak }} {{ item.period_unit }}{% if item.best_streak != 1 %}s{% endif %}</dd>
+            </div>
+            <div>
+              <dt>Entries meeting the guide</dt>
+              <dd data-evaluated-periods>
+                {% if item.evaluated_periods %}
+                  {{ item.success_rate|round|int }}% across {{ item.evaluated_periods }} {{ item.period_unit }}{% if item.evaluated_periods != 1 %}s{% endif %}
+                {% else %}
+                  Not enough data yet
+                {% endif %}
+              </dd>
+            </div>
+          </dl>
+
+          {% if item.evaluated_periods %}
+            {% set chart_summary = (item.success_rate|round|int|string) ~ '% of ' ~ (item.evaluated_periods|string) ~ ' evaluated ' ~ item.period_unit ~ ('s' if item.evaluated_periods != 1 else '') ~ ' met this guide. Use the sequence to notice what made the steadier periods easier.' %}
+          {% else %}
+            {% set chart_summary = 'There is not enough baseline information to evaluate this guide yet.' %}
+          {% endif %}
+          {% call chart_frame('goal-history-' ~ goal.id, 'Thirty-day record', chart_summary) %}
+            <div class="journey-schedule journey-table-scroll" role="region" tabindex="0" aria-label="Thirty-day goal record">
+              <table>
+                <caption class="u-visually-hidden">Thirty-day record for this goal, oldest entry first</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">{% if item.period_unit == 'week' %}Week{% else %}Date{% endif %}</th>
+                    <th scope="col">Recorded</th>
+                    <th scope="col">Guide</th>
+                    <th scope="col">Reading</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for day in item.history %}
+                    <tr data-progress-period data-period-unit="{{ item.period_unit }}" data-period-end="{{ day.period_end }}">
+                      <th scope="row">
+                        {% if item.period_unit == 'week' %}Week of {% endif %}<time datetime="{{ day.date }}">{{ day.date }}</time>
+                      </th>
+                      <td>
+                        {% if not day.available %}Not available
+                        {% elif goal.goal_type == 'daily_pouches' %}{{ day.current }} pouches
+                        {% elif goal.goal_type == 'daily_mg' %}{{ day.current|round(2) }} mg
+                        {% else %}{{ day.current|round(1) }}% reduction{% endif %}
+                      </td>
+                      <td>
+                        {% if goal.goal_type == 'daily_pouches' %}At or below {{ day.target }} pouches
+                        {% elif goal.goal_type == 'daily_mg' %}At or below {{ day.target }} mg
+                        {% else %}At least {{ day.target }}% reduction{% endif %}
+                      </td>
+                      <td>
+                        <span class="c-status{% if day.available and day.achieved %} c-status--constructive{% endif %}">
+                          <span class="c-status__mark" aria-hidden="true"></span>
+                          {% if not day.available %}
+                            Not enough baseline
+                          {% elif goal.goal_type == 'weekly_reduction' %}
+                            {{ 'Reduction met' if day.achieved else 'Still in progress' }}
+                          {% else %}
+                            {{ 'Within the guide' if day.achieved else 'Worth reviewing' }}
+                          {% endif %}
+                        </span>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endcall %}
+        </article>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block preline_js %}{% endblock %}

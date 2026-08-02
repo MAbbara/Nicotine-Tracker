@@ -12,6 +12,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from app import create_app  # noqa: E402
 from extensions import db  # noqa: E402
 from routes.auth import get_current_user, login_required  # noqa: E402
+from flask import render_template  # noqa: E402
 from models import (  # noqa: E402
     Craving,
     DailyCheckIn,
@@ -29,6 +30,19 @@ from models import (  # noqa: E402
 
 
 app = create_app('testing')
+
+
+@app.get('/__test__/error/<int:status_code>')
+def render_accessibility_error_fixture(status_code):
+    """Render the real error templates for browser-only accessibility QA."""
+    templates = {
+        400: ('errors/400.html', {}),
+        500: ('errors/500.html', {'request_id': 'browser-accessibility-fixture'}),
+    }
+    if status_code not in templates:
+        return render_template('errors/404.html'), 404
+    template_name, context = templates[status_code]
+    return render_template(template_name, **context), status_code
 
 with app.app_context():
     db.create_all()
