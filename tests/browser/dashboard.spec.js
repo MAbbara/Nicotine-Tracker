@@ -128,7 +128,9 @@ test('Dashboard preserves its semantic trend when chart enhancement cannot load'
   await loginPopulated(page);
   await page.goto('/dashboard/');
 
-  await expect(page.getByRole('status')).toContainText('Chart unavailable');
+  await expect(page.getByRole('status')).toHaveText(
+    'Chart unavailable. The daily values remain available in the table.',
+  );
   await expect(page.locator('.apexcharts-canvas')).toHaveCount(0);
   await expect(page.getByRole('table', { name: 'Recent daily intake data' })).toBeVisible();
   expect(errors).toEqual([]);

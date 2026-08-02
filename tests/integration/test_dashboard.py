@@ -2,8 +2,10 @@
 
 from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
+import re
 
 from bs4 import BeautifulSoup
+from sqlalchemy import event
 
 from models import Log, User
 import routes.dashboard as dashboard_routes
@@ -223,6 +225,59 @@ def test_dashboard_custom_date_range_validation_contract_is_retained(
             'success': False,
             'error': 'Start date must be on or before end date.',
         }
+
+
+def test_dashboard_index_builds_summary_and_trend_from_one_log_select(
+        logged_in_client, db_session, test_user, test_pouch):
+    for offset in range(30):
+        _add_log(
+            db_session,
+            test_user,
+            test_pouch,
+            logged_at=datetime.now(timezone.utc) - timedelta(days=offset),
+            quantity=1,
+        )
+    db_session.commit()
+    engine = db_session.get_bind()
+    statements = []
+
+    def capture(_connection, _cursor, statement, _parameters, _context, _many):
+        if statement.lstrip().upper().startswith('SELECT'):
+            statements.append(' '.join(statement.casefold().split()))
+
+    event.listen(engine, 'before_cursor_execute', capture)
+    try:
+        response = logged_in_client.get('/dashboard/')
+    finally:
+        event.remove(engine, 'before_cursor_execute', capture)
+
+    log_selects = [
+        statement for statement in statements
+        if re.search(r'\bfrom\s+"?log"?\b', statement)
+    ]
+    assert response.status_code == 200
+    assert len(log_selects) == 1, (
+        f'expected one 30-day log SELECT, observed {len(log_selects)}'
+    )
+
+
+def test_dashboard_unknown_strength_copy_counts_log_entries(
+        logged_in_client, db_session, test_user):
+    db_session.add(Log(
+        user_id=test_user.id,
+        quantity=4,
+        log_time=datetime.now(timezone.utc),
+        product_brand_snapshot='Strength missing',
+    ))
+    db_session.commit()
+
+    document = _document(logged_in_client.get('/dashboard/'))
+    note = document.select_one('.dashboard-today__note')
+
+    assert note is not None
+    assert note.get_text(' ', strip=True) == (
+        '1 log entry has no saved strength, so today’s nicotine total is incomplete.'
+    )
 
 
 def test_dashboard_template_retires_legacy_palette_grid_and_controllers():

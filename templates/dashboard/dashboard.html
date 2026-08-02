@@ -57,7 +57,7 @@
     </dl>
 
     {% if summary.get('unknown_strength_count', 0) %}
-      <p class="dashboard-today__note">{{ summary.get('unknown_strength_count') }} logged pouch{% if summary.get('unknown_strength_count') != 1 %}es have{% else %} has{% endif %} no saved strength, so today’s nicotine total is incomplete.</p>
+      <p class="dashboard-today__note">{{ summary.get('unknown_strength_count') }} log {{ 'entry has' if summary.get('unknown_strength_count') == 1 else 'entries have' }} no saved strength, so today’s nicotine total is incomplete.</p>
     {% endif %}
   </section>
 

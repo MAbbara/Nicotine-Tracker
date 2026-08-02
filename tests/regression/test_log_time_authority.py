@@ -590,75 +590,12 @@ def _rendered_context(module, client, url):
     return captured
 
 
-def test_dashboard_recent_list_follows_log_time_authority(
-        logged_in_client, db_session, test_user):
-    # The dashboard recent list must select and order by the authoritative
-    # log_time within the rolling 7-day window (ties broken stably by
-    # created_at/id), never by the legacy log_date. get_sorted_pouches
-    # requires preferences, so the UTC test_user gets the defaults.
-    db_session.add(UserPreferences(user_id=test_user.id, preferred_brands=[]))
-    now = datetime.utcnow()
-    today = now.date()
-    stale_legacy = today - timedelta(days=30)
-
-    recent_authoritative = Log(
-        user_id=test_user.id, quantity=1,
-        log_time=now - timedelta(hours=2),   # inside the 7-day window
-        log_date=stale_legacy,               # legacy: outside the window
-    )
-    stale_authoritative = Log(
-        user_id=test_user.id, quantity=1,
-        log_time=now - timedelta(days=30),   # outside the 7-day window
-        log_date=today,                      # legacy: inside the window
-    )
-    recent_yesterday = Log(
-        user_id=test_user.id, quantity=1,
-        log_time=now - timedelta(days=1),
-        log_date=stale_legacy,
-    )
-    # A log_time tie broken only by creation order: tie_second was created
-    # later (later created_at, higher id) and must sort ahead of tie_first.
-    tie_time = now - timedelta(hours=4)
-    tie_first = Log(
-        user_id=test_user.id, quantity=1,
-        log_time=tie_time, log_date=stale_legacy,
-        created_at=now - timedelta(minutes=10),
-    )
-    tie_second = Log(
-        user_id=test_user.id, quantity=1,
-        log_time=tie_time, log_date=stale_legacy,
-        created_at=now - timedelta(minutes=5),
-    )
-    db_session.add_all([
-        recent_authoritative, stale_authoritative, recent_yesterday,
-        tie_first, tie_second,
-    ])
-    db_session.commit()
-
+def test_dashboard_compatibility_context_omits_retired_recent_list(
+        logged_in_client):
     captured = _rendered_context(dashboard_routes, logged_in_client, '/dashboard/')
 
-    recent_ids = [log.id for log in captured['recent_logs']]
-    assert recent_authoritative.id in recent_ids, (
-        'a log whose authoritative log_time falls inside the rolling 7-day '
-        'window must appear in the recent list even though its legacy '
-        f'log_date is 30 days stale; recent ids were {recent_ids}'
-    )
-    assert stale_authoritative.id not in recent_ids, (
-        'a log whose authoritative log_time is 30 days old must not appear '
-        'in the recent list even though its legacy log_date is today; '
-        f'recent ids were {recent_ids}'
-    )
-    expected_order = [
-        recent_authoritative.id,   # newest log_time first
-        tie_second.id,             # log_time tie: later created_at/id first
-        tie_first.id,
-        recent_yesterday.id,
-    ]
-    assert recent_ids == expected_order, (
-        'the recent list must be ordered by descending authoritative '
-        'log_time with stable created_at/id tie-breaking, not by legacy '
-        f'log_date; expected {expected_order}, got {recent_ids}'
-    )
+    assert 'recent_logs' not in captured
+    assert set(captured) == {'analytics_trend', 'today_intake', 'user'}
 
 
 def test_dashboard_totals_follow_snapshots_and_count_unknown_strength(
@@ -745,13 +682,7 @@ def test_dashboard_totals_follow_snapshots_and_count_unknown_strength(
         'unknown-strength events (NULL snapshots) excluded from the mg '
         f"total; got {today_intake.get('unknown_strength_count')!r}"
     )
-    recent_by_id = {log.id: log for log in captured['recent_logs']}
-    historical = recent_by_id[snapshotted.id]
-    assert historical.get_brand_name() == 'Dashboard Brand', (
-        'the recent row rendered by the dashboard must keep the historical '
-        'brand from the immutable product_brand_snapshot, not the renamed '
-        f"or deleted pouch; got {historical.get_brand_name()!r}"
-    )
+    assert 'recent_logs' not in captured
 
 
 def test_hourly_distribution_uses_local_hours_and_log_time_membership(

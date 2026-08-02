@@ -3,7 +3,6 @@ from datetime import date, datetime, time, timedelta
 
 import pytz
 
-from models import Log, Goal
 from routes.auth import login_required, get_current_user
 from services.log_service import (
     group_logs_by_effective_day,
@@ -15,11 +14,7 @@ from services.log_service import (
 from services.timezone_service import (
     get_user_day_window,
     resolve_timezone,
-    to_naive_utc,
 )
-from sqlalchemy import desc
-
-from services.pouch_service import *
 
 dashboard_bp = Blueprint('dashboard', __name__, template_folder="../templates/dashboard")
 
@@ -143,140 +138,14 @@ def index():
         
         resolved_timezone = resolve_timezone(user.timezone)
         reset_time = _user_reset_time(user)
-        today, local_now, now_utc = _current_user_day(
+        today, _, _ = _current_user_day(
             resolved_timezone, reset_time
         )
-        
-        default_pouches, user_pouches = get_sorted_pouches(user)
-        
-        # Get today's summary with timezone support
-        today_intake = _day_summary(
-            user.id, resolved_timezone, today, reset_time
-        )
-        
-        # Get recent logs (last 7 days) - use timezone-aware date range
-        now_utc_naive = to_naive_utc(now_utc)
-        week_ago = now_utc_naive - timedelta(days=7)
-        recent_logs = Log.query.filter(
-            Log.user_id == user.id,
-            Log.log_time >= week_ago,
-            Log.log_time < now_utc_naive,
-        ).order_by(
-            desc(Log.log_time), desc(Log.created_at), desc(Log.id)
-        ).limit(10).all()
-        
-        # Get active goal
-        active_goal = Goal.query.filter_by(user_id=user.id, is_active=True).first()
-        goal_progress = None
-        
-        if active_goal:
-            if active_goal.goal_type == 'daily_pouches':
-                goal_progress = {
-                    'current': today_intake['total_pouches'],
-                    'target': active_goal.target_value,
-                    'percentage': min(100, (today_intake['total_pouches'] / active_goal.target_value) * 100) if active_goal.target_value > 0 else 0,
-                    'type': 'pouches'
-                }
-            elif active_goal.goal_type == 'daily_mg':
-                goal_progress = {
-                    'current': today_intake['total_mg'],
-                    'target': active_goal.target_value,
-                    'percentage': min(100, (today_intake['total_mg'] / active_goal.target_value) * 100) if active_goal.target_value > 0 else 0,
-                    'type': 'mg'
-                }
-        
-        # Calculate average pouches per hour (simple calculation)
-        avg_pouches_per_hour = 0
-        if today_intake['total_pouches'] > 0:
-            current_hour = local_now.hour
-            if current_hour > 0:
-                avg_pouches_per_hour = round(today_intake['total_pouches'] / current_hour, 1)
-        
-        # Get timezone-aware date and time for modal
-        today_str = local_now.date().isoformat()
-        current_time_str = local_now.time().strftime('%H:%M')
-        
-        # Calculate 7-day stats
-        total_mg_7_days = 0
-        total_pouches_7_days = 0
-        
-        for i in range(7):
-            d = today - timedelta(days=i)
-            daily_intake = _day_summary(
-                user.id, resolved_timezone, d, reset_time
-            )
-            total_mg_7_days += daily_intake['total_mg']
-            total_pouches_7_days += daily_intake['total_pouches']
-
-        # Calculate averages
-        avg_mg_7_days = round(total_mg_7_days / 7, 1) if total_mg_7_days > 0 else 0
-        avg_pouches_7_days = round(total_pouches_7_days / 7, 1) if total_pouches_7_days > 0 else 0
-        
-        insights = []
-
-        # Daily average insight
-        if total_pouches_7_days > 0:
-            insights.append(f"Your 7-day average is {avg_pouches_7_days} pouches ({avg_mg_7_days}mg) per day.")
-
-        # Categorize intake and provide messages
-        health_risk_info = ""
-        if avg_mg_7_days == 0:
-            health_risk_info = "You haven't logged any intake recently. This is the best way to avoid health risks."
-        elif avg_mg_7_days <= 20:
-            health_risk_info = "This is a low intake level. Keep it up to minimize health risks!"
-        elif avg_mg_7_days <= 50:
-            health_risk_info = "This is a moderate intake level. Being mindful of your consumption helps manage health risks."
-        elif avg_mg_7_days <= 100:
-            health_risk_info = "This is a high intake level. Consider strategies to reduce consumption to lower long-term health risks."
-        else:
-            health_risk_info = "This is a very high intake level, associated with increased health risks. Setting reduction goals could be a valuable step."
-        
-        insights.append(health_risk_info)
-        
-        # Get this week vs last week comparison using timezone-aware calculations
-        this_week_start = today - timedelta(days=today.weekday())
-        last_week_start = this_week_start - timedelta(days=7)
-        last_week_end = this_week_start - timedelta(days=1)
-        
-        # Calculate weekly totals using timezone-aware daily intake
-        this_week_pouches = 0
-        
-        current_date = this_week_start
-        while current_date <= today:
-            daily_intake = _day_summary(
-                user.id, resolved_timezone, current_date, reset_time
-            )
-            this_week_pouches += daily_intake['total_pouches']
-            current_date += timedelta(days=1)
-        
-        last_week_pouches = 0
-        
-        current_date = last_week_start
-        while current_date <= last_week_end:
-            daily_intake = _day_summary(
-                user.id, resolved_timezone, current_date, reset_time
-            )
-            last_week_pouches += daily_intake['total_pouches']
-            current_date += timedelta(days=1)
-        
-        # Weekly comparison
-        if last_week_pouches > 0 and this_week_pouches > 0:
-            change_percent = round(((this_week_pouches - last_week_pouches) / last_week_pouches) * 100, 1)
-            if change_percent > 5:
-                insights.append(f"Your pouch intake is up {change_percent}% compared to last week.")
-            elif change_percent < -5:
-                insights.append(f"Great job! Your pouch intake is down {abs(change_percent)}% compared to last week.")
-        
-        hourly_totals = [0] * 24
-        for log in _logs_for_local_days(
-                user.id, resolved_timezone, today, 30, reset_time):
-            hour = log_local_datetime(log, resolved_timezone).hour
-            hourly_totals[hour] += log.quantity or 0
-
         analytics_start = today - timedelta(days=29)
         analytics_summaries = _summaries_for_date_range(
             user.id, resolved_timezone, analytics_start, today, reset_time
         )
+        today_intake = analytics_summaries[today]
         analytics_trend = [
             {
                 'date': day.isoformat(),
@@ -285,29 +154,9 @@ def index():
             }
             for day, summary in analytics_summaries.items()
         ]
-        analytics_hourly = [
-            {'hour': f'{hour:02d}:00', 'pouches': total}
-            for hour, total in enumerate(hourly_totals)
-        ]
-
-        if any(hourly_totals):
-            hour = max(range(24), key=hourly_totals.__getitem__)
-            insights.append(f"Your most active time for intake is around {hour:02d}:00.")
-        
         return render_template('dashboard.html',
-                             date=date,
                              today_intake=today_intake,
-                             recent_logs=recent_logs,
-                             active_goal=active_goal,
-                             goal_progress=goal_progress,
-                             avg_pouches_per_hour=avg_pouches_per_hour,
-                             default_pouches=default_pouches,
-                             user_pouches=user_pouches,
-                             today=today_str,
-                             current_time=current_time_str,
-                             insights=insights,
                              analytics_trend=analytics_trend,
-                             analytics_hourly=analytics_hourly,
                              user=user)
 
         
@@ -318,9 +167,7 @@ def index():
             'dashboard.html',
             error="Unable to load dashboard data",
             user=user,
-            date=date,
             analytics_trend=[],
-            analytics_hourly=[],
         )
 
 

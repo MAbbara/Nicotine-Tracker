@@ -72,7 +72,7 @@ export async function startDashboardCharts(root = document, environment = window
   const status = page.querySelector('.analytics-chart__status');
   const points = parsePayload(page);
   if (!target || !points) {
-    setChartFailure(status, 'Chart unavailable. The daily values remain available below.');
+    setChartFailure(status, 'Chart unavailable. The daily values remain available in the table.');
     return false;
   }
 
@@ -95,6 +95,12 @@ export async function startDashboardCharts(root = document, environment = window
         options: dashboardTrendOptions(points, { theme, reducedMotion }),
         ApexChartsClass: environment.ApexCharts,
       });
+      if (!chart) {
+        setChartFailure(
+          status,
+          'Chart unavailable. The daily values remain available in the table.',
+        );
+      }
       target.hidden = !chart;
     });
     return renderQueue;
