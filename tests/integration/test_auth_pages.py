@@ -29,10 +29,16 @@ def _assert_auth_page_contract(response):
     assert not PALETTE_UTILITY.search(html), (
         "legacy palette utility classes must not appear on auth pages"
     )
-    assert document.select_one(".auth-panel") is not None, (
-        "auth pages render a single .auth-panel container"
+    assert len(document.select(".auth-panel")) == 1, (
+        "auth pages render exactly one .auth-panel container"
     )
     return document, html
+
+
+def _control(document, name):
+    control = document.select_one(f'[name="{name}"]')
+    assert control is not None, f'form control "{name}" is preserved'
+    return control
 
 
 def test_login_page_contract(client):
@@ -52,6 +58,75 @@ def test_reset_password_page_contract(app, client, test_user):
         token = PasswordResetService().create_reset_token(test_user.id).token
 
     _assert_auth_page_contract(client.get(f"/auth/reset_password/{token}"))
+
+
+def test_login_page_preserves_fields_remember_me_and_autocomplete(client):
+    document, _ = _assert_auth_page_contract(client.get("/auth/login"))
+
+    email = _control(document, "email")
+    assert email.get("type") == "email"
+    assert email.get("autocomplete") == "email"
+
+    password = _control(document, "password")
+    assert password.get("type") == "password"
+    assert password.get("autocomplete") == "current-password"
+
+    remember = _control(document, "remember_me")
+    assert remember.get("type") == "checkbox", "Remember me checkbox is preserved"
+    remember_label = document.find("label", attrs={"for": "remember_me"}) or remember.find_parent("label")
+    assert remember_label is not None
+    assert "Remember me" in remember_label.get_text()
+
+
+def test_register_page_preserves_fields_autocomplete_and_terms_copy(client):
+    document, _ = _assert_auth_page_contract(client.get("/auth/register"))
+
+    email = _control(document, "email")
+    assert email.get("type") == "email"
+    assert email.get("autocomplete") == "email"
+
+    for name in ("password", "confirm_password"):
+        control = _control(document, name)
+        assert control.get("type") == "password"
+        assert control.get("autocomplete") == "new-password"
+
+    terms = _control(document, "terms")
+    assert terms.get("type") == "checkbox"
+    terms_label = document.find("label", attrs={"for": "terms"}) or terms.find_parent("label")
+    assert terms_label is not None
+    assert (
+        "I understand this is a personal tracking tool, not medical advice."
+        in terms_label.get_text()
+    ), "exact terms acknowledgement copy is preserved"
+
+
+def test_forgot_password_page_preserves_email_field(client):
+    document, _ = _assert_auth_page_contract(client.get("/auth/forgot_password"))
+
+    email = _control(document, "email")
+    assert email.get("type") == "email"
+    assert email.get("autocomplete") == "email"
+
+
+def test_reset_password_page_preserves_minlength_and_no_referrer(app, client, test_user):
+    with app.app_context():
+        token = PasswordResetService().create_reset_token(test_user.id).token
+
+    document, _ = _assert_auth_page_contract(client.get(f"/auth/reset_password/{token}"))
+
+    referrer = document.select_one('meta[name="referrer"]')
+    assert referrer is not None
+    assert referrer.get("content") == "no-referrer", (
+        "reset-password page keeps the no-referrer policy so tokens never leak"
+    )
+
+    for name in ("password", "confirm_password"):
+        control = _control(document, name)
+        assert control.get("type") == "password"
+        assert control.get("autocomplete") == "new-password"
+        assert control.get("minlength") == "6", (
+            f'reset-password field "{name}" keeps minlength="6"'
+        )
 
 
 def test_register_page_loads_validation_module_with_inline_errors(client):

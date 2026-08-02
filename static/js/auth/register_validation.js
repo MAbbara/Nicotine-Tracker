@@ -49,6 +49,21 @@ function bootstrap() {
   clearOnInput(password);
   clearOnInput(confirmation);
 
+  // The confirmation error depends on the password, so editing the password
+  // must recompute and render the confirmation state. Otherwise a recorded
+  // mismatch survives after the password is edited to match, Chromium
+  // suppresses the next submit event, and a valid form can never submit.
+  password.addEventListener('input', () => {
+    if (!confirmation.value) {
+      confirmation.setCustomValidity('');
+      renderFieldError(confirmation, '');
+      return;
+    }
+    const { confirmationError } = validateRegistration(password.value, confirmation.value);
+    confirmation.setCustomValidity(confirmationError);
+    renderFieldError(confirmation, confirmationError);
+  });
+
   form.addEventListener('submit', (event) => {
     const result = validateRegistration(password.value, confirmation.value);
     password.setCustomValidity(result.passwordError);

@@ -84,6 +84,48 @@ test('registration validates inline without dialogs or console errors', async ({
 });
 
 
+test('registration clears stale mismatch when only password is edited to match', async ({ page }) => {
+  const consoleErrors = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  page.on('pageerror', (error) => consoleErrors.push(String(error)));
+
+  await page.goto('/auth/register');
+
+  await page.fill('#email', 'second-pass@example.com');
+  await page.fill('#password', 'long-enough');
+  await page.fill('#confirm_password', 'different');
+  await page.check('#terms');
+  await page.getByRole('button', { name: 'Create account', exact: true }).click();
+
+  await expect(page.locator('#confirm_password-error')).toHaveText('Passwords do not match.');
+  await expect(page).toHaveURL(/\/auth\/register$/);
+
+  // Edit only the password until it matches the untouched confirmation.
+  await page.fill('#password', 'different');
+
+  // The dependent confirmation field must be recomputed: the stale mismatch
+  // message and its custom validity both clear.
+  await expect(page.locator('#confirm_password-error')).toHaveText('');
+  const confirmationValidity = await page.locator('#confirm_password').evaluate((control) => ({
+    valid: control.validity.valid,
+    customError: control.validity.customError,
+    validationMessage: control.validationMessage,
+  }));
+  expect(confirmationValidity).toEqual({ valid: true, customError: false, validationMessage: '' });
+
+  // A now-valid form must not be blocked by the previously recorded custom
+  // validity: the browser has to attempt the POST.
+  const postRequest = page.waitForRequest((request) => (
+    request.url().includes('/auth/register') && request.method() === 'POST'
+  ));
+  await page.getByRole('button', { name: 'Create account', exact: true }).click();
+  await postRequest;
+  expect(consoleErrors).toEqual([]);
+});
+
+
 test('primary landing action has a visible keyboard focus indicator', async ({ page }) => {
   await page.keyboard.press('Tab');
   const primary = page.locator('.landing-actions .c-button--primary');
