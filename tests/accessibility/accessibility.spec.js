@@ -173,3 +173,28 @@ test('authenticated 404 has one main landmark and a Today recovery link', async 
   await expect(main).toHaveCount(1);
   await expect(main.getByRole('link', { name: 'Today', exact: true })).toBeVisible();
 });
+
+
+test('anonymous 404 has one main landmark, a landing recovery action, and no WCAG A/AA violations', async ({ page }) => {
+  await page.goto('/missing-accessibility-fixture');
+
+  const main = page.getByRole('main');
+  await expect(main).toHaveCount(1);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+  const recovery = main.getByRole('link', { name: 'Back to the start page', exact: true });
+  await expect(recovery).toBeVisible();
+  await expect(recovery).toHaveAttribute('href', '/');
+  await expectNoWcagViolations(page);
+});
+
+
+for (const theme of ['light', 'dark']) {
+  test(`anonymous 404 has no WCAG A/AA violations in explicit ${theme} theme`, async ({ page }) => {
+    await useExplicitTheme(page, theme);
+    await page.goto('/missing-accessibility-fixture');
+
+    await expectExplicitTheme(page, theme);
+    await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible();
+    await expectNoWcagViolations(page);
+  });
+}

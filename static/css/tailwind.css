@@ -947,6 +947,41 @@
     color: var(--color-text-muted);
   }
 
+  .error-page {
+    display: grid;
+    width: min(100%, 38rem);
+    margin-inline: auto;
+    justify-items: start;
+    gap: var(--space-4);
+    padding-block: clamp(var(--space-8), 10vh, var(--space-16));
+  }
+
+  .error-page > .eyebrow,
+  .error-page > p {
+    margin: 0;
+  }
+
+  .error-page__lede {
+    color: var(--color-text-muted);
+    font-size: var(--text-lead);
+    line-height: 1.55;
+  }
+
+  .error-page__reference {
+    color: var(--color-text-muted);
+    font-size: var(--text-small);
+  }
+
+  .error-page__reference code {
+    font-family: inherit;
+    font-weight: 650;
+    overflow-wrap: anywhere;
+  }
+
+  .error-page .c-button {
+    margin-block-start: var(--space-4);
+  }
+
   .c-alert {
     display: grid;
     grid-template-columns: auto 1fr;
