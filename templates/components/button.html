@@ -1,7 +1,23 @@
 {% macro button(label, href=None, variant='primary', type='button', class_name='', aria_label=None, disabled=False, loading=False) -%}
+  {% set variant = variant if variant in ['primary', 'secondary', 'quiet', 'danger'] else 'primary' %}
+  {% set inert = disabled or loading %}
   {% set classes = 'c-button c-button--' ~ variant ~ (' is-loading' if loading else '') ~ (' ' ~ class_name if class_name else '') %}
   {% if href %}
-    <a class="{{ classes }}" href="{{ href }}"{% if aria_label %} aria-label="{{ aria_label }}"{% endif %}{% if disabled %} aria-disabled="true" tabindex="-1"{% endif %}>{{ label }}</a>
+    <a
+      class="{{ classes }}"
+      {% if not inert %}href="{{ href }}"{% endif %}
+      {% if aria_label %}aria-label="{{ aria_label }}"{% endif %}
+      {% if inert %}aria-disabled="true" tabindex="-1"{% endif %}
+      {% if loading %}aria-busy="true"{% endif %}
+    >
+      {%- if loading -%}
+        <span class="c-button__spinner" aria-hidden="true"></span>
+      {%- endif -%}
+      <span class="c-button__label">{{ label }}</span>
+      {%- if loading -%}
+        <span class="u-visually-hidden" role="status">Loading, please wait.</span>
+      {%- endif -%}
+    </a>
   {% else %}
     <button
       class="{{ classes }}"

@@ -625,7 +625,7 @@
       transform 100ms var(--ease-out-expo);
   }
 
-  .c-button:active:not(:disabled) {
+  .c-button:active:not(:disabled):not([aria-disabled="true"]) {
     transform: scale(.985);
   }
 
@@ -659,6 +659,10 @@
     cursor: not-allowed;
   }
 
+  .c-button[aria-disabled="true"] {
+    pointer-events: none;
+  }
+
   .c-button.is-loading {
     cursor: progress;
   }
@@ -689,7 +693,7 @@
   }
 
   @media (hover: hover) {
-    .c-button:not(:disabled):hover {
+    .c-button:not(:disabled):not([aria-disabled="true"]):hover {
       transform: translateY(-1px);
     }
 
@@ -739,14 +743,36 @@
     min-height: 2.75rem;
     align-items: center;
     gap: var(--space-3);
+    cursor: pointer;
   }
 
   .c-field__check-input {
+    appearance: auto;
     width: 1.25rem;
     height: 1.25rem;
     min-height: 0;
     flex: none;
+    margin: 0;
     accent-color: var(--color-constructive);
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border-strong);
+    border-radius: calc(var(--radius-control) / 3);
+    color: var(--color-constructive);
+  }
+
+  .c-field__check-input:checked {
+    background-color: var(--color-constructive);
+    border-color: var(--color-constructive);
+  }
+
+  .c-field__check-input:focus {
+    border-color: var(--color-border-strong);
+    box-shadow: none;
+  }
+
+  .c-field__check-input:focus-visible {
+    outline: 0.1875rem solid var(--color-focus);
+    outline-offset: 0.1875rem;
   }
 
   .c-field__check-label {
