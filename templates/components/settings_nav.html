@@ -1,0 +1,21 @@
+{% macro settings_nav(active_endpoint) -%}
+{% set destinations = [
+    ('Profile', 'settings.profile'),
+    ('Account', 'settings.account'),
+    ('Preferences', 'settings.preferences'),
+    ('Reminders', 'settings.notifications'),
+    ('Data & privacy', 'settings.data'),
+    ('Statistics', 'settings.statistics')
+] %}
+<nav class="settings-nav" aria-label="Settings" tabindex="0">
+    <div class="settings-nav__track">
+        {% for label, endpoint in destinations %}
+            <a
+                class="settings-nav__link{% if endpoint == active_endpoint %} is-current{% endif %}"
+                href="{{ url_for(endpoint) }}"
+                {% if endpoint == active_endpoint %}aria-current="page"{% endif %}
+            >{{ label }}</a>
+        {% endfor %}
+    </div>
+</nav>
+{%- endmacro %}

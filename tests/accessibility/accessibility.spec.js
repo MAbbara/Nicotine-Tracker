@@ -115,6 +115,30 @@ test('Data & Privacy has a labelled retention control and no WCAG A/AA violation
 });
 
 
+test('Settings navigation is labelled, scrollable, and keeps one visible current page', async ({ page }) => {
+  await login(page, 'browser@example.com');
+  await page.setViewportSize({ width: 320, height: 800 });
+
+  for (const [path, heading] of [
+    ['/settings/profile', 'Profile'],
+    ['/settings/data', 'Data & privacy'],
+  ]) {
+    await page.goto(path);
+    await expect(page.getByRole('heading', { name: heading, level: 1 })).toHaveCount(1);
+    const nav = page.getByRole('navigation', { name: 'Settings' });
+    await expect(nav).toBeVisible();
+    await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
+    await expect(nav).toHaveAttribute('tabindex', '0');
+    expect(await nav.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+    await nav.focus();
+    expect(await nav.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe('none');
+    expect(await page.evaluate(() => (
+      document.documentElement.scrollWidth - document.documentElement.clientWidth
+    ))).toBeLessThanOrEqual(0);
+  }
+});
+
+
 for (const theme of ['light', 'dark']) {
   test(`populated Journey has no WCAG A/AA violations in explicit ${theme} theme`, async ({ page }, testInfo) => {
     await useExplicitTheme(page, theme);
