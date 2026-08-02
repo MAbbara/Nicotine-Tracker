@@ -1,165 +1,110 @@
 import { enhanceChart, getEffectiveTheme, setChartFailure } from './analytics/runtime.js';
-import { createDisclosure } from './analytics/disclosure.js';
 
-function statusFor(target) {
-  return target?.parentElement?.querySelector('.analytics-chart__status') || null;
+
+const PAGE_SELECTOR = '[data-dashboard-page]';
+
+
+export function trendHasData(points) {
+  return Array.isArray(points) && points.some((point) => Number(point?.pouches) > 0);
 }
 
-function replaceRows(selector, rows, fields) {
-  const body = document.querySelector(selector);
-  if (!body) return;
-  body.replaceChildren();
-  rows.forEach((item) => {
-    const row = body.insertRow();
-    fields.forEach((field, index) => {
-      const cell = index === 0 ? document.createElement('th') : document.createElement('td');
-      if (index === 0) cell.scope = 'row';
-      cell.textContent = String(item[field] ?? 0);
-      row.append(cell);
-    });
-  });
-}
 
-function chartTheme() {
-  const mode = getEffectiveTheme(document.documentElement);
-  return {
-    mode,
-    foreColor: mode === 'dark' ? '#EEE8D8' : '#1E2A24',
-    gridColor: mode === 'dark' ? '#344139' : '#D7D1C3',
-  };
-}
+export function dashboardTrendOptions(points, { theme = 'light', reducedMotion = false } = {}) {
+  const dark = theme === 'dark';
+  const foreground = dark ? '#EEE8D8' : '#1E2A24';
+  const grid = dark ? '#465148' : '#D7D1C3';
 
-function baseOptions(type, theme) {
   return {
     chart: {
-      type,
-      height: 256,
+      type: 'line',
+      height: 288,
       toolbar: { show: false },
+      zoom: { enabled: false },
       background: 'transparent',
       fontFamily: 'DM Sans, sans-serif',
-      animations: { enabled: !window.matchMedia('(prefers-reduced-motion: reduce)').matches },
+      animations: { enabled: !reducedMotion },
     },
-    theme: { mode: theme.mode },
-    grid: { borderColor: theme.gridColor, strokeDashArray: 4 },
-    tooltip: { theme: theme.mode },
+    series: [{
+      name: 'Pouches',
+      data: points.map((point) => Number(point.pouches) || 0),
+    }],
+    colors: ['#55755F'],
+    dataLabels: { enabled: false },
+    stroke: { curve: 'straight', width: 3 },
+    markers: { size: 3, strokeWidth: 0 },
+    fill: { opacity: 1 },
+    grid: { borderColor: grid, strokeDashArray: 4 },
+    theme: { mode: theme },
+    tooltip: { theme },
+    xaxis: {
+      categories: points.map((point) => point.date),
+      labels: { style: { colors: foreground } },
+      axisBorder: { color: grid },
+      axisTicks: { color: grid },
+    },
+    yaxis: {
+      min: 0,
+      forceNiceScale: true,
+      labels: { style: { colors: foreground } },
+    },
+    legend: { show: false },
   };
 }
 
-async function startDashboardCharts() {
-  const payload = document.getElementById('initial-dashboard-analytics');
-  if (!payload) return;
-  let data = JSON.parse(payload.textContent || '{"trend":[],"hourly":[]}');
-  let charts = [];
 
-  const render = async () => {
-    charts.forEach((chart) => chart?.destroy?.());
-    charts = [];
-    replaceRows('[data-dashboard-table="trend"]', data.trend || [], ['date', 'pouches', 'mg']);
-    replaceRows('[data-dashboard-table="hourly"]', data.hourly || [], ['hour', 'pouches']);
-    const theme = chartTheme();
-    const definitions = [
-      ['dailyIntakeChart', {
-        ...baseOptions('line', theme),
-        series: [{ name: 'Pouches', data: (data.trend || []).map((point) => Number(point.pouches) || 0) }],
-        colors: ['#55755F'],
-        stroke: { curve: 'smooth', width: 3 },
-        xaxis: { categories: (data.trend || []).map((point) => point.date), labels: { style: { colors: theme.foreColor } } },
-        yaxis: { min: 0, labels: { style: { colors: theme.foreColor } } },
-      }],
-      ['hourlyChart', {
-        ...baseOptions('bar', theme),
-        series: [{ name: 'Pouches', data: (data.hourly || []).map((point) => Number(point.pouches) || 0) }],
-        colors: ['#B76343'],
-        xaxis: { categories: (data.hourly || []).map((point) => point.hour), labels: { style: { colors: theme.foreColor } } },
-        yaxis: { min: 0, labels: { style: { colors: theme.foreColor } } },
-      }],
-    ];
-    for (const [id, options] of definitions) {
-      const target = document.getElementById(id);
-      charts.push(await enhanceChart({
+function parsePayload(root) {
+  const payload = root.querySelector('#initial-dashboard-analytics');
+  if (!payload) return null;
+  try {
+    const parsed = JSON.parse(payload.textContent || '{}');
+    return trendHasData(parsed.trend) ? parsed.trend : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+
+export async function startDashboardCharts(root = document, environment = window) {
+  const page = root.querySelector(PAGE_SELECTOR);
+  if (!page || page.dataset.dashboardChartsStarted === 'true') return false;
+
+  const target = page.querySelector('#dashboard-trend-chart');
+  const status = page.querySelector('.analytics-chart__status');
+  const points = parsePayload(page);
+  if (!target || !points) {
+    setChartFailure(status, 'Chart unavailable. The daily values remain available below.');
+    return false;
+  }
+
+  page.dataset.dashboardChartsStarted = 'true';
+  let chart = null;
+  let renderQueue = Promise.resolve();
+  const reducedMotion = environment.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  target.dataset.motion = reducedMotion ? 'reduced' : 'full';
+
+  const render = () => {
+    renderQueue = renderQueue.then(async () => {
+      chart?.destroy?.();
+      chart = null;
+      target.replaceChildren();
+      target.hidden = false;
+      const theme = getEffectiveTheme(root.documentElement);
+      chart = await enhanceChart({
         target,
-        status: statusFor(target),
-        options,
-        ApexChartsClass: window.ApexCharts,
-      }));
-    }
-  };
-
-  const rangeQuery = ({ days, startDate, endDate }) => {
-    const params = new URLSearchParams();
-    if (startDate && endDate) {
-      params.set('start_date', startDate);
-      params.set('end_date', endDate);
-    } else {
-      params.set('days', String(days || 30));
-    }
-    return params.toString();
-  };
-  const load = async (range) => {
-    try {
-      const query = rangeQuery(range);
-      const [trendResponse, hourlyResponse] = await Promise.all([
-        fetch(`/dashboard/api/daily_intake_chart?${query}`),
-        fetch(`/dashboard/api/hourly_distribution?${query}`),
-      ]);
-      const [trend, hourly] = await Promise.all([trendResponse.json(), hourlyResponse.json()]);
-      if (!trendResponse.ok || !hourlyResponse.ok || !trend.success || !hourly.success) {
-        throw new Error('Analytics request failed');
-      }
-      data = { trend: trend.data, hourly: hourly.data };
-      await render();
-      return true;
-    } catch (_) {
-      document.querySelectorAll('.analytics-chart__status').forEach((status) => {
-        setChartFailure(status, 'Chart unavailable. Current table values remain available.');
+        status,
+        options: dashboardTrendOptions(points, { theme, reducedMotion }),
+        ApexChartsClass: environment.ApexCharts,
       });
-      return false;
-    }
-  };
-
-  const disclosure = createDisclosure({
-    trigger: document.querySelector('[data-analytics-disclosure-trigger]'),
-    panel: document.querySelector('[data-analytics-disclosure-menu]'),
-  });
-  const customStatus = document.getElementById('custom-range-status');
-  const showCustomStatus = (message = '') => {
-    if (!customStatus) return;
-    customStatus.textContent = message;
-    customStatus.hidden = !message;
-  };
-
-  document.querySelectorAll('#daily-intake-filter-dropdown [data-range]').forEach((link) => {
-    link.addEventListener('click', (event) => {
-      event.preventDefault();
-      const days = Number(link.dataset.range) || 30;
-      const label = document.getElementById('selected-range-text');
-      if (label) label.textContent = link.textContent.trim();
-      showCustomStatus();
-      disclosure?.close();
-      load({ days });
+      target.hidden = !chart;
     });
-  });
-  document.getElementById('apply_custom_range')?.addEventListener('click', async () => {
-    const start = document.getElementById('start_date_filter')?.value;
-    const end = document.getElementById('end_date_filter')?.value;
-    if (!start || !end) {
-      showCustomStatus('Choose both a start and end date.');
-      return;
-    }
-    if (start > end) {
-      showCustomStatus('Start date must be on or before end date.');
-      return;
-    }
-    showCustomStatus();
-    if (await load({ startDate: start, endDate: end })) {
-      const label = document.getElementById('selected-range-text');
-      if (label) label.textContent = 'Custom range';
-      disclosure?.close();
-    }
-  });
-  document.documentElement.addEventListener('nicotine-tracker:theme-change', render);
+    return renderQueue;
+  };
+
+  root.documentElement.addEventListener('nicotine-tracker:theme-change', render);
   await render();
+  return true;
 }
+
 
 if (typeof document !== 'undefined') {
   if (document.readyState === 'loading') {

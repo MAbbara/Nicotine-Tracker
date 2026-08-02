@@ -72,7 +72,7 @@ for (const destination of ['/dashboard/']) {
 
     expect(runtimeErrors).toEqual([]);
     await expect(page.locator('.analytics-chart .apexcharts-canvas').first()).toBeVisible();
-    await expect(page.getByRole('table', { name: /consumption trend data/i })).toBeVisible();
+    await expect(page.getByRole('table', { name: /recent daily intake data/i })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   });
 }
@@ -119,7 +119,7 @@ test.describe('when the local chart library cannot load', () => {
       await page.goto(destination);
 
       await expect(page.getByRole('status').filter({ hasText: 'Chart unavailable' }).first()).toBeVisible();
-      const table = page.getByRole('table', { name: /consumption trend data/i });
+      const table = page.getByRole('table', { name: /recent daily intake data/i });
       await expect(table).toBeVisible();
       await expect(table.locator('tbody td').filter({ hasText: /^2$/ })).toHaveCount(1);
       expect(pageErrors).toEqual([]);
@@ -237,94 +237,39 @@ test('Insights supports every range and preserves current content when refresh f
 });
 
 
-for (const destination of ['/dashboard/']) {
-  test(`${destination} range disclosure is visible, keyboard operable, and dismissible`, async ({ page }, testInfo) => {
-    if (testInfo.project.name.includes('mobile')) {
-      await page.setViewportSize({ width: 320, height: 800 });
-    }
-    await login(page);
-    await page.goto(destination);
-
-    const trigger = page.locator('[data-analytics-disclosure-trigger]');
-    const menu = page.locator('[data-analytics-disclosure-menu]');
-    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
-    await trigger.focus();
-    await page.keyboard.press('Enter');
-    await expect(trigger).toHaveAttribute('aria-expanded', 'true');
-    await expect(menu).toBeVisible();
-    expect(await menu.evaluate((element) => getComputedStyle(element).opacity)).toBe('1');
-
-    await page.keyboard.press('ArrowDown');
-    await expect(menu.locator('a').first()).toBeFocused();
-    await page.keyboard.press('Escape');
-    await expect(menu).toBeHidden();
-    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
-    await expect(trigger).toBeFocused();
-
-    await trigger.click();
-    await page.getByRole('heading', { level: 1 }).click();
-    await expect(menu).toBeHidden();
-    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
-
-    await trigger.click();
-    await menu.locator('a').first().click();
-    await expect(menu).toBeHidden();
-    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
-  });
-}
-
-
-test('Dashboard custom range requests and renders exact dates and reports reversal', async ({ page }) => {
-  const requested = [];
-  await page.route('**/dashboard/api/daily_intake_chart?*', async (route) => {
-    const url = new URL(route.request().url());
-    requested.push(`${url.pathname}?${url.searchParams.toString()}`);
-    await route.fulfill({ json: {
-      success: true,
-      data: [
-        { date: '2026-06-10', pouches: 8, mg: 48 },
-        { date: '2026-06-11', pouches: 0, mg: 0 },
-        { date: '2026-06-12', pouches: 3, mg: 18 },
-      ],
-    } });
-  });
-  await page.route('**/dashboard/api/hourly_distribution?*', async (route) => {
-    const url = new URL(route.request().url());
-    requested.push(`${url.pathname}?${url.searchParams.toString()}`);
-    await route.fulfill({ json: {
-      success: true,
-      data: Array.from({ length: 24 }, (_, hour) => ({
-        hour: `${String(hour).padStart(2, '0')}:00`,
-        pouches: hour === 9 ? 11 : 0,
-      })),
-    } });
-  });
+test('Dashboard retires the range controller and keeps focused destinations keyboard reachable', async ({ page }) => {
   await login(page);
   await page.goto('/dashboard/');
-  await page.locator('[data-analytics-disclosure-trigger]').click();
-  await page.getByLabel('Start Date').fill('2026-06-10');
-  await page.getByLabel('End Date').fill('2026-06-12');
-  await page.getByRole('button', { name: 'Apply' }).click();
 
-  await expect(page.locator('#selected-range-text')).toHaveText('Custom range');
-  await expect(page.locator('[data-analytics-disclosure-menu]')).toBeHidden();
-  await expect(page.locator('[data-dashboard-table="trend"] tr')).toHaveText([
-    '2026-06-10848',
-    '2026-06-1100',
-    '2026-06-12318',
-  ]);
-  expect(requested).toEqual([
-    '/dashboard/api/daily_intake_chart?start_date=2026-06-10&end_date=2026-06-12',
-    '/dashboard/api/hourly_distribution?start_date=2026-06-10&end_date=2026-06-12',
-  ]);
+  await expect(page.locator('[data-analytics-disclosure-trigger], [data-analytics-disclosure-menu]')).toHaveCount(0);
+  const first = page.getByRole('link', { name: 'Go to Today' });
+  const last = page.getByRole('link', { name: 'Review Journey' });
+  await first.focus();
+  await expect(first).toBeFocused();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await expect(last).toBeFocused();
+});
 
-  await page.locator('[data-analytics-disclosure-trigger]').click();
-  await page.getByLabel('Start Date').fill('2026-06-12');
-  await page.getByLabel('End Date').fill('2026-06-10');
-  await page.getByRole('button', { name: 'Apply' }).click();
-  await expect(page.locator('#custom-range-status')).toBeVisible();
-  await expect(page.locator('#custom-range-status')).toHaveText('Start date must be on or before end date.');
-  expect(requested).toHaveLength(2);
+
+test('Dashboard custom-range APIs remain exact after the range controller is retired', async ({ page }) => {
+  await login(page);
+  await page.goto('/dashboard/');
+  const query = 'start_date=2026-06-10&end_date=2026-06-12';
+  const trend = await page.request.get(`/dashboard/api/daily_intake_chart?${query}`);
+  const hourly = await page.request.get(`/dashboard/api/hourly_distribution?${query}`);
+  expect(trend.status()).toBe(200);
+  expect(hourly.status()).toBe(200);
+  expect((await trend.json()).data.map((point) => point.date)).toEqual([
+    '2026-06-10', '2026-06-11', '2026-06-12',
+  ]);
+  expect((await hourly.json()).data).toHaveLength(24);
+
+  const reversed = await page.request.get(
+    '/dashboard/api/daily_intake_chart?start_date=2026-06-12&end_date=2026-06-10',
+  );
+  expect(reversed.status()).toBe(400);
+  expect((await reversed.json()).error).toBe('Start date must be on or before end date.');
 });
 
 

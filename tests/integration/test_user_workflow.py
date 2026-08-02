@@ -2,6 +2,7 @@
 Integration tests for complete user workflows, aligned with the actual application structure.
 """
 import pytest
+from bs4 import BeautifulSoup
 from datetime import datetime, timezone, timedelta, date
 from app import db
 from models import User, Pouch, Log, Goal
@@ -59,8 +60,8 @@ class TestCoreFunctionality:
             yield client  # provide the client to the tests
 
 
-    def test_add_and_view_log(self, client, db_session, test_user, test_pouch):
-        """Test adding a new log and verifying it appears on the dashboard."""
+    def test_add_log_updates_the_compatibility_dashboard_summary(self, client, db_session, test_user, test_pouch):
+        """A new log updates Dashboard summary/trend without duplicating Logbook."""
         # Add a log
         log_datetime = datetime.now(timezone.utc)
         add_log_response = client.post('/log/add', data={
@@ -78,12 +79,14 @@ class TestCoreFunctionality:
         assert add_log_response.status_code == 200
 
 
-        # Check if the log appears on the dashboard
+        # The compatibility Dashboard keeps only summary/trend information.
         dashboard_response = client.get('/dashboard/')
-        assert b'Integration test log' in dashboard_response.data
-
-        assert b'Test Brand' in dashboard_response.data
-        assert b'2' in dashboard_response.data # Quantity
+        dashboard = BeautifulSoup(dashboard_response.data, 'html.parser')
+        assert dashboard_response.status_code == 200
+        assert dashboard.select_one('[data-today-pouches]').get_text(strip=True) == '2'
+        assert dashboard.select_one('[data-dashboard-trend]') is not None
+        assert 'Integration test log' not in dashboard.get_text(' ', strip=True)
+        assert 'Test Brand' not in dashboard.get_text(' ', strip=True)
 
     def test_create_and_view_goal(self, client, db_session, test_user):
         """Test creating a new goal and verifying it appears on the goals page."""

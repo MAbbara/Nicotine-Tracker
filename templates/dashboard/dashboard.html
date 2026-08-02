@@ -1,345 +1,122 @@
 {% extends "base.html" %}
 
+{% set dashboard_trend_state = namespace(has_data=false) %}
+{% for point in analytics_trend|default([]) %}
+  {% if point.pouches|float > 0 %}
+    {% set dashboard_trend_state.has_data = true %}
+  {% endif %}
+{% endfor %}
+
 {% block title %}Dashboard - Nicotine Tracker{% endblock %}
 
 {% block analytics_head %}
+{% if dashboard_trend_state.has_data %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/apexcharts.css') }}">
+{% endif %}
 {% endblock %}
 
 {% block preline_js %}{% endblock %}
 
 {% block content %}
-<div data-user-timezone="{{ user.timezone or 'UTC' }}">
-<div class="px-4 sm:px-6 lg:px-8">
-  <!-- Header + open-modal button -->
-  <div class="flex items-center justify-between">
-    <div>
-      <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Dashboard</h1>
-      <p class="text-sm text-gray-700 dark:text-gray-300">Overview of your nicotine intake and progress</p>
+{% set summary = today_intake|default({}) %}
+<div class="dashboard-page analytics-page" data-dashboard-page data-user-timezone="{{ user.timezone or 'UTC' }}">
+  <header class="dashboard-intro">
+    <div class="dashboard-intro__copy">
+      <p class="eyebrow">Compatibility review</p>
+      <h1>Dashboard</h1>
+      <p>This compatibility view keeps the familiar Dashboard address available while the focused spaces do the deeper work. Use Today for the next choice, Insights for patterns, and Journey for your longer plan.</p>
     </div>
-    <button type="button"
-      class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-      aria-haspopup="dialog" aria-expanded="false" aria-controls="addLogModal" data-hs-overlay="#addLogModal">
-      Add Log Entry
-    </button>
-  </div>
 
-  {% include "logging/_add_log_modal.html" %}
+    <nav class="dashboard-destinations" aria-label="Continue in the focused views" data-dashboard-destinations>
+      <a class="c-button c-button--primary" href="{{ url_for('today.index') }}">Go to Today</a>
+      <a class="c-button c-button--secondary" href="{{ url_for('insights.insights_page') }}">Open Insights</a>
+      <a class="c-button c-button--quiet" href="{{ url_for('journey.index') }}">Review Journey</a>
+    </nav>
+  </header>
 
+  <section class="dashboard-today" aria-labelledby="dashboard-today-title" data-dashboard-today>
+    <div class="dashboard-section-copy">
+      <p class="eyebrow">Current day</p>
+      <h2 id="dashboard-today-title">Today at a glance</h2>
+      <p>A compact handoff, not another place to manage the day. Today has your live pace and fastest logging actions.</p>
+    </div>
 
-  <!-- Goals Section -->
-  <div class="mt-8">
-    <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Your Goals</h2>
-    {% if active_goals %}
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-      {% for goal in active_goals %}
-      <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-        <h3 class="text-md font-semibold text-gray-900 dark:text-white mb-2">
-          {{ goal.goal_type.replace('_', ' ').title() }}
-        </h3>
-        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Target: {{ goal.target_value }}</p>
-        <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700 mb-2">
-          {% set progress_color = 'bg-green-600' if goal_progress[goal.id].percentage <= 80 else ('bg-yellow-600' if
-            goal_progress[goal.id].percentage <=100 else 'bg-red-600' ) %} <div
-            class="{{ progress_color }} h-2.5 rounded-full"
-            style="width: {{ min(goal_progress[goal.id].percentage, 100) }}%">
-        </div>
+    <dl class="dashboard-today__measures">
+      <div>
+        <dt>Pouches logged</dt>
+        <dd data-today-pouches>{{ summary.get('total_pouches', 0) }}</dd>
       </div>
-      <p class="text-sm text-gray-900 dark:text-white font-semibold">
-        {{ goal_progress[goal.id].current }}/{{ goal_progress[goal.id].target }}
-        ({{ "%.1f"|format(goal_progress[goal.id].percentage) }}%)
-      </p>
-      <p class="text-sm text-gray-600 dark:text-gray-400 mt-2">Current Streak: {{ goal.current_streak }}</p>
-      <p class="text-sm text-gray-600 dark:text-gray-400">Best Streak: {{ goal.best_streak }}</p>
-    </div>
-    {% endfor %}
-  </div>
-  {% else %}
-  <p class="text-gray-600 dark:text-gray-400">
-    You have no active goals. Create one to start tracking your progress.
-  </p>
-  {% endif %}
-</div>
-
-<!-- Today's Summary -->
-<div class="mt-8">
-  <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Today's Summary</h2>
-  <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-    <!-- Total Pouches -->
-    <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
-      <div class="p-5">
-        <div class="flex items-center">
-          <div class="flex-shrink-0">
-            <div class="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center">
-              <span class="text-white font-bold text-sm">📦</span>
-            </div>
-          </div>
-          <div class="ml-5 w-0 flex-1">
-            <dl>
-              <dt class="text-sm font-medium text-gray-600 dark:text-gray-400 truncate">
-                Total Pouches
-              </dt>
-              <dd class="text-lg font-medium text-gray-900 dark:text-white">
-                {{ today_intake.total_pouches if today_intake else 0 }}
-              </dd>
-            </dl>
-          </div>
-        </div>
+      <div>
+        <dt>Nicotine recorded</dt>
+        <dd><span data-today-mg>{{ summary.get('total_mg', 0) }}</span> <span class="dashboard-measure-unit">mg</span></dd>
       </div>
-    </div>
-
-    <!-- Total Nicotine -->
-    <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
-      <div class="p-5">
-        <div class="flex items-center">
-          <div class="flex-shrink-0">
-            <div class="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
-              <span class="text-white font-bold text-sm">⚗️</span>
-            </div>
-          </div>
-          <div class="ml-5 w-0 flex-1">
-            <dl>
-              <dt class="text-sm font-medium text-gray-600 dark:text-gray-400 truncate">
-                Total Nicotine (mg)
-              </dt>
-              <dd class="text-lg font-medium text-gray-900 dark:text-white">
-                {{ today_intake.total_mg if today_intake else 0 }}
-              </dd>
-            </dl>
-          </div>
-        </div>
+      <div>
+        <dt>Logging moments</dt>
+        <dd data-today-sessions>{{ summary.get('sessions', 0) }}</dd>
       </div>
-    </div>
+    </dl>
 
-    <!-- Sessions -->
-    <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
-      <div class="p-5">
-        <div class="flex items-center">
-          <div class="flex-shrink-0">
-            <div class="w-8 h-8 bg-yellow-500 rounded-md flex items-center justify-center">
-              <span class="text-white font-bold text-sm">📊</span>
-            </div>
-          </div>
-          <div class="ml-5 w-0 flex-1">
-            <dl>
-              <dt class="text-sm font-medium text-gray-600 dark:text-gray-400 truncate">
-                Sessions
-              </dt>
-              <dd class="text-lg font-medium text-gray-900 dark:text-white">
-                {{ today_intake.sessions if today_intake else 0 }}
-              </dd>
-            </dl>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Average per Hour -->
-    <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
-      <div class="p-5">
-        <div class="flex items-center">
-          <div class="flex-shrink-0">
-            <div class="w-8 h-8 bg-purple-500 rounded-md flex items-center justify-center">
-              <span class="text-white font-bold text-sm">⏰</span>
-            </div>
-          </div>
-          <div class="ml-5 w-0 flex-1">
-            <dl>
-              <dt class="text-sm font-medium text-gray-600 dark:text-gray-400 truncate">
-                Avg/Hour
-              </dt>
-              <dd class="text-lg font-medium text-gray-900 dark:text-white">
-                {{ avg_pouches_per_hour if avg_pouches_per_hour else 0 }}
-              </dd>
-            </dl>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Charts Section -->
-<div class="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
-  <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
-    <div class="flex justify-between items-center mb-4">
-      <h3 id="daily-intake-title" class="text-lg font-medium text-gray-900 dark:text-white">Daily Intake</h3>
-      <!-- Dropdown -->
-      <div class="hs-dropdown relative inline-flex [--placement:bottom-right] z-10">
-        <button id="hs-dropdown-default" type="button" data-analytics-disclosure-trigger aria-expanded="false" aria-controls="daily-intake-filter-dropdown" class="hs-dropdown-toggle py-2 px-3 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:bg-gray-700">
-
-          <span id="selected-range-text">Last 30 days</span>
-          <svg class="hs-dropdown-open:rotate-180 size-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-        </button>
-
-        <div id="daily-intake-filter-dropdown" data-analytics-disclosure-menu hidden class="hs-dropdown-menu absolute right-0 top-full z-50 max-h-[calc(100dvh-8rem)] overflow-y-auto transition-[opacity,margin] duration opacity-0 hidden min-w-60 bg-white shadow-md rounded-lg p-2 mt-2 dark:bg-gray-800 dark:border dark:border-gray-700" aria-labelledby="hs-dropdown-default">
-          <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:ring-2 focus:ring-blue-500 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300" href="#" data-range="7">
-            Last 7 days
-          </a>
-          <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:ring-2 focus:ring-blue-500 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300" href="#" data-range="30">
-            Last 30 days
-          </a>
-          <a class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:ring-2 focus:ring-blue-500 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300" href="#" data-range="90">
-            Last 90 days
-          </a>
-          <div class="my-2 border-t border-gray-200 dark:border-gray-700"></div>
-          <div class="px-3 py-2">
-            <p class="text-sm text-gray-800 dark:text-gray-400 mb-2">Custom range</p>
-            <div class="space-y-2">
-              <div>
-                <label for="start_date_filter" class="sr-only">Start Date</label>
-                <input type="date" id="start_date_filter" name="start_date" class="py-2 px-3 block w-full border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300">
-              </div>
-              <div>
-                <label for="end_date_filter" class="sr-only">End Date</label>
-                <input type="date" id="end_date_filter" name="end_date" class="py-2 px-3 block w-full border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300">
-
-              </div>
-              <button id="apply_custom_range" class="w-full py-2 px-3 inline-flex justify-center items-center gap-x-2 text-sm font-semibold rounded-lg border border-transparent bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none">Apply</button>
-              <p id="custom-range-status" class="text-sm text-red-700 dark:text-red-300" role="status" hidden></p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div id="dailyIntakeChart" class="analytics-chart h-64" role="img" aria-labelledby="daily-intake-title"></div>
-    <p class="analytics-chart__status" role="status" hidden></p>
-    <div class="analytics-data" tabindex="0" role="region" aria-label="Consumption trend data"><table><caption>Consumption trend data</caption><thead><tr><th scope="col">Date</th><th scope="col">Pouches</th><th scope="col">Nicotine (mg)</th></tr></thead><tbody data-dashboard-table="trend">{% for point in analytics_trend %}<tr><th scope="row">{{ point.date }}</th><td>{{ point.pouches }}</td><td>{{ point.mg }}</td></tr>{% endfor %}</tbody></table></div>
-  </div>
-
-  <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
-    <h3 id="hourly-title" class="text-lg font-medium text-gray-900 dark:text-white mb-4">Usage by Hour</h3>
-    <div id="hourlyChart" class="analytics-chart h-64" role="img" aria-labelledby="hourly-title"></div>
-    <p class="analytics-chart__status" role="status" hidden></p>
-    <div class="analytics-data" tabindex="0" role="region" aria-label="Hourly distribution data"><table><caption>Hourly distribution data</caption><thead><tr><th scope="col">Hour</th><th scope="col">Pouches</th></tr></thead><tbody data-dashboard-table="hourly">{% for point in analytics_hourly %}<tr><th scope="row">{{ point.hour }}</th><td>{{ point.pouches }}</td></tr>{% endfor %}</tbody></table></div>
-  </div>
-</div>
-
-<!-- Recent Logs -->
-<div class="mt-8">
-  <div class="sm:flex sm:items-center">
-    <div class="sm:flex-auto">
-      <h2 class="text-lg font-medium text-gray-900 dark:text-white">Recent Logs</h2>
-      <p class="mt-1 text-sm text-gray-700 dark:text-gray-300">
-        Your latest nicotine intake entries
-      </p>
-    </div>
-    <div class="mt-4 sm:ml-16 sm:mt-0 sm:flex-none">
-      <a href="{{ url_for('logging.view_logs') }}"
-        class="block rounded-md bg-white dark:bg-gray-700 px-3 py-2 text-center text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600">
-        View All
-      </a>
-    </div>
-  </div>
-
-  {% if recent_logs %}
-  <div class="mt-4 flow-root">
-    <p id="recent-logs-scroll-help" class="sr-only">Scroll horizontally to see every recent logs column.</p>
-    <div class="horizontal-scroll-region -mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8" tabindex="0" role="region" aria-label="Recent logs" aria-describedby="recent-logs-scroll-help">
-      <div class="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
-        <table class="min-w-full divide-y divide-gray-300 dark:divide-gray-700">
-          <caption class="sr-only">Recent logs</caption>
-          <thead>
-            <tr>
-              <th scope="col"
-                class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 dark:text-white sm:pl-0">
-                Date & Time
-              </th>
-              <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">
-                Brand
-              </th>
-              <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">
-                Quantity
-              </th>
-              <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">
-                Nicotine (mg)
-              </th>
-              <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">
-                Notes
-              </th>
-            </tr>
-          </thead>
-
-          <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-            {% for log in recent_logs %}
-            <tr>
-              <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-gray-900 dark:text-white sm:pl-0">
-                {{ log.get_user_date(user.timezone).strftime('%m/%d') if user.timezone else log.log_time.date().strftime('%m/%d') }}
-                {% if log.log_time %}
-                {{ log.get_user_time(user.timezone).strftime('%H:%M') if user.timezone else log.log_time.time().strftime('%H:%M') }}
-                {% endif %}
-              </td>
-              <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-600 dark:text-gray-400">
-                {{ log.get_brand_name() }}
-                {% if log.get_nicotine_content() %}
-                ({{ log.get_nicotine_content() }}mg)
-                {% endif %}
-              </td>
-              <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-600 dark:text-gray-400">
-                {{ log.quantity }}
-              </td>
-              <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-600 dark:text-gray-400">
-                {{ log.get_total_nicotine() }}
-              </td>
-              <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-600 dark:text-gray-400">
-                {{ log.notes or '' }}
-              </td>
-            </tr>
-
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-  {% else %}
-  <div class="mt-4 text-center py-12">
-    <div class="text-gray-400 dark:text-gray-500 text-4xl mb-4">📝</div>
-    <h3 class="text-sm font-medium text-gray-900 dark:text-white">No logs yet</h3>
-    <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-      Start tracking your nicotine intake by adding your first log entry.
-    </p>
-    <div class="mt-6">
-      <a href="{{ url_for('logging.add_log') }}"
-        class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
-        Add First Log
-      </a>
-    </div>
-  </div>
-  {% endif %}
-</div>
-
-<!-- Insights -->
-<div class="mt-8">
-  <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Insights</h2>
-  <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-    {% if insights %}
-    <ul class="space-y-4">
-      {% for insight in insights %}
-      <li class="flex items-start">
-        <div class="flex-shrink-0">
-          <svg class="h-5 w-5 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-          </svg>
-        </div>
-        <p class="ml-3 text-sm text-gray-700 dark:text-gray-300">
-          {{ insight }}
-        </p>
-      </li>
-      {% endfor %}
-    </ul>
-    {% else %}
-      <p class="text-sm text-gray-600 dark:text-gray-400">No insights available yet. Keep logging your intake to see trends and tips here.</p>
+    {% if summary.get('unknown_strength_count', 0) %}
+      <p class="dashboard-today__note">{{ summary.get('unknown_strength_count') }} logged pouch{% if summary.get('unknown_strength_count') != 1 %}es have{% else %} has{% endif %} no saved strength, so today’s nicotine total is incomplete.</p>
     {% endif %}
+  </section>
 
-  </div>
-</div>
-</div>
-<script id="initial-dashboard-analytics" type="application/json">{{ {'trend': analytics_trend, 'hourly': analytics_hourly}|tojson }}</script>
+  {% if dashboard_trend_state.has_data %}
+    <figure class="dashboard-trend" data-dashboard-trend>
+      <figcaption class="dashboard-trend__heading">
+        <div>
+          <p class="eyebrow">Recent context</p>
+          <h2 id="dashboard-trend-title">Recent daily intake</h2>
+        </div>
+        <p>Use this light review to orient yourself. Insights has the fuller interpretation when you want to understand a pattern.</p>
+      </figcaption>
+
+      <details class="analytics-figure__table" open>
+        <summary>View daily values</summary>
+        <div class="analytics-data" tabindex="0" role="region" aria-label="Recent daily intake data">
+          <table>
+            <caption>Recent daily intake data</caption>
+            <thead>
+              <tr>
+                <th scope="col">Date</th>
+                <th scope="col">Pouches</th>
+                <th scope="col">Nicotine (mg)</th>
+              </tr>
+            </thead>
+            <tbody data-dashboard-table="trend">
+              {% for point in analytics_trend %}
+                <tr>
+                  <th scope="row">{{ point.date }}</th>
+                  <td>{{ point.pouches }}</td>
+                  <td>{{ point.mg }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+
+      <div id="dashboard-trend-chart" class="analytics-chart" role="img" aria-labelledby="dashboard-trend-title" hidden></div>
+      <p class="analytics-chart__status" role="status" aria-live="polite" hidden></p>
+    </figure>
+
+    <script id="initial-dashboard-analytics" type="application/json">{{ {'trend': analytics_trend}|tojson }}</script>
+  {% else %}
+    <section class="dashboard-empty" aria-labelledby="dashboard-empty-title" data-dashboard-empty>
+      <div>
+        <p class="eyebrow">A pattern needs a little history</p>
+        <h2 id="dashboard-empty-title">Your recent review will take shape here</h2>
+        <p>Start with Today and log what happens without trying to make the day look perfect. Once there is something meaningful to review, this page will add one recent trend.</p>
+      </div>
+      <a class="c-button c-button--primary" href="{{ url_for('today.index') }}">Start with Today</a>
+    </section>
+  {% endif %}
 </div>
 {% endblock %}
 
 {% block analytics_js %}
+{% if dashboard_trend_state.has_data %}
 <script src="{{ url_for('static', filename='js/apexcharts.min.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='js/dashboard-charts.js') }}"></script>
+{% endif %}
 {% endblock %}

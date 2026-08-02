@@ -5493,6 +5493,215 @@
   }
 }
 
+/* Dashboard remains a restrained compatibility review beside Today and Insights. */
+@layer components {
+  .dashboard-page {
+    display: grid;
+    width: min(100%, 72rem);
+    min-width: 0;
+    gap: clamp(3rem, 8vw, 7rem);
+    margin-inline: auto;
+  }
+
+  .dashboard-page,
+  .dashboard-page > *,
+  .dashboard-intro__copy,
+  .dashboard-today,
+  .dashboard-trend,
+  .dashboard-empty {
+    min-width: 0;
+  }
+
+  .dashboard-intro {
+    display: grid;
+    gap: clamp(2rem, 6vw, 5rem);
+    padding-block-end: clamp(2.5rem, 7vw, 5rem);
+    border-block-end: 1px solid var(--color-border-strong);
+  }
+
+  .dashboard-intro__copy,
+  .dashboard-section-copy,
+  .dashboard-trend__heading > div,
+  .dashboard-empty > div {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .dashboard-intro__copy {
+    max-width: 44rem;
+  }
+
+  .dashboard-intro h1 {
+    font-size: clamp(2.75rem, 9vw, 6.25rem);
+    line-height: .88;
+    letter-spacing: -.05em;
+  }
+
+  .dashboard-intro__copy > p:last-child,
+  .dashboard-section-copy > p:last-child,
+  .dashboard-trend__heading > p,
+  .dashboard-empty p,
+  .dashboard-today__note {
+    max-width: 42rem;
+    margin: 0;
+    color: var(--color-text-muted);
+  }
+
+  .dashboard-destinations {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .dashboard-today {
+    display: grid;
+    gap: var(--space-7);
+  }
+
+  .dashboard-section-copy {
+    max-width: 40rem;
+  }
+
+  .dashboard-section-copy h2,
+  .dashboard-trend__heading h2,
+  .dashboard-empty h2 {
+    font-size: clamp(1.8rem, 5vw, 3rem);
+    line-height: 1;
+  }
+
+  .dashboard-today__measures {
+    display: grid;
+    margin: 0;
+    border-block: 1px solid var(--color-border-strong);
+  }
+
+  .dashboard-today__measures > div {
+    display: grid;
+    min-width: 0;
+    align-content: start;
+    gap: var(--space-2);
+    padding: var(--space-5) var(--space-3);
+  }
+
+  .dashboard-today__measures > div + div {
+    border-block-start: 1px solid var(--color-border);
+  }
+
+  .dashboard-today__measures dt {
+    color: var(--color-text-muted);
+    font-size: var(--text-caption);
+    font-weight: 720;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+  }
+
+  .dashboard-today__measures dd {
+    min-width: 0;
+    margin: 0;
+    color: var(--color-ink);
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 8vw, 4.5rem);
+    font-variant-numeric: tabular-nums;
+    font-weight: 540;
+    line-height: .9;
+    overflow-wrap: anywhere;
+  }
+
+  .dashboard-measure-unit {
+    font-family: var(--font-body);
+    font-size: var(--text-small);
+    font-weight: 700;
+  }
+
+  .dashboard-today__note {
+    padding: var(--space-4);
+    border: 1px solid var(--color-attention);
+    border-radius: var(--radius-control);
+    background: var(--color-attention-soft);
+  }
+
+  .dashboard-trend {
+    display: grid;
+    gap: var(--space-5);
+    margin: 0;
+    padding-block-start: clamp(2.5rem, 7vw, 5rem);
+    border-block-start: 1px solid var(--color-border-strong);
+  }
+
+  .dashboard-trend__heading {
+    display: grid;
+    gap: var(--space-4);
+  }
+
+  .dashboard-trend .analytics-chart {
+    min-height: 18rem;
+  }
+
+  .dashboard-trend .analytics-chart[hidden] {
+    display: none;
+  }
+
+  .dashboard-trend .analytics-data table {
+    table-layout: fixed;
+  }
+
+  .dashboard-trend .analytics-data th,
+  .dashboard-trend .analytics-data td {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .dashboard-empty {
+    display: grid;
+    gap: var(--space-7);
+    padding-block: clamp(2.5rem, 7vw, 5rem);
+    border-block: 1px solid var(--color-border-strong);
+  }
+
+  .dashboard-empty > .c-button {
+    align-self: end;
+    justify-self: start;
+  }
+
+  @media (max-width: 31rem) {
+    .dashboard-destinations {
+      display: grid;
+    }
+
+    .dashboard-destinations .c-button {
+      width: 100%;
+      white-space: normal;
+    }
+  }
+
+  @media (min-width: 48rem) {
+    .dashboard-intro {
+      grid-template-columns: minmax(0, 1.35fr) minmax(13rem, .65fr);
+      align-items: end;
+    }
+
+    .dashboard-destinations {
+      display: grid;
+    }
+
+    .dashboard-today__measures {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .dashboard-today__measures > div + div {
+      border-block-start: 0;
+      border-inline-start: 1px solid var(--color-border);
+    }
+
+    .dashboard-trend__heading,
+    .dashboard-empty {
+      grid-template-columns: minmax(0, .9fr) minmax(18rem, 1.1fr);
+      align-items: end;
+    }
+  }
+}
+
 @layer components {
   .logbook-page,
   .logging-page {

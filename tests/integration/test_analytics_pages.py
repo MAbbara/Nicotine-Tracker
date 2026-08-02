@@ -168,23 +168,19 @@ def test_dashboard_renders_local_enhancement_and_semantic_values(
     soup = _soup(logged_in_client.get("/dashboard/"))
 
     _assert_local_analytics_assets(soup, "/static/js/dashboard-charts.js")
-    chart = soup.select_one("#dailyIntakeChart[role='img'][aria-labelledby]")
+    chart = soup.select_one("#dashboard-trend-chart[role='img'][aria-labelledby][hidden]")
     assert chart is not None
-    assert soup.select_one(f"#{chart['aria-labelledby']}").get_text(strip=True) == "Daily Intake"
-    trend = soup.select_one("[role='region'][aria-label='Consumption trend data']")
-    hourly = soup.select_one("[role='region'][aria-label='Hourly distribution data']")
-    assert trend is not None and hourly is not None
+    assert soup.select_one(f"#{chart['aria-labelledby']}").get_text(strip=True) == "Recent daily intake"
+    trend = soup.select_one("[role='region'][aria-label='Recent daily intake data']")
+    assert trend is not None
     trend_rows = [
         [cell.get_text(strip=True) for cell in row.select("th, td")]
         for row in trend.select("tbody tr")
     ]
     assert [logged_at.date().isoformat(), "17", "68.0"] in trend_rows
-    hourly_rows = [
-        [cell.get_text(strip=True) for cell in row.select("th, td")]
-        for row in hourly.select("tbody tr")
-    ]
-    assert ["11:00", "17"] in hourly_rows
-    assert trend.select_one("table caption").get_text(" ", strip=True) == "Consumption trend data"
+    assert trend.select_one("table caption").get_text(" ", strip=True) == "Recent daily intake data"
+    assert soup.select_one("[role='region'][aria-label='Hourly distribution data']") is None
+    assert trend.find_parent("details").find_next_sibling(class_="analytics-chart") == chart
 
 
 def test_today_remains_free_of_analytics_assets(logged_in_client):
