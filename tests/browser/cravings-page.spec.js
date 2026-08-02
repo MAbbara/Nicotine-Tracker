@@ -94,6 +94,35 @@ test('Craving history exposes native validation and recoverable server feedback'
 });
 
 
+test('Craving history records minimal and detailed entries when its page module is blocked', async ({ page }, testInfo) => {
+  await register(page, testInfo);
+  await page.route('**/static/js/cravings/page.js', (route) => route.abort());
+  await page.goto('/cravings/cravings');
+
+  let form = page.locator('#craving-form');
+  await form.getByLabel('Intensity').fill('3');
+  await form.getByRole('button', { name: 'Record craving' }).click();
+  await expect(page).toHaveURL(/\/cravings\/cravings$/);
+  await expect(page.locator('.craving-row').first()).toContainText('Intensity 3 of 10');
+
+  form = page.locator('#craving-form');
+  await form.getByLabel('Intensity').fill('8');
+  await form.getByLabel('Trigger').selectOption('stress');
+  await form.getByLabel('Duration').fill('12');
+  await form.getByLabel('Situation context').fill('Blocked module detail');
+  await form.getByLabel('Outcome').selectOption('used_alternative');
+  await form.getByLabel('Notes').fill('Stayed in the form body');
+  await form.getByRole('button', { name: 'Record craving' }).click();
+
+  await expect(page).toHaveURL(/\/cravings\/cravings$/);
+  await expect(page).not.toHaveURL(/[?&](?:notes|situation_context)=/);
+  const detailed = page.locator('.craving-row', { hasText: 'Blocked module detail' });
+  await expect(detailed).toContainText('Intensity 8 of 10');
+  await expect(detailed).toContainText('Used an alternative');
+  await expect(page.locator('.craving-row')).toHaveCount(2);
+});
+
+
 for (const theme of ['light', 'dark']) {
   test(`Craving history meets WCAG A/AA in explicit ${theme} theme`, async ({ page }, testInfo) => {
     await page.addInitScript((value) => {

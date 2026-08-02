@@ -2,7 +2,10 @@ from datetime import datetime, timezone
 import re
 from uuid import uuid4
 
-from flask import Blueprint, render_template, request, jsonify, current_app
+from flask import (
+    Blueprint, current_app, flash, jsonify, redirect, render_template,
+    request, url_for,
+)
 from routes.auth import login_required, get_current_user
 from extensions import db
 from models import Craving
@@ -73,12 +76,77 @@ def _first_validation_message(exc):
             return messages[0]
     return 'Check the provided craving details and try again.'
 
-@cravings_bp.route('/cravings', methods=['GET'])
+
+def _legacy_inputs(user, data, *, instant=None):
+    unknown = sorted(set(data) - _LEGACY_KEYS)
+    if unknown:
+        raise ApiValidationError({
+            field: ['This field is not supported.'] for field in unknown
+        })
+    instant = instant or datetime.now(timezone.utc)
+    resolved_timezone = resolve_timezone(user.timezone)
+    create_body = {
+        'client_event_id': str(uuid4()),
+        'intensity': _legacy_integer(data.get('intensity')),
+        'trigger': data.get('trigger'),
+        'occurred_at_local': instant.astimezone(resolved_timezone).isoformat(),
+        'timezone': resolved_timezone.zone,
+    }
+    patch_body = {}
+    for field in _LEGACY_PATCH_KEYS:
+        if field not in data:
+            continue
+        value = data[field]
+        if field in _LEGACY_INTEGER_FIELDS:
+            value = _legacy_integer(value)
+        if field == 'outcome' and isinstance(value, str) and not value.strip():
+            continue
+        patch_body[field] = value
+    create_input = parse_create_craving_request(create_body, now=instant)
+    patch_input = parse_update_craving_request(patch_body) if patch_body else None
+    return create_input, patch_input
+
+
+def _persist_legacy_craving(user, data):
+    create_input, patch_input = _legacy_inputs(user, data)
+    result = CravingService.create_idempotent(user.id, create_input)
+    craving = result.craving
+    if patch_input is not None:
+        craving = CravingService.update_owned(user.id, craving.id, patch_input)
+    return craving
+
+@cravings_bp.route('/cravings', methods=['GET', 'POST'])
 @login_required
 def cravings_page():
     """Render the detailed craving-entry fallback and recent history."""
     try:
         user = get_current_user()
+        if request.method == 'POST':
+            data = request.form.to_dict(flat=True)
+            data.pop('csrf_token', None)
+            symptoms = [
+                value.strip()
+                for value in request.form.getlist('physical_symptoms')
+                if value.strip()
+            ]
+            if symptoms:
+                data['physical_symptoms'] = symptoms
+            try:
+                _persist_legacy_craving(user, data)
+            except (
+                ApiValidationError,
+                InvalidLocalTimeError,
+                CravingValidationError,
+            ) as exc:
+                flash(_first_validation_message(exc), 'error')
+                return render_template(
+                    'cravings/cravings.html',
+                    recent_cravings=[],
+                    user=user,
+                    user_timezone=resolve_timezone(user.timezone).zone,
+                ), 400
+            flash('Craving recorded. Thank you for noticing the moment.', 'success')
+            return redirect(url_for('cravings.cravings_page'))
         recent_cravings = Craving.query.filter_by(user_id=user.id).order_by(
             Craving.craving_time.desc(), Craving.id.desc()
         ).limit(20).all()
@@ -109,49 +177,11 @@ def add_craving():
     if not isinstance(data, dict):
         return _legacy_error('Send one JSON object.')
 
-    unknown = sorted(set(data) - _LEGACY_KEYS)
-    if unknown:
-        return _legacy_error('This field is not supported.')
-
     user = get_current_user()
-    instant = datetime.now(timezone.utc)
-    resolved_timezone = resolve_timezone(user.timezone)
-    raw_intensity = _legacy_integer(data.get('intensity'))
-    create_body = {
-        'client_event_id': str(uuid4()),
-        'intensity': raw_intensity,
-        'trigger': data.get('trigger'),
-        'occurred_at_local': instant.astimezone(
-            resolved_timezone
-        ).isoformat(),
-        'timezone': resolved_timezone.zone,
-    }
-    patch_body = {}
-    for field in _LEGACY_PATCH_KEYS:
-        if field not in data:
-            continue
-        value = data[field]
-        if field in _LEGACY_INTEGER_FIELDS:
-            value = _legacy_integer(value)
-        if field == 'outcome' and isinstance(value, str) and not value.strip():
-            continue
-        patch_body[field] = value
-
     try:
-        create_input = parse_create_craving_request(create_body, now=instant)
-        patch_input = (
-            parse_update_craving_request(patch_body) if patch_body else None
-        )
+        craving = _persist_legacy_craving(user, data)
     except (ApiValidationError, InvalidLocalTimeError) as exc:
         return _legacy_error(_first_validation_message(exc))
-
-    try:
-        result = CravingService.create_idempotent(user.id, create_input)
-        craving = result.craving
-        if patch_input is not None:
-            craving = CravingService.update_owned(
-                user.id, craving.id, patch_input
-            )
     except CravingValidationError as exc:
         return _legacy_error(_first_validation_message(exc))
     except Exception:
@@ -175,7 +205,7 @@ def get_cravings():
         days = max(1, min(365, days))
         
         cravings = Craving.query.filter_by(user_id=user.id).order_by(
-            Craving.craving_time.desc()
+            Craving.craving_time.desc(), Craving.id.desc()
         ).limit(days * 10).all()  # Reasonable limit
         
         return jsonify([craving.to_dict() for craving in cravings])

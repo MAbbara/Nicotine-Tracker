@@ -229,6 +229,7 @@ window.NicotineTracker = {
 
 // Form submission loading state
 document.addEventListener('submit', function(event) {
+    if (event.defaultPrevented) return;
     const form = event.target;
     const submitButton = form.querySelector('button[type="submit"]');
     if (submitButton && !submitButton.disabled) {

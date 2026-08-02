@@ -27,7 +27,8 @@
             <p>Only intensity is required. Leave anything else blank if it does not help you understand the moment.</p>
         </header>
 
-        <form id="craving-form" class="craving-entry-form" data-endpoint="{{ url_for('cravings.add_craving') }}">
+        <form id="craving-form" class="craving-entry-form" action="{{ url_for('cravings.cravings_page') }}" method="post" data-endpoint="{{ url_for('cravings.add_craving') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <fieldset class="craving-form-section">
                 <legend>What happened</legend>
                 <div class="craving-form-grid craving-form-grid--two">

@@ -11,7 +11,7 @@ const OUTCOME_LABELS = {
 function buildCravingPayload(formData) {
   const payload = {};
   for (const [name, rawValue] of formData.entries()) {
-    if (name === 'physical_symptoms') continue;
+    if (name === 'csrf_token' || name === 'physical_symptoms') continue;
     const value = typeof rawValue === 'string' ? rawValue.trim() : rawValue;
     if (value === '') continue;
     payload[name] = NUMBER_FIELDS.has(name) ? Number(value) : value;

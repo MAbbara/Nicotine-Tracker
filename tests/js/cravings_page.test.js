@@ -23,6 +23,7 @@ function formData(entries, symptoms = []) {
 test('minimal detailed craving payload contains only the required intensity', async () => {
   const { buildCravingPayload } = await loadModule();
   const payload = buildCravingPayload(formData([
+    ['csrf_token', 'header-only-token'],
     ['intensity', '3'],
     ['trigger', ''],
     ['notes', '   '],

@@ -31,13 +31,15 @@ def test_craving_history_page_has_editorial_fallback_structure_and_all_fields(
     assert document.select_one('a[href="/today/"]')
 
     form = document.select_one(
-        'form.craving-entry-form[data-endpoint="/cravings/api/cravings"]'
+        'form.craving-entry-form[action="/cravings/cravings"][method="post"]'
+        '[data-endpoint="/cravings/api/cravings"]'
     )
     assert form is not None
     expected_fields = {
         'intensity', 'trigger', 'mood_before', 'stress_level',
         'duration_minutes', 'physical_symptoms', 'situation_context',
         'outcome', 'mood_after', 'notes', 'outcome_notes',
+        'csrf_token',
     }
     assert expected_fields == {
         field.get('name') for field in form.select('[name]')
@@ -138,6 +140,69 @@ def test_legacy_craving_adapter_accepts_minimal_and_complete_entries(
         'restlessness', 'irritability'
     ]
     assert saved[1].outcome_notes == 'Walked outside and had water'
+
+
+def test_server_fallback_uses_prg_for_minimal_and_detailed_entries(
+        logged_in_client, db_session, test_user):
+    minimal = logged_in_client.post('/cravings/cravings', data={
+        'intensity': '3',
+    })
+    detailed = logged_in_client.post('/cravings/cravings', data={
+        'intensity': '8',
+        'trigger': 'stress',
+        'mood_before': '4',
+        'stress_level': '9',
+        'duration_minutes': '12',
+        'physical_symptoms': ['restlessness', 'irritability'],
+        'situation_context': '<script>alert("context")</script>',
+        'outcome': 'used_alternative',
+        'mood_after': '6',
+        'notes': 'The urge eased gradually',
+        'outcome_notes': 'Walked outside and had water',
+    })
+
+    assert minimal.status_code == detailed.status_code == 302
+    assert minimal.headers['Location'].endswith('/cravings/cravings')
+    assert detailed.headers['Location'].endswith('/cravings/cravings')
+    assert '?' not in minimal.headers['Location']
+    assert '?' not in detailed.headers['Location']
+    saved = Craving.query.filter_by(user_id=test_user.id).order_by(Craving.id).all()
+    assert len(saved) == 2
+    assert saved[0].intensity == 3
+    assert saved[1].intensity == 8
+    assert saved[1].outcome == 'used_alternative'
+    assert saved[1].situation_context == '<script>alert("context")</script>'
+    assert json.loads(saved[1].physical_symptoms) == [
+        'restlessness', 'irritability'
+    ]
+
+    rendered = logged_in_client.get('/cravings/cravings')
+    assert b'&lt;script&gt;alert' in rendered.data
+    assert b'<script>alert("context")</script>' not in rendered.data
+
+
+def test_legacy_craving_get_uses_id_as_equal_time_tie_break(
+        logged_in_client, db_session, test_user):
+    timestamp = datetime(2026, 1, 10, 8, 0)
+    older_id = Craving(
+        user_id=test_user.id,
+        craving_time=timestamp,
+        intensity=4,
+    )
+    newer_id = Craving(
+        user_id=test_user.id,
+        craving_time=timestamp,
+        intensity=8,
+    )
+    db_session.add_all([older_id, newer_id])
+    db_session.commit()
+
+    response = logged_in_client.get('/cravings/api/cravings')
+
+    assert response.status_code == 200
+    assert [item['id'] for item in response.get_json()] == [
+        newer_id.id, older_id.id
+    ]
 
 
 def test_craving_adapter_rejects_invalid_entry_without_persisting(
