@@ -12,7 +12,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from app import create_app  # noqa: E402
 from extensions import db  # noqa: E402
 from routes.auth import get_current_user, login_required  # noqa: E402
-from flask import render_template  # noqa: E402
+from flask import abort, redirect, render_template, url_for  # noqa: E402
 from models import (  # noqa: E402
     Craving,
     DailyCheckIn,
@@ -470,6 +470,93 @@ with app.app_context():
 
     seed_review_fixture('journey-review-desktop@example.com', 'c', 'd')
     seed_review_fixture('journey-review-mobile@example.com', 'e', 'f')
+
+    def seed_release_user(
+        email,
+        *,
+        offline_enabled=True,
+        log_quantity=None,
+        owned_data=False,
+    ):
+        """Build isolated, non-mutating Task 1 release inventory evidence."""
+        release_user = User(
+            email=email,
+            email_verified=True,
+            timezone='UTC',
+        )
+        release_user.set_password('browser-password')
+        db.session.add(release_user)
+        db.session.flush()
+        db.session.add(UserPreferences(
+            user_id=release_user.id,
+            offline_queue_enabled=offline_enabled,
+            notification_channel=['email'],
+            preferred_brands=[],
+        ))
+
+        owned_pouch = None
+        if owned_data:
+            owned_pouch = Pouch(
+                brand=f'Release {release_user.id}',
+                nicotine_mg=Decimal('3.50'),
+                is_default=False,
+                created_by=release_user.id,
+            )
+            db.session.add(owned_pouch)
+            db.session.flush()
+            db.session.add(Goal(
+                user_id=release_user.id,
+                goal_type='daily_pouches',
+                target_value=4,
+                start_date=date.today() - timedelta(days=5),
+                is_active=True,
+            ))
+            db.session.add(Craving(
+                user_id=release_user.id,
+                craving_time=datetime.combine(date.today(), time(10, 0)),
+                intensity=5,
+                trigger='release fixture',
+                outcome='resisted',
+            ))
+
+        if log_quantity is not None:
+            db.session.add(Log(
+                user_id=release_user.id,
+                pouch_id=(owned_pouch or default_pouch).id,
+                log_date=date.today(),
+                log_time=datetime.combine(date.today(), time(12, 0)),
+                product_brand_snapshot=(
+                    owned_pouch.brand if owned_pouch else default_pouch.brand
+                ),
+                nicotine_mg_snapshot=(
+                    owned_pouch.nicotine_mg
+                    if owned_pouch else default_pouch.nicotine_mg
+                ),
+                quantity=log_quantity,
+            ))
+        return release_user
+
+    seed_release_user('release-analytics-empty@example.com')
+    seed_release_user(
+        'release-analytics-sparse@example.com',
+        log_quantity=1,
+    )
+    seed_release_user('release-offline-enabled@example.com')
+    seed_release_user(
+        'release-offline-disabled@example.com',
+        offline_enabled=False,
+    )
+    seed_release_user('release-settings@example.com')
+    seed_release_user(
+        'release-inventory@example.com',
+        log_quantity=2,
+        owned_data=True,
+    )
+    seed_release_user(
+        'release-destructive@example.com',
+        log_quantity=1,
+        owned_data=True,
+    )
     db.session.commit()
 
 
@@ -499,6 +586,39 @@ def cleanup_today_events():
         db.session.delete(craving)
     db.session.commit()
     return {'success': True}
+
+
+@app.get('/__test__/release/goal-edit')
+@login_required
+def release_goal_edit():
+    current_user = get_current_user()
+    goal = Goal.query.filter_by(user_id=current_user.id).order_by(Goal.id).first()
+    if goal is None:
+        abort(404)
+    return redirect(url_for('goals.edit_goal', goal_id=goal.id))
+
+
+@app.get('/__test__/release/log-edit')
+@login_required
+def release_log_edit():
+    current_user = get_current_user()
+    log = Log.query.filter_by(user_id=current_user.id).order_by(Log.id).first()
+    if log is None:
+        abort(404)
+    return redirect(url_for('logging.edit_log', log_id=log.id))
+
+
+@app.get('/__test__/release/catalog-edit')
+@login_required
+def release_catalog_edit():
+    current_user = get_current_user()
+    pouch = Pouch.query.filter_by(
+        created_by=current_user.id,
+        is_default=False,
+    ).order_by(Pouch.id).first()
+    if pouch is None:
+        abort(404)
+    return redirect(url_for('catalog.edit_pouch', pouch_id=pouch.id))
 
 
 if __name__ == '__main__':
