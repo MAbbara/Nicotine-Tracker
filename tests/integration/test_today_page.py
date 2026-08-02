@@ -205,15 +205,117 @@ def test_today_actions_are_real_links_with_stable_enhancement_hooks(
     log_action = soup.select_one(
         "a#today-log-action[data-today-action='log-nicotine']"
     )
-    craving_action = soup.select_one(
-        "a#today-craving-action[data-today-action='craving']"
+    craving_fallback = soup.select_one(
+        "[data-craving-action-slot] a[data-action-fallback]"
     )
     assert log_action is not None
     assert log_action.get_text(" ", strip=True).startswith("Log nicotine use")
     assert log_action["href"] == "/log/add"
-    assert craving_action is not None
-    assert craving_action.get_text(" ", strip=True).startswith("I have a craving")
-    assert craving_action["href"] == "/cravings/cravings"
+    assert craving_fallback is not None
+    assert craving_fallback.get_text(" ", strip=True).startswith(
+        "I have a craving"
+    )
+    assert craving_fallback["href"] == "/cravings/cravings"
+
+
+def _assert_action_slot(soup, slot_selector, href, control_id, action):
+    """One visible fallback anchor, one hidden enhanced button, one name."""
+    slot = soup.select_one(f"[data-action-slot]{slot_selector}")
+    assert slot is not None
+    assert slot.get("data-controller-ready") is None
+
+    fallbacks = slot.select("[data-action-fallback]")
+    enhanced = slot.select("[data-action-enhanced]")
+    assert len(fallbacks) == 1
+    assert len(enhanced) == 1
+
+    fallback = fallbacks[0]
+    control = enhanced[0]
+    assert fallback.name == "a"
+    assert fallback["href"] == href
+    assert not fallback.has_attr("hidden")
+    assert control.name == "button"
+    assert control["type"] == "button"
+    assert control.has_attr("hidden")
+    assert control["id"] == control_id
+    assert control["data-today-action"] == action
+
+    fallback_name = " ".join(fallback.get_text(" ", strip=True).split())
+    control_name = " ".join(control.get_text(" ", strip=True).split())
+    assert fallback_name == control_name
+    return slot, fallback, control
+
+
+def test_smart_default_action_slots_pair_visible_fallback_with_hidden_enhanced(
+    logged_in_client,
+    monkeypatch,
+):
+    """Each slot must degrade to a real link and enhance to one same-named button."""
+    smart_default = SmartDefault(
+        pouch_id=9,
+        brand="Steady Mint",
+        nicotine_mg=Decimal("6.00"),
+        source="preferred",
+    )
+    monkeypatch.setattr(
+        TodayService,
+        "get_summary",
+        classmethod(
+            lambda cls, user_id: _summary(smart_default=smart_default)
+        ),
+    )
+
+    response = logged_in_client.get("/today/")
+    soup = BeautifulSoup(response.data, "html.parser")
+
+    _, _, log_control = _assert_action_slot(
+        soup,
+        "[data-log-action-slot]",
+        "/log/add",
+        "today-log-action",
+        "log-nicotine",
+    )
+    assert log_control["data-smart-default-pouch-id"] == "9"
+    assert log_control["data-smart-default-brand"] == "Steady Mint"
+    assert log_control["data-smart-default-strength"] == "6.00"
+
+    _assert_action_slot(
+        soup,
+        "[data-craving-action-slot]",
+        "/cravings/cravings",
+        "today-craving-action",
+        "craving",
+    )
+
+
+def test_log_action_without_smart_default_renders_only_the_usable_fallback(
+    logged_in_client,
+    monkeypatch,
+):
+    """No smart default means no enhanced Log control, but Craving still pairs."""
+    monkeypatch.setattr(
+        TodayService,
+        "get_summary",
+        classmethod(lambda cls, user_id: _summary(smart_default=None)),
+    )
+
+    response = logged_in_client.get("/today/")
+    soup = BeautifulSoup(response.data, "html.parser")
+
+    assert soup.select_one("[data-log-action-slot]") is None
+    assert soup.select_one("button#today-log-action") is None
+    fallback = soup.select_one("a#today-log-action")
+    assert fallback is not None
+    assert fallback["href"] == "/log/add"
+    assert not fallback.has_attr("hidden")
+
+    _assert_action_slot(
+        soup,
+        "[data-craving-action-slot]",
+        "/cravings/cravings",
+        "today-craving-action",
+        "craving",
+    )
 
 
 def test_today_timeline_preserves_service_order_and_aware_datetimes(
@@ -794,7 +896,7 @@ def test_core_summary_failure_keeps_recovery_actions_and_logs_request_id(
     )
     assert soup.select_one("a#today-log-action[href='/log/add']") is not None
     assert soup.select_one(
-        "a#today-craving-action[href='/cravings/cravings']"
+        "[data-craving-action-slot] a[data-action-fallback][href='/cravings/cravings']"
     ) is not None
     assert recovery.select_one("a[href='/journey/']") is not None
     assert request_id in recovery.get_text(" ", strip=True)

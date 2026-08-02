@@ -29,12 +29,14 @@ def test_today_renders_one_native_craving_dialog_while_preserving_the_no_js_link
 
     response = logged_in_client.get("/today/")
     soup = BeautifulSoup(response.data, "html.parser")
-    trigger = soup.select_one("#today-craving-action")
+    trigger = soup.select_one("button#today-craving-action[data-action-enhanced]")
+    fallback = soup.select_one("[data-craving-action-slot] a[data-action-fallback]")
     dialog = soup.select_one("dialog#today-craving-flow[data-craving-flow-dialog]")
 
     assert response.status_code == 200
     assert trigger is not None
-    assert trigger["href"] == "/cravings/cravings"
+    assert fallback is not None
+    assert fallback["href"] == "/cravings/cravings"
     assert dialog is not None
     assert dialog["aria-labelledby"] == "today-craving-flow-title"
     assert len(soup.select("dialog[data-craving-flow-dialog]")) == 1
@@ -119,6 +121,9 @@ def test_today_summary_failure_still_keeps_guided_craving_support_available(
     soup = BeautifulSoup(response.data, "html.parser")
 
     assert response.status_code == 200
-    assert soup.select_one("#today-craving-action[href='/cravings/cravings']")
+    assert soup.select_one("button#today-craving-action")
+    assert soup.select_one(
+        "[data-craving-action-slot] a[data-action-fallback][href='/cravings/cravings']"
+    )
     assert soup.select_one("dialog[data-craving-flow-dialog]")
     assert soup.select_one("script[src$='/static/js/today/craving_flow.js']")
