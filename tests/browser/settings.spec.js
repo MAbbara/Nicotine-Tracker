@@ -44,3 +44,19 @@ test('Profile values persist and actions stay clear of mobile navigation', async
     expect(geometry.overflow).toBeLessThanOrEqual(0);
   }
 });
+
+
+test('Account rejects incorrect credentials without losing the form', async ({ page }) => {
+  await login(page);
+  await page.goto('/settings/account');
+
+  await page.getByLabel('New email address').fill('browser-changed@example.com');
+  await page.locator('form', { has: page.locator('input[value="update_email"]') })
+    .getByLabel('Current password').fill('wrong-password');
+  await page.getByRole('button', { name: 'Update email' }).click();
+
+  await expect(page.getByRole('status')).toContainText('Current password is incorrect.');
+  await expect(page.getByRole('heading', { name: 'Account', level: 1 })).toBeVisible();
+  await expect(page.getByLabel('New email address')).toHaveValue('browser@example.com');
+  await expect(page.getByRole('button', { name: 'Delete account' })).toHaveClass(/c-button--danger/);
+});
