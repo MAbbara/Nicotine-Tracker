@@ -105,6 +105,47 @@ def test_400_default_copy_preserves_refresh_guidance(app):
     ), "400 default copy keeps the existing refresh guidance"
 
 
+def test_400_recovery_ignores_external_referer(app, client):
+    app.config["WTF_CSRF_ENABLED"] = True
+
+    response = client.post(
+        "/auth/login",
+        data={"email": "nobody@example.com", "password": "wrong-password"},
+        headers={"Referer": "https://attacker.example/phish"},
+    )
+    assert response.status_code == 400
+
+    html = response.data.decode("utf-8")
+    document = _assert_error_page_contract(html)
+    action = _primary_action(document)
+    assert "attacker.example" not in html, (
+        "400 recovery never renders an attacker-controlled external URL"
+    )
+    assert action.get("href") == "/", (
+        "anonymous 400 recovery returns to the landing page, not the referer"
+    )
+
+
+def test_400_authenticated_recovery_points_to_today(app, client, test_user):
+    _login(client, test_user)
+    app.config["WTF_CSRF_ENABLED"] = True
+
+    response = client.post(
+        "/auth/login",
+        data={"email": "nobody@example.com", "password": "wrong-password"},
+        headers={"Referer": "https://attacker.example/phish"},
+    )
+    assert response.status_code == 400
+
+    html = response.data.decode("utf-8")
+    document = _assert_error_page_contract(html)
+    action = _primary_action(document)
+    assert "attacker.example" not in html
+    assert action.get("href") == "/today/", (
+        "authenticated 400 recovery returns to Today, not the referer"
+    )
+
+
 def test_500_anonymous_contract_recovers_to_landing_page(app):
     app.config.update(TESTING=False, PROPAGATE_EXCEPTIONS=False)
 
@@ -142,6 +183,31 @@ def test_500_authenticated_recovery_points_to_today(app, test_user):
     action = _primary_action(document)
     assert action.get("href") == "/today/", (
         "authenticated 500 recovery returns to Today"
+    )
+
+
+def test_500_live_response_reference_matches_correlation_header(app):
+    app.config.update(TESTING=False, PROPAGATE_EXCEPTIONS=False)
+
+    @app.route("/explode-for-reference-test")
+    def _explode():
+        raise RuntimeError("intentional test failure")
+
+    response = app.test_client().get("/explode-for-reference-test")
+    assert response.status_code == 500
+
+    header_request_id = response.headers.get(REQUEST_ID_HEADER)
+    assert header_request_id, "500 responses keep the request correlation header"
+
+    document = _assert_error_page_contract(response.data.decode("utf-8"))
+    reference = document.select_one(".error-page__reference")
+    assert reference is not None, (
+        "live HTML 500 responses surface the visible request reference"
+    )
+    reference_code = reference.select_one("code")
+    assert reference_code is not None
+    assert reference_code.get_text(strip=True) == header_request_id, (
+        "the visible reference is exactly the X-Request-ID response header value"
     )
 
 

@@ -147,7 +147,9 @@ def create_app(config_name=None):
             })
             response.status_code = 500
         else:
-            response = make_response(render_template('errors/500.html'), 500)
+            response = make_response(
+                render_template('errors/500.html', request_id=request_id), 500
+            )
         # Flask 2.3 routes unhandled exceptions through handle_exception, which
         # returns the response without running after_request hooks, so the
         # correlation header must be stamped here as well.

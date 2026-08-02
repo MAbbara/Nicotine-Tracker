@@ -8,6 +8,10 @@
   <p class="eyebrow">Request expired</p>
   <h1 id="error-title">Refresh and try again</h1>
   <p class="error-page__lede">{{ message or 'We could not verify that request. Refresh the page before trying again.' }}</p>
-  {{ button('Return safely', href=request.referrer or url_for('index')) }}
+  {% if session.user_id %}
+    {{ button('Return safely', href=url_for('today.index')) }}
+  {% else %}
+    {{ button('Return safely', href=url_for('index')) }}
+  {% endif %}
 </section>
 {% endblock %}
