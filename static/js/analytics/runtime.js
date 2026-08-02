@@ -16,8 +16,9 @@ export async function enhanceChart({ target, status, options, ApexChartsClass })
     return null;
   }
 
+  let chart = null;
   try {
-    const chart = new ApexChartsClass(target, options);
+    chart = new ApexChartsClass(target, options);
     await chart.render();
     if (status) {
       status.textContent = '';
@@ -25,6 +26,8 @@ export async function enhanceChart({ target, status, options, ApexChartsClass })
     }
     return chart;
   } catch (_) {
+    chart?.destroy?.();
+    target?.replaceChildren?.();
     setChartFailure(status);
     return null;
   }

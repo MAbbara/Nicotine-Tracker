@@ -87,11 +87,21 @@ test('missing constructor or target exposes fallback without throwing', async ()
 test('chart render rejection exposes fallback without throwing', async () => {
   const { enhanceChart } = await importModule('static/js/analytics/runtime.js');
   const status = { hidden: true, textContent: '' };
-  const BrokenChart = class { render() { return Promise.reject(new Error('boom')); } };
+  let destroyed = false;
+  let cleared = false;
+  const BrokenChart = class {
+    render() { return Promise.reject(new Error('boom')); }
+    destroy() { destroyed = true; }
+  };
   const result = await enhanceChart({
-    target: {}, status, options: { series: [] }, ApexChartsClass: BrokenChart,
+    target: { replaceChildren() { cleared = true; } },
+    status,
+    options: { series: [] },
+    ApexChartsClass: BrokenChart,
   });
   assert.equal(result, null);
+  assert.equal(destroyed, true);
+  assert.equal(cleared, true);
   assert.equal(status.hidden, false);
   assert.match(status.textContent, /Chart unavailable/);
 });
@@ -318,4 +328,44 @@ test('a zero previous total never becomes a false zero-percent comparison', asyn
 
   assert.equal(model.headline, 'You logged 2 pouches; the previous 7 days had none.');
   assert.doesNotMatch(model.headline, /0%/);
+});
+
+test('chart eligibility follows sufficiency, non-zero data, and visible detail', async () => {
+  const { renderInsights, selectEligibleChartIds } = await importModule('static/js/insights.js');
+  assert.equal(typeof renderInsights, 'function');
+  const ready = {
+    consumption_trend: [{ date: '2026-08-01', value: 2 }],
+    consumption_by_time_of_day: { Morning: 2 },
+    consumption_by_day_of_week: { Monday: 2 },
+    brand_analysis: { Mint: 2 },
+    heatmap_data: [{ name: 'Monday', data: [0, 2] }],
+    data_sufficiency: {
+      trend: true,
+      time_pattern: true,
+      brand_pattern: true,
+      heatmap: true,
+    },
+  };
+
+  assert.deepEqual(selectEligibleChartIds(ready, 'daily', { detailsOpen: false }), [
+    'consumption-trend-chart',
+    'time-of-day-chart',
+    'day-of-week-chart',
+    'brand-chart',
+  ]);
+  assert.deepEqual(selectEligibleChartIds(ready, 'daily', { detailsOpen: true }), [
+    'consumption-trend-chart',
+    'time-of-day-chart',
+    'day-of-week-chart',
+    'brand-chart',
+    'heatmap-chart',
+  ]);
+  assert.deepEqual(selectEligibleChartIds({
+    ...ready,
+    consumption_trend: [{ date: '2026-08-01', value: 0 }],
+    consumption_by_time_of_day: { Morning: 0 },
+    consumption_by_day_of_week: { Monday: 0 },
+    brand_analysis: { Mint: 0 },
+    heatmap_data: [{ name: 'Monday', data: [0, 0] }],
+  }, 'daily', { detailsOpen: true }), []);
 });

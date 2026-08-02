@@ -1,11 +1,11 @@
 import {
   enhanceChart,
   getEffectiveTheme,
-  setChartFailure,
 } from './analytics/runtime.js';
 import { createDisclosure } from './analytics/disclosure.js';
+import { buildInsightsViewModel } from './insights/view_model.js';
 
-export { buildInsightsViewModel } from './insights/view_model.js';
+export { buildInsightsViewModel };
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -60,6 +60,32 @@ export function buildInsightsAlternativeModel(data = {}, trendType = 'daily') {
       }))
     )),
   };
+}
+
+function hasPositive(values) {
+  return (values || []).some((value) => Number(value) > 0);
+}
+
+export function selectEligibleChartIds(data = {}, trendType = 'daily', { detailsOpen = false } = {}) {
+  const model = buildInsightsAlternativeModel(data, trendType);
+  const sufficient = data.data_sufficiency || {};
+  const eligible = [];
+  if (sufficient.trend && hasPositive(model.trend.map((row) => row.value))) {
+    eligible.push('consumption-trend-chart');
+  }
+  if (sufficient.time_pattern && hasPositive(model.timeOfDay.map((row) => row.value))) {
+    eligible.push('time-of-day-chart');
+  }
+  if (sufficient.trend && hasPositive(model.dayOfWeek.map((row) => row.value))) {
+    eligible.push('day-of-week-chart');
+  }
+  if (sufficient.brand_pattern && hasPositive(model.brands.map((row) => row.value))) {
+    eligible.push('brand-chart');
+  }
+  if (detailsOpen && sufficient.heatmap && hasPositive(model.heatmap.map((row) => row.value))) {
+    eligible.push('heatmap-chart');
+  }
+  return eligible;
 }
 
 function renderRows(key, rows, emptyMessage) {
@@ -200,7 +226,7 @@ function chartDefinitions(data, trendType) {
   ];
 }
 
-function updateMetrics(data) {
+function updateMetrics(root, data, viewModel) {
   const values = {
     'total-pouches': data.total_pouches ?? 0,
     'daily-average': data.daily_average ?? 0,
@@ -212,53 +238,106 @@ function updateMetrics(data) {
     'trend-direction': data.trend_direction ?? '--',
   };
   Object.entries(values).forEach(([id, value]) => {
-    const element = document.getElementById(id);
+    const element = root.querySelector(`#${id}`);
     if (element) element.textContent = String(value);
   });
-}
-
-function updateCoachNotes(data) {
-  const container = document.getElementById('ai-insights');
-  if (!container) return;
-  container.replaceChildren();
-  if (!(data.ai_insights || []).length) {
-    const message = document.createElement('p');
-    message.className = 'text-sm text-gray-500 dark:text-gray-400';
-    message.textContent = 'No patterns yet. Keep logging and this view will become more useful.';
-    container.append(message);
-    return;
-  }
-  data.ai_insights.forEach((insight) => {
-    const item = document.createElement('article');
-    const title = document.createElement('h4');
-    const description = document.createElement('p');
-    title.textContent = insight.title || 'Pattern';
-    description.textContent = insight.description || '';
-    item.append(title, description);
-    container.append(item);
+  root.querySelectorAll('.insights-measures dd').forEach((element, index) => {
+    if (viewModel.metrics[index]) element.textContent = viewModel.metrics[index].value;
   });
 }
 
-async function startInsights() {
-  const payload = document.getElementById('initial-insights-data');
-  if (!payload) return;
+function updateEditorial(root, viewModel, rangeDays) {
+  root.dataset.insightsState = viewModel.state;
+  const setText = (selector, value) => {
+    const element = root.querySelector(selector);
+    if (element) element.textContent = value;
+  };
+  setText('[data-insights-headline]', viewModel.headline);
+  setText('[data-insights-interpretation]', viewModel.interpretation);
+  setText('[data-insights-time-copy]', viewModel.sections.timePattern.interpretation);
+  setText('[data-insights-product-copy]', viewModel.sections.productPattern.interpretation);
+  const nextStep = root.querySelector('[data-insights-next-step]');
+  if (nextStep) {
+    nextStep.textContent = viewModel.nextStep.label;
+    nextStep.href = viewModel.nextStep.href;
+  }
+  root.querySelectorAll('[data-days]').forEach((control) => {
+    const selected = Number(control.dataset.days) === rangeDays;
+    control.classList.toggle('is-active', selected);
+    if (selected) control.setAttribute('aria-current', 'true');
+    else control.removeAttribute('aria-current');
+  });
+  const exportButton = root.querySelector('#export-data');
+  if (exportButton) exportButton.dataset.exportHref = `/insights/api/export?days=${rangeDays}`;
+}
+
+function setLoadStatus(root, message = '') {
+  let status = root.querySelector('[data-insights-load-status]');
+  if (!status) {
+    status = document.createElement('p');
+    status.dataset.insightsLoadStatus = '';
+    status.className = 'analytics-chart__status';
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
+    root.querySelector('.insights-actions')?.append(status);
+  }
+  status.textContent = message;
+  status.hidden = !message;
+}
+
+export function renderInsights(
+  root,
+  viewModel,
+  rawData,
+  { rangeDays = 30, trendType = 'daily', detailsOpen = false } = {},
+) {
+  updateEditorial(root, viewModel, rangeDays);
+  updateMetrics(root, rawData, viewModel);
+  updateAlternatives(rawData, trendType);
+  root.querySelectorAll('.trend-toggle').forEach((control) => {
+    const selected = control.dataset.type === trendType;
+    control.classList.toggle('is-active', selected);
+    control.setAttribute('aria-pressed', String(selected));
+  });
+  const eligible = new Set(selectEligibleChartIds(rawData, trendType, { detailsOpen }));
+  root.querySelectorAll('.analytics-chart').forEach((target) => {
+    target.hidden = !eligible.has(target.id);
+    if (target.hidden) target.replaceChildren();
+  });
+  return eligible;
+}
+
+export async function startInsights(scope = document) {
+  const root = scope.matches?.('[data-insights-root]')
+    ? scope
+    : scope.querySelector?.('[data-insights-root]');
+  const payload = scope.querySelector?.('#initial-insights-data')
+    || document.getElementById('initial-insights-data');
+  if (!root || !payload || root.dataset.insightsStarted === 'true') return null;
+  root.dataset.insightsStarted = 'true';
   let currentData = JSON.parse(payload.textContent || '{}');
-  let currentRange = 30;
+  let currentRange = Number(currentData.range_days) || 30;
   let trendType = 'daily';
   let charts = [];
+  let requestGeneration = 0;
   const disclosure = createDisclosure({
     trigger: document.querySelector('[data-analytics-disclosure-trigger]'),
     panel: document.querySelector('[data-analytics-disclosure-menu]'),
   });
+  const details = root.querySelector('.analytics-details');
 
   const render = async () => {
     charts.forEach((chart) => chart?.destroy?.());
     charts = [];
-    updateMetrics(currentData);
-    updateAlternatives(currentData, trendType);
-    updateCoachNotes(currentData);
+    const viewModel = buildInsightsViewModel(currentData, currentRange);
+    const eligible = renderInsights(root, viewModel, currentData, {
+      rangeDays: currentRange,
+      trendType,
+      detailsOpen: Boolean(details?.open),
+    });
     for (const [id, options] of chartDefinitions(currentData, trendType)) {
-      const target = document.getElementById(id);
+      if (!eligible.has(id)) continue;
+      const target = root.querySelector(`#${id}`);
       const chart = await enhanceChart({
         target,
         status: statusFor(target),
@@ -270,40 +349,43 @@ async function startInsights() {
   };
 
   const loadRange = async (days) => {
+    const generation = ++requestGeneration;
     try {
       const response = await fetch(`/insights/api/insights?days=${days}`);
       if (!response.ok) throw new Error(`Insights request failed (${response.status})`);
-      currentData = await response.json();
+      const data = await response.json();
+      if (generation !== requestGeneration) return;
+      currentData = data;
       currentRange = days;
+      setLoadStatus(root);
       await render();
     } catch (_) {
-      document.querySelectorAll('.analytics-chart__status').forEach((status) => {
-        setChartFailure(status, 'Chart unavailable. Current table values remain available.');
-      });
+      if (generation !== requestGeneration) return;
+      setLoadStatus(root, 'Insights could not refresh. Your current values are still available; choose the range again to retry.');
     }
   };
 
-  document.querySelectorAll('.dropdown-item[data-days]').forEach((item) => {
+  root.querySelectorAll('.dropdown-item[data-days]').forEach((item) => {
     item.addEventListener('click', (event) => {
       event.preventDefault();
       const days = Number(item.dataset.days) || 30;
-      const label = document.getElementById('selected-range');
-      if (label) label.textContent = item.textContent.trim();
       disclosure?.close();
       loadRange(days);
     });
   });
-  document.querySelectorAll('.trend-toggle').forEach((button) => {
+  root.querySelectorAll('.trend-toggle').forEach((button) => {
     button.addEventListener('click', () => {
       trendType = button.dataset.type === 'weekly' ? 'weekly' : 'daily';
       render();
     });
   });
-  document.getElementById('export-data')?.addEventListener('click', () => {
+  root.querySelector('#export-data')?.addEventListener('click', () => {
     window.location.assign(`/insights/api/export?days=${currentRange}`);
   });
+  details?.addEventListener('toggle', render);
   document.documentElement.addEventListener('nicotine-tracker:theme-change', render);
   await render();
+  return { render, loadRange };
 }
 
 if (typeof document !== 'undefined') {
