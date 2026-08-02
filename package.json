@@ -1,4 +1,5 @@
 {
+  "name": "NicotineTracker",
   "scripts": {
     "build": "npm run build:css",
     "build:css": "tailwindcss -i ./static/css/tailwind.css -o ./static/css/style.css --minify",
@@ -14,10 +15,10 @@
     "@preline/input-number": "^3.2.0",
     "@preline/overlay": "^3.2.0",
     "@preline/select": "^3.2.3",
-    "@tailwindcss/cli": "^4.1.11",
+    "@tailwindcss/cli": "4.3.1",
     "lodash": "^4.17.21",
     "preline": "^3.2.0",
-    "tailwindcss": "^4.1.11"
+    "tailwindcss": "4.3.1"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",
