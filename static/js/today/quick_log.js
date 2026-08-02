@@ -12,6 +12,18 @@ export function ensureQuickLogController(root, factory) {
   return controller;
 }
 
+function rollbackQuickLogController(root, controller) {
+  if (!controller || QUICK_LOG_CONTROLLERS.get(root) !== controller) return;
+  try {
+    controller.cleanup();
+  } catch {
+    // Cleanup is best-effort; eviction still prevents reuse of a partial controller.
+  }
+  if (QUICK_LOG_CONTROLLERS.get(root) === controller) {
+    QUICK_LOG_CONTROLLERS.delete(root);
+  }
+}
+
 function pad2(value) {
   return String(value).padStart(2, '0');
 }
@@ -1335,8 +1347,9 @@ export function bootstrapQuickLog(documentRef = document) {
   const root = documentRef.querySelector('[data-today-root]');
   const dialog = root?.querySelector('[data-quick-log-dialog]');
   if (!root || !dialog) return null;
+  let controller = null;
   try {
-    const controller = ensureQuickLogController(root, () => {
+    controller = ensureQuickLogController(root, () => {
       const timeline = createTimelineDomAdapter(root);
       if (!timeline) return null;
       const view = createQuickLogDomView(root, dialog);
@@ -1361,6 +1374,7 @@ export function bootstrapQuickLog(documentRef = document) {
     activateActionEnhancement(slot, () => openQuickLogFromEnhancedTrigger(controller, slot));
     return controller;
   } catch (error) {
+    rollbackQuickLogController(root, controller);
     // Recoverable: the server-rendered fallback link stays visible and
     // keeps its plain navigation behavior, so the action still works.
     console.error(

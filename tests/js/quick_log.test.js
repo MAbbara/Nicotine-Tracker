@@ -2655,8 +2655,23 @@ function makeBootstrapElement() {
   };
 }
 
-function makeBootstrapDocument({ withTimeline = true, throwOnMeta = false } = {}) {
+function makeBootstrapDocument({
+  withTimeline = true,
+  throwOnMeta = false,
+  failFirstRootListener = false,
+} = {}) {
   const root = makeBootstrapElement();
+  if (failFirstRootListener) {
+    const addRootListener = root.addEventListener.bind(root);
+    let shouldFail = true;
+    root.addEventListener = (...args) => {
+      if (shouldFail) {
+        shouldFail = false;
+        throw new Error('listener-bind-failed');
+      }
+      addRootListener(...args);
+    };
+  }
   const dialog = makeBootstrapElement();
   // The dialog view lazily resolves every field it needs; auto-vivify one
   // fake element per selector so open/render code paths have real targets.
@@ -2764,4 +2779,44 @@ test('Quick Log bootstrap reports a recoverable error and preserves the fallback
   assert.equal(fallback.hidden, false);
   assert.equal(enhanced.hidden, true);
   assert.equal(enhanced.listenerCount('click'), 0);
+});
+
+test('Quick Log bootstrap rolls back a partially initialized controller before a natural retry', async () => {
+  const { bootstrapQuickLog } = await loadQuickLog();
+  const {
+    documentRef, root, slot, fallback, enhanced,
+  } = makeBootstrapDocument({ failFirstRootListener: true });
+  const reported = [];
+  const originalError = console.error;
+  console.error = (...args) => { reported.push(args); };
+  let first;
+  try {
+    first = bootstrapQuickLog(documentRef);
+  } finally {
+    console.error = originalError;
+  }
+
+  assert.equal(first, null);
+  assert.equal(reported.length, 1);
+  assert.equal(slot.dataset.controllerReady, undefined);
+  assert.equal(fallback.hidden, false);
+  assert.equal(enhanced.hidden, true);
+  assert.equal(enhanced.listenerCount('click'), 0);
+  assert.equal(root.listenerCount('click'), 0);
+
+  const second = bootstrapQuickLog(documentRef);
+
+  assert.ok(second);
+  assert.equal(slot.dataset.controllerReady, 'true');
+  assert.equal(fallback.hidden, true);
+  assert.equal(enhanced.hidden, false);
+  assert.equal(enhanced.listenerCount('click'), 1);
+  for (const eventType of ['click', 'submit', 'input', 'change', 'toggle', 'cancel']) {
+    assert.equal(root.listenerCount(eventType), 1, `${eventType} is rebound exactly once`);
+  }
+
+  enhanced.dispatchEvent({ type: 'click' });
+  assert.equal(second.getState().status, 'editing');
+  assert.equal(second.getState().draft.pouchId, 12);
+  await new Promise((resolve) => setImmediate(resolve));
 });
