@@ -46,6 +46,45 @@ test('Profile values persist and actions stay clear of mobile navigation', async
 });
 
 
+test('Preferences update with native controls and persist after reload', async ({ page }) => {
+  await login(page);
+  await page.goto('/settings/preferences');
+
+  await page.getByLabel('Units', { exact: true }).selectOption('percentage');
+  await page.getByLabel('Time zone').selectOption('Asia/Riyadh');
+  await page.getByLabel('Daily reset time').fill('04:30');
+
+  const preferredBrand = page.getByRole('checkbox', { name: 'Steady Mint' });
+  await preferredBrand.check();
+  await page.getByRole('button', { name: 'Save preferences' }).click();
+
+  await expect(page).toHaveURL(/\/settings\/preferences$/);
+  await expect(page.getByRole('status')).toContainText('Preferences updated successfully!');
+  await expect(page.getByLabel('Units', { exact: true })).toHaveValue('percentage');
+  await expect(page.getByLabel('Time zone')).toHaveValue('Asia/Riyadh');
+  await expect(page.getByLabel('Daily reset time')).toHaveValue('04:30');
+  await expect(preferredBrand).toBeChecked();
+
+  await page.reload();
+  await expect(page.getByLabel('Units', { exact: true })).toHaveValue('percentage');
+  await expect(page.getByLabel('Time zone')).toHaveValue('Asia/Riyadh');
+  await expect(page.getByLabel('Daily reset time')).toHaveValue('04:30');
+  await expect(page.getByRole('checkbox', { name: 'Steady Mint' })).toBeChecked();
+
+  const nativeControls = await page.locator(
+    'select[name="units_preference"], select[name="timezone"], input[name="daily_reset_time"]',
+  ).evaluateAll((controls) => controls.map((control) => ({
+    tag: control.tagName,
+    type: control.getAttribute('type'),
+    hidden: control.hidden || getComputedStyle(control).display === 'none',
+    height: control.getBoundingClientRect().height,
+  })));
+  expect(nativeControls.every((control) => !control.hidden)).toBe(true);
+  expect(nativeControls.every((control) => control.height >= 44)).toBe(true);
+  await expect(page.locator('label.c-field__check', { has: preferredBrand })).toHaveCSS('min-height', '44px');
+});
+
+
 test('Account rejects incorrect credentials without losing the form', async ({ page }) => {
   await login(page);
   await page.goto('/settings/account');
