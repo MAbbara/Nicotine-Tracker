@@ -341,7 +341,7 @@ def test_daily_mg_progress_page_explains_missing_strength_without_zero_reading(
         '[data-evaluated-periods]'
     ).get_text(' ', strip=True)
     assert 'Nicotine total unavailable' in today_row.get_text(' ', strip=True)
-    assert 'Missing strength data for 1 logged pouch' in today_row.get_text(
+    assert 'Strength data missing from 1 log entry' in today_row.get_text(
         ' ', strip=True
     )
     assert today_row.select('td')[0].get_text(
