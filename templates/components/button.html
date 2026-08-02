@@ -1,8 +1,22 @@
-{% macro button(label, href=None, variant='primary', type='button', class_name='', aria_label=None, disabled=False) -%}
-  {% set classes = 'c-button c-button--' ~ variant ~ (' ' ~ class_name if class_name else '') %}
+{% macro button(label, href=None, variant='primary', type='button', class_name='', aria_label=None, disabled=False, loading=False) -%}
+  {% set classes = 'c-button c-button--' ~ variant ~ (' is-loading' if loading else '') ~ (' ' ~ class_name if class_name else '') %}
   {% if href %}
-    <a class="{{ classes }}" href="{{ href }}"{% if aria_label %} aria-label="{{ aria_label }}"{% endif %}>{{ label }}</a>
+    <a class="{{ classes }}" href="{{ href }}"{% if aria_label %} aria-label="{{ aria_label }}"{% endif %}{% if disabled %} aria-disabled="true" tabindex="-1"{% endif %}>{{ label }}</a>
   {% else %}
-    <button class="{{ classes }}" type="{{ type }}"{% if aria_label %} aria-label="{{ aria_label }}"{% endif %}{% if disabled %} disabled aria-disabled="true"{% endif %}>{{ label }}</button>
+    <button
+      class="{{ classes }}"
+      type="{{ type }}"
+      {% if aria_label %}aria-label="{{ aria_label }}"{% endif %}
+      {% if disabled or loading %}disabled aria-disabled="true"{% endif %}
+      {% if loading %}aria-busy="true"{% endif %}
+    >
+      {%- if loading -%}
+        <span class="c-button__spinner" aria-hidden="true"></span>
+      {%- endif -%}
+      <span class="c-button__label">{{ label }}</span>
+      {%- if loading -%}
+        <span class="u-visually-hidden" role="status">Loading, please wait.</span>
+      {%- endif -%}
+    </button>
   {% endif %}
 {%- endmacro %}

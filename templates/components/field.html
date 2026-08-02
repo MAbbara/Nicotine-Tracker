@@ -1,5 +1,7 @@
-{% macro field(name, label, type='text', value='', description=None, error=None, placeholder=None, autocomplete=None, required=False, min=None, max=None, step=None) -%}
-  {% set described = ((name ~ '-description') if description else '') ~ (' ' if description and error else '') ~ ((name ~ '-error') if error else '') %}
+{% macro field(name, label, type='text', value='', description=None, error=None, placeholder=None, autocomplete=None, required=False, disabled=False, min=None, max=None, step=None) -%}
+  {% set described = [name ~ '-description' if description else none,
+                      name ~ '-error' if error else none]
+                      | reject('equalto', none) | join(' ') %}
   <div class="c-field{% if error %} c-field--error{% endif %}">
     <label class="c-field__label" for="{{ name }}">{{ label }}{% if required %}<span aria-hidden="true"> *</span>{% endif %}</label>
     {% if description %}<p class="c-field__description" id="{{ name }}-description">{{ description }}</p>{% endif %}
@@ -12,12 +14,88 @@
       {% if placeholder %}placeholder="{{ placeholder }}"{% endif %}
       {% if autocomplete %}autocomplete="{{ autocomplete }}"{% endif %}
       {% if required %}required aria-required="true"{% endif %}
+      {% if disabled %}disabled{% endif %}
       {% if min is not none %}min="{{ min }}"{% endif %}
       {% if max is not none %}max="{{ max }}"{% endif %}
       {% if step is not none %}step="{{ step }}"{% endif %}
       {% if described %}aria-describedby="{{ described }}"{% endif %}
       {% if error %}aria-invalid="true"{% endif %}
     >
+    {% if error %}<p class="c-field__error" id="{{ name }}-error" role="alert">{{ error }}</p>{% endif %}
+  </div>
+{%- endmacro %}
+
+{% macro select_field(name, label, options, value='', description=None, error=None, autocomplete=None, required=False, disabled=False, placeholder=None) -%}
+  {% set described = [name ~ '-description' if description else none,
+                      name ~ '-error' if error else none]
+                      | reject('equalto', none) | join(' ') %}
+  <div class="c-field{% if error %} c-field--error{% endif %}">
+    <label class="c-field__label" for="{{ name }}">{{ label }}{% if required %}<span aria-hidden="true"> *</span>{% endif %}</label>
+    {% if description %}<p class="c-field__description" id="{{ name }}-description">{{ description }}</p>{% endif %}
+    <select
+      class="c-field__control"
+      id="{{ name }}"
+      name="{{ name }}"
+      {% if autocomplete %}autocomplete="{{ autocomplete }}"{% endif %}
+      {% if required %}required aria-required="true"{% endif %}
+      {% if disabled %}disabled{% endif %}
+      {% if described %}aria-describedby="{{ described }}"{% endif %}
+      {% if error %}aria-invalid="true"{% endif %}
+    >
+      {% if placeholder %}<option value=""{% if not value %} selected{% endif %} disabled>{{ placeholder }}</option>{% endif %}
+      {% for option_value, option_label in options %}
+        <option value="{{ option_value }}"{% if option_value == value %} selected{% endif %}>{{ option_label }}</option>
+      {% endfor %}
+    </select>
+    {% if error %}<p class="c-field__error" id="{{ name }}-error" role="alert">{{ error }}</p>{% endif %}
+  </div>
+{%- endmacro %}
+
+{% macro textarea_field(name, label, value='', description=None, error=None, placeholder=None, autocomplete=None, required=False, disabled=False, rows=None, maxlength=None) -%}
+  {% set described = [name ~ '-description' if description else none,
+                      name ~ '-error' if error else none]
+                      | reject('equalto', none) | join(' ') %}
+  <div class="c-field{% if error %} c-field--error{% endif %}">
+    <label class="c-field__label" for="{{ name }}">{{ label }}{% if required %}<span aria-hidden="true"> *</span>{% endif %}</label>
+    {% if description %}<p class="c-field__description" id="{{ name }}-description">{{ description }}</p>{% endif %}
+    <textarea
+      class="c-field__control"
+      id="{{ name }}"
+      name="{{ name }}"
+      {% if placeholder %}placeholder="{{ placeholder }}"{% endif %}
+      {% if autocomplete %}autocomplete="{{ autocomplete }}"{% endif %}
+      {% if required %}required aria-required="true"{% endif %}
+      {% if disabled %}disabled{% endif %}
+      {% if rows is not none %}rows="{{ rows }}"{% endif %}
+      {% if maxlength is not none %}maxlength="{{ maxlength }}"{% endif %}
+      {% if described %}aria-describedby="{{ described }}"{% endif %}
+      {% if error %}aria-invalid="true"{% endif %}
+    >{{ value }}</textarea>
+    {% if error %}<p class="c-field__error" id="{{ name }}-error" role="alert">{{ error }}</p>{% endif %}
+  </div>
+{%- endmacro %}
+
+{% macro checkbox_field(name, label, checked=False, value='on', description=None, error=None, required=False, disabled=False) -%}
+  {% set described = [name ~ '-description' if description else none,
+                      name ~ '-error' if error else none]
+                      | reject('equalto', none) | join(' ') %}
+  <div class="c-field{% if error %} c-field--error{% endif %}">
+    <div class="c-field__check">
+      <input
+        class="c-field__check-input"
+        id="{{ name }}"
+        name="{{ name }}"
+        type="checkbox"
+        value="{{ value }}"
+        {% if checked %}checked{% endif %}
+        {% if required %}required aria-required="true"{% endif %}
+        {% if disabled %}disabled{% endif %}
+        {% if described %}aria-describedby="{{ described }}"{% endif %}
+        {% if error %}aria-invalid="true"{% endif %}
+      >
+      <label class="c-field__check-label" for="{{ name }}">{{ label }}{% if required %}<span aria-hidden="true"> *</span>{% endif %}</label>
+    </div>
+    {% if description %}<p class="c-field__description" id="{{ name }}-description">{{ description }}</p>{% endif %}
     {% if error %}<p class="c-field__error" id="{{ name }}-error" role="alert">{{ error }}</p>{% endif %}
   </div>
 {%- endmacro %}
