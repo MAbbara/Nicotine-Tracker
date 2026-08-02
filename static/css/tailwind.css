@@ -4818,3 +4818,386 @@
     transition: none !important;
   }
 }
+
+@layer components {
+  .logbook-page,
+  .logging-page {
+    width: min(100%, 70rem);
+    margin-inline: auto;
+  }
+
+  .logbook-intro {
+    max-width: none;
+  }
+
+  .logbook-intro__timezone {
+    color: var(--color-text-muted);
+    font-size: var(--text-small);
+  }
+
+  .logbook-intro__actions,
+  .logging-form__actions,
+  .log-dialog__actions,
+  .logbook-filters__actions,
+  .logbook-row__actions,
+  .logbook-pagination {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .logbook-quick,
+  .logbook-history {
+    padding-block: var(--space-8);
+    border-block-start: 1px solid var(--color-border);
+  }
+
+  .logbook-quick__list {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .logbook-quick__action {
+    display: flex;
+    min-height: 4.5rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-control);
+    background: var(--color-surface);
+    color: var(--color-ink);
+    text-align: start;
+    transition:
+      border-color var(--duration-feedback) var(--ease-out-expo),
+      background-color var(--duration-feedback) var(--ease-out-expo),
+      transform var(--duration-feedback) var(--ease-out-expo);
+  }
+
+  .logbook-quick__action span:first-child {
+    display: grid;
+    gap: .15rem;
+  }
+
+  .logbook-quick__action small {
+    color: var(--color-text-muted);
+  }
+
+  .logbook-quick__action > span:last-child {
+    color: var(--color-constructive);
+    font-size: var(--text-lead);
+    font-weight: 760;
+  }
+
+  .logbook-quick__action:focus-visible,
+  .log-dialog__close:focus-visible {
+    outline: .1875rem solid var(--color-focus);
+    outline-offset: .125rem;
+  }
+
+  @media (hover: hover) {
+    .logbook-quick__action:hover {
+      border-color: var(--color-border-strong);
+      background: var(--color-constructive-soft);
+      transform: translateY(-1px);
+    }
+  }
+
+  .logbook-filters {
+    display: grid;
+    gap: var(--space-4);
+    margin-block-end: var(--space-8);
+    padding: var(--space-5);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-surface);
+    background: var(--color-surface);
+  }
+
+  .logbook-filters__actions {
+    align-self: end;
+  }
+
+  .logbook-days,
+  .logbook-day__rows {
+    display: grid;
+    gap: var(--space-6);
+  }
+
+  .logbook-day {
+    display: grid;
+    gap: var(--space-4);
+  }
+
+  .logbook-day__heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-4);
+    padding-block-end: var(--space-3);
+    border-block-end: 1px solid var(--color-border-strong);
+  }
+
+  .logbook-day__heading h3 {
+    font-size: var(--text-lead);
+  }
+
+  .logbook-day__heading p {
+    color: var(--color-text-muted);
+    font-size: var(--text-small);
+  }
+
+  .logbook-row {
+    display: grid;
+    min-width: 0;
+    gap: var(--space-5);
+    padding: var(--space-5);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-surface);
+    background: var(--color-surface);
+  }
+
+  .logbook-row__primary {
+    display: grid;
+    min-width: 0;
+    gap: var(--space-1);
+  }
+
+  .logbook-row__primary time {
+    color: var(--color-constructive);
+    font-size: var(--text-caption);
+    font-weight: 760;
+    letter-spacing: .06em;
+  }
+
+  .logbook-row__primary h4 {
+    overflow-wrap: anywhere;
+    font-size: var(--text-lead);
+  }
+
+  .logbook-row__primary p,
+  .logbook-row__facts dt {
+    color: var(--color-text-muted);
+    font-size: var(--text-small);
+  }
+
+  .logbook-row__facts {
+    display: grid;
+    min-width: 0;
+    gap: var(--space-3);
+    margin: 0;
+  }
+
+  .logbook-row__facts div {
+    display: grid;
+    min-width: 0;
+    gap: .15rem;
+  }
+
+  .logbook-row__facts dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .logbook-row__actions form {
+    margin: 0;
+  }
+
+  .logbook-pagination {
+    justify-content: space-between;
+    margin-block-start: var(--space-6);
+  }
+
+  .logbook-pagination p {
+    color: var(--color-text-muted);
+    font-size: var(--text-small);
+  }
+
+  .logbook-empty {
+    display: grid;
+    justify-items: start;
+    gap: var(--space-3);
+    padding: clamp(1.5rem, 5vw, 3rem);
+    border: 1px dashed var(--color-border-strong);
+    border-radius: var(--radius-surface);
+    background: var(--color-surface);
+  }
+
+  .logbook-empty h3 {
+    font-size: var(--text-lead);
+  }
+
+  .logbook-empty > p:not(.eyebrow) {
+    max-width: 40rem;
+    color: var(--color-text-muted);
+  }
+
+  .logging-form--page {
+    display: grid;
+    max-width: 46rem;
+    gap: var(--space-6);
+    padding: clamp(1.25rem, 4vw, 2.5rem);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-surface);
+    background: var(--color-surface);
+  }
+
+  .logging-form__split,
+  .logging-form__custom {
+    display: grid;
+    gap: var(--space-4);
+  }
+
+  .logging-form__custom[hidden] {
+    display: none;
+  }
+
+  .logging-form__product-summary {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-5);
+    border-inline-start: .25rem solid var(--color-constructive);
+    background: var(--color-constructive-soft);
+  }
+
+  .logging-form__product-summary p:last-child {
+    color: var(--color-ink);
+  }
+
+  .logging-form__bulk {
+    min-height: 14rem;
+  }
+
+  .log-dialog {
+    width: min(calc(100% - (2 * var(--space-3))), 38rem);
+    max-width: none;
+    max-height: calc(100dvh - (2 * var(--space-3)));
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-surface);
+    background: transparent;
+    color: var(--color-ink);
+    overflow: visible;
+  }
+
+  .log-dialog::backdrop {
+    background: color-mix(in srgb, var(--color-ink) 58%, transparent);
+  }
+
+  .log-dialog__position {
+    display: block;
+  }
+
+  .log-dialog__panel {
+    width: 100%;
+    max-height: calc(100dvh - (2 * var(--space-3)));
+    overflow-y: auto;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-surface);
+    background: var(--color-surface-raised);
+    box-shadow: var(--shadow-overlay);
+  }
+
+  .log-dialog__header,
+  .log-dialog__actions {
+    padding: var(--space-5);
+  }
+
+  .log-dialog__header {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: var(--space-4);
+    border-block-end: 1px solid var(--color-border);
+  }
+
+  .log-dialog__header > div {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .log-dialog__close {
+    display: inline-grid;
+    width: 2.75rem;
+    height: 2.75rem;
+    flex: none;
+    place-items: center;
+    border: 1px solid var(--color-border);
+    border-radius: 50%;
+    background: transparent;
+    color: var(--color-ink);
+    font-size: 1.5rem;
+    line-height: 1;
+  }
+
+  .log-dialog__body {
+    display: grid;
+    gap: var(--space-5);
+    padding: var(--space-5);
+  }
+
+  .log-dialog__actions {
+    justify-content: end;
+    border-block-start: 1px solid var(--color-border);
+  }
+
+  @media (min-width: 40rem) {
+    .logbook-intro {
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+    }
+
+    .logbook-quick__list {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .logbook-filters {
+      grid-template-columns: minmax(12rem, 1fr) minmax(9rem, .55fr) minmax(9rem, .55fr);
+    }
+
+    .logbook-filters__actions {
+      grid-column: 1 / -1;
+    }
+
+    .logbook-row {
+      grid-template-columns: minmax(11rem, .8fr) minmax(14rem, 1.2fr) auto;
+      align-items: center;
+    }
+
+    .logbook-row__facts {
+      grid-template-columns: minmax(8rem, .55fr) minmax(10rem, 1fr);
+    }
+
+    .logging-form__split,
+    .logging-form__custom {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (min-width: 64rem) {
+    .logbook-quick__list {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .logbook-filters {
+      grid-template-columns: minmax(15rem, 1fr) repeat(2, minmax(10rem, .6fr)) auto;
+      align-items: end;
+    }
+
+    .logbook-filters__actions {
+      grid-column: auto;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .logbook-quick__action,
+    .log-dialog,
+    .log-dialog * {
+      transition: none !important;
+      animation: none !important;
+    }
+  }
+}

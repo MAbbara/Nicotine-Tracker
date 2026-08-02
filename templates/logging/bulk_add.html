@@ -1,61 +1,33 @@
 {% extends "base.html" %}
 
-{% block title %}Bulk Add Logs - Nicotine Tracker{% endblock %}
+{% block title %}Bulk add logs - Nicotine Tracker{% endblock %}
 
 {% block content %}
-<div class="px-4 sm:px-6 lg:px-8">
-  <div class="sm:flex sm:items-center sm:justify-between">
-    <div>
-      <h1 class="text-2xl font-semibold leading-6 text-gray-900 dark:text-white">Bulk Add Logs</h1>
-      <p class="mt-2 text-sm text-gray-700 dark:text-gray-300">
-        Paste multiple entries and add them in one go.
-      </p>
+<div class="logging-page">
+  <header class="page-intro">
+    <p class="eyebrow">Logbook</p>
+    <h1>Bulk add logs</h1>
+    <p>Paste several simple entries for one date. Review the examples before saving; you can edit individual entries afterward.</p>
+  </header>
+
+  <form class="logging-form logging-form--page" method="post" data-validate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="c-field">
+      <label class="c-field__label" for="log_date">Date for these entries</label>
+      <input class="c-field__control" type="date" name="log_date" id="log_date" value="{{ date.today().isoformat() }}">
+      <p class="c-field__description">If left blank, the server uses today in your account timezone.</p>
     </div>
-    <a href="{{ url_for('logging.view_logs') }}"
-       class="mt-4 sm:mt-0 inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-white dark:ring-gray-700 dark:hover:bg-gray-700">
-      Back to Logs
-    </a>
-  </div>
 
-  <div class="mt-8 max-w-3xl">
-    <form method="POST" class="space-y-6" data-validate>
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div>
-        <label for="log_date" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">
-          Date for these entries
-        </label>
-        <p class="text-xs text-gray-500 dark:text-gray-400">Defaults to today if left blank.</p>
-        <div class="mt-2">
-          <input type="date" name="log_date" id="log_date" value="{{ date.today().isoformat() }}"
-            class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
-        </div>
-      </div>
+    <div class="c-field">
+      <label class="c-field__label" for="bulk_text">Entries</label>
+      <textarea class="c-field__control logging-form__bulk" name="bulk_text" id="bulk_text" rows="10" required aria-describedby="bulk-format-help" placeholder="3 pouches at 09:00&#10;2 Steady Mint 6mg at 14:30"></textarea>
+      <p class="c-field__description" id="bulk-format-help">Use one entry per line. Examples: “3 pouches at 09:00” or “2 Steady Mint 6mg at 14:30”. Lines the parser cannot understand are skipped.</p>
+    </div>
 
-      <div>
-        <label for="bulk_text" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">
-          Entries (one per line)
-        </label>
-        <p class="text-xs text-gray-500 dark:text-gray-400">
-          Examples: "3 pouches at 09:00", "2 ZYN 6mg at 14:30", "1 On! 4mg".
-        </p>
-        <div class="mt-2">
-          <textarea name="bulk_text" id="bulk_text" rows="10" required
-            class="block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600"
-            placeholder="3 pouches at 09:00&#10;2 ZYN 6mg at 14:30"></textarea>
-        </div>
-      </div>
-
-      <div class="flex gap-3">
-        <button type="submit"
-          class="inline-flex justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
-          Add Entries
-        </button>
-        <a href="{{ url_for('logging.view_logs') }}"
-          class="inline-flex justify-center rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-white dark:ring-gray-700 dark:hover:bg-gray-700">
-          Cancel
-        </a>
-      </div>
-    </form>
-  </div>
+    <div class="logging-form__actions">
+      <button class="c-button c-button--primary" type="submit">Add entries</button>
+      <a class="c-button c-button--secondary" href="{{ url_for('logging.view_logs') }}">Cancel</a>
+    </div>
+  </form>
 </div>
 {% endblock %}

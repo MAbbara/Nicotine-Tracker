@@ -1,151 +1,158 @@
 {% extends "base.html" %}
 
-{% block title %}Logs - Nicotine Tracker{% endblock %}
+{% block title %}Logbook - Nicotine Tracker{% endblock %}
 
 {% block content %}
-<div data-user-timezone="{{ user_timezone or 'UTC' }}">
-  <div class="px-4 sm:px-6 lg:px-8">
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+<div class="logbook-page" data-user-timezone="{{ user_timezone or 'UTC' }}">
+  <header class="page-intro page-intro--wide logbook-intro">
+    <div class="space-y-3">
+      <p class="eyebrow">Your record</p>
+      <h1>Logbook</h1>
+      <p>Review what you logged, correct details, or add an entry without turning the day into a scorecard.</p>
+      <p class="logbook-intro__timezone">Times shown in {{ user_timezone or 'UTC' }}.</p>
+    </div>
+    <div class="logbook-intro__actions">
+      <a class="c-button c-button--secondary" href="{{ url_for('logging.bulk_add') }}">Bulk add</a>
+      <button
+        class="c-button c-button--primary"
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded="false"
+        aria-controls="addLogModal"
+        data-hs-overlay="#addLogModal"
+        data-logbook-add-action
+      >Add log</button>
+    </div>
+  </header>
+
+  {% include "logging/_add_log_modal.html" %}
+
+  {% if quick_add_pouches %}
+  <section class="logbook-quick" aria-labelledby="logbook-quick-title">
+    <div class="section-heading">
       <div>
-        <h1 class="text-2xl font-semibold leading-6 text-gray-900 dark:text-white">Logbook</h1>
-        <p class="text-sm text-gray-700 dark:text-gray-300">Add entries and review your history in one place.</p>
-        <p class="text-xs text-gray-600 dark:text-gray-400">Times shown in {{ user_timezone or 'UTC' }}.</p>
+        <h2 id="logbook-quick-title">Your usual products</h2>
+        <p>One tap records one pouch at the current time.</p>
       </div>
-      <div class="flex items-center gap-2">
-        <a href="{{ url_for('logging.bulk_add') }}"
-          class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-800 ring-1 ring-inset ring-gray-200 shadow-sm hover:bg-gray-50 dark:bg-gray-800 dark:text-white dark:ring-gray-700 dark:hover:bg-gray-700">
-          Bulk Add
-        </a>
-        <button type="button"
-          class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-          aria-haspopup="dialog" aria-expanded="false" aria-controls="addLogModal" data-hs-overlay="#addLogModal">
-          Add Log
-        </button>
+    </div>
+    <div class="logbook-quick__list">
+      {% for pouch in quick_add_pouches %}
+      <button
+        class="logbook-quick__action"
+        type="button"
+        data-quick-add
+        data-quick-add-refresh
+        data-pouch-id="{{ pouch.id }}"
+        data-quantity="1"
+        aria-label="Log one {{ pouch.brand }}, {{ pouch.nicotine_mg_display() }} milligrams"
+      >
+        <span><strong>{{ pouch.brand }}</strong><small>{{ pouch.nicotine_mg_display() }} mg{% if not pouch.is_default %} · Your product{% endif %}</small></span>
+        <span aria-hidden="true">+1</span>
+      </button>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="logbook-history" aria-labelledby="logbook-history-title">
+    <div class="section-heading">
+      <div>
+        <h2 id="logbook-history-title">History</h2>
+        <p>Newest entries appear first.</p>
       </div>
     </div>
 
-    {% include "logging/_add_log_modal.html" %}
-
-    {% if quick_add_pouches %}
-    <div class="mt-6">
-      <h2 class="text-sm font-semibold text-gray-900 dark:text-white mb-2">Quick add your go-tos</h2>
-      <p class="text-xs text-gray-600 dark:text-gray-400 mb-3">One tap to log your most used pouches.</p>
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {% for pouch in quick_add_pouches %}
-        <button type="button" data-quick-add data-pouch-id="{{ pouch.id }}" data-quantity="1"
-          class="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg shadow-sm ring-1 ring-inset ring-gray-200 hover:shadow-md transition-shadow dark:ring-gray-700">
-          <div>
-            <div class="font-medium text-gray-900 dark:text-white">{{ pouch.brand }}</div>
-            <div class="text-xs text-gray-600 dark:text-gray-400">{{ pouch.nicotine_mg }}mg{% if not pouch.is_default %} • Custom{% endif %}</div>
-          </div>
-          <div class="text-indigo-600 dark:text-indigo-400 font-semibold text-sm">+1</div>
-        </button>
-        {% endfor %}
+    <form class="logbook-filters logging-form" method="get" action="{{ url_for('logging.view_logs') }}" aria-label="Filter log history">
+      <div class="c-field logbook-filters__search">
+        <label class="c-field__label" for="logbook-search">Search logs</label>
+        <input class="c-field__control" id="logbook-search" name="q" type="search" maxlength="80" value="{{ filters.q }}" placeholder="Product or note">
       </div>
-    </div>
-    {% endif %}
+      <div class="c-field">
+        <label class="c-field__label" for="logbook-from">From date</label>
+        <input class="c-field__control" id="logbook-from" name="from_date" type="date" value="{{ filters.from_date }}">
+      </div>
+      <div class="c-field">
+        <label class="c-field__label" for="logbook-to">To date</label>
+        <input class="c-field__control" id="logbook-to" name="to_date" type="date" value="{{ filters.to_date }}">
+      </div>
+      <div class="logbook-filters__actions">
+        <button class="c-button c-button--primary" type="submit">Apply filters</button>
+        {% if filters.q or filters.from_date or filters.to_date %}
+        <a class="c-button c-button--quiet" href="{{ url_for('logging.view_logs') }}">Clear</a>
+        {% endif %}
+      </div>
+    </form>
 
     {% if logs and logs.items %}
-    <div class="mt-6 bg-white dark:bg-gray-900 shadow-sm ring-1 ring-gray-200 dark:ring-gray-700 rounded-lg overflow-hidden">
-      <p id="log-history-scroll-help" class="sr-only">Scroll horizontally to see every log history column.</p>
-      <div class="horizontal-scroll-region overflow-x-auto" tabindex="0" role="region" aria-label="Log history" aria-describedby="log-history-scroll-help">
-        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-          <caption class="sr-only">Log history</caption>
-          <thead class="bg-gray-50 dark:bg-gray-800">
-            <tr>
-              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
-              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Time</th>
-              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Brand</th>
-              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Quantity</th>
-              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Nicotine (mg)</th>
-              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Total (mg)</th>
-              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Notes</th>
-              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="logs-table-body" class="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
-            {% for log in logs.items %}
-            <tr>
-              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{{ log.get_user_date(user_timezone).strftime('%Y-%m-%d') if user_timezone else log.log_date.strftime('%Y-%m-%d') }}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">{{ log.get_user_time(user_timezone).strftime('%H:%M') if log.log_time and user_timezone else (log.log_time.strftime('%H:%M') if log.log_time else '-') }}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">{{ log.get_brand_name() }}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">{{ log.quantity }}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">{{ log.get_nicotine_content() }}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">{{ log.get_total_nicotine() }}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">{{ log.notes or '-' }}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
-                <a href="{{ url_for('logging.edit_log', log_id=log.id) }}" class="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-600">Edit</a>
-                <span class="mx-2 text-gray-300 dark:text-gray-600">|</span>
-                <form action="{{ url_for('logging.delete_log', log_id=log.id) }}" method="POST" class="inline" onsubmit="return confirm('Are you sure you want to delete this log?');">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <button type="submit" class="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-600">Delete</button>
-                </form>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="mt-4 flex items-center justify-between">
-      <p class="text-sm text-gray-600 dark:text-gray-400">Page {{ logs.page }} of {{ logs.pages }}</p>
-      <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-        {% if logs.has_prev %}
-        <a href="{{ url_for('logging.view_logs', page=logs.prev_num) }}" class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700" aria-label="Previous">
-          <span>&laquo;</span>
-        </a>
-        {% else %}
-        <span class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-gray-200 text-sm font-medium text-gray-400 cursor-not-allowed" aria-hidden="true">&laquo;</span>
-        {% endif %}
-
-        {% for page_num in logs.iter_pages(left_edge=2, right_edge=2, left_current=2, right_current=2) %}
-          {% if page_num %}
-            {% if page_num == logs.page %}
-            <span aria-current="page" class="z-10 bg-indigo-50 border-indigo-500 text-indigo-600 relative inline-flex items-center px-4 py-2 border text-sm font-medium dark:bg-gray-700 dark:border-indigo-400 dark:text-indigo-300">{{ page_num }}</span>
-            {% else %}
-            <a href="{{ url_for('logging.view_logs', page=page_num) }}" class="bg-white border-gray-300 text-gray-500 hover:bg-gray-50 relative inline-flex items-center px-4 py-2 border text-sm font-medium dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700">{{ page_num }}</a>
-            {% endif %}
-          {% else %}
-          <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400">…</span>
+    <div class="logbook-days">
+      {% for day, day_logs in grouped_logs.items() %}
+      <section class="logbook-day" aria-labelledby="logbook-day-{{ loop.index }}">
+        <header class="logbook-day__heading">
+          <h3 id="logbook-day-{{ loop.index }}">{{ day.strftime('%A, %B %-d') }}</h3>
+          {% set totals = daily_totals.get(day) %}
+          {% if totals %}
+          <p>{{ totals.pouches|int }} {{ 'pouch' if totals.pouches == 1 else 'pouches' }}{% if totals.unknown_strength_count %} · nicotine total incomplete{% else %} · {{ totals.mg }} mg{% endif %}</p>
           {% endif %}
-        {% endfor %}
-
-        {% if logs.has_next %}
-        <a href="{{ url_for('logging.view_logs', page=logs.next_num) }}" class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700" aria-label="Next">
-          <span>&raquo;</span>
-        </a>
-        {% else %}
-        <span class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-gray-200 text-sm font-medium text-gray-400 cursor-not-allowed" aria-hidden="true">&raquo;</span>
-        {% endif %}
-      </nav>
+        </header>
+        <div class="logbook-day__rows">
+          {% for log in day_logs %}
+          {% set strength = log.get_nicotine_content() %}
+          {% set total = log.get_total_nicotine() %}
+          {% set local_date = log.get_user_date(user_timezone) if user_timezone else log.log_date %}
+          {% set local_time = log.get_user_time(user_timezone) if log.log_time and user_timezone else (log.log_time.time() if log.log_time else none) %}
+          <article class="logbook-row">
+            <div class="logbook-row__primary">
+              <time datetime="{{ log.log_time.isoformat() if log.log_time else local_date.isoformat() }}">
+                {{ local_time.strftime('%H:%M') if local_time else 'Time not recorded' }}
+              </time>
+              <h4>{{ log.get_brand_name() or 'Product not recorded' }}</h4>
+              <p>{{ log.quantity }} {{ 'pouch' if log.quantity == 1 else 'pouches' }}{% if strength is not none %} · {{ strength }} mg each{% else %} · strength unknown{% endif %}</p>
+            </div>
+            <dl class="logbook-row__facts">
+              <div><dt>Total nicotine</dt><dd>{{ total ~ ' mg' if total is not none else 'Not available' }}</dd></div>
+              <div><dt>Notes</dt><dd>{{ log.notes or 'No notes' }}</dd></div>
+            </dl>
+            <div class="logbook-row__actions">
+              <a class="c-button c-button--quiet" href="{{ url_for('logging.edit_log', log_id=log.id) }}">Edit</a>
+              <form action="{{ url_for('logging.delete_log', log_id=log.id) }}" method="post" data-confirm-delete>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="c-button c-button--danger" type="submit">Delete</button>
+              </form>
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+      </section>
+      {% endfor %}
     </div>
+
+    {% if logs.pages > 1 %}
+    <nav class="logbook-pagination" aria-label="Logbook pages">
+      {% if logs.has_prev %}
+      <a class="c-button c-button--secondary" href="{{ url_for('logging.view_logs', page=logs.prev_num, q=filters.q, from_date=filters.from_date, to_date=filters.to_date) }}">Previous</a>
+      {% endif %}
+      <p>Page {{ logs.page }} of {{ logs.pages }}</p>
+      {% if logs.has_next %}
+      <a class="c-button c-button--secondary" href="{{ url_for('logging.view_logs', page=logs.next_num, q=filters.q, from_date=filters.from_date, to_date=filters.to_date) }}">Next</a>
+      {% endif %}
+    </nav>
+    {% endif %}
     {% else %}
-    <div class="mt-10 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-8 text-center">
-      <h3 class="text-lg font-semibold text-gray-900 dark:text-white">No logs yet</h3>
-      <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">Add your first entry to start tracking your nicotine intake.</p>
-      <div class="mt-4 flex justify-center gap-2">
-        <button type="button"
-          class="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-          data-hs-overlay="#addLogModal">
-          Add a log
-        </button>
-        <a href="{{ url_for('logging.bulk_add') }}"
-          class="inline-flex items-center rounded-md bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-800 ring-1 ring-inset ring-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:text-white dark:ring-gray-700 dark:hover:bg-gray-700">
-          Bulk add
-        </a>
-      </div>
+    <div class="logbook-empty">
+      {% if filters.q or filters.from_date or filters.to_date %}
+      <p class="eyebrow">No match</p>
+      <h3>No logs match these filters</h3>
+      <p>Clear the filters or widen the date range. Your saved entries have not changed.</p>
+      <a class="c-button c-button--secondary" href="{{ url_for('logging.view_logs') }}">Clear filters</a>
+      {% else %}
+      <p class="eyebrow">A quiet start</p>
+      <h3>No logs yet</h3>
+      <p>Use the Add log action above when you next use nicotine. One honest record is enough to begin.</p>
+      {% endif %}
     </div>
     {% endif %}
-  </div>
+  </section>
 </div>
-
-{% if open_add_modal %}
-<script>
-  document.addEventListener('DOMContentLoaded', () => {
-    const trigger = document.querySelector('[data-hs-overlay="#addLogModal"]');
-    if (trigger) { trigger.click(); }
-  });
-</script>
-{% endif %}
 {% endblock %}
+
+{% block preline_js %}{% endblock %}

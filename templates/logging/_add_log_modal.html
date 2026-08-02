@@ -1,118 +1,85 @@
-<div id="addLogModal"
-  class="hs-overlay hidden size-full fixed top-0 start-0 z-80 overflow-x-hidden overflow-y-auto pointer-events-none"
-  role="dialog" tabindex="-1" aria-labelledby="addLogModalLabel">
-  <div class="hs-overlay-animation-target hs-overlay-open:scale-100 hs-overlay-open:opacity-100 scale-95 opacity-0 ease-in-out transition-all duration-200 sm:max-w-lg sm:w-full m-3 sm:mx-auto min-h-[calc(100%-56px)] flex items-center">
-    <form id="add-log-form" method="POST" action="{{ url_for('logging.add_log') }}"
-      class="w-full flex flex-col bg-white border border-gray-200 shadow-2xs rounded-xl pointer-events-auto dark:bg-gray-800 dark:border-gray-700 dark:shadow-gray-700/70"
-      data-validate>
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div class="flex justify-between items-center py-3 px-4 border-b border-gray-200 dark:border-gray-700">
-        <h3 id="addLogModalLabel" class="font-bold text-gray-800 dark:text-white">
-          Add Log Entry
-        </h3>
-        <button type="button"
-          class="size-8 inline-flex justify-center items-center gap-x-2 rounded-full border border-transparent bg-gray-100 text-gray-800 hover:bg-gray-200 focus:outline-hidden focus:bg-gray-200 disabled:opacity-50 disabled:pointer-events-none dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-400 dark:focus:bg-gray-600"
-          aria-label="Close" data-hs-overlay="#addLogModal">
-          <span class="sr-only">Close</span>
-          <svg class="shrink-0 size-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M18 6 6 18"></path>
-            <path d="m6 6 12 12"></path>
-          </svg>
-        </button>
-      </div>
+<dialog
+  id="addLogModal"
+  class="log-dialog"
+  aria-labelledby="addLogModalLabel"
+  {% if open_add_modal %}data-auto-open="true"{% endif %}
+>
+  <div class="log-dialog__position">
+    <form id="add-log-form" class="logging-form log-dialog__panel" method="post" action="{{ url_for('logging.add_log') }}" data-validate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="user_timezone" value="{{ (user.timezone if user else user_timezone) or 'UTC' }}">
 
-      <div class="p-4 overflow-y-auto space-y-4">
+      <header class="log-dialog__header">
         <div>
-          <label for="log_date" class="block text-sm font-medium text-gray-900 dark:text-white">Date *</label>
-          <input type="date" name="log_date" id="log_date" required value="{{ today }}"
-            class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
+          <p class="eyebrow">Add to your record</p>
+          <h2 id="addLogModalLabel">Add a log</h2>
         </div>
+        <button class="log-dialog__close" type="button" aria-label="Close add log dialog" data-hs-overlay="#addLogModal">×</button>
+      </header>
 
-        <div>
-          <label for="log_time" class="block text-sm font-medium text-gray-900 dark:text-white">Time (Optional)</label>
-          <input type="time" name="log_time" id="log_time" value="{{ current_time or '' }}"
-            class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
-          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Time is shown in your timezone: {{ (user.timezone if user else user_timezone) or 'UTC' }}
-          </p>
+      <div class="log-dialog__body">
+        <div class="logging-form__split">
+          <div class="c-field">
+            <label class="c-field__label" for="log_date">Date</label>
+            <input class="c-field__control" type="date" name="log_date" id="log_date" required value="{{ today }}">
+          </div>
+          <div class="c-field">
+            <label class="c-field__label" for="log_time">Time</label>
+            <input class="c-field__control" type="time" name="log_time" id="log_time" value="{{ current_time or '' }}" aria-describedby="add-log-time-help">
+          </div>
         </div>
+        <p class="c-field__description" id="add-log-time-help">Optional. Times use {{ (user.timezone if user else user_timezone) or 'UTC' }}.</p>
 
-        <div>
-          <label for="pouch_selection" class="block text-sm font-medium text-gray-900 dark:text-white">Pouch Type *</label>
-          <select name="pouch_id" id="pouch_selection" required
-            class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600">
-            <option value="">Select a pouch…</option>
+        <div class="c-field">
+          <label class="c-field__label" for="pouch_selection">Product</label>
+          <select class="c-field__control" name="pouch_id" id="pouch_selection" required data-product-select>
+            <option value="">Choose a product</option>
             {% if user_pouches %}
-            <optgroup label="Your Custom Pouches">
+            <optgroup label="Your products">
               {% for pouch in user_pouches %}
-              <option value="{{ pouch.id }}">{{ pouch.brand }} ({{ pouch.nicotine_mg }}mg) [Custom]</option>
+              <option value="{{ pouch.id }}">{{ pouch.brand }} · {{ pouch.nicotine_mg_display() }} mg</option>
               {% endfor %}
             </optgroup>
             {% endif %}
             {% if default_pouches %}
-            <optgroup label="Default Pouches">
+            <optgroup label="Catalog">
               {% for pouch in default_pouches %}
-              <option value="{{ pouch.id }}">{{ pouch.brand }} ({{ pouch.nicotine_mg }}mg)</option>
+              <option value="{{ pouch.id }}">{{ pouch.brand }} · {{ pouch.nicotine_mg_display() }} mg</option>
               {% endfor %}
             </optgroup>
             {% endif %}
+            <option value="custom">Custom product</option>
           </select>
         </div>
 
-        <div>
-          <label for="quantity" class="block text-sm font-medium text-gray-900 dark:text-white">Quantity *</label>
-          <div
-            class="py-2 px-3 w-full rounded-md border-0 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600"
-            data-hs-input-number="">
-            <div class="w-full flex justify-between items-center gap-x-5">
-              <div class="grow">
-                <input
-                  class="w-full rounded-md shadow-none ring-0 border-0 bg-transparent p-0 px-2 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none text-gray-900 placeholder:text-gray-400 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white "
-                  style="-moz-appearance: textfield;" type="number" aria-roledescription="Number field"
-                  name="quantity" id="quantity" min="1" max="50" value="1" required data-hs-input-number-input="">
-              </div>
-              <div class="flex justify-end items-center gap-x-1.5">
-                <button type="button"
-                  class="size-6 inline-flex justify-center items-center gap-x-2 text-sm font-medium rounded-md border ring-1 ring-inset border-gray-200 bg-white dark:bg-gray-900 text-gray-900 dark:text-white ring-gray-300 dark:ring-gray-500 hover:bg-gray-50 dark:hover:bg-gray-600 shadow-2xs focus:outline-hidden focus:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:border-neutral-500 dark:focus:bg-neutral-800"
-                  tabindex="-1" aria-label="Decrease" data-hs-input-number-decrement="">
-                  <svg class="shrink-0 size-3.5" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M5 12h14"></path>
-                  </svg>
-                </button>
-                <button type="button"
-                  class="size-6 inline-flex justify-center items-center gap-x-2 text-sm font-medium rounded-md border ring-1 ring-inset border-gray-200 bg-white dark:bg-gray-900 text-gray-900 dark:text-white ring-gray-300 dark:ring-gray-500 hover:bg-gray-50 dark:hover:bg-gray-600 shadow-2xs focus:outline-hidden focus:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:border-neutral-500 dark:focus:bg-neutral-800"
-                  tabindex="-1" aria-label="Increase" data-hs-input-number-increment="">
-                  <svg class="shrink-0 size-3.5" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M5 12h14"></path>
-                    <path d="M12 5v14"></path>
-                  </svg>
-                </button>
-              </div>
-            </div>
+        <div class="logging-form__custom" data-custom-product-fields hidden>
+          <div class="c-field">
+            <label class="c-field__label" for="custom_brand">Custom brand</label>
+            <input class="c-field__control" type="text" name="custom_brand" id="custom_brand" maxlength="80" autocomplete="off">
+          </div>
+          <div class="c-field">
+            <label class="c-field__label" for="custom_nicotine_mg">Nicotine strength</label>
+            <input class="c-field__control" type="number" name="custom_nicotine_mg" id="custom_nicotine_mg" min="0.01" max="100" step="0.01" inputmode="decimal" aria-describedby="custom-strength-help">
+            <p class="c-field__description" id="custom-strength-help">Milligrams per pouch.</p>
           </div>
         </div>
 
-        <div>
-          <label for="notes" class="block text-sm font-medium text-gray-900 dark:text-white">Notes (Optional)</label>
-          <textarea name="notes" id="notes" rows="3" placeholder="Add any notes…"
-            class="mt-1 block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600"></textarea>
+        <div class="c-field">
+          <label class="c-field__label" for="quantity">Quantity</label>
+          <input class="c-field__control" type="number" name="quantity" id="quantity" min="1" max="50" step="1" value="1" required inputmode="numeric">
+        </div>
+
+        <div class="c-field">
+          <label class="c-field__label" for="notes">Notes</label>
+          <textarea class="c-field__control" name="notes" id="notes" rows="3" maxlength="1000" placeholder="Optional context that may help later"></textarea>
         </div>
       </div>
 
-      <div class="flex justify-end items-center gap-x-2 py-3 px-4 border-t border-gray-200 dark:border-gray-700">
-        <button type="button"
-          class="py-2 px-3 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-800 shadow-2xs hover:bg-gray-50 focus:outline-hidden focus:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:bg-gray-700 dark:focus:bg-gray-700"
-          data-hs-overlay="#addLogModal">
-          Cancel
-        </button>
-        <button type="submit"
-          class="py-2 px-3 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-transparent bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-hidden focus:bg-indigo-700 disabled:opacity-50 disabled:pointer-events-none">
-          Add Entry
-        </button>
-      </div>
+      <footer class="log-dialog__actions">
+        <button class="c-button c-button--secondary" type="button" data-hs-overlay="#addLogModal">Cancel</button>
+        <button class="c-button c-button--primary" type="submit">Add entry</button>
+      </footer>
     </form>
   </div>
-</div>
+</dialog>
+<script type="module" src="{{ url_for('static', filename='js/logging/forms.js') }}"></script>

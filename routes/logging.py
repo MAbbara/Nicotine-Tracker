@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, jsonify, session
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from datetime import date
 import pytz
 from models import User, Log, Pouch
@@ -280,6 +280,9 @@ def view_logs():
         page = request.args.get('page', 1, type=int)
         per_page = current_app.config.get('LOGS_PER_PAGE', 20)
         open_add_modal = request.args.get('open_add_modal') == '1'
+        search_query = request.args.get('q', '').strip()[:80]
+        from_date_value = request.args.get('from_date', '').strip()
+        to_date_value = request.args.get('to_date', '').strip()
         
         default_pouches, user_pouches = get_sorted_pouches(user)
         quick_add_pouches = (default_pouches + user_pouches)[:6]
@@ -295,8 +298,45 @@ def view_logs():
         today = local_now.date().isoformat()
         current_time = local_now.time().strftime('%H:%M')
         
+        query = Log.query.filter_by(user_id=user.id)
+        if search_query:
+            pattern = f'%{search_query}%'
+            query = query.filter(db.or_(
+                Log.notes.ilike(pattern),
+                Log.product_brand_snapshot.ilike(pattern),
+                Log.custom_brand.ilike(pattern),
+                Log.pouch.has(Pouch.brand.ilike(pattern)),
+            ))
+
+        def local_boundary(value, *, end=False):
+            if not value:
+                return None
+            try:
+                local_date = datetime.strptime(value, '%Y-%m-%d').date()
+            except ValueError:
+                return None
+            if end:
+                local_date += timedelta(days=1)
+            local_value = resolved_timezone.localize(
+                datetime.combine(local_date, time.min)
+            )
+            return local_value.astimezone(pytz.UTC).replace(tzinfo=None)
+
+        from_boundary = local_boundary(from_date_value)
+        to_boundary = local_boundary(to_date_value, end=True)
+        if from_date_value and from_boundary is None:
+            flash('The starting date filter was ignored because it is invalid.', 'error')
+            from_date_value = ''
+        if to_date_value and to_boundary is None:
+            flash('The ending date filter was ignored because it is invalid.', 'error')
+            to_date_value = ''
+        if from_boundary is not None:
+            query = query.filter(Log.log_time >= from_boundary)
+        if to_boundary is not None:
+            query = query.filter(Log.log_time < to_boundary)
+
         # Get logs with pagination
-        logs = Log.query.filter_by(user_id=user.id).order_by(
+        logs = query.order_by(
             desc(Log.log_time), desc(Log.created_at), desc(Log.id)
         ).paginate(
             page=page, per_page=per_page, error_out=False
@@ -316,7 +356,13 @@ def view_logs():
         
         return render_template('view_logs.html', 
                              logs=logs, 
+                             grouped_logs=grouped_logs,
                              daily_totals=daily_totals,
+                             filters={
+                                 'q': search_query,
+                                 'from_date': from_date_value,
+                                 'to_date': to_date_value,
+                             },
                              user_timezone=user.timezone,
                              default_pouches=default_pouches,
                              user_pouches=user_pouches,
@@ -332,7 +378,9 @@ def view_logs():
         return render_template(
             'view_logs.html',
             logs=None,
+            grouped_logs={},
             daily_totals={},
+            filters={'q': '', 'from_date': '', 'to_date': ''},
             user_timezone=None,
             default_pouches=[],
             user_pouches=[],

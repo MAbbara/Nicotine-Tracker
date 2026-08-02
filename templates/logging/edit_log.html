@@ -1,43 +1,48 @@
 {% extends "base.html" %}
 
-{% block title %}Edit Log - Nicotine Tracker{% endblock %}
+{% block title %}Edit log - Nicotine Tracker{% endblock %}
 
 {% block content %}
-<div class="px-4 sm:px-6 lg:px-8 mx-auto">
-    <h1 class="text-2xl font-semibold leading-6 text-gray-900 dark:text-white mb-6">Edit Log Entry</h1>
-    
-    <form method="POST" class="max-w-xl">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="mb-4">
-            <label for="log_date" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Date</label>
-            <input type="date" id="log_date" name="log_date" 
-                   value="{% if user_timezone and log.log_time %}{{ log.get_user_date(user_timezone).strftime('%Y-%m-%d') }}{% elif log.log_time %}{{ log.log_time.date().strftime('%Y-%m-%d') }}{% else %}{{ log.log_date.strftime('%Y-%m-%d') }}{% endif %}"
-                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" required>
-        </div>
-        
-        <div class="mb-4">
-            <label for="log_time" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Time</label>
-            <input type="time" id="log_time" name="log_time" 
-                   value="{% if user_timezone and log.log_time %}{{ log.get_user_time(user_timezone).strftime('%H:%M') }}{% elif log.log_time %}{{ log.log_time.time().strftime('%H:%M') }}{% endif %}"
-                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-        </div>
-        
-        <div class="mb-4">
-            <label for="quantity" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Quantity</label>
-            <input type="number" id="quantity" name="quantity" value="{{ log.quantity }}" min="1"
-                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" required>
-        </div>
-        
-        <div class="mb-4">
-            <label for="notes" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Notes</label>
-            <textarea id="notes" name="notes" rows="3"
-                      class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">{{ log.notes or '' }}</textarea>
-        </div>
-        
-        <div class="flex gap-3">
-            <button type="submit" class="flex-1 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 cursor-pointer">Update Log</button>
-            <a href="{{ url_for('logging.view_logs') }}" class="rounded-md bg-white dark:bg-gray-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 cursor-pointer">Cancel</a>
-        </div>
-    </form>
+<div class="logging-page">
+  <header class="page-intro">
+    <p class="eyebrow">Logbook</p>
+    <h1>Edit log</h1>
+    <p>Correct the timing, quantity, or context. The recorded product stays attached to this entry.</p>
+  </header>
+
+  <form class="logging-form logging-form--page" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="logging-form__product-summary">
+      <p class="eyebrow">Recorded product</p>
+      <h2>{{ log.get_brand_name() or 'Product not recorded' }}</h2>
+      <p>{% if log.get_nicotine_content() is not none %}{{ log.get_nicotine_content() }} mg per pouch{% else %}Strength not recorded{% endif %}</p>
+    </div>
+
+    <div class="logging-form__split">
+      <div class="c-field">
+        <label class="c-field__label" for="log_date">Date</label>
+        <input class="c-field__control" type="date" id="log_date" name="log_date" value="{% if user_timezone and log.log_time %}{{ log.get_user_date(user_timezone).strftime('%Y-%m-%d') }}{% elif log.log_time %}{{ log.log_time.date().strftime('%Y-%m-%d') }}{% else %}{{ log.log_date.strftime('%Y-%m-%d') }}{% endif %}" required>
+      </div>
+      <div class="c-field">
+        <label class="c-field__label" for="log_time">Time</label>
+        <input class="c-field__control" type="time" id="log_time" name="log_time" value="{% if user_timezone and log.log_time %}{{ log.get_user_time(user_timezone).strftime('%H:%M') }}{% elif log.log_time %}{{ log.log_time.time().strftime('%H:%M') }}{% endif %}">
+      </div>
+    </div>
+
+    <div class="c-field">
+      <label class="c-field__label" for="quantity">Quantity</label>
+      <input class="c-field__control" type="number" id="quantity" name="quantity" value="{{ log.quantity }}" min="1" max="50" step="1" required>
+    </div>
+
+    <div class="c-field">
+      <label class="c-field__label" for="notes">Notes</label>
+      <textarea class="c-field__control" id="notes" name="notes" rows="4" maxlength="1000">{{ log.notes or '' }}</textarea>
+    </div>
+
+    <div class="logging-form__actions">
+      <button class="c-button c-button--primary" type="submit">Save changes</button>
+      <a class="c-button c-button--secondary" href="{{ url_for('logging.view_logs') }}">Cancel</a>
+    </div>
+  </form>
 </div>
 {% endblock %}

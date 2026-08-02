@@ -171,6 +171,10 @@ function handleQuickAdd(event) {
     .then(data => {
         if (data.success) {
             showNotification(data.message, 'success');
+            if (button.hasAttribute('data-quick-add-refresh')) {
+                window.location.reload();
+                return;
+            }
             addQuickLogToTable(data.log);
             if (typeof refreshDashboard === 'function') {
                 refreshDashboard();
