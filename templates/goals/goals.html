@@ -3,166 +3,181 @@
 {% block title %}Goals - Nicotine Tracker{% endblock %}
 
 {% block content %}
-<div class="px-4 sm:px-6 lg:px-8">
-    <div class="flex items-center justify-between">
-        <div>
-            <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Your Goals</h1>
-            <p class="text-sm text-gray-700 dark:text-gray-300">Track your progress with your goals.</p>
+<div class="goals-page">
+  <header class="goals-intro">
+    <div class="goals-intro__copy">
+      <p class="eyebrow">Journey support</p>
+      <h1>Goals</h1>
+      <p>Goals support your Journey plan with a clear daily ceiling or a small weekly step. They are guides for learning, not a score of how well you are doing.</p>
+    </div>
+    <a class="c-button c-button--primary" href="{{ url_for('goals.create_goal') }}">Create a goal</a>
+  </header>
 
-        </div>
-        <div class="flex space-x-3">
-            <a href="{{ url_for('goals.create_goal') }}" 
-               class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
-                Create Goal
-            </a>
+  <aside
+    class="goals-analytics"
+    aria-labelledby="goals-practice-title"
+    data-goals-analytics
+    data-endpoint="{{ url_for('goals.get_goals_api') }}"
+    data-testid="goals-analytics"
+  >
+    <div>
+      <p class="eyebrow">A wider view</p>
+      <h2 id="goals-practice-title">Your goal practice</h2>
+    </div>
+    <p class="goals-analytics__summary" aria-live="polite">
+      <strong data-goals-total>—</strong> recorded
+      <span aria-hidden="true">·</span>
+      <strong data-goals-active>—</strong> active now
+    </p>
+  </aside>
 
-        </div>
+  <section class="goals-section" aria-labelledby="active-goals-title">
+    <div class="goals-section__intro">
+      <div>
+        <p class="eyebrow">Current focus</p>
+        <h2 id="active-goals-title">Active goals</h2>
+      </div>
+      <p>Keep only the limits that help you make the next choice. You can pause or adjust any goal as your Journey changes.</p>
     </div>
 
-    <!-- Goal Analytics Summary -->
-    <div class="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4" id="goal-analytics">
-        <!-- Will be populated by JavaScript -->
-    </div>
-    
     {% if active_goals %}
-    <h2 class="text-xl font-semibold text-gray-800 dark:text-white mb-4 mt-4">Active Goals</h2>
-    <div class="space-y-4">
+      <div class="goals-list">
         {% for goal in active_goals %}
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <div class="flex justify-between items-center">
-                <div>
-                    <h3 class="text-lg font-medium text-gray-900 dark:text-white">{{ goal.goal_type.replace('_', ' ').title() }}</h3>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Target: {{ goal.target_value }}</p>
-                    {% if goal.end_date %}
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Ends: {{ goal.end_date.strftime('%Y-%m-%d') }}</p>
-                    {% endif %}
-                </div>
-                <div>
-                    <form action="{{ url_for('goals.toggle_goal', goal_id=goal.id) }}" method="POST" class="inline">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <button type="submit" class="rounded-md bg-white dark:bg-gray-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 cursor-pointer">
-                            {% if goal.is_active %}Deactivate{% else %}Activate{% endif %}
-                        </button>
-                    </form>
-                    <a href="{{ url_for('goals.edit_goal', goal_id=goal.id) }}" class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 ml-2">Edit</a>
-                    <form action="{{ url_for('goals.delete_goal', goal_id=goal.id) }}" method="POST" class="inline ml-2" onsubmit="return confirm('Are you sure you want to delete this goal?');">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <button type="submit" class="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 cursor-pointer">Delete</button>
-                    </form>
-                </div>
+          {% set progress = goal_progress.get(goal.id) %}
+          <article class="goal-row" aria-label="{{ goal.goal_type.replace('_', ' ').title() }} goal" data-goal-id="{{ goal.id }}" data-goal-state="active">
+            <div class="goal-row__identity">
+              <span class="c-status c-status--constructive"><span class="c-status__mark" aria-hidden="true"></span>Active</span>
+              {% if goal.goal_type == 'daily_pouches' %}
+                <h3>Daily pouch ceiling</h3>
+                <p>Keep today at or below {{ goal.target_value }} pouch{% if goal.target_value != 1 %}es{% endif %}.</p>
+              {% elif goal.goal_type == 'daily_mg' %}
+                <h3>Daily nicotine ceiling</h3>
+                <p>Keep today at or below {{ goal.target_value }} mg.</p>
+              {% else %}
+                <h3>Weekly reduction</h3>
+                <p>Aim for {{ goal.target_value }}% fewer pouches than last week.</p>
+              {% endif %}
             </div>
-            <div class="mt-4 text-gray-300">
-                <p>Current Streak: {{ goal.current_streak }}</p>
-                <p>Best Streak: {{ goal.best_streak }}</p>
+
+            <dl class="goal-row__facts">
+              <div>
+                <dt>Target</dt>
+                <dd>
+                  {% if goal.goal_type == 'daily_pouches' %}{{ goal.target_value }} pouches / day
+                  {% elif goal.goal_type == 'daily_mg' %}{{ goal.target_value }} mg / day
+                  {% else %}{{ goal.target_value }}% / week{% endif %}
+                </dd>
+              </div>
+              <div>
+                <dt>Current streak</dt>
+                <dd>{{ goal.current_streak or 0 }} day{% if goal.current_streak != 1 %}s{% endif %}</dd>
+              </div>
+              <div>
+                <dt>{% if goal.end_date %}Review date{% else %}Timing{% endif %}</dt>
+                <dd>{% if goal.end_date %}{{ goal.end_date.strftime('%b %-d, %Y') }}{% else %}Open-ended{% endif %}</dd>
+              </div>
+            </dl>
+
+            {% if progress %}
+              <div class="goal-row__progress">
+                <div>
+                  <span>Today’s progress</span>
+                  <strong>{{ progress.current }} / {{ progress.target }}{% if goal.goal_type == 'daily_mg' %} mg{% elif goal.goal_type == 'daily_pouches' %} pouches{% else %}%{% endif %}</strong>
+                </div>
+                <progress max="100" value="{{ progress.percentage if progress.percentage < 100 else 100 }}">{{ progress.percentage|round|int }}%</progress>
+                {% if goal.goal_type == 'daily_mg' and progress.unknown_strength_count %}
+                  <p>{{ progress.unknown_strength_count }} logged pouch{% if progress.unknown_strength_count != 1 %}es have{% else %} has{% endif %} no saved strength, so today’s mg total is incomplete.</p>
+                {% elif progress.percentage > 100 %}
+                  <p>This is useful information, not a failed day. Notice what made the limit difficult and choose the next steady step.</p>
+                {% endif %}
+              </div>
+            {% endif %}
+
+            <div class="goal-row__actions">
+              <form action="{{ url_for('goals.toggle_goal', goal_id=goal.id) }}" method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="c-button c-button--secondary" type="submit">Pause goal</button>
+              </form>
+              <a class="c-button c-button--quiet" href="{{ url_for('goals.edit_goal', goal_id=goal.id) }}">Adjust goal</a>
+              <form class="goal-delete-form" action="{{ url_for('goals.delete_goal', goal_id=goal.id) }}" method="post" data-confirm="Delete this goal? This cannot be undone.">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="c-button c-button--quiet goal-action--danger" type="submit">Delete goal</button>
+              </form>
             </div>
-        </div>
+          </article>
         {% endfor %}
-    </div>
+      </div>
     {% else %}
-    <p class="text-gray-500 dark:text-gray-400">You have no active goals. Create one to start tracking your progress.</p>
+      <div class="goals-empty">
+        <h3>No active goal right now</h3>
+        <p>Your Journey plan still stands on its own. Add a goal when one clear limit would make today easier to navigate.</p>
+      </div>
     {% endif %}
-    
-    {% if inactive_goals %}
-    <h2 class="text-xl font-semibold text-gray-800 dark:text-white mt-8 mb-4">Inactive Goals</h2>
-    <div class="space-y-4">
-        {% for goal in inactive_goals %}
-        <div class="bg-gray-100 dark:bg-gray-700 shadow rounded-lg p-6">
-            <div class="flex justify-between items-center">
-                <div>
-                    <h3 class="text-lg font-medium text-gray-900 dark:text-white">{{ goal.goal_type.replace('_', ' ').title() }}</h3>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Target: {{ goal.target_value }}</p>
-                    {% if goal.end_date %}
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Ended: {{ goal.end_date.strftime('%Y-%m-%d') }}</p>
-                    {% endif %}
-                </div>
-                <div>
-                    <a href="{{ url_for('goals.edit_goal', goal_id=goal.id) }}" class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 cursor-pointer">Edit</a>
-                    <form action="{{ url_for('goals.delete_goal', goal_id=goal.id) }}" method="POST" class="inline ml-2" onsubmit="return confirm('Are you sure you want to delete this goal?');">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <button type="submit" class="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 cursor-pointer">Delete</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-        {% endfor %}
+  </section>
+
+  <section class="goals-section goals-section--quiet" aria-labelledby="inactive-goals-title">
+    <div class="goals-section__intro">
+      <div>
+        <p class="eyebrow">Past context</p>
+        <h2 id="inactive-goals-title">Paused goals</h2>
+      </div>
+      <p>Paused goals stay here as context. Resume one only if it still fits the plan you are following now.</p>
     </div>
-    {% endif %}
-</div>
 
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Load unified goal analytics
-    function loadGoalAnalytics() {
-        fetch('/goals/api/goals')
-
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    updateAnalyticsCards(data.analytics);
-                }
-            })
-            .catch(error => {
-                console.error('Error loading goal analytics:', error);
-            });
-    }
-
-    function updateAnalyticsCards(analytics) {
-        const analyticsContainer = document.getElementById('goal-analytics');
-        analyticsContainer.innerHTML = '';
-
-        // Total Goals Card
-        const totalGoalsCard = createAnalyticsCard(
-            'Total Goals',
-            analytics.total_goals || 0,
-            '🎯',
-            'bg-blue-500'
-        );
-        analyticsContainer.appendChild(totalGoalsCard);
-
-        // Active Goals Card
-        const activeGoalsCard = createAnalyticsCard(
-            'Active Goals',
-            analytics.active_goals || 0,
-            '✅',
-            'bg-green-500'
-        );
-        analyticsContainer.appendChild(activeGoalsCard);
-
-        analyticsContainer.appendChild(traditionalGoalsCard);
-    }
-
-
-    function createAnalyticsCard(title, value, icon, bgColor) {
-        const card = document.createElement('div');
-        card.className = 'bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg';
-        
-        card.innerHTML = `
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="w-8 h-8 ${bgColor} rounded-md flex items-center justify-center">
-                            <span class="text-white font-bold text-sm">${icon}</span>
-                        </div>
-                    </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-                                ${title}
-                            </dt>
-                            <dd class="text-lg font-medium text-gray-900 dark:text-white">
-                                ${value}
-                            </dd>
-                        </dl>
-                    </div>
-                </div>
+    {% if inactive_goals %}
+      <div class="goals-list">
+        {% for goal in inactive_goals %}
+          <article class="goal-row goal-row--inactive" aria-label="{{ goal.goal_type.replace('_', ' ').title() }} goal" data-goal-id="{{ goal.id }}" data-goal-state="inactive">
+            <div class="goal-row__identity">
+              <span class="c-status"><span class="c-status__mark" aria-hidden="true"></span>Paused</span>
+              {% if goal.goal_type == 'daily_pouches' %}<h3>Daily pouch ceiling</h3>
+              {% elif goal.goal_type == 'daily_mg' %}<h3>Daily nicotine ceiling</h3>
+              {% else %}<h3>Weekly reduction</h3>{% endif %}
+              <p>This goal is not shaping today’s guidance.</p>
             </div>
-        `;
-        
-        return card;
-    }
 
-    // Load analytics on page load
-    loadGoalAnalytics();
-});
-</script>
+            <dl class="goal-row__facts">
+              <div>
+                <dt>Target</dt>
+                <dd>
+                  {% if goal.goal_type == 'daily_pouches' %}{{ goal.target_value }} pouches / day
+                  {% elif goal.goal_type == 'daily_mg' %}{{ goal.target_value }} mg / day
+                  {% else %}{{ goal.target_value }}% / week{% endif %}
+                </dd>
+              </div>
+              <div>
+                <dt>Best streak</dt>
+                <dd>{{ goal.best_streak or 0 }} day{% if goal.best_streak != 1 %}s{% endif %}</dd>
+              </div>
+              <div>
+                <dt>{% if goal.end_date %}Review date{% else %}Timing{% endif %}</dt>
+                <dd>{% if goal.end_date %}{{ goal.end_date.strftime('%b %-d, %Y') }}{% else %}Open-ended{% endif %}</dd>
+              </div>
+            </dl>
+
+            <div class="goal-row__actions">
+              <form action="{{ url_for('goals.toggle_goal', goal_id=goal.id) }}" method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="c-button c-button--secondary" type="submit">Resume goal</button>
+              </form>
+              <a class="c-button c-button--quiet" href="{{ url_for('goals.edit_goal', goal_id=goal.id) }}">Adjust goal</a>
+              <form class="goal-delete-form" action="{{ url_for('goals.delete_goal', goal_id=goal.id) }}" method="post" data-confirm="Delete this goal? This cannot be undone.">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="c-button c-button--quiet goal-action--danger" type="submit">Delete goal</button>
+              </form>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="goals-section__empty-note">Paused goals will appear here when you need them.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
+
+{% block preline_js %}{% endblock %}
+
+{% block extra_js %}
+<script type="module" src="{{ url_for('static', filename='js/goals/page.js') }}"></script>
 {% endblock %}
