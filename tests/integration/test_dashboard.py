@@ -167,7 +167,29 @@ def test_dashboard_analytics_endpoints_remain_authenticated_owned_and_compatible
     assert hourly.get_json()['data'][9] == {'hour': '09:00', 'pouches': 4}
     assert sum(item['pouches'] for item in hourly.get_json()['data']) == 4
     assert weekly.get_json()['success'] is True
-    assert len(weekly.get_json()['data']) == 2
+    weekly_data = weekly.get_json()['data']
+    assert weekly_data == [
+        {
+            'week_start': (date.today() - timedelta(days=13)).isoformat(),
+            'week_end': (date.today() - timedelta(days=7)).isoformat(),
+            'avg_pouches': 0,
+            'avg_mg': 0,
+            'total_pouches': 0,
+            'total_mg': 0,
+            'unknown_strength_count': 0,
+        },
+        {
+            'week_start': (date.today() - timedelta(days=6)).isoformat(),
+            'week_end': date.today().isoformat(),
+            'avg_pouches': 0.6,
+            'avg_mg': 2.3,
+            'total_pouches': 4,
+            'total_mg': 16.0,
+            'unknown_strength_count': 0,
+        },
+    ]
+    assert sum(week['total_pouches'] for week in weekly_data) == 4
+    assert 99 not in [week['total_pouches'] for week in weekly_data]
 
 
 def test_dashboard_custom_date_range_validation_contract_is_retained(
