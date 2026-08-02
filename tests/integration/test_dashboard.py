@@ -1,11 +1,12 @@
 """Compatibility Dashboard route, content, and analytics contracts."""
 
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 
 from bs4 import BeautifulSoup
 
 from models import Log, User
+import routes.dashboard as dashboard_routes
 from services import log_service
 
 
@@ -112,13 +113,26 @@ def test_empty_dashboard_teaches_next_steps_without_an_empty_chart_frame(
 
 
 def test_dashboard_analytics_endpoints_remain_authenticated_owned_and_compatible(
-        app, logged_in_client, db_session, test_user, test_pouch):
+        app, logged_in_client, db_session, test_user, test_pouch, monkeypatch):
+    frozen_utc = datetime(2026, 8, 1, 22, 30, tzinfo=timezone.utc)
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return frozen_utc.replace(tzinfo=None)
+            return frozen_utc.astimezone(tz)
+
+    monkeypatch.setattr(dashboard_routes, 'datetime', FrozenDateTime)
+    assert (frozen_utc + timedelta(hours=3)).date() != frozen_utc.date()
+    account_today = frozen_utc.date()
+
     other = User(email='dashboard-other@example.com', email_verified=True, timezone='UTC')
     other.set_password('not-used-here')
     db_session.add(other)
     db_session.flush()
 
-    start = date.today() - timedelta(days=2)
+    start = account_today - timedelta(days=2)
     end = start + timedelta(days=1)
     _add_log(
         db_session, test_user, test_pouch,
@@ -170,8 +184,8 @@ def test_dashboard_analytics_endpoints_remain_authenticated_owned_and_compatible
     weekly_data = weekly.get_json()['data']
     assert weekly_data == [
         {
-            'week_start': (date.today() - timedelta(days=13)).isoformat(),
-            'week_end': (date.today() - timedelta(days=7)).isoformat(),
+            'week_start': (account_today - timedelta(days=13)).isoformat(),
+            'week_end': (account_today - timedelta(days=7)).isoformat(),
             'avg_pouches': 0,
             'avg_mg': 0,
             'total_pouches': 0,
@@ -179,8 +193,8 @@ def test_dashboard_analytics_endpoints_remain_authenticated_owned_and_compatible
             'unknown_strength_count': 0,
         },
         {
-            'week_start': (date.today() - timedelta(days=6)).isoformat(),
-            'week_end': date.today().isoformat(),
+            'week_start': (account_today - timedelta(days=6)).isoformat(),
+            'week_end': account_today.isoformat(),
             'avg_pouches': 0.6,
             'avg_mg': 2.3,
             'total_pouches': 4,
