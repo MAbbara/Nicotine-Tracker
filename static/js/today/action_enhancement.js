@@ -13,6 +13,26 @@ const activations = new WeakMap();
 
 function noop() {}
 
+function bestEffort(operation) {
+  try {
+    operation();
+  } catch {
+    // Continue restoring the remaining parts of the server-rendered state.
+  }
+}
+
+function restoreServerAction(root, fallback, enhanced, activate) {
+  // Teardown mirrors activation in reverse so no intermediate state is
+  // unsafe: drop readiness first, restore the fallback before hiding the
+  // enhanced control, and detach its listener last. Each step is isolated so
+  // one hostile DOM mutation cannot prevent the remaining recovery work.
+  bestEffort(() => { delete root.dataset.controllerReady; });
+  bestEffort(() => { fallback.hidden = false; });
+  bestEffort(() => { enhanced.hidden = true; });
+  bestEffort(() => { enhanced.removeEventListener('click', activate); });
+  activations.delete(root);
+}
+
 export function activateActionEnhancement(root, onActivate) {
   if (!root || typeof root.querySelector !== 'function') return noop;
   const existing = activations.get(root);
@@ -25,24 +45,21 @@ export function activateActionEnhancement(root, onActivate) {
   let active = true;
   // The listener must be attached before any visibility change so the
   // revealed control is never interactive without its handler.
-  enhanced.addEventListener('click', activate);
-  enhanced.hidden = false;
-  fallback.hidden = true;
-  root.dataset.controllerReady = 'true';
+  try {
+    enhanced.addEventListener('click', activate);
+    enhanced.hidden = false;
+    fallback.hidden = true;
+    root.dataset.controllerReady = 'true';
+  } catch (error) {
+    active = false;
+    restoreServerAction(root, fallback, enhanced, activate);
+    throw error;
+  }
 
   const cleanup = () => {
     if (!active) return;
     active = false;
-    // Teardown mirrors activation in reverse so no intermediate state is
-    // unsafe: drop the readiness marker first, restore the fallback
-    // before hiding the enhanced control (the slot is never left empty),
-    // and only then detach the listener, so a visible control always has
-    // its handler. Finally unregister so re-activation starts fresh.
-    delete root.dataset.controllerReady;
-    fallback.hidden = false;
-    enhanced.hidden = true;
-    enhanced.removeEventListener('click', activate);
-    activations.delete(root);
+    restoreServerAction(root, fallback, enhanced, activate);
   };
   activations.set(root, cleanup);
   return cleanup;

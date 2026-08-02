@@ -1813,7 +1813,10 @@ function makeCravingBootstrapElement() {
   };
 }
 
-function makeCravingBootstrapDocument({ failFirstRootListener = false } = {}) {
+function makeCravingBootstrapDocument({
+  failFirstRootListener = false,
+  failFirstReadiness = false,
+} = {}) {
   const root = makeCravingBootstrapElement();
   if (failFirstRootListener) {
     const addRootListener = root.addEventListener.bind(root);
@@ -1847,6 +1850,24 @@ function makeCravingBootstrapDocument({ failFirstRootListener = false } = {}) {
   const fallback = makeCravingBootstrapElement();
   const enhanced = makeCravingBootstrapElement();
   enhanced.hidden = true;
+  if (failFirstReadiness) {
+    const dataset = slot.dataset;
+    let shouldFail = true;
+    slot.dataset = new Proxy(dataset, {
+      set(target, key, value) {
+        if (key === 'controllerReady' && shouldFail) {
+          shouldFail = false;
+          throw new Error('craving-readiness-write-failed');
+        }
+        target[key] = value;
+        return true;
+      },
+      deleteProperty(target, key) {
+        delete target[key];
+        return true;
+      },
+    });
+  }
   slot.selectors.set('[data-action-fallback]', fallback);
   slot.selectors.set('[data-action-enhanced]', enhanced);
   root.selectors.set('[data-craving-flow-dialog]', dialog);
@@ -1926,5 +1947,40 @@ test('Craving bootstrap rolls back a partial initialization before a natural ret
   for (const eventType of ['click', 'submit', 'input', 'change', 'cancel']) {
     assert.equal(root.listenerCount(eventType), 1, `${eventType} is rebound exactly once`);
   }
+  assert.equal(documentRef.listenerCount('visibilitychange'), 1);
+});
+
+test('Craving bootstrap restores the fallback after a late activation failure before retry', async () => {
+  const { bootstrapCravingFlow } = await loadCravingFlow();
+  const {
+    documentRef, root, slot, fallback, enhanced,
+  } = makeCravingBootstrapDocument({ failFirstReadiness: true });
+  const reported = [];
+  const originalError = console.error;
+  console.error = (...args) => { reported.push(args); };
+  let first;
+  try {
+    first = bootstrapCravingFlow(documentRef);
+  } finally {
+    console.error = originalError;
+  }
+
+  assert.equal(first, null);
+  assert.equal(reported.length, 1);
+  assert.equal(slot.dataset.controllerReady, undefined);
+  assert.equal(fallback.hidden, false);
+  assert.equal(enhanced.hidden, true);
+  assert.equal(enhanced.listenerCount('click'), 0);
+  assert.equal(root.listenerCount('click'), 0);
+  assert.equal(documentRef.listenerCount('visibilitychange'), 0);
+
+  const second = bootstrapCravingFlow(documentRef);
+
+  assert.ok(second);
+  assert.equal(slot.dataset.controllerReady, 'true');
+  assert.equal(fallback.hidden, true);
+  assert.equal(enhanced.hidden, false);
+  assert.equal(enhanced.listenerCount('click'), 1);
+  assert.equal(root.listenerCount('click'), 1);
   assert.equal(documentRef.listenerCount('visibilitychange'), 1);
 });

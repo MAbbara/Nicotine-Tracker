@@ -126,6 +126,44 @@ test('activation attaches the listener before the visibility swap and readiness 
   assert.equal(calls.length, 1);
 });
 
+test('a late readiness failure restores the fallback and permits one clean retry', async () => {
+  const { activateActionEnhancement } = await loadActionEnhancement();
+  const { slot, fallback, enhanced } = makeSlot();
+  const dataset = slot.dataset;
+  let failReadinessOnce = true;
+  slot.dataset = new Proxy(dataset, {
+    set(target, key, value) {
+      if (key === 'controllerReady' && failReadinessOnce) {
+        failReadinessOnce = false;
+        throw new Error('readiness-write-failed');
+      }
+      target[key] = value;
+      return true;
+    },
+    deleteProperty(target, key) {
+      delete target[key];
+      return true;
+    },
+  });
+  let calls = 0;
+
+  assert.throws(
+    () => activateActionEnhancement(slot, () => { calls += 1; }),
+    /readiness-write-failed/,
+  );
+  assert.equal(slot.dataset.controllerReady, undefined);
+  assert.equal(fallback.hidden, false);
+  assert.equal(enhanced.hidden, true);
+  assert.equal((enhanced.listeners.get('click') || []).length, 0);
+
+  const cleanup = activateActionEnhancement(slot, () => { calls += 1; });
+  assert.equal(slot.dataset.controllerReady, 'true');
+  assert.equal((enhanced.listeners.get('click') || []).length, 1);
+  enhanced.dispatchEvent({ type: 'click' });
+  assert.equal(calls, 1);
+  cleanup();
+});
+
 test('missing root returns a no-op cleanup and never throws', async () => {
   const { activateActionEnhancement } = await loadActionEnhancement();
 
