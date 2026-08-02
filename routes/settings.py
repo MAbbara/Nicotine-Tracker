@@ -795,6 +795,7 @@ def export_user_data(user):
     """Export user data (GDPR compliance)"""
     try:
         resolved_timezone = resolve_timezone(user.timezone)
+        preferences = user.preferences
         # Collect all user data
         user_data = {
             'profile': {
@@ -804,8 +805,12 @@ def export_user_data(user):
                 'gender': user.gender,
                 'weight': user.weight,
                 'timezone': user.timezone,
-                'units_preference': user.preferences.units_preference,
-                'preferred_brands': user.preferences.preferred_brands,
+                'units_preference': (
+                    preferences.units_preference if preferences else 'mg'
+                ),
+                'preferred_brands': (
+                    preferences.preferred_brands if preferences else None
+                ),
                 'email_verified': user.email_verified
             },
 

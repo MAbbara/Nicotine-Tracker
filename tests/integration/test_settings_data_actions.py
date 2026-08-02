@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 
 from bs4 import BeautifulSoup
 from werkzeug.datastructures import MultiDict
@@ -13,6 +14,7 @@ SUPPORTED_ACTIONS = {
     'export_data', 'cleanup_duplicates', 'merge_custom_pouches',
     'recalculate_goals', 'anonymize_data', 'delete_old_logs',
 }
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _snapshot_data_state(user):
@@ -105,6 +107,103 @@ def test_data_page_exposes_each_supported_action_once(
     assert set(rendered_actions) == SUPPORTED_ACTIONS
 
 
+def test_data_page_orders_actions_by_risk_and_explains_recoverability(
+    logged_in_client,
+):
+    response = logged_in_client.get('/settings/data')
+    document = BeautifulSoup(response.data, 'html.parser')
+
+    assert document.select_one('main h1').get_text(' ', strip=True) == (
+        'Data & privacy'
+    )
+    assert [heading.get_text(' ', strip=True) for heading in document.select(
+        '.data-section h2'
+    )] == ['Export', 'Offline use', 'Anonymize', 'Delete logs', 'Delete account']
+
+    forms = {
+        action['value']: action.find_parent('form')
+        for action in document.select('[name="action"]')
+    }
+    assert set(forms) == SUPPORTED_ACTIONS
+    assert all(form.select_one('input[name="csrf_token"]') for form in forms.values())
+    assert forms['export_data'].select_one('button.c-button--secondary')
+    assert not forms['export_data'].select_one('.c-button--danger')
+
+    offline = document.select_one(
+        'input#offline_queue_enabled[type="checkbox"]'
+        '[data-endpoint="/settings/privacy/offline-queue"]'
+    )
+    assert offline is not None
+    assert 'offline-queue-description' in offline.get('aria-describedby', '')
+    assert document.select_one(
+        '#offline-queue-status[role="status"][aria-live="polite"]'
+    )
+
+    anonymize = forms['anonymize_data']
+    anonymize_input = anonymize.select_one(
+        'input[name="confirm_anonymize"][pattern="ANONYMIZE"][required]'
+    )
+    assert anonymize_input is not None
+    assert 'confirm-anonymize-description' in anonymize_input.get(
+        'aria-describedby', ''
+    )
+    assert anonymize.select_one('button.c-button--danger')
+    anonymize_copy = anonymize.get_text(' ', strip=True).casefold()
+    assert 'cannot be undone' in anonymize_copy
+    assert 'age' in anonymize_copy and 'notes' in anonymize_copy
+
+    delete_logs = forms['delete_old_logs']
+    confirmation = delete_logs.select_one(
+        'input[name="confirm_delete_logs"][pattern="DELETE LOGS"][required]'
+    )
+    assert confirmation is not None
+    assert 'confirm-delete-logs-description' in confirmation.get(
+        'aria-describedby', ''
+    )
+    assert delete_logs.select_one('button.c-button--danger')
+    delete_copy = delete_logs.get_text(' ', strip=True).casefold()
+    assert 'permanent' in delete_copy
+    assert 'cannot be recovered' in delete_copy
+
+    account_link = document.select_one(
+        'a.c-button--danger[href="/settings/account#account-delete-title"]'
+    )
+    assert account_link is not None
+    account_copy = account_link.find_parent('section').get_text(
+        ' ', strip=True
+    ).casefold()
+    assert 'all associated data' in account_copy
+    assert 'cannot be recovered' in account_copy
+
+
+def test_offline_queue_privacy_endpoint_persists_boolean(
+        logged_in_client, db_session, test_user):
+    response = logged_in_client.patch(
+        '/settings/privacy/offline-queue', json={'enabled': False},
+    )
+    assert response.status_code == 200
+    assert response.get_json()['offline_queue']['enabled'] is False
+    preferences = UserPreferences.query.filter_by(user_id=test_user.id).one()
+    assert preferences.offline_queue_enabled is False
+
+    response = logged_in_client.patch(
+        '/settings/privacy/offline-queue', json={'enabled': True},
+    )
+    assert response.status_code == 200
+    db_session.refresh(preferences)
+    assert preferences.offline_queue_enabled is True
+
+
+def test_data_template_retires_legacy_cards_and_palette():
+    source = (PROJECT_ROOT / 'templates/settings/data.html').read_text().casefold()
+    for token in (
+        'bg-indigo-', 'text-indigo-', 'ring-indigo-', 'bg-violet-',
+        'bg-purple-', 'bg-blue-', 'bg-gray-', 'dark:bg-gray-',
+        'shadow rounded-lg',
+    ):
+        assert token not in source
+
+
 def test_data_page_rejects_multiple_actions_without_mutation(
     logged_in_client, test_user, db_session,
 ):
@@ -170,6 +269,22 @@ def test_export_button_exports_data_without_mutation(
     assert response.status_code == 200
     assert response.get_json()['profile']['email'] == test_user.email
     assert _snapshot_data_state(test_user) == before
+
+
+def test_export_uses_non_mutating_defaults_when_preferences_are_missing(
+        logged_in_client, test_user):
+    assert UserPreferences.query.filter_by(user_id=test_user.id).first() is None
+
+    response = _submit_data_button(logged_in_client, 'Download Data')
+
+    assert response.status_code == 200
+    assert response.headers['Content-Disposition'].startswith(
+        'attachment; filename=nicotine_tracker_data_'
+    )
+    profile = response.get_json()['profile']
+    assert profile['units_preference'] == 'mg'
+    assert profile['preferred_brands'] is None
+    assert UserPreferences.query.filter_by(user_id=test_user.id).first() is None
 
 
 def test_cleanup_button_removes_only_duplicate_logs(

@@ -258,6 +258,46 @@ test('Reminders persist and async actions expose success and failure feedback', 
 });
 
 
+test('Data privacy controls persist and Statistics hands off to Insights', async ({ page }) => {
+  await login(page);
+  await page.goto('/settings/data');
+
+  await expect(page.locator('.data-section h2')).toHaveText([
+    'Export', 'Offline use', 'Anonymize', 'Delete logs', 'Delete account',
+  ]);
+  const exportDownload = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download Data' }).click();
+  const download = await exportDownload;
+  expect(download.suggestedFilename()).toMatch(/^nicotine_tracker_data_\d{4}-\d{2}-\d{2}\.json$/);
+
+  const offlineToggle = page.getByRole('checkbox', { name: 'Save actions for offline use' });
+  const offlineStatus = page.locator('#offline-queue-status');
+  await expect(offlineToggle).toBeChecked();
+  await offlineToggle.uncheck();
+  await expect(offlineStatus).toContainText('Offline saving is off.');
+  await expect(offlineStatus).toHaveAttribute('data-state', 'success');
+  await page.reload();
+  await expect(offlineToggle).not.toBeChecked();
+  await expect(page.locator('meta[name="offline-queue-enabled"]')).toHaveAttribute('content', 'false');
+
+  await offlineToggle.check();
+  await expect(offlineStatus).toContainText('Offline saving is on.');
+  await page.reload();
+  await expect(offlineToggle).toBeChecked();
+  await expect(page.locator('meta[name="offline-queue-enabled"]')).toHaveAttribute('content', 'true');
+
+  const accountDeletion = page.getByRole('link', { name: 'Review account deletion' });
+  await expect(accountDeletion).toHaveAttribute('href', '/settings/account#account-delete-title');
+
+  await page.goto('/settings/statistics');
+  await expect(page.getByRole('heading', { name: 'Statistics', level: 1 })).toBeVisible();
+  await expect(page.locator('dl.statistics-facts dt')).toHaveCount(6);
+  await page.getByRole('link', { name: 'Explore patterns in Insights' }).click();
+  await expect(page).toHaveURL(/\/insights\/$/);
+  await expect(page.getByRole('heading', { name: 'Insights', level: 1 })).toBeVisible();
+});
+
+
 test('Account rejects incorrect credentials without losing the form', async ({ page }) => {
   await login(page);
   await page.goto('/settings/account');

@@ -3,97 +3,150 @@
 {% block title %}Data & Privacy - Settings{% endblock %}
 
 {% block settings_content %}
-<div class="space-y-6">
-    <!-- Data Export -->
-    <div class="bg-white dark:bg-gray-800 shadow rounded-lg">
-        <div class="px-4 py-5 sm:p-6">
-            <h3 class="text-lg font-medium leading-6 text-gray-900 dark:text-white">Export Your Data</h3>
-            <p class="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">Download a copy of all your data in a JSON format.</p>
-            <div class="mt-5">
-                <form method="POST" action="{{ url_for('settings.data') }}">
+{% set offline_enabled = user.preferences.offline_queue_enabled if user.preferences else true %}
+<div class="data-sections space-y-8">
+    <section class="data-section space-y-6" aria-labelledby="data-export-title">
+        <header class="data-section__intro space-y-2">
+            <p class="eyebrow">Your records</p>
+            <h2 id="data-export-title">Export</h2>
+            <p>Download a JSON copy of the information currently held in your account. Exporting does not change or remove anything.</p>
+        </header>
+
+        <form method="POST" action="{{ url_for('settings.data') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="action" value="export_data">
-                    <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700">
-                        Download Data
-                    </button>
+            <input type="hidden" name="action" value="export_data">
+            <button type="submit" class="c-button c-button--secondary">Download Data</button>
+        </form>
+
+        <div class="data-maintenance space-y-4">
+            <header class="space-y-2">
+                <h3>Data maintenance</h3>
+                <p>Run focused repairs without changing your profile or privacy settings.</p>
+            </header>
+
+            <div class="data-maintenance__actions space-y-4">
+                <form method="POST" action="{{ url_for('settings.data') }}" class="space-y-2">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="cleanup_duplicates">
+                    <p>Review exact duplicate log entries. {{ data_stats.potential_duplicates }} potential {{ 'group' if data_stats.potential_duplicates == 1 else 'groups' }} found.</p>
+                    <button type="submit" class="c-button c-button--secondary">Cleanup</button>
+                </form>
+
+                <form method="POST" action="{{ url_for('settings.data') }}" class="space-y-2">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="merge_custom_pouches">
+                    <p>Combine your custom products when brand and nicotine strength match. {{ data_stats.similar_pouches }} similar {{ 'entry' if data_stats.similar_pouches == 1 else 'entries' }} found.</p>
+                    <button type="submit" class="c-button c-button--secondary">Merge</button>
+                </form>
+
+                <form method="POST" action="{{ url_for('settings.data') }}" class="space-y-2">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="recalculate_goals">
+                    <p>Recalculate saved goal streaks from the log history that remains in your account.</p>
+                    <button type="submit" class="c-button c-button--secondary">Recalculate</button>
                 </form>
             </div>
         </div>
-    </div>
+    </section>
 
-    <!-- Data Cleanup -->
-    <div class="bg-white dark:bg-gray-800 shadow rounded-lg">
-        <div class="px-4 py-5 sm:p-6">
-            <h3 class="text-lg font-medium leading-6 text-gray-900 dark:text-white">Data Cleanup</h3>
-            <p class="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">Tools to keep your data tidy and accurate.</p>
+    <section class="data-section space-y-6" aria-labelledby="data-offline-title">
+        <header class="data-section__intro space-y-2">
+            <h2 id="data-offline-title">Offline use</h2>
+            <p>Choose whether this browser may temporarily hold eligible actions until a connection returns.</p>
+        </header>
+
+        <div class="c-field">
+            <label class="c-field__check" for="offline_queue_enabled">
+                <input
+                    class="c-field__check-input"
+                    id="offline_queue_enabled"
+                    name="offline_queue_enabled"
+                    type="checkbox"
+                    data-endpoint="{{ url_for('settings.update_offline_queue_preference') }}"
+                    aria-describedby="offline-queue-description offline-queue-status"
+                    {% if offline_enabled %}checked{% endif %}
+                >
+                <span class="c-field__check-label">Save actions for offline use</span>
+            </label>
+            <p class="c-field__description" id="offline-queue-description">When enabled, supported actions can wait in this browser and sync later. Free-text notes are never placed in the offline queue. Turning this off prevents new offline saves; it does not delete your server records.</p>
+            <p class="c-status" id="offline-queue-status" role="status" aria-live="polite" hidden></p>
         </div>
-        <div class="border-t border-gray-200 dark:border-gray-700">
-             <form method="POST" action="{{ url_for('settings.data') }}" class="divide-y divide-gray-200 dark:divide-gray-700">
+    </section>
+
+    <section class="data-section space-y-6" aria-labelledby="data-anonymize-title">
+        <header class="data-section__intro space-y-2">
+            <h2 id="data-anonymize-title">Anonymize</h2>
+            <p>Remove your age, gender, weight, preferred products, and private log notes while keeping the remaining usage history. This cannot be undone.</p>
+        </header>
+
+        <form method="POST" action="{{ url_for('settings.data') }}" class="space-y-6">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <div class="px-4 py-4 sm:px-6 flex items-center justify-between">
-                    <div>
-                        <p class="text-sm font-medium text-gray-900 dark:text-white">Cleanup Duplicates</p>
-                        <p class="text-sm text-gray-500 dark:text-gray-400">Remove duplicate log entries. ({{ data_stats.potential_duplicates }} potential duplicates found)</p>
-                    </div>
-                    <button type="submit" name="action" value="cleanup_duplicates" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600">Cleanup</button>
-                </div>
-                <div class="px-4 py-4 sm:px-6 flex items-center justify-between">
-                    <div>
-                        <p class="text-sm font-medium text-gray-900 dark:text-white">Merge Similar Pouches</p>
-                        <p class="text-sm text-gray-500 dark:text-gray-400">Merge custom pouch entries with the same brand and nicotine content. ({{ data_stats.similar_pouches }} similar pouches found)</p>
-                    </div>
-                    <button type="submit" name="action" value="merge_custom_pouches" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600">Merge</button>
-                </div>
-                 <div class="px-4 py-4 sm:px-6 flex items-center justify-between">
-                    <div>
-                        <p class="text-sm font-medium text-gray-900 dark:text-white">Recalculate Goal Streaks</p>
-                        <p class="text-sm text-gray-500 dark:text-gray-400">Recalculate streaks for all your goals.</p>
-                    </div>
-                    <button type="submit" name="action" value="recalculate_goals" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600">Recalculate</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Privacy Actions -->
-    <div class="bg-white dark:bg-gray-800 shadow rounded-lg">
-        <div class="px-4 py-5 sm:p-6">
-            <h3 class="text-lg font-medium leading-6 text-gray-900 dark:text-white">Privacy</h3>
-            <p class="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">Manage your personal data.</p>
-        </div>
-        <div class="border-t border-gray-200 dark:border-gray-700">
-            <div class="divide-y divide-gray-200 dark:divide-gray-700">
-                <form method="POST" action="{{ url_for('settings.data') }}">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <div class="px-4 py-4 sm:px-6">
-                        <p class="text-sm font-medium text-gray-900 dark:text-white">Anonymize Personal Data</p>
-                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">This will remove your age, gender, weight, and preferred brands. This action cannot be undone.</p>
-                        <div class="mt-3">
-                            <input type="hidden" name="action" value="anonymize_data">
-                            <label for="confirm_anonymize" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Type ANONYMIZE to confirm</label>
-                            <input id="confirm_anonymize" name="confirm_anonymize" autocomplete="off" required pattern="ANONYMIZE" class="mt-1 block w-full max-w-xs rounded-md border-0 py-1.5 px-2 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600">
-                            <button type="submit" class="mt-3 inline-flex items-center px-3 py-1.5 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 dark:bg-red-900 dark:text-red-300 dark:border-red-700">Anonymize Data</button>
-                        </div>
-                    </div>
-                </form>
-                <form method="POST" action="{{ url_for('settings.data') }}">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <div class="px-4 py-4 sm:px-6">
-                        <p class="text-sm font-medium text-gray-900 dark:text-white">Delete Old Logs</p>
-                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Permanently delete log entries older than a specified number of days.</p>
-                        <div class="mt-3">
-                            <input type="hidden" name="action" value="delete_old_logs">
-                            <label for="days_to_keep" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Days to keep</label>
-                            <input id="days_to_keep" name="days_to_keep" type="number" value="365" min="30" required aria-describedby="days_to_keep_help" class="mt-1 block w-32 rounded-md border-0 py-1.5 px-2 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600">
-                            <p id="days_to_keep_help" class="mt-1 text-sm text-gray-500 dark:text-gray-400">Logs newer than this many days will be kept.</p>
-                            <label for="confirm_delete_logs" class="mt-3 block text-sm font-medium text-gray-700 dark:text-gray-300">Type DELETE LOGS to confirm</label>
-                            <input id="confirm_delete_logs" name="confirm_delete_logs" autocomplete="off" required pattern="DELETE LOGS" class="mt-1 block w-full max-w-xs rounded-md border-0 py-1.5 px-2 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm dark:bg-gray-700 dark:text-white dark:ring-gray-600">
-                            <button type="submit" class="mt-3 inline-flex items-center px-3 py-1.5 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 dark:bg-red-900 dark:text-red-300 dark:border-red-700">Delete Logs</button>
-                        </div>
-                    </div>
-                </form>
+            <input type="hidden" name="action" value="anonymize_data">
+            <div class="c-field">
+                <label class="c-field__label" for="confirm_anonymize">Type ANONYMIZE to confirm</label>
+                <p class="c-field__description" id="confirm-anonymize-description">This removes age, gender, weight, preferred products, and log notes. It cannot be undone.</p>
+                <input
+                    class="c-field__control"
+                    id="confirm_anonymize"
+                    name="confirm_anonymize"
+                    autocomplete="off"
+                    required
+                    pattern="ANONYMIZE"
+                    aria-describedby="confirm-anonymize-description"
+                >
             </div>
-        </div>
-    </div>
+            <button type="submit" class="c-button c-button--danger">Anonymize Data</button>
+        </form>
+    </section>
+
+    <section class="data-section space-y-6" aria-labelledby="data-delete-logs-title">
+        <header class="data-section__intro space-y-2">
+            <h2 id="data-delete-logs-title">Delete logs</h2>
+            <p>Permanently delete log entries older than a retention period you choose. Deleted logs cannot be recovered.</p>
+        </header>
+
+        <form method="POST" action="{{ url_for('settings.data') }}" class="space-y-6">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="delete_old_logs">
+            <div class="c-field">
+                <label class="c-field__label" for="days_to_keep">Days to keep</label>
+                <p class="c-field__description" id="days_to_keep_help">Logs newer than this many days remain in your account. The minimum is 30 days.</p>
+                <input
+                    class="c-field__control"
+                    id="days_to_keep"
+                    name="days_to_keep"
+                    type="number"
+                    value="365"
+                    min="30"
+                    required
+                    aria-describedby="days_to_keep_help"
+                >
+            </div>
+            <div class="c-field">
+                <label class="c-field__label" for="confirm_delete_logs">Type DELETE LOGS to confirm</label>
+                <p class="c-field__description" id="confirm-delete-logs-description">Only logs older than the retention period above are removed. The deletion is permanent and cannot be recovered.</p>
+                <input
+                    class="c-field__control"
+                    id="confirm_delete_logs"
+                    name="confirm_delete_logs"
+                    autocomplete="off"
+                    required
+                    pattern="DELETE LOGS"
+                    aria-describedby="confirm-delete-logs-description"
+                >
+            </div>
+            <button type="submit" class="c-button c-button--danger">Delete Logs</button>
+        </form>
+    </section>
+
+    <section class="data-section space-y-6" aria-labelledby="data-delete-account-title">
+        <header class="data-section__intro space-y-2">
+            <h2 id="data-delete-account-title">Delete account</h2>
+            <p>Account deletion removes your sign-in and all associated data. It cannot be recovered. Password and typed confirmation happen on the Account page.</p>
+        </header>
+        <a class="c-button c-button--danger" href="{{ url_for('settings.account') }}#account-delete-title">Review account deletion</a>
+    </section>
 </div>
+
+<script type="module" src="{{ url_for('static', filename='js/settings/data.js') }}"></script>
 {% endblock %}

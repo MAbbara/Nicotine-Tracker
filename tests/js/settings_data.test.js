@@ -1,0 +1,76 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const projectRoot = path.resolve(__dirname, '..', '..');
+
+async function loadModule() {
+  const source = fs.readFileSync(
+    path.join(projectRoot, 'static', 'js', 'settings', 'data.js'),
+    'utf8',
+  );
+  return import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+}
+
+function controls(checked) {
+  const attributes = new Map();
+  return {
+    checkbox: { checked, disabled: false, dataset: {} },
+    status: {
+      hidden: true,
+      textContent: '',
+      dataset: {},
+      setAttribute(name, value) { attributes.set(name, String(value)); },
+      getAttribute(name) { return attributes.get(name) ?? null; },
+    },
+  };
+}
+
+test('updateOfflineQueue persists the chosen state with pending and success feedback', async () => {
+  const { updateOfflineQueue } = await loadModule();
+  const { checkbox, status } = controls(false);
+  let resolveRequest;
+  const request = new Promise((resolve) => { resolveRequest = resolve; });
+  let requested;
+
+  const result = updateOfflineQueue({
+    checkbox,
+    status,
+    request: async (enabled) => {
+      requested = enabled;
+      return request;
+    },
+  });
+  assert.equal(requested, false);
+  assert.equal(checkbox.disabled, true);
+  assert.equal(checkbox.dataset.busy, 'true');
+  assert.equal(status.hidden, false);
+  assert.equal(status.dataset.state, 'loading');
+  assert.equal(status.getAttribute('aria-busy'), 'true');
+
+  resolveRequest({ success: true, enabled: false, message: 'Offline saving is off.' });
+  assert.equal(await result, true);
+  assert.equal(checkbox.checked, false);
+  assert.equal(checkbox.disabled, false);
+  assert.equal(checkbox.dataset.busy, undefined);
+  assert.equal(status.textContent, 'Offline saving is off.');
+  assert.equal(status.dataset.state, 'success');
+  assert.equal(status.getAttribute('aria-busy'), 'false');
+});
+
+test('updateOfflineQueue restores the previous value when persistence fails', async () => {
+  const { updateOfflineQueue } = await loadModule();
+  const { checkbox, status } = controls(false);
+
+  assert.equal(await updateOfflineQueue({
+    checkbox,
+    status,
+    request: async () => { throw new Error('offline'); },
+  }), false);
+  assert.equal(checkbox.checked, true);
+  assert.equal(checkbox.disabled, false);
+  assert.equal(status.hidden, false);
+  assert.equal(status.dataset.state, 'error');
+  assert.match(status.textContent, /could not be saved/i);
+});

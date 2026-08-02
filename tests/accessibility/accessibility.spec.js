@@ -111,6 +111,17 @@ test('Data & Privacy has a labelled retention control and no WCAG A/AA violation
   await expect(daysToKeep).toBeVisible();
   await expect(daysToKeep).toHaveAttribute('required', '');
   await expect(daysToKeep).toHaveAttribute('aria-describedby', 'days_to_keep_help');
+  await expect(page.getByRole('checkbox', { name: 'Save actions for offline use' })).toBeVisible();
+  await expectNoWcagViolations(page);
+});
+
+
+test('Statistics has an editorial fact list and no WCAG A/AA violations', async ({ page }) => {
+  await login(page, 'browser@example.com');
+  await page.goto('/settings/statistics');
+  await expect(page.getByRole('heading', { name: 'Statistics', level: 1 })).toBeVisible();
+  await expect(page.locator('dl.statistics-facts')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Explore patterns in Insights' })).toBeVisible();
   await expectNoWcagViolations(page);
 });
 

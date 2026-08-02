@@ -3,69 +3,51 @@
 {% block title %}Statistics - Settings{% endblock %}
 
 {% block settings_content %}
-<div class="space-y-6">
-    <div class="bg-white dark:bg-gray-800 shadow rounded-lg">
-        <div class="px-4 py-5 sm:p-6">
-            <h3 class="text-lg font-medium leading-6 text-gray-900 dark:text-white">Usage Overview</h3>
-            <dl class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div>
-                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Logs</dt>
-                    <dd class="mt-1 text-3xl font-semibold text-gray-900 dark:text-white">{{ stats.total_logs }}</dd>
-                </div>
-                <div>
-                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Pouches</dt>
-                    <dd class="mt-1 text-3xl font-semibold text-gray-900 dark:text-white">{{ stats.total_pouches }}</dd>
-                </div>
-                <div>
-                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Nicotine (mg)</dt>
-                    <dd class="mt-1 text-3xl font-semibold text-gray-900 dark:text-white">{{ stats.total_nicotine }}</dd>
-                </div>
-                <div>
-                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Daily Average</dt>
-                    <dd class="mt-1 text-3xl font-semibold text-gray-900 dark:text-white">{{ stats.daily_average }}</dd>
-                </div>
-                <div>
-                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Most Used Brand</dt>
-                    <dd class="mt-1 text-3xl font-semibold text-gray-900 dark:text-white">{{ stats.most_used_brand or 'N/A' }}</dd>
-                </div>
-                <div>
-                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Account Age (days)</dt>
-                    <dd class="mt-1 text-3xl font-semibold text-gray-900 dark:text-white">{{ stats.account_age or 'N/A' }}</dd>
-                </div>
-            </dl>
-        </div>
-    </div>
-    
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <!-- Weekly Stats -->
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Last 7 Days</h3>
-            <dl class="space-y-4 mt-4">
-                <div class="flex justify-between">
-                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Logs</dt>
-                    <dd class="text-sm font-semibold text-gray-900 dark:text-white">{{ stats.week_logs }}</dd>
-                </div>
-                <div class="flex justify-between">
-                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Pouches</dt>
-                    <dd class="text-sm font-semibold text-gray-900 dark:text-white">{{ stats.week_pouches }}</dd>
-                </div>
-            </dl>
-        </div>
-        
-        <!-- Monthly Stats -->
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Last 30 Days</h3>
-            <dl class="space-y-4 mt-4">
-                <div class="flex justify-between">
-                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Logs</dt>
-                    <dd class="text-sm font-semibold text-gray-900 dark:text-white">{{ stats.month_logs }}</dd>
-                </div>
-                <div class="flex justify-between">
-                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Pouches</dt>
-                    <dd class="text-sm font-semibold text-gray-900 dark:text-white">{{ stats.month_pouches }}</dd>
-                </div>
-            </dl>
-        </div>
-    </div>
+<div class="statistics-page space-y-8">
+    <section class="statistics-section space-y-6" aria-labelledby="statistics-account-title">
+        <header class="statistics-section__intro space-y-2">
+            <p class="eyebrow">Your record</p>
+            <h2 id="statistics-account-title">Account record</h2>
+            <p>A factual summary of the history currently stored in your account.</p>
+        </header>
+
+        <dl class="statistics-facts space-y-4">
+            <div><dt>Total logs</dt><dd>{{ stats.total_logs }}</dd></div>
+            <div><dt>Total pouches</dt><dd>{{ stats.total_pouches }}</dd></div>
+            <div><dt>Recorded nicotine</dt><dd>{{ stats.total_nicotine }} mg</dd></div>
+            <div><dt>Daily average</dt><dd>{{ stats.daily_average }} pouches</dd></div>
+            <div><dt>Most used product</dt><dd>{{ stats.most_used_brand or 'Not enough data yet' }}</dd></div>
+            <div><dt>Account age</dt><dd>{{ (stats.account_age|string) ~ ' days' if stats.account_age is not none else 'Not available' }}</dd></div>
+        </dl>
+
+        <p class="statistics-completeness">
+            {% if stats.unknown_strength_count %}
+            {{ stats.unknown_strength_count }} {{ 'log has' if stats.unknown_strength_count == 1 else 'logs have' }} no saved nicotine strength, so the recorded nicotine total includes known-strength entries only.
+            {% else %}
+            Every stored log has a saved nicotine strength, so the recorded nicotine total is complete for this account history.
+            {% endif %}
+        </p>
+    </section>
+
+    <section class="statistics-section space-y-6" aria-labelledby="statistics-recent-title">
+        <header class="statistics-section__intro space-y-2">
+            <h2 id="statistics-recent-title">Recent activity</h2>
+            <p>Counts for two useful review windows, without interpreting them as progress or decline.</p>
+        </header>
+
+        <dl class="statistics-periods space-y-4">
+            <div><dt>Logs · 7 days</dt><dd>{{ stats.week_logs }}</dd></div>
+            <div><dt>Pouches · 7 days</dt><dd>{{ stats.week_pouches }}</dd></div>
+            <div><dt>Logs · 30 days</dt><dd>{{ stats.month_logs }}</dd></div>
+            <div><dt>Pouches · 30 days</dt><dd>{{ stats.month_pouches }}</dd></div>
+        </dl>
+
+        {% set recent_unknown = stats.week_unknown_strength_count + stats.month_unknown_strength_count %}
+        {% if recent_unknown %}
+        <p>{{ recent_unknown }} unknown-strength {{ 'entry appears' if recent_unknown == 1 else 'entries appear' }} across these windows. Pouch counts remain available, while nicotine totals should be read with that limitation.</p>
+        {% endif %}
+
+        <a class="c-button c-button--secondary" href="{{ url_for('insights.insights_page') }}">Explore patterns in Insights</a>
+    </section>
 </div>
 {% endblock %}
