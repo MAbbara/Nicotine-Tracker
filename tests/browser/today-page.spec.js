@@ -156,6 +156,13 @@ test('populated targeted Today presents status, coaching, timeline, and reflecti
 
 test('action slot controls fill their slot before and after enhancement with no horizontal overflow', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('nicotine-tracker-theme', 'light'));
+  for (const moduleName of ['quick_log.js', 'craving_flow.js']) {
+    await page.route(`**/static/js/today/${moduleName}`, (route) => route.fulfill({
+      status: 200,
+      contentType: 'text/javascript',
+      body: '',
+    }));
+  }
   const problems = watchForProductProblems(page);
   await login(page, 'today-empty-smart@example.com');
 
