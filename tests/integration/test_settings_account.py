@@ -52,6 +52,38 @@ def test_account_validation_keeps_user_and_feedback(logged_in_client, test_user)
     assert response.status_code == 200
     assert b"Current password is incorrect." in response.data
     assert test_user.email == original_email
+    soup = BeautifulSoup(response.data, "html.parser")
+    password = soup.select_one('#password[aria-invalid="true"]')
+    assert password is not None
+    assert "password-error" in password.get("aria-describedby", "")
+    assert soup.select_one("#password-error").get_text(" ", strip=True) == (
+        "Current password is incorrect."
+    )
+
+
+def test_password_and_deletion_errors_are_field_adjacent(logged_in_client):
+    password_response = logged_in_client.post("/settings/account", data={
+        "action": "change_password",
+        "current_password": "wrong-password",
+        "new_password": "replacement-password",
+        "confirm_password": "replacement-password",
+    })
+    password_soup = BeautifulSoup(password_response.data, "html.parser")
+    assert password_soup.select_one('#current_password[aria-invalid="true"]')
+    assert password_soup.select_one("#current_password-error").get_text(
+        " ", strip=True
+    ) == "Current password is incorrect."
+
+    delete_response = logged_in_client.post("/settings/account", data={
+        "action": "delete_account",
+        "password": "wrong-password",
+        "confirmation": "delete my account",
+    })
+    delete_soup = BeautifulSoup(delete_response.data, "html.parser")
+    assert delete_soup.select_one('#delete_password[aria-invalid="true"]')
+    assert delete_soup.select_one("#delete_password-error").get_text(
+        " ", strip=True
+    ) == "Password is incorrect."
 
 
 def test_account_template_retires_legacy_cards_and_palette():

@@ -4,6 +4,7 @@
 {% block title %}Account - Settings{% endblock %}
 
 {% block settings_content %}
+{% set account_errors = account_errors|default({}) %}
 <div class="account-sections space-y-8">
     <section class="account-section" aria-labelledby="account-email-title">
         <header class="account-section__intro space-y-2">
@@ -22,6 +23,7 @@
                     type='email',
                     value=user.email,
                     autocomplete='email',
+                    error=account_errors.get('new_email'),
                     required=true
                 ) }}
                 {{ field(
@@ -29,6 +31,7 @@
                     'Current password',
                     type='password',
                     autocomplete='current-password',
+                    error=account_errors.get('email_password'),
                     required=true
                 ) }}
             </div>
@@ -55,9 +58,10 @@
                     'Current password',
                     type='password',
                     autocomplete='current-password',
+                    error=account_errors.get('current_password'),
                     required=true
                 ) }}
-                <div class="c-field">
+                <div class="c-field{% if account_errors.get('new_password') %} c-field--error{% endif %}">
                     <label class="c-field__label" for="new_password">New password<span aria-hidden="true"> *</span></label>
                     <p class="c-field__description" id="new_password-description">Use at least 6 characters.</p>
                     <input
@@ -69,14 +73,17 @@
                         autocomplete="new-password"
                         required
                         aria-required="true"
-                        aria-describedby="new_password-description"
+                        aria-describedby="new_password-description{% if account_errors.get('new_password') %} new_password-error{% endif %}"
+                        {% if account_errors.get('new_password') %}aria-invalid="true"{% endif %}
                     >
+                    {% if account_errors.get('new_password') %}<p class="c-field__error" id="new_password-error" role="alert">{{ account_errors.get('new_password') }}</p>{% endif %}
                 </div>
                 {{ field(
                     'confirm_password',
                     'Confirm new password',
                     type='password',
                     autocomplete='new-password',
+                    error=account_errors.get('confirm_password'),
                     required=true
                 ) }}
             </div>
@@ -143,7 +150,7 @@
             <p>This permanently removes your account and all associated data. It cannot be recovered.</p>
 
             <div class="account-section__fields space-y-6">
-                <div class="c-field">
+                <div class="c-field{% if account_errors.get('delete_password') %} c-field--error{% endif %}">
                     <label class="c-field__label" for="delete_password">Password<span aria-hidden="true"> *</span></label>
                     <input
                         class="c-field__control"
@@ -153,11 +160,14 @@
                         autocomplete="current-password"
                         required
                         aria-required="true"
+                        {% if account_errors.get('delete_password') %}aria-describedby="delete_password-error" aria-invalid="true"{% endif %}
                     >
+                    {% if account_errors.get('delete_password') %}<p class="c-field__error" id="delete_password-error" role="alert">{{ account_errors.get('delete_password') }}</p>{% endif %}
                 </div>
                 {{ field(
                     'confirmation',
                     'Type “delete my account” to confirm',
+                    error=account_errors.get('confirmation'),
                     required=true
                 ) }}
             </div>

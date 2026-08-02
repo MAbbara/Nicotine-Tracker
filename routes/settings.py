@@ -542,17 +542,20 @@ def account():
                 # Validation
                 if not new_email or '@' not in new_email:
                     flash('Please enter a valid email address.', 'error')
-                    return render_template('account.html', user=user, account_stats=account_stats)
+                    return render_template('account.html', user=user, account_stats=account_stats,
+                                           account_errors={'new_email': 'Please enter a valid email address.'})
                 
                 if not user.check_password(password):
                     flash('Current password is incorrect.', 'error')
-                    return render_template('account.html', user=user, account_stats=account_stats)
+                    return render_template('account.html', user=user, account_stats=account_stats,
+                                           account_errors={'email_password': 'Current password is incorrect.'})
                 
                 # Check if email already exists
                 existing_user = User.query.filter_by(email=new_email).first()
                 if existing_user and existing_user.id != user.id:
                     flash('This email address is already in use.', 'error')
-                    return render_template('account.html', user=user, account_stats=account_stats)
+                    return render_template('account.html', user=user, account_stats=account_stats,
+                                           account_errors={'new_email': 'This email address is already in use.'})
                 
                 # Update email
                 old_email = user.email
@@ -576,23 +579,28 @@ def account():
                 # Validation
                 if not current_password:
                     flash('Please enter your current password.', 'error')
-                    return render_template('account.html', user=user, account_stats=account_stats)
+                    return render_template('account.html', user=user, account_stats=account_stats,
+                                           account_errors={'current_password': 'Please enter your current password.'})
                 
                 if not user.check_password(current_password):
                     flash('Current password is incorrect.', 'error')
-                    return render_template('account.html', user=user, account_stats=account_stats)
+                    return render_template('account.html', user=user, account_stats=account_stats,
+                                           account_errors={'current_password': 'Current password is incorrect.'})
                 
                 if len(new_password) < 6:
                     flash('New password must be at least 6 characters long.', 'error')
-                    return render_template('account.html', user=user, account_stats=account_stats)
+                    return render_template('account.html', user=user, account_stats=account_stats,
+                                           account_errors={'new_password': 'New password must be at least 6 characters long.'})
                 
                 if new_password != confirm_password:
                     flash('New passwords do not match.', 'error')
-                    return render_template('account.html', user=user, account_stats=account_stats)
+                    return render_template('account.html', user=user, account_stats=account_stats,
+                                           account_errors={'confirm_password': 'New passwords do not match.'})
                 
                 if current_password == new_password:
                     flash('New password must be different from current password.', 'error')
-                    return render_template('account.html', user=user, account_stats=account_stats)
+                    return render_template('account.html', user=user, account_stats=account_stats,
+                                           account_errors={'new_password': 'New password must be different from current password.'})
                 
                 # Update password
                 user.set_password(new_password)
@@ -624,15 +632,18 @@ def account():
                 # Validation
                 if not password:
                     flash('Please enter your password to confirm account deletion.', 'error')
-                    return render_template('account.html', user=user, account_stats=account_stats)
+                    return render_template('account.html', user=user, account_stats=account_stats,
+                                           account_errors={'delete_password': 'Please enter your password to confirm account deletion.'})
                 
                 if not user.check_password(password):
                     flash('Password is incorrect.', 'error')
-                    return render_template('account.html', user=user, account_stats=account_stats)
+                    return render_template('account.html', user=user, account_stats=account_stats,
+                                           account_errors={'delete_password': 'Password is incorrect.'})
                 
                 if confirmation.lower() != 'delete my account':
                     flash('Please type "delete my account" to confirm.', 'error')
-                    return render_template('account.html', user=user, account_stats=account_stats)
+                    return render_template('account.html', user=user, account_stats=account_stats,
+                                           account_errors={'confirmation': 'Please type "delete my account" to confirm.'})
                 
                 # Log the deletion
                 user_email = user.email
