@@ -9,6 +9,47 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
+# Browser release evidence must not change when the suite crosses midnight.
+# Keep the freeze entirely inside this disposable server process: application
+# source remains unaware of it, and Playwright reads the same instant from the
+# test-only endpoint below before installing its browser clock.
+_REAL_DATE = date
+_REAL_DATETIME = datetime
+RELEASE_TEST_NOW = _REAL_DATETIME(2026, 8, 3, 12, 0, tzinfo=timezone.utc)
+
+
+class _ReleaseTestDate(_REAL_DATE):
+    @classmethod
+    def today(cls):
+        return cls(
+            RELEASE_TEST_NOW.year,
+            RELEASE_TEST_NOW.month,
+            RELEASE_TEST_NOW.day,
+        )
+
+
+class _ReleaseTestDateTime(_REAL_DATETIME):
+    @classmethod
+    def now(cls, tz=None):
+        if tz is None:
+            return cls.fromtimestamp(RELEASE_TEST_NOW.timestamp())
+        return cls.fromtimestamp(RELEASE_TEST_NOW.timestamp(), tz)
+
+    @classmethod
+    def utcnow(cls):
+        return cls.fromtimestamp(RELEASE_TEST_NOW.timestamp(), timezone.utc).replace(
+            tzinfo=None,
+        )
+
+    @classmethod
+    def today(cls):
+        return cls.now()
+
+
+# Seed construction below resolves these names at runtime.
+date = _ReleaseTestDate
+datetime = _ReleaseTestDateTime
+
 from app import create_app  # noqa: E402
 from extensions import db  # noqa: E402
 from routes.auth import get_current_user, login_required  # noqa: E402
@@ -31,6 +72,67 @@ from models import (  # noqa: E402
 
 
 app = create_app('testing')
+
+
+_DATE_CLOCK_MODULES = {
+    'routes.logging',
+    'routes.settings',
+    'services.goal_service',
+}
+_DATETIME_CLOCK_MODULES = {
+    'routes.api',
+    'routes.cravings',
+    'routes.dashboard',
+    'routes.insights',
+    'routes.logging',
+    'routes.settings',
+    'services.background_tasks',
+    'services.check_in_service',
+    'services.craving_service',
+    'services.email_verification_service',
+    'services.enhanced_insights_service',
+    'services.goal_evaluation_service',
+    'services.goal_service',
+    'services.log_service',
+    'services.notification_service',
+    'services.password_reset_service',
+    'services.plan_service',
+    'services.preference_service',
+    'services.serializers',
+    'services.timezone_service',
+    'services.today_service',
+    'services.user_preferences_service',
+    'services.user_service',
+}
+
+
+def _freeze_loaded_test_server_clocks():
+    """Patch only audited wall-clock readers inside this test-server process."""
+    for module_name, module in tuple(sys.modules.items()):
+        if (
+            module_name in _DATE_CLOCK_MODULES
+            and getattr(module, 'date', None) is _REAL_DATE
+        ):
+            module.date = _ReleaseTestDate
+        if (
+            module_name in _DATETIME_CLOCK_MODULES
+            and getattr(module, 'datetime', None) is _REAL_DATETIME
+        ):
+            module.datetime = _ReleaseTestDateTime
+
+
+_freeze_loaded_test_server_clocks()
+
+
+@app.before_request
+def keep_test_server_clock_frozen():
+    # Re-apply for any route/service module imported lazily after app creation.
+    _freeze_loaded_test_server_clocks()
+
+
+@app.get('/__test__/release-clock')
+def release_clock_fixture():
+    return {'fixed_now': RELEASE_TEST_NOW.isoformat().replace('+00:00', 'Z')}
 
 
 @app.get('/__test__/error/<int:status_code>')
@@ -569,6 +671,10 @@ with app.app_context():
         log_quantity=1,
         owned_data=True,
     )
+    User.query.update({User.created_at: RELEASE_TEST_NOW.replace(tzinfo=None)})
+    PlanRevision.query.update({
+        PlanRevision.created_at: RELEASE_TEST_NOW.replace(tzinfo=None),
+    })
     db.session.commit()
 
 
