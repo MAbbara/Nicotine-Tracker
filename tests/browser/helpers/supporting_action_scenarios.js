@@ -97,6 +97,10 @@ function navigationAuthority(state, action, profile) {
     'goal-progress\u0000Back to goals': '.goals-intro a.c-button--secondary[href="/goals/"]',
     'goal-edit\u0000Back to goals': 'a.goal-form-page__back[href="/goals/"]',
     'goal-edit\u0000Cancel': '.goal-form__actions a.c-button--secondary[href="/goals/"]',
+    'dashboard\u0000Go to Today': '.dashboard-destinations a[href="/today/"]',
+    'dashboard-empty\u0000Go to Today': '.dashboard-destinations a[href="/today/"]',
+    'dashboard-sparse\u0000Go to Today': '.dashboard-destinations a[href="/today/"]',
+    'dashboard-empty\u0000Start with Today': '.dashboard-empty a[href="/today/"]',
   });
   const selector = exactNavigationSelectors[`${state}\u0000${action}`] || (role === 'button'
     ? `button.c-button--${action === 'Apply filters' ? 'primary' : 'secondary'}[type="submit"]`

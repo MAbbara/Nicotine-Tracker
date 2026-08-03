@@ -53,7 +53,7 @@ test('Goals console and analytics stay clean when no analytics target is present
   await register(page, testInfo);
 
   const analyticsResponse = page.waitForResponse('/goals/api/goals');
-  await recorder.visitState(page, 'goals');
+  await page.goto('/goals/');
   await analyticsResponse;
   await expect(page.getByTestId('goals-analytics').locator('[data-goals-total]')).toHaveText('0');
   await expect(page.getByTestId('goals-analytics').locator('[data-goals-active]')).toHaveText('0');
