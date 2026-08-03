@@ -27,6 +27,7 @@
   </div>
   <main id="main-content" class="auth-content" tabindex="-1">{% block content %}{% endblock %}</main>
   <script type="module" src="{{ url_for('static', filename='js/shell/theme.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/shell/pwa.js') }}"></script>
   {% block extra_js %}{% endblock %}
 </body>
 </html>

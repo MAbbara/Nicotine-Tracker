@@ -1,3 +1,5 @@
+import { installDialogFocusTrap } from '../shell/dialog_focus.js';
+
 function syncCustomProductFields(form) {
   const select = form.querySelector('[data-product-select]');
   const fields = form.querySelector('[data-custom-product-fields]');
@@ -39,6 +41,7 @@ export function initLoggingForms(root = document, confirmImpl = window.confirm) 
   const dialog = root.querySelector('#addLogModal');
   if (dialog && typeof dialog.showModal === 'function') {
     let returnFocus = null;
+    cleanups.push(installDialogFocusTrap(dialog));
     root.querySelectorAll('[data-hs-overlay="#addLogModal"]').forEach((trigger) => {
       const handleClick = (event) => {
         event.preventDefault();

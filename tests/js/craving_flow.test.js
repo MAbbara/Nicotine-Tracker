@@ -23,6 +23,12 @@ async function loadCravingFlow() {
       const dependencyUrl = `data:text/javascript;base64,${Buffer.from(dependencySource).toString('base64')}`;
       quickLogSource = quickLogSource.replace(`'./${dependency}'`, `'${dependencyUrl}'`);
     }
+    const dialogFocusSource = fs.readFileSync(
+      path.join(projectRoot, 'static', 'js', 'shell', 'dialog_focus.js'),
+      'utf8',
+    );
+    const dialogFocusUrl = `data:text/javascript;base64,${Buffer.from(dialogFocusSource).toString('base64')}`;
+    quickLogSource = quickLogSource.replace("'../shell/dialog_focus.js'", `'${dialogFocusUrl}'`);
     const quickLogUrl = `data:text/javascript;base64,${Buffer.from(quickLogSource).toString('base64')}`;
     source = source.replace("'./quick_log.js'", `'${quickLogUrl}'`);
   }
@@ -41,6 +47,14 @@ async function loadCravingFlow() {
     );
     const enhancementUrl = `data:text/javascript;base64,${Buffer.from(enhancementSource).toString('base64')}`;
     source = source.replace("'./action_enhancement.js'", `'${enhancementUrl}'`);
+  }
+  if (source.includes("'../shell/dialog_focus.js'")) {
+    const dialogFocusSource = fs.readFileSync(
+      path.join(projectRoot, 'static', 'js', 'shell', 'dialog_focus.js'),
+      'utf8',
+    );
+    const dialogFocusUrl = `data:text/javascript;base64,${Buffer.from(dialogFocusSource).toString('base64')}`;
+    source = source.replace("'../shell/dialog_focus.js'", `'${dialogFocusUrl}'`);
   }
   return import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 }

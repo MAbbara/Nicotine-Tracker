@@ -1,6 +1,6 @@
 import json
 
-from flask import Blueprint, Response
+from flask import Blueprint, Response, current_app
 
 
 pwa_bp = Blueprint('pwa', __name__)
@@ -41,3 +41,11 @@ def manifest():
         json.dumps(MANIFEST, separators=(',', ':')),
         mimetype='application/manifest+json',
     )
+
+
+@pwa_bp.get('/service-worker.js')
+def service_worker():
+    response = current_app.send_static_file('service-worker.js')
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Service-Worker-Allowed'] = '/'
+    return response

@@ -4,12 +4,34 @@ const {
   createBehaviorRecorder,
 } = require('./helpers/core_behavior_contract');
 
+let disposableRegistrationSequence = 0;
+
 async function login(page, email = 'today-targeted@example.com') {
   await page.goto('/auth/login');
   await page.getByLabel('Email address').fill(email);
   await page.getByLabel('Password').fill('browser-password');
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL(/\/today\/?$/);
+}
+
+async function registerDisposable(page, testInfo) {
+  disposableRegistrationSequence += 1;
+  const suffix = [
+    'offline-delete',
+    testInfo.project.name,
+    process.pid,
+    testInfo.workerIndex,
+    disposableRegistrationSequence,
+  ].join('-').replace(/[^a-z0-9-]/gi, '-').toLowerCase();
+  const email = `${suffix}@example.com`;
+  await page.goto('/auth/register');
+  await page.getByLabel('Email address').fill(email);
+  await page.locator('#password').fill('browser-password');
+  await page.locator('#confirm_password').fill('browser-password');
+  await page.getByLabel(/personal tracking tool/i).check();
+  await page.getByRole('button', { name: 'Create account', exact: true }).click();
+  await expect(page).toHaveURL(/\/journey\/onboarding$/);
+  return email;
 }
 
 async function pendingEvents(page) {
@@ -36,6 +58,20 @@ async function pendingEvents(page) {
       };
     });
   });
+}
+
+async function setReplayFixtureTime(page, dialog) {
+  const response = await page.request.get('/__test__/release-clock');
+  expect(response.status()).toBe(200);
+  const fixedNow = new Date((await response.json()).fixed_now);
+  const safelyBeforeNow = new Date(fixedNow.getTime() - (60 * 60 * 1000));
+  const details = dialog.locator('details');
+  if (!await details.evaluate((element) => element.open)) {
+    await dialog.getByText('Change details', { exact: true }).click();
+  }
+  await dialog.getByLabel('Local date and time').fill(
+    safelyBeforeNow.toISOString().slice(0, 16),
+  );
 }
 
 test.afterEach(async ({ page, context }) => {
@@ -87,10 +123,12 @@ test('IndexedDB removal reports whether the exact compound key existed', async (
 
 test('real IndexedDB queues a private structured log offline and reconciles it once online', async ({ page, context }) => {
   await login(page);
+  await expect(page.locator('[data-timeline-type="log"]')).toHaveCount(1);
   const initialCount = await page.locator('[data-timeline-type="log"]').count();
   await page.locator('#today-log-action').click();
   const dialog = page.getByRole('dialog', { name: 'Log nicotine use' });
   await dialog.getByText('Change details', { exact: true }).click();
+  await setReplayFixtureTime(page, dialog);
   await dialog.getByLabel(/Notes/).fill('Private note that must not enter IndexedDB');
 
   await context.setOffline(true);
@@ -123,7 +161,7 @@ test('real IndexedDB queues a private structured log offline and reconciles it o
     serviceWorkers: (await navigator.serviceWorker.getRegistrations()).length,
     cacheNames: await caches.keys(),
   }));
-  expect(browserStorage).toEqual({ serviceWorkers: 0, cacheNames: [] });
+  expect(browserStorage).toEqual({ serviceWorkers: 1, cacheNames: [] });
 });
 
 test('a response lost after commit replays the same UUID into one canonical row', async ({ page, context }) => {
@@ -141,10 +179,12 @@ test('a response lost after commit replays the same UUID into one canonical row'
     return route.continue();
   });
   await login(page);
+  await expect(page.locator('[data-timeline-type="log"]')).toHaveCount(1);
   const initialCount = await page.locator('[data-timeline-type="log"]').count();
   await page.locator('#today-log-action').click();
-  await page.getByRole('dialog', { name: 'Log nicotine use' })
-    .getByRole('button', { name: 'Log one pouch' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Log nicotine use' });
+  await setReplayFixtureTime(page, dialog);
+  await dialog.getByRole('button', { name: 'Log one pouch' }).click();
 
   await expect(page.locator('[data-timeline-state="queued"]')).toHaveCount(1);
   await context.setOffline(true);
@@ -190,6 +230,7 @@ test('permanent replay validation exposes calm Edit and Discard without looping'
   await login(page);
   await page.locator('#today-log-action').click();
   const dialog = page.getByRole('dialog', { name: 'Log nicotine use' });
+  await setReplayFixtureTime(page, dialog);
   await context.setOffline(true);
   await dialog.getByRole('button', { name: 'Log one pouch' }).click();
   await expect.poll(async () => (await pendingEvents(page)).length).toBe(1);
@@ -348,6 +389,50 @@ test('logout clears queued storage before another account can replay it', async 
   expect(postCount, JSON.stringify(postPages)).toBe(beforeLogout);
   recorder.record('you', 'Sign out', ['keyboard', 'persistence', 'request']);
   recorder.assertComplete();
+});
+
+test('account deletion clears queued storage before another account can replay it', async ({ page }, testInfo) => {
+  await registerDisposable(page, testInfo);
+  await page.goto('/settings/account');
+  await page.evaluate(async () => {
+    const { createIndexedDbStore } = await import('/static/js/today/offline_queue.js');
+    const offlineQueueId = document.querySelector('meta[name="offline-queue-id"]')?.content;
+    if (!offlineQueueId) throw new Error('offline queue identity missing');
+    await createIndexedDbStore(indexedDB).put({
+      offline_queue_id: offlineQueueId,
+      client_event_id: '00000000-0000-4000-8000-000000000199',
+      pouch_id: 7,
+      quantity: 1,
+      occurred_at_local: '2026-08-02T09:15:00+03:00',
+      timezone: 'Asia/Riyadh',
+      craving_id: null,
+      queue_order: 1,
+    });
+  });
+  await expect.poll(async () => (await pendingEvents(page)).length).toBe(1);
+
+  let postCount = 0;
+  await page.route('**/api/logs', async (route) => {
+    if (route.request().method() === 'POST') postCount += 1;
+    return route.continue();
+  });
+
+  const deletionForm = page.locator('form', {
+    has: page.locator('input[name="action"][value="delete_account"]'),
+  });
+  await deletionForm.getByLabel('Password').fill('browser-password');
+  await deletionForm.getByLabel(/delete my account/i).fill('delete my account');
+  const deleteAccount = deletionForm.getByRole('button', { name: 'Delete account' });
+  await deleteAccount.focus();
+  await page.keyboard.press('Enter');
+
+  await expect(page).toHaveURL(/\/$/);
+  await expect.poll(async () => (await pendingEvents(page)).length).toBe(0);
+  const postsAfterDeletion = postCount;
+  await login(page, 'browser@example.com');
+  await page.waitForTimeout(150);
+  expect(postCount).toBe(postsAfterDeletion);
+  expect(postCount).toBe(0);
 });
 
 test('queued and attention treatments remain focused, touchable, themed, and overflow-safe', async ({ page, context }, testInfo) => {

@@ -1,9 +1,12 @@
 const { test, expect } = require('@playwright/test');
 
 const {
+  CORE_ACTION_STATES,
+  CORE_BEHAVIOR_OBLIGATIONS,
   EXPECTED_ACTIONS,
   RELEASE_PAGES,
   RELEASE_STATES,
+  SUPPORTING_ACTION_RECEIPTS,
   loginAs,
   resolveReleaseState,
 } = require('./helpers/release_manifest');
@@ -83,6 +86,95 @@ test('release page list matches the approved authenticated inventory exactly', (
       .filter(({ offlineQueueEnabled }) => typeof offlineQueueEnabled === 'boolean')
       .map(({ name, offlineQueueEnabled }) => [name, offlineQueueEnabled]),
   )).toEqual(REQUIRED_OFFLINE_STATES);
+});
+
+
+test('functional ownership reconciles the exact post-Task-4 release inventory', () => {
+  const occurrences = Object.values(EXPECTED_ACTIONS).flat();
+  expect(RELEASE_PAGES).toHaveLength(21);
+  expect(RELEASE_STATES).toHaveLength(45);
+  expect(occurrences).toHaveLength(561);
+  expect(new Set(occurrences).size).toBe(144);
+  expect(CORE_BEHAVIOR_OBLIGATIONS).toHaveLength(173);
+  expect(SUPPORTING_ACTION_RECEIPTS).toHaveLength(388);
+  expect(CORE_BEHAVIOR_OBLIGATIONS.length + SUPPORTING_ACTION_RECEIPTS.length)
+    .toBe(occurrences.length);
+
+  for (const [stateName, actions] of Object.entries(EXPECTED_ACTIONS)) {
+    expect(
+      Object.keys(actions.coveredBy || {}).sort((left, right) => left.localeCompare(right)),
+      `${stateName} functional owner keys`,
+    ).toEqual([...actions].sort((left, right) => left.localeCompare(right)));
+    for (const action of actions) {
+      const coverage = actions.coveredBy[action];
+      expect(coverage.state).toBe(stateName);
+      expect(coverage.action).toBe(action);
+      expect(coverage.test).toMatch(/\.spec\.js › /);
+      const exactDimensions = [
+        'error', 'focus', 'keyboard', 'loading', 'persistence', 'request',
+      ];
+      if (!CORE_ACTION_STATES.includes(stateName)) exactDimensions.push('feedback');
+      expect(Object.keys(coverage.dimensions).sort()).toEqual(exactDimensions.sort());
+    }
+  }
+});
+
+
+test('installability metadata and every declared icon are valid first-party assets', async ({ page }) => {
+  await page.goto('/');
+  const manifestLink = page.locator('link[rel="manifest"]');
+  await expect(manifestLink).toHaveAttribute('href', '/manifest.webmanifest');
+  await expect(page.locator('link[rel="apple-touch-icon"]'))
+    .toHaveAttribute('sizes', '180x180');
+  await expect(page.locator('meta[name="application-name"]'))
+    .toHaveAttribute('content', 'Nicotine Tracker');
+  await expect(page.locator('meta[name="apple-mobile-web-app-capable"]'))
+    .toHaveAttribute('content', 'yes');
+
+  const manifestResponse = await page.request.get('/manifest.webmanifest');
+  expect(manifestResponse.status()).toBe(200);
+  expect(manifestResponse.headers()['content-type']).toContain('application/manifest+json');
+  const manifest = await manifestResponse.json();
+  expect(manifest).toMatchObject({
+    id: '/',
+    name: 'Nicotine Tracker',
+    short_name: 'Nicotine Tracker',
+    start_url: '/',
+    scope: '/',
+    display: 'standalone',
+    background_color: '#F5F1E7',
+    theme_color: '#F5F1E7',
+  });
+  expect(manifest.icons).toEqual([
+    {
+      src: '/static/icons/pwa/icon-192.png',
+      sizes: '192x192',
+      type: 'image/png',
+      purpose: 'any',
+    },
+    {
+      src: '/static/icons/pwa/icon-512.png',
+      sizes: '512x512',
+      type: 'image/png',
+      purpose: 'any maskable',
+    },
+  ]);
+
+  for (const { src, sizes } of [
+    ...manifest.icons,
+    { src: '/static/icons/pwa/icon-180.png', sizes: '180x180' },
+  ]) {
+    const response = await page.request.get(src);
+    expect(response.status(), src).toBe(200);
+    expect(response.headers()['content-type'], src).toContain('image/png');
+    const body = await response.body();
+    expect([...body.subarray(0, 8)], `${src} PNG signature`).toEqual([
+      137, 80, 78, 71, 13, 10, 26, 10,
+    ]);
+    const [expectedWidth, expectedHeight] = sizes.split('x').map(Number);
+    expect(body.readUInt32BE(16), `${src} width`).toBe(expectedWidth);
+    expect(body.readUInt32BE(20), `${src} height`).toBe(expectedHeight);
+  }
 });
 
 

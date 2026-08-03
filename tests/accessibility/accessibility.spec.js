@@ -159,6 +159,83 @@ async function expectKeyboardScrollable(region) {
 }
 
 
+async function expectVisibleFocus(locator) {
+  await expect(locator).toBeFocused();
+  expect(await locator.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return (
+      (style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) >= 2)
+      || style.boxShadow !== 'none'
+    );
+  })).toBe(true);
+}
+
+
+async function expectNativeDialogKeyboardContract(
+  page,
+  { trigger, dialog, initialFocus },
+) {
+  await expect(trigger).toBeVisible();
+  await trigger.focus();
+  await expectVisibleFocus(trigger);
+  await page.keyboard.press('Enter');
+  await expect(dialog).toBeVisible();
+  await expectVisibleFocus(initialFocus);
+
+  for (let index = 0; index < 16; index += 1) {
+    await page.keyboard.press('Tab');
+    const focus = await dialog.evaluate((element) => ({
+      contained: element.contains(document.activeElement),
+      active: document.activeElement?.outerHTML?.slice(0, 240) || null,
+    }));
+    expect(focus.contained, `Tab ${index + 1} focused ${focus.active}`).toBe(true);
+  }
+  for (let index = 0; index < 4; index += 1) {
+    await page.keyboard.press('Shift+Tab');
+    expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+  }
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expectVisibleFocus(trigger);
+}
+
+
+async function expectNoUncontainedHorizontalOverflow(page) {
+  const overflow = await page.evaluate(() => {
+    const viewportWidth = document.documentElement.clientWidth;
+    const permittedScroller = (element) => {
+      const candidate = element.closest([
+        '.journey-table-scroll',
+        '.analytics-data',
+        '.settings-nav',
+        '[data-horizontal-scroll]',
+      ].join(','));
+      if (!candidate) return false;
+      const style = getComputedStyle(candidate);
+      return ['auto', 'scroll'].includes(style.overflowX);
+    };
+    return {
+      delta: document.documentElement.scrollWidth - viewportWidth,
+      elements: [...document.querySelectorAll('body *')].flatMap((element) => {
+        const rect = element.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return [];
+        if (rect.left >= -1 && rect.right <= viewportWidth + 1) return [];
+        if (permittedScroller(element)) return [];
+        return [{
+          tag: element.tagName.toLowerCase(),
+          id: element.id,
+          classes: [...element.classList].slice(0, 4),
+          left: Math.round(rect.left),
+          right: Math.round(rect.right),
+        }];
+      }).slice(0, 12),
+    };
+  });
+  expect(overflow).toEqual({ delta: 0, elements: [] });
+}
+
+
 test('login page has semantic structure, natural tab order, and no WCAG A/AA violations', async ({ page }) => {
   await page.goto('/auth/login');
 
@@ -194,6 +271,91 @@ test('primary authenticated pages have one h1 and no WCAG A/AA violations', asyn
     await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
     await expectNoWcagViolations(page);
   }
+});
+
+
+test('primary destinations follow a visible keyboard order without positive tabindex', async ({ page }) => {
+  await login(page, 'today-targeted@example.com');
+  const primary = page.getByRole('navigation', { name: 'Primary' });
+  const destinations = ['Today', 'Journey', 'Insights', 'You'];
+
+  await expect(primary).toBeVisible();
+  await expect(page.locator('[tabindex]:not([tabindex="0"]):not([tabindex="-1"])')).toHaveCount(0);
+  const today = primary.getByRole('link', { name: 'Today', exact: true });
+  await today.focus();
+  await expectVisibleFocus(today);
+  for (const destination of destinations.slice(1)) {
+    await page.keyboard.press('Tab');
+    await expectVisibleFocus(primary.getByRole('link', { name: destination, exact: true }));
+  }
+});
+
+
+test('quick log, craving support, and Add log dialogs trap and return keyboard focus', async ({ page }) => {
+  await login(page, 'today-targeted@example.com');
+
+  const quickLogTrigger = page.locator('#today-log-action');
+  await expectNativeDialogKeyboardContract(page, {
+    trigger: quickLogTrigger,
+    dialog: page.getByRole('dialog', { name: 'Log nicotine use' }),
+    initialFocus: page.getByRole('dialog', { name: 'Log nicotine use' })
+      .getByRole('button', { name: 'Log one pouch' }),
+  });
+
+  const cravingTrigger = page.locator('#today-craving-action');
+  await expectNativeDialogKeyboardContract(page, {
+    trigger: cravingTrigger,
+    dialog: page.getByRole('dialog', { name: 'Take the next useful step' }),
+    initialFocus: page.getByRole('dialog', { name: 'Take the next useful step' })
+      .getByRole('heading', { name: 'How strong is it right now?' }),
+  });
+
+  await page.goto('/log/view');
+  const addLogTrigger = page.getByRole('button', { name: 'Add log', exact: true });
+  await expectNativeDialogKeyboardContract(page, {
+    trigger: addLogTrigger,
+    dialog: page.getByRole('dialog', { name: 'Add a log' }),
+    initialFocus: page.getByRole('dialog', { name: 'Add a log' }).getByLabel('Date'),
+  });
+});
+
+
+test('Today, Insights, Profile, and Logbook support 200% text and reduced motion', async ({ page }) => {
+  test.setTimeout(60_000);
+  const errors = collectBrowserErrors(page);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 320, height: 800 });
+  await login(page, 'today-targeted@example.com');
+  await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+
+  for (const [path, heading] of [
+    ['/today', 'Today'],
+    ['/insights/', 'Insights'],
+    ['/settings/profile', 'Profile'],
+    ['/log/view', 'Logbook'],
+  ]) {
+    await page.goto(path);
+    await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible();
+    expect(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true);
+    await expectNoUncontainedHorizontalOverflow(page);
+    await expectNoWcagViolations(page);
+    expectNoUnexpectedBrowserErrors(errors);
+  }
+
+  await page.goto('/today');
+  const checkIn = page.locator('[data-check-in-open]:visible, [data-check-in-edit]:visible').first();
+  await checkIn.scrollIntoViewIfNeeded();
+  await checkIn.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-check-in-form]')).toBeVisible();
+  const motion = await page.locator('[data-check-in-root]').evaluate((element) => {
+    const style = getComputedStyle(element);
+    const seconds = (values) => values.split(',').map((value) => (
+      parseFloat(value) * (value.includes('ms') ? 0.001 : 1)
+    ));
+    return Math.max(...seconds(style.animationDuration), ...seconds(style.transitionDuration));
+  });
+  expect(motion).toBeLessThanOrEqual(0.001);
 });
 
 

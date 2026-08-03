@@ -1,6 +1,7 @@
 import { bootstrapQuickLog, formatOffsetIso, toDateTimeLocal } from './quick_log.js';
 import { createTimelineDomAdapter } from './timeline.js';
 import { activateActionEnhancement } from './action_enhancement.js';
+import { installDialogFocusTrap } from '../shell/dialog_focus.js';
 
 const OUTCOMES = new Set(['resisted', 'used_nicotine', 'used_alternative']);
 const CRAVING_FLOW_CONTROLLERS = new WeakMap();
@@ -1102,6 +1103,7 @@ export function createCravingFlowDomView(root, dialog) {
   let sourceTrigger = null;
   let bound = false;
   let lastStatus = null;
+  let removeFocusTrap = null;
 
   function activeStep() {
     return dialog.querySelector('[data-craving-step]:not([hidden])');
@@ -1361,6 +1363,7 @@ export function createCravingFlowDomView(root, dialog) {
     root.addEventListener('input', onInput);
     root.addEventListener('change', onChange);
     root.addEventListener('cancel', onCancel, true);
+    removeFocusTrap = installDialogFocusTrap(dialog);
   }
 
   function cleanup() {
@@ -1371,6 +1374,8 @@ export function createCravingFlowDomView(root, dialog) {
     root.removeEventListener('input', onInput);
     root.removeEventListener('change', onChange);
     root.removeEventListener('cancel', onCancel, true);
+    removeFocusTrap?.();
+    removeFocusTrap = null;
   }
 
   return {

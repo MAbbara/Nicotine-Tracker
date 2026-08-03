@@ -31,6 +31,7 @@
   <main id="main-content" tabindex="-1">{% block content %}{% endblock %}</main>
   <footer class="marketing-footer"><p>Built for steady progress, without judgment.</p><p>&copy; {{ current_year or 2026 }} Nicotine Tracker</p></footer>
   <script type="module" src="{{ url_for('static', filename='js/shell/theme.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/shell/pwa.js') }}"></script>
   {% block extra_js %}{% endblock %}
 </body>
 </html>

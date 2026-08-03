@@ -28,6 +28,12 @@ async function loadQuickLog() {
     const offlineQueueUrl = `data:text/javascript;base64,${Buffer.from(offlineQueueSource).toString('base64')}`;
     source = source.replace("'./offline_queue.js'", `'${offlineQueueUrl}'`);
   }
+  const dialogFocusPath = path.join(projectRoot, 'static', 'js', 'shell', 'dialog_focus.js');
+  if (source.includes("'../shell/dialog_focus.js'")) {
+    const dialogFocusSource = fs.readFileSync(dialogFocusPath, 'utf8');
+    const dialogFocusUrl = `data:text/javascript;base64,${Buffer.from(dialogFocusSource).toString('base64')}`;
+    source = source.replace("'../shell/dialog_focus.js'", `'${dialogFocusUrl}'`);
+  }
   return import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 }
 

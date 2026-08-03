@@ -195,6 +195,35 @@ test('offline state uses the shell live region without duplicating navigation', 
   await expect(page.getByRole('navigation', { name: 'Primary' })).toHaveCount(1);
 });
 
+
+test('installable shell registers one updateable root-scoped service worker', async ({ page }) => {
+  await page.goto('/today');
+  await expect.poll(async () => page.evaluate(async () => (
+    Promise.all((await navigator.serviceWorker.getRegistrations()).map((registration) => ({
+      scope: registration.scope,
+      scriptURL: (registration.active || registration.waiting || registration.installing)?.scriptURL,
+      updateViaCache: registration.updateViaCache,
+    })))
+  ))).toEqual([{
+    scope: 'http://127.0.0.1:5000/',
+    scriptURL: 'http://127.0.0.1:5000/service-worker.js',
+    updateViaCache: 'none',
+  }]);
+
+  const updated = await page.evaluate(async () => {
+    const registration = await navigator.serviceWorker.getRegistration('/');
+    await registration.update();
+    return Boolean(registration.active);
+  });
+  expect(updated).toBe(true);
+  const updateResponse = await page.request.get('/service-worker.js');
+  expect(updateResponse.status()).toBe(200);
+  expect(updateResponse.headers()['content-type']).toContain('javascript');
+  expect(updateResponse.headers()['cache-control']).toContain('no-cache');
+  expect(updateResponse.headers()['service-worker-allowed']).toBe('/');
+  expect(await page.evaluate(async () => caches.keys())).toEqual([]);
+});
+
 test('primary navigation adapts between bottom bar and side rail', async ({ page }, testInfo) => {
   await page.goto('/today');
   const position = await page.getByRole('navigation', { name: 'Primary' }).evaluate(

@@ -1,6 +1,7 @@
 import { activateActionEnhancement } from './action_enhancement.js';
 import { createTimelineDomAdapter } from './timeline.js';
 import { getOfflineQueueRuntime } from './offline_queue.js';
+import { installDialogFocusTrap } from '../shell/dialog_focus.js';
 
 const QUICK_LOG_CONTROLLERS = new WeakMap();
 
@@ -1041,6 +1042,7 @@ export function createQuickLogDomView(root, dialog) {
   let handlers = null;
   let trigger = null;
   let bound = false;
+  let removeFocusTrap = null;
   let activeClientEventId = null;
 
   function confirmLabel() {
@@ -1309,6 +1311,7 @@ export function createQuickLogDomView(root, dialog) {
     root.addEventListener('change', onChange);
     root.addEventListener('toggle', onToggle, true);
     root.addEventListener('cancel', onCancel, true);
+    removeFocusTrap = installDialogFocusTrap(dialog);
   }
 
   function cleanup() {
@@ -1320,6 +1323,8 @@ export function createQuickLogDomView(root, dialog) {
     root.removeEventListener('change', onChange);
     root.removeEventListener('toggle', onToggle, true);
     root.removeEventListener('cancel', onCancel, true);
+    removeFocusTrap?.();
+    removeFocusTrap = null;
   }
 
   return {
