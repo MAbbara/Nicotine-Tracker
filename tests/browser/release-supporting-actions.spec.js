@@ -19,6 +19,11 @@ const {
 const { watchForProductProblems } = require('./helpers/product_guard');
 
 
+const SUPPORTING_EXPECTED_ACTIONS = Object.freeze(Object.fromEntries(
+  SUPPORTING_ACTION_STATES.map((state) => [state, EXPECTED_ACTIONS[state]]),
+));
+
+
 async function keyboardActivate(page, locator) {
   await locator.focus();
   await expect(locator).toBeFocused();
@@ -149,6 +154,7 @@ async function addDetailedLog(page, {
 
 
 async function runConfirmedDataAction(page, recorder, state, action) {
+  await recorder.visitState(page, state);
   await recorder.runScenario(page, state, action, 'invalid', 'success');
 }
 
@@ -171,19 +177,37 @@ test('every supporting action has three independent exact coverage authorities',
     }
   }
   expect(validateSupportingCoverage(
-    EXPECTED_ACTIONS,
+    SUPPORTING_EXPECTED_ACTIONS,
     SUPPORTING_ACTION_RECEIPTS,
     SUPPORTING_ACTION_POLICY,
     SUPPORTING_BEHAVIOR_OBLIGATIONS,
   )).toBe(true);
 
   const clone = (value) => structuredClone(value);
+  const extraManifestState = clone(SUPPORTING_EXPECTED_ACTIONS);
+  extraManifestState['fabricated-extra-state'] = ['Fabricated extra action'];
+  expect(() => validateSupportingCoverage(
+    extraManifestState,
+    SUPPORTING_ACTION_RECEIPTS,
+    SUPPORTING_ACTION_POLICY,
+    SUPPORTING_BEHAVIOR_OBLIGATIONS,
+  )).toThrow(/manifest exact state set differs/);
+
+  const extraManifestAction = clone(SUPPORTING_EXPECTED_ACTIONS);
+  extraManifestAction.profile.push('Fabricated profile action');
+  expect(() => validateSupportingCoverage(
+    extraManifestAction,
+    SUPPORTING_ACTION_RECEIPTS,
+    SUPPORTING_ACTION_POLICY,
+    SUPPORTING_BEHAVIOR_OBLIGATIONS,
+  )).toThrow(/manifest actions differ from exact baseline inventory/);
+
   const receiptOwnerMutation = clone(SUPPORTING_ACTION_RECEIPTS);
   receiptOwnerMutation.find((entry) => (
     entry.state === 'profile' && entry.action === 'Save profile'
   )).owner = SUPPORTING_OWNER_TITLES.settingsPreferences;
   expect(() => validateSupportingCoverage(
-    EXPECTED_ACTIONS, receiptOwnerMutation,
+    SUPPORTING_EXPECTED_ACTIONS, receiptOwnerMutation,
     SUPPORTING_ACTION_POLICY, SUPPORTING_BEHAVIOR_OBLIGATIONS,
   )).toThrow(/receipt owner differs/);
 
@@ -192,7 +216,7 @@ test('every supporting action has three independent exact coverage authorities',
     entry.state === 'account' && entry.action === 'Update email'
   )).dimensions.focus.status = 'not-applicable';
   expect(() => validateSupportingCoverage(
-    EXPECTED_ACTIONS, SUPPORTING_ACTION_RECEIPTS,
+    SUPPORTING_EXPECTED_ACTIONS, SUPPORTING_ACTION_RECEIPTS,
     policyApplicabilityMutation, SUPPORTING_BEHAVIOR_OBLIGATIONS,
   )).toThrow(/focus applicability differs/);
 
@@ -201,7 +225,7 @@ test('every supporting action has three independent exact coverage authorities',
     entry.state === 'profile' && entry.action === 'Save profile'
   )).dimensions.loading.reason = 'mutated policy reason';
   expect(() => validateSupportingCoverage(
-    EXPECTED_ACTIONS, SUPPORTING_ACTION_RECEIPTS,
+    SUPPORTING_EXPECTED_ACTIONS, SUPPORTING_ACTION_RECEIPTS,
     policyReasonMutation, SUPPORTING_BEHAVIOR_OBLIGATIONS,
   )).toThrow(/loading reason differs/);
 
@@ -210,7 +234,7 @@ test('every supporting action has three independent exact coverage authorities',
     entry.state === 'profile' && entry.action === 'Save profile'
   )).dimensions.loading.reason = 'mutated behavior reason';
   expect(() => validateSupportingCoverage(
-    EXPECTED_ACTIONS, SUPPORTING_ACTION_RECEIPTS,
+    SUPPORTING_EXPECTED_ACTIONS, SUPPORTING_ACTION_RECEIPTS,
     SUPPORTING_ACTION_POLICY, behaviorReasonMutation,
   )).toThrow(/loading reason differs/);
 
@@ -219,7 +243,7 @@ test('every supporting action has three independent exact coverage authorities',
     [3, 'supporting behavior obligations'],
   ]) {
     const sources = [
-      EXPECTED_ACTIONS,
+      SUPPORTING_EXPECTED_ACTIONS,
       clone(SUPPORTING_ACTION_RECEIPTS),
       clone(SUPPORTING_ACTION_POLICY),
       clone(SUPPORTING_BEHAVIOR_OBLIGATIONS),
@@ -233,7 +257,7 @@ test('every supporting action has three independent exact coverage authorities',
       .toThrow(/exact (?:length|state|action)/);
 
     const dimensionSources = [
-      EXPECTED_ACTIONS,
+      SUPPORTING_EXPECTED_ACTIONS,
       clone(SUPPORTING_ACTION_RECEIPTS),
       clone(SUPPORTING_ACTION_POLICY),
       clone(SUPPORTING_BEHAVIOR_OBLIGATIONS),
@@ -334,6 +358,114 @@ test('causal supporting transactions reject unrelated, pre-existing, and reusabl
   );
   await expect(dashboardRecorder.forScenario(page, 'dashboard', '7 days').run('success'))
     .rejects.toThrow(/toBe/);
+});
+
+
+test('catalog authority rejects real control, request, artifact, state, and precondition substitutions', async ({ page }) => {
+  await loginAs(page, 'release-settings@example.com');
+
+  const chromeRecorder = createSupportingBehaviorRecorder(
+    SUPPORTING_OWNER_TITLES.chrome, expect,
+  );
+  await page.goto('/settings/profile');
+  const today = page.getByRole('navigation', { name: 'Primary' })
+    .getByRole('link', { name: 'Today', exact: true });
+  await today.evaluate((link) => link.setAttribute('href', '/journey/'));
+  await expect(chromeRecorder.forScenario(page, 'profile', 'Today').run('success'))
+    .rejects.toThrow(/catalog control (?:contract|selector)/);
+
+  await page.goto('/settings/data?supporting_state=data-settings-action');
+  await expect(chromeRecorder.forScenario(page, 'data', 'Skip to main content').run('success'))
+    .rejects.toThrow(/authoritative state (?:query|invariant)/);
+
+  const settingsDataRecorder = createSupportingBehaviorRecorder(
+    SUPPORTING_OWNER_TITLES.settingsData, expect,
+  );
+  await page.goto('/settings/data?supporting_state=data');
+  await page.evaluate(() => {
+    const real = document.querySelector('a[href="/settings/account#account-delete-title"]');
+    real.setAttribute('aria-label', 'Original deletion review link');
+    const fake = document.createElement('a');
+    fake.href = '/today/';
+    fake.textContent = 'Review account deletion';
+    document.querySelector('#main-content').prepend(fake);
+  });
+  await expect(settingsDataRecorder
+    .forScenario(page, 'data', 'Review account deletion').run('success'))
+    .rejects.toThrow(/catalog control (?:contract|selector)/);
+
+  const profileRecorder = createSupportingBehaviorRecorder(
+    SUPPORTING_OWNER_TITLES.settingsProfile, expect,
+  );
+  await page.goto('/settings/profile');
+  await page.locator('form[action="/settings/profile"]').evaluate((form) => {
+    form.method = 'get';
+    form.action = '/settings/preferences';
+  });
+  await expect(profileRecorder.forScenario(page, 'profile', 'Save profile').run('invalid'))
+    .rejects.toThrow(/catalog control contract|toHaveCount/);
+
+  await page.goto('/settings/profile');
+  await page.evaluate(() => {
+    const real = [...document.querySelectorAll('button')]
+      .find((button) => button.textContent.trim() === 'Save profile');
+    real.setAttribute('aria-label', 'Original save profile control');
+    const fake = document.createElement('button');
+    fake.type = 'submit';
+    fake.textContent = 'Save profile';
+    real.form.prepend(fake);
+  });
+  await expect(profileRecorder.forScenario(page, 'profile', 'Save profile').run('invalid'))
+    .rejects.toThrow(/catalog control|toHaveCount/);
+
+  const accountRecorder = createSupportingBehaviorRecorder(
+    SUPPORTING_OWNER_TITLES.settingsAccountValidation, expect,
+  );
+  await page.goto('/settings/account');
+  await page.evaluate(() => {
+    const form = document.querySelector('input[value="update_email"]').form;
+    const rogue = document.createElement('input');
+    rogue.type = 'hidden';
+    rogue.name = 'rogue_field';
+    rogue.value = 'caller-owned';
+    form.append(rogue);
+  });
+  await expect(accountRecorder.forScenario(page, 'account', 'Update email').run('rejected'))
+    .rejects.toThrow(/catalog request payload/);
+
+  await page.request.get('/auth/logout');
+  await loginAs(page, 'release-analytics-ready@example.com');
+  await page.goto('/dashboard/');
+  await page.locator('[data-dashboard-range-days]').evaluate((marker) => {
+    marker.setAttribute('data-dashboard-range-days', '999');
+  });
+  const dashboardRecorder = createSupportingBehaviorRecorder(
+    SUPPORTING_OWNER_TITLES.dashboard, expect,
+  );
+  await expect(dashboardRecorder.forScenario(page, 'dashboard', '7 days').run('success'))
+    .rejects.toThrow(/catalog precondition/);
+});
+
+
+test('catalog authority rejects successful-looking transactions with unchanged persistence', async ({ page }) => {
+  await loginAs(page, 'release-settings@example.com');
+  const profileRecorder = createSupportingBehaviorRecorder(
+    SUPPORTING_OWNER_TITLES.settingsProfile, expect,
+  );
+  await profileRecorder.visitState(page, 'profile');
+  await page.route('**/settings/profile', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    await route.continue({
+      headers: {
+        ...route.request().headers(),
+        'X-Supporting-Persistence-Noop': '1',
+      },
+    });
+  });
+  const transaction = profileRecorder.forScenario(page, 'profile', 'Save profile');
+  expect(await transaction.run('invalid')).toBeUndefined();
+  await expect(transaction.run('success')).rejects.toThrow(/toEqual/);
+  await page.unroute('**/settings/profile');
 });
 
 
@@ -514,12 +646,13 @@ test('data actions use isolated disposable records in every exact state', async 
     )).toHaveLength(2);
     expect(before.goals).toEqual([expect.objectContaining({ current_streak: 9, best_streak: 9 })]);
 
-    await page.goto('/settings/data');
+    await recorder.visitState(page, state);
     await expect(page.getByText('1 potential group found.')).toBeVisible();
     await expect(page.getByText('1 similar entry found.')).toBeVisible();
     await runConfirmedDataAction(page, recorder, state, 'Cleanup');
     await runConfirmedDataAction(page, recorder, state, 'Merge');
 
+    await recorder.visitState(page, state);
     await recorder.runScenario(page, state, 'Recalculate', 'success');
 
     await runConfirmedDataAction(page, recorder, state, 'Anonymize Data');
@@ -527,11 +660,14 @@ test('data actions use isolated disposable records in every exact state', async 
     await runConfirmedDataAction(page, recorder, state, 'Delete Logs');
 
     if (state !== 'data') {
+      await recorder.visitState(page, state);
       await recorder.runScenario(page, state, 'Download Data', 'success');
+      await recorder.visitState(page, state);
       await recorder.runScenario(
         page, state, 'Save actions for offline use', 'success', 'failure',
       );
 
+      await recorder.visitState(page, state);
       await recorder.runScenario(page, state, 'Review account deletion', 'success');
     }
   }

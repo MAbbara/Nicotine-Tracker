@@ -5,6 +5,7 @@ const {
 } = require('./supporting_action_baseline');
 const {
   STATE_SCENARIOS,
+  supportingControlAuthority,
   supportingScenarioFor,
 } = require('./supporting_action_scenarios');
 
@@ -499,9 +500,13 @@ function assertExactPayload(expectApi, actual, expected, dynamicFields = {}) {
     throw new TypeError('request evidence requires an exact payload object');
   }
   const dynamicKeys = Object.keys(dynamicFields);
-  expectApi(Object.keys(actual).sort()).toEqual(
-    [...Object.keys(expected), ...dynamicKeys].sort(),
-  );
+  const actualKeys = Object.keys(actual).sort();
+  const expectedKeys = [...Object.keys(expected), ...dynamicKeys].sort();
+  if (JSON.stringify(actualKeys) !== JSON.stringify(expectedKeys)) {
+    throw new Error(
+      `catalog request payload keys differ: expected ${expectedKeys.join(',')}; received ${actualKeys.join(',')}`,
+    );
+  }
   const stable = { ...actual };
   for (const [field, policy] of Object.entries(dynamicFields)) {
     const value = stable[field];
@@ -513,7 +518,11 @@ function assertExactPayload(expectApi, actual, expected, dynamicFields = {}) {
     else throw new TypeError(`Unknown dynamic payload policy for ${field}: ${policy}`);
     delete stable[field];
   }
-  expectApi(stable).toEqual(expected);
+  try {
+    expectApi(stable).toEqual(expected);
+  } catch (error) {
+    throw new Error(`catalog request payload values differ: ${error.message}`);
+  }
 }
 
 
@@ -555,7 +564,7 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
     return receipt;
   }
 
-  async function assertBoundControl(obligation, page, control) {
+  async function assertBoundControl(obligation, page, control, authority) {
     if (!page || typeof page.url !== 'function' || !page.keyboard) {
       throw new TypeError('typed evidence requires a Playwright page');
     }
@@ -565,6 +574,12 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
     if (!stateScenario?.path?.test(path)) {
       throw new Error(
         `${obligation.state} › ${obligation.action} received an artifact from wrong state ${path}`,
+      );
+    }
+    const search = new URL(page.url()).search;
+    if (!stateScenario.queries?.includes(search)) {
+      throw new Error(
+        `${obligation.state} › ${obligation.action} authoritative state query differs: ${search}`,
       );
     }
     if (!stateScenario.marker) {
@@ -599,6 +614,63 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
     }
     await expectApi(control).toHaveCount(1);
     await expectApi(control).toHaveAccessibleName(actionNamePattern(obligation.action));
+    if (!authority?.scope?.selector || !authority.role || !authority.name) {
+      throw new Error(`${obligation.state} › ${obligation.action} has no catalog control contract`);
+    }
+    const scope = page.locator(
+      authority.scope.selector,
+      authority.scope.hasText ? { hasText: authority.scope.hasText } : undefined,
+    );
+    const catalogControl = authority.role === 'summary'
+      ? scope.locator('summary').filter({ hasText: authority.name })
+      : scope.getByRole(authority.role, { name: authority.name, exact: true });
+    await expectApi(catalogControl).toHaveCount(1);
+    const matchesCatalogControl = await control.evaluate(
+      (element, expected) => element === expected,
+      await catalogControl.elementHandle(),
+    );
+    if (!matchesCatalogControl) {
+      throw new Error('typed evidence did not bind the catalog control contract');
+    }
+    if (!authority.selector || !await control.evaluate(
+      (element, selector) => element.matches(selector), authority.selector,
+    )) {
+      throw new Error('typed evidence did not match the catalog control selector');
+    }
+    for (const [name, value] of Object.entries(authority.attributes || {})) {
+      if (name === 'href' && String(value).startsWith('fixture:')) continue;
+      const actual = await control.getAttribute(name);
+      if (actual !== value) {
+        throw new Error(
+          `catalog control contract ${name} expected ${value}; received ${actual}`,
+        );
+      }
+    }
+    if (authority.form) {
+      const actualForm = await control.evaluate((element) => {
+        const form = element.form || element.closest('form');
+        if (!form) return null;
+        const url = new URL(form.getAttribute('action') || location.href, location.href);
+        return { method: (form.getAttribute('method') || 'get').toLowerCase(), path: url.pathname };
+      });
+      if (!actualForm
+        || actualForm.method !== authority.form.method
+        || actualForm.path !== authority.form.action) {
+        throw new Error('catalog control contract form method or action differs');
+      }
+    }
+    if (obligation.profile === 'rangeNavigation') {
+      const expectedBefore = {
+        '7 days': '30', '30 days': '7', '90 days': '30', '1 year': '90',
+      }[obligation.action];
+      const marker = page.locator('[data-dashboard-range-days]');
+      const actualBefore = await marker.getAttribute('data-dashboard-range-days');
+      if (actualBefore !== expectedBefore) {
+        throw new Error(
+          `${obligation.state} › ${obligation.action} catalog precondition expected ${expectedBefore}; received ${actualBefore}`,
+        );
+      }
+    }
     const pageMarker = `supporting-evidence-page-${++supportingPageMarkerSequence}`;
     await page.evaluate((marker) => {
       document.documentElement.dataset.supportingEvidencePage = marker;
@@ -867,13 +939,13 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
     } else throw new TypeError(`unknown transaction outcome: ${outcome.kind}`);
   }
 
-  function createCatalogBranchTransaction(state, action, page, control) {
+  function createCatalogBranchTransaction(state, action, page, control, authority) {
     const obligation = obligationForOwner(state, action);
     const transactionIdentity = { state, action, dimensions: new Set() };
     let controlBound = false;
     async function ensureControlBound() {
       if (controlBound) return;
-      await assertBoundControl(obligation, page, control);
+      await assertBoundControl(obligation, page, control, authority);
       controlBound = true;
     }
     return Object.freeze({
@@ -1070,8 +1142,10 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
         }
         const { control, descriptor } = await scenario.resolve(branch);
         authoritativeControl ||= control;
+        const authority = descriptor.authority
+          || supportingControlAuthority(state, action, obligation.profile);
         const branchTransaction = createCatalogBranchTransaction(
-          state, action, page, control,
+          state, action, page, control, authority,
         );
         const branchReceipt = await branchTransaction.run(descriptor);
         const branchEvidence = supportingTransactionReceipts.get(branchReceipt);
@@ -1119,6 +1193,29 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
     return receipt;
   }
 
+  async function visitState(page, state) {
+    if (arguments.length !== 2) {
+      throw new TypeError('state visits accept only page and the catalog state name');
+    }
+    if (!page || typeof page.goto !== 'function') {
+      throw new TypeError('state visits require a Playwright page');
+    }
+    const scenario = STATE_SCENARIOS[state];
+    if (!scenario) throw new Error(`unknown supporting state visit: ${state}`);
+    const requestedUrl = `${scenario.visit.path}${scenario.visit.query}`;
+    const response = await page.goto(requestedUrl);
+    if (!response) throw new Error(`${state} catalog visit returned no document response`);
+    expectApi(response.status()).toBe(scenario.visit.status);
+    const actual = new URL(page.url());
+    if (!scenario.path.test(actual.pathname)) {
+      throw new Error(`${state} catalog visit resolved to wrong path ${actual.pathname}`);
+    }
+    if (scenario.search !== undefined && actual.search !== scenario.search) {
+      throw new Error(`${state} catalog visit resolved to wrong query ${actual.search}`);
+    }
+    return response;
+  }
+
   return Object.freeze({
     accept(token) {
       const transaction = supportingTransactionReceipts.get(token);
@@ -1145,6 +1242,7 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
     },
     forScenario,
     runScenario,
+    visitState,
     assertComplete() {
       const expectedEvidence = expected.flatMap((obligation) => (
         assertedDimensions(obligation).map((dimension) => evidenceToken(
@@ -1186,6 +1284,54 @@ function validateSupportingCoverage(expectedActions, receipts, policies, obligat
   ];
   const baselineStates = [...SUPPORTING_BASELINE_STATES].sort();
   const baselineKeys = [...baselineIndex.keys()].sort();
+  const catalogStates = Object.keys(STATE_SCENARIOS).sort();
+  if (JSON.stringify(catalogStates) !== JSON.stringify(baselineStates)) {
+    throw new Error('supporting state catalog exact state set differs from supporting baseline');
+  }
+  const stateIdentities = new Set();
+  const stateInvariants = new Set();
+  for (const state of baselineStates) {
+    const scenario = STATE_SCENARIOS[state];
+    if (!scenario.visit || typeof scenario.visit.path !== 'string'
+      || typeof scenario.visit.query !== 'string' || !Number.isInteger(scenario.visit.status)
+      || scenario.invariant !== `supporting-state:${state}`
+      || scenario.precondition?.markerRole !== 'heading'
+      || scenario.precondition?.markerLevel !== 1
+      || scenario.precondition?.markerName !== scenario.marker
+      || scenario.precondition?.principal !== scenario.identity
+      || typeof scenario.search !== 'string'
+      || !Array.isArray(scenario.queries) || !scenario.queries.length
+      || scenario.queries.some((query) => typeof query !== 'string')
+      || !scenario.queries.includes(scenario.search)
+      || !Object.isFrozen(scenario) || !Object.isFrozen(scenario.visit)
+      || !Object.isFrozen(scenario.precondition) || !Object.isFrozen(scenario.queries)) {
+      throw new Error(`${state} state catalog lacks exact visit/status/invariant/precondition authority`);
+    }
+    const identity = scenario.identity === null
+      ? 'anonymous'
+      : scenario.identity instanceof RegExp
+        ? `pattern:${scenario.identity.source}/${scenario.identity.flags}`
+        : `exact:${scenario.identity}`;
+    if (scenario.identity instanceof RegExp
+      && (!scenario.identity.source.startsWith('^') || !scenario.identity.source.endsWith('$'))) {
+      throw new Error(`${state} state catalog principal pattern is not deterministic and anchored`);
+    }
+    const stateIdentity = [
+      scenario.visit.path, scenario.visit.query, scenario.visit.status, identity,
+    ].join('\u0000');
+    if (stateIdentities.has(stateIdentity)) {
+      throw new Error(`${state} state catalog identity overlaps another exact state`);
+    }
+    stateIdentities.add(stateIdentity);
+    if (stateInvariants.has(scenario.invariant)) {
+      throw new Error(`${state} state catalog invariant is not unique`);
+    }
+    stateInvariants.add(scenario.invariant);
+  }
+  const manifestStates = Object.keys(expectedActions).sort();
+  if (JSON.stringify(manifestStates) !== JSON.stringify(baselineStates)) {
+    throw new Error('supporting manifest exact state set differs from supporting baseline');
+  }
   const indexes = new Map();
   for (const [sourceName, source] of sources) {
     const index = indexedCoverage(source, sourceName);

@@ -70,7 +70,7 @@ const RELEASE_STATES = [
     email: 'release-settings@example.com',
   },
   {
-    name: 'data', path: '/settings/data', status: 200,
+    name: 'data', path: '/settings/data?supporting_state=data', status: 200,
     email: 'release-settings@example.com',
   },
   {
@@ -158,7 +158,7 @@ const RELEASE_STATES = [
     offlineQueueEnabled: false,
   },
   {
-    name: 'data-settings-action', path: '/settings/data', status: 200,
+    name: 'data-settings-action', path: '/settings/data?supporting_state=data-settings-action', status: 200,
     email: 'release-settings@example.com',
   },
   {

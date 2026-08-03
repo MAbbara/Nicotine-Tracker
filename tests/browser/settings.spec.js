@@ -49,7 +49,7 @@ test('Profile values persist and actions stay clear of mobile navigation', async
   );
   await login(page);
   const guard = watchForProductProblems(page);
-  await page.goto('/settings/profile');
+  await recorder.visitState(page, 'profile');
   const profileBeforeResponse = await page.request.get('/__test__/account-snapshot');
   expect(profileBeforeResponse.status()).toBe(200);
   const profileBefore = await profileBeforeResponse.json();
@@ -101,7 +101,7 @@ test('Preferences update with native controls and persist after reload', async (
   );
   await login(page);
   const guard = watchForProductProblems(page);
-  await page.goto('/settings/preferences');
+  await recorder.visitState(page, 'preferences');
   const preferencesBeforeResponse = await page.request.get('/__test__/account-snapshot');
   expect(preferencesBeforeResponse.status()).toBe(200);
   const preferencesBefore = await preferencesBeforeResponse.json();
@@ -211,7 +211,7 @@ test('Reminders persist and async actions expose success and failure feedback', 
   }]);
   blockedExternalRequests.splice(0);
   const guard = watchForProductProblems(page);
-  await page.goto('/settings/notifications');
+  await recorder.visitState(page, 'reminders');
   const toggleNames = [
     'Email', 'Discord', 'Goal progress', 'Milestones',
     'Daily logging reminder', 'Weekly progress report',
@@ -385,7 +385,7 @@ test('Data privacy controls persist and Statistics hands off to Insights', async
   );
   await login(page);
   const guard = watchForProductProblems(page);
-  await page.goto('/settings/data');
+  await recorder.visitState(page, 'data');
 
   await expect(page.locator('.data-section h2')).toHaveText([
     'Export', 'Offline use', 'Anonymize', 'Delete logs', 'Delete account',
@@ -399,7 +399,7 @@ test('Data privacy controls persist and Statistics hands off to Insights', async
   await recorder.runScenario(page, 'data', 'Review account deletion', 'success');
   await expect(page.locator('#account-delete-title')).toBeVisible();
 
-  await page.goto('/settings/statistics');
+  await recorder.visitState(page, 'statistics');
   await expect(page.locator('dl.statistics-facts dt')).toHaveCount(6);
   await recorder.runScenario(
     page, 'statistics', 'Explore patterns in Insights', 'success',
@@ -424,7 +424,7 @@ test('Account rejects incorrect credentials without losing the form', async ({ p
   );
   await login(page);
   const guard = watchForProductProblems(page);
-  await page.goto('/settings/account');
+  await recorder.visitState(page, 'account');
 
   await recorder.runScenario(page, 'account', 'Update email', 'rejected');
   await page.reload();
@@ -528,7 +528,7 @@ test('Account email, password, and deletion mutations work for a disposable user
   ]);
   const disposableUserId = disposableBefore.profile.id;
 
-  await page.goto('/settings/account');
+  await recorder.visitState(page, 'account-destructive');
   await expect(page.locator('dl.account-facts dd')).toContainText(['1', '1', '1']);
   const emailForm = page.locator('form', { has: page.locator('input[value="update_email"]') });
   let accountPosts = 0;

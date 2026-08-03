@@ -1,7 +1,199 @@
 const { SUPPORTING_ACTION_BASELINES } = require('./supporting_action_baseline');
 
 
-const STATE_SCENARIOS = Object.freeze({
+const NAVIGATION_DESTINATIONS = Object.freeze({
+  Today: '/today/', Journey: '/journey/', Insights: '/insights/', You: '/you/',
+  Profile: '/settings/profile', Account: '/settings/account',
+  Preferences: '/settings/preferences', Reminders: '/settings/notifications',
+  'Data & privacy': '/settings/data', Statistics: '/settings/statistics',
+  'Review account deletion': '/settings/account',
+  'Apply filters': '/log/view', 'Bulk add': '/log/bulk',
+  'Add a pouch': '/catalog/add', Search: '/catalog/search',
+  '← Back to all pouches': '/catalog/', '← Your pouches': '/catalog/',
+  Cancel: null, 'Create a goal': '/goals/create', 'Back to goals': '/goals/',
+  'Go to Today': '/today/', 'Open Insights': '/insights/',
+  'Review Journey': '/journey/', 'Start with Today': '/today/',
+  'Explore patterns in Insights': '/insights/',
+  'Get immediate support on Today': '/today/',
+  'Back to the start page': '/', 'Return safely': '/',
+});
+
+
+const CONTROL_SCOPES = Object.freeze({
+  banner: Object.freeze({ selector: 'header.app-topbar, header.marketing-header, header.auth-brand' }),
+  primary: Object.freeze({ selector: 'nav[aria-label="Primary"]' }),
+  settings: Object.freeze({ selector: 'nav[aria-label="Settings"]' }),
+  main: Object.freeze({ selector: '#main-content' }),
+});
+
+
+function navigationAuthority(state, action, profile) {
+  if (profile === 'primaryNavigation' && ['Today', 'Journey', 'Insights', 'You'].includes(action)) {
+    return Object.freeze({
+      scope: CONTROL_SCOPES.primary, role: 'link', name: action,
+      selector: `a[href="${NAVIGATION_DESTINATIONS[action]}#main-content"]`,
+      attributes: Object.freeze({ href: `${NAVIGATION_DESTINATIONS[action]}#main-content` }),
+      request: Object.freeze({ method: 'GET', path: NAVIGATION_DESTINATIONS[action], search: '', status: 200 }),
+    });
+  }
+  if (action === 'Nicotine Tracker home') {
+    const destination = ['anonymous-not-found', 'bad-request', 'server-error'].includes(state)
+      ? '/' : '/today/';
+    return Object.freeze({
+      scope: CONTROL_SCOPES.banner, role: 'link', name: action,
+      selector: `a[href="${destination}"]`,
+      attributes: Object.freeze({ href: destination }),
+      request: Object.freeze({ method: 'GET', path: destination, search: '', status: 200 }),
+    });
+  }
+  if (action.startsWith('Open your space for ')) {
+    return Object.freeze({
+      scope: CONTROL_SCOPES.banner, role: 'link', name: action,
+      selector: 'a[href="/you/"]',
+      attributes: Object.freeze({ href: '/you/' }),
+      request: Object.freeze({ method: 'GET', path: '/you/', search: '', status: 200 }),
+    });
+  }
+  if (['Profile', 'Account', 'Preferences', 'Reminders', 'Data & privacy', 'Statistics']
+    .includes(action)) {
+    const destination = NAVIGATION_DESTINATIONS[action];
+    return Object.freeze({
+      scope: CONTROL_SCOPES.settings, role: 'link', name: action,
+      selector: `a[href="${destination}"]`,
+      attributes: Object.freeze({ href: destination }),
+      request: Object.freeze({ method: 'GET', path: destination, search: '', status: 200 }),
+    });
+  }
+  const destination = action === 'Cancel'
+    ? (state === 'log-bulk' || state === 'log-edit' ? '/log/view'
+      : state.startsWith('catalog-') ? '/catalog/' : '/goals/')
+    : NAVIGATION_DESTINATIONS[action];
+  const stateActionDestinations = Object.freeze({
+    'logbook\u0000Edit': 'fixture:log-edit', 'log-add\u0000Edit': 'fixture:log-edit',
+    'catalog\u0000Edit': 'fixture:catalog-edit', 'catalog-search\u0000Edit': 'fixture:catalog-edit',
+    'goals\u0000Adjust goal': 'fixture:goal-edit',
+  });
+  const resolved = destination || stateActionDestinations[`${state}\u0000${action}`];
+  if (!resolved) throw new Error(`navigation catalog has no destination for ${state} › ${action}`);
+  const search = action === 'Apply filters'
+    ? '?q=supporting+add+entry&from_date=&to_date='
+    : action === 'Search' ? '?q=Calm+Cedar' : '';
+  const href = action === 'Review account deletion'
+    ? '/settings/account#account-delete-title'
+    : (resolved.startsWith('fixture:') ? resolved : `${resolved}${search}`);
+  const role = action === 'Apply filters' || action === 'Search' ? 'button' : 'link';
+  const fixtureSelectors = Object.freeze({
+    'fixture:log-edit': 'a[href^="/log/edit/"]',
+    'fixture:catalog-edit': 'a[href^="/catalog/edit/"]',
+    'fixture:goal-edit': 'a[href^="/goals/edit/"]',
+  });
+  const selector = role === 'button'
+    ? 'button[type="submit"]'
+    : resolved.startsWith('fixture:')
+      ? fixtureSelectors[resolved]
+      : `a[href="${href}"]`;
+  return Object.freeze({
+    scope: CONTROL_SCOPES.main, role, selector,
+    name: action, attributes: Object.freeze(role === 'link' ? { href } : {}),
+    request: Object.freeze({ method: 'GET', path: resolved, search, status: 200 }),
+  });
+}
+
+
+function scopeLocator(page, scope) {
+  return page.locator(scope.selector, scope.hasText ? { hasText: scope.hasText } : undefined);
+}
+
+
+function controlFromAuthority(page, authority) {
+  return scopeLocator(page, authority.scope)
+    .getByRole(authority.role, { name: authority.name, exact: true });
+}
+
+
+function supportingControlAuthority(state, action, profile) {
+  if (['navigation', 'primaryNavigation'].includes(profile)) {
+    return navigationAuthority(state, action, profile);
+  }
+  if (profile === 'skip') {
+    return Object.freeze({
+      scope: Object.freeze({ selector: 'body' }), role: 'link', name: action,
+      selector: 'a.skip-link', attributes: Object.freeze({ href: '#main-content' }),
+    });
+  }
+  if (state === 'profile' && action === 'Save profile') {
+    return Object.freeze({
+      scope: Object.freeze({ selector: '.profile-section form[action="/settings/profile"] .settings-save-row' }),
+      role: 'button', name: action, selector: 'button.c-button--primary[type="submit"]',
+      attributes: Object.freeze({ type: 'submit' }),
+      form: Object.freeze({ method: 'post', action: '/settings/profile' }),
+    });
+  }
+  if (['account', 'account-destructive'].includes(state)
+    && ['Update email', 'Change password', 'Delete account'].includes(action)) {
+    const actionValue = {
+      'Update email': 'update_email', 'Change password': 'change_password',
+      'Delete account': 'delete_account',
+    }[action];
+    return Object.freeze({
+      scope: Object.freeze({ selector: `form:has(input[name="action"][value="${actionValue}"]) .settings-save-row` }),
+      role: 'button', name: action, selector: 'button[type="submit"]',
+      attributes: Object.freeze({ type: 'submit' }),
+      form: Object.freeze({ method: 'post', action: '/settings/account' }),
+    });
+  }
+  if (profile === 'rangeNavigation') {
+    const days = { '7 days': '7', '30 days': '30', '90 days': '90', '1 year': '365' }[action];
+    return Object.freeze({
+      scope: CONTROL_SCOPES.main, role: 'link', name: action,
+      selector: `a[href="/dashboard/?days=${days}"]`,
+      attributes: Object.freeze({ href: `/dashboard/?days=${days}` }),
+    });
+  }
+  if (profile === 'rowDelete') {
+    const scope = {
+      'catalog-search': { selector: '.catalog-row', hasText: 'Calm Cedar' },
+      catalog: { selector: '.catalog-row', hasText: 'Catalog Delete Fixture' },
+      goals: { selector: 'article.goal-row', hasText: 'Daily pouch ceiling' },
+      logbook: { selector: '.logbook-row', hasText: 'delete logbook evidence' },
+      'log-add': { selector: '.logbook-row', hasText: 'delete log-add evidence' },
+    }[state];
+    return Object.freeze({
+      scope: Object.freeze(scope), role: 'button', name: action,
+      selector: 'button[type="submit"]',
+      attributes: Object.freeze({ type: 'submit' }),
+    });
+  }
+  const profileSelectors = Object.freeze({
+    asyncAction: 'button[type="button"]',
+    cravingRecord: 'button[type="submit"]',
+    destructiveMutation: 'button[type="submit"]',
+    disclosure: 'summary',
+    download: 'button[type="submit"]',
+    draftToggle: 'input[type="checkbox"]',
+    formMutation: 'button[type="submit"]',
+    localControl: 'button[type="button"]',
+    offlineToggle: 'input[type="checkbox"]',
+    quickMutation: 'button[data-pouch-id]',
+    validatedMutation: 'button[type="submit"]',
+    validationOnly: 'button[type="submit"]',
+  });
+  const selector = profileSelectors[profile];
+  if (!selector) {
+    throw new Error(`control catalog has no selector for ${state} › ${action} (${profile})`);
+  }
+  return Object.freeze({
+    scope: CONTROL_SCOPES.main,
+    role: profile === 'draftToggle' || profile === 'offlineToggle' ? 'checkbox'
+      : profile === 'disclosure' ? 'summary'
+        : profile === 'navigation' || profile === 'primaryNavigation' ? 'link' : 'button',
+    name: action,
+    selector,
+  });
+}
+
+
+const STATE_SCENARIO_BASE = Object.freeze({
   'anonymous-not-found': Object.freeze({ path: /^\/__release_missing_page__$/, identity: null, marker: 'Page not found' }),
   'bad-request': Object.freeze({ path: /^\/__test__\/error\/400$/, identity: null, marker: 'Refresh and try again' }),
   'server-error': Object.freeze({ path: /^\/__test__\/error\/500$/, identity: null, marker: 'Something went wrong on our end' }),
@@ -9,10 +201,10 @@ const STATE_SCENARIOS = Object.freeze({
   account: Object.freeze({ path: /^\/settings\/account$/, identity: 'release-settings@example.com', marker: 'Account' }),
   preferences: Object.freeze({ path: /^\/settings\/preferences$/, identity: 'release-settings@example.com', marker: 'Preferences' }),
   reminders: Object.freeze({ path: /^\/settings\/notifications$/, identity: 'release-settings@example.com', marker: 'Reminders' }),
-  data: Object.freeze({ path: /^\/settings\/data$/, identity: /^(?:release-settings|data-[\w-]+)@example\.com$/, marker: 'Data & privacy' }),
+  data: Object.freeze({ path: /^\/settings\/data$/, pathText: '/settings/data', search: '?supporting_state=data', status: 200, identity: /^(?:release-settings|data-data-[\w-]+)@example\.com$/, marker: 'Data & privacy' }),
   statistics: Object.freeze({ path: /^\/settings\/statistics$/, identity: 'release-settings@example.com', marker: 'Statistics' }),
   logbook: Object.freeze({ path: /^\/log\/view$/, identity: /^(?:release-inventory|logbook-\d+|logging-gaps-[\w-]+)@example\.com$/, marker: 'Logbook' }),
-  'log-add': Object.freeze({ path: /^\/log\/(?:add|view)$/, identity: /^(?:release-inventory|logbook-\d+|logging-gaps-[\w-]+)@example\.com$/, marker: /^(?:Add a log|Logbook)$/ }),
+  'log-add': Object.freeze({ path: /^\/log\/view$/, search: '?open_add_modal=1', identity: /^(?:release-inventory|logbook-\d+|logging-gaps-[\w-]+)@example\.com$/, marker: 'Logbook' }),
   'log-bulk': Object.freeze({ path: /^\/log\/bulk$/, identity: /^(?:release-inventory|logbook-\d+|logging-gaps-[\w-]+)@example\.com$/, marker: 'Bulk add logs' }),
   catalog: Object.freeze({ path: /^\/catalog\/$/, identity: /^(?:release-inventory|catalog-\d+)@example\.com$/, marker: 'Your pouches' }),
   'catalog-add': Object.freeze({ path: /^\/catalog\/add$/, identity: /^(?:release-inventory|catalog-\d+)@example\.com$/, marker: 'Add a pouch' }),
@@ -25,7 +217,7 @@ const STATE_SCENARIOS = Object.freeze({
   'dashboard-sparse': Object.freeze({ path: /^\/dashboard\/$/, identity: 'release-analytics-sparse@example.com', marker: 'Dashboard' }),
   'data-offline-enabled': Object.freeze({ path: /^\/settings\/data$/, identity: /^(?:release-offline-enabled|data-[\w-]+)@example\.com$/, marker: 'Data & privacy' }),
   'data-offline-disabled': Object.freeze({ path: /^\/settings\/data$/, identity: /^(?:release-offline-disabled|data-[\w-]+)@example\.com$/, marker: 'Data & privacy' }),
-  'data-settings-action': Object.freeze({ path: /^\/settings\/data$/, identity: /^(?:release-settings|data-[\w-]+)@example\.com$/, marker: 'Data & privacy' }),
+  'data-settings-action': Object.freeze({ path: /^\/settings\/data$/, pathText: '/settings/data', search: '?supporting_state=data-settings-action', status: 200, identity: /^(?:release-settings|data-data-settings-action-[\w-]+)@example\.com$/, marker: 'Data & privacy' }),
   'account-destructive': Object.freeze({ path: /^\/settings\/account$/, identity: /^(?:release-destructive|account(?:-updated)?-(?:chromium|webkit)-(?:desktop|mobile))@example\.com$/, marker: 'Account' }),
   'goal-progress': Object.freeze({ path: /^\/goals\/progress$/, identity: /^(?:journey-review-desktop|goals-[\w-]+)@example\.com$/, marker: 'Goal progress' }),
   'goal-edit': Object.freeze({ path: /^\/goals\/edit\/\d+$/, identity: /^(?:journey-review-desktop|goals-[\w-]+)@example\.com$/, marker: 'Adjust goal' }),
@@ -33,6 +225,61 @@ const STATE_SCENARIOS = Object.freeze({
   'catalog-search': Object.freeze({ path: /^\/catalog\/search$/, identity: /^(?:release-inventory|catalog-\d+)@example\.com$/, marker: 'Search pouches' }),
   'catalog-edit': Object.freeze({ path: /^\/catalog\/edit\/\d+$/, identity: /^(?:release-inventory|catalog-\d+)@example\.com$/, marker: 'Edit pouch' }),
 });
+
+
+const STATE_VISITS = Object.freeze({
+  'anonymous-not-found': ['/__release_missing_page__', '', 404],
+  'bad-request': ['/__test__/error/400', '', 400],
+  'server-error': ['/__test__/error/500', '', 500],
+  profile: ['/settings/profile', '', 200], account: ['/settings/account', '', 200],
+  preferences: ['/settings/preferences', '', 200],
+  reminders: ['/settings/notifications', '', 200],
+  data: ['/settings/data', '?supporting_state=data', 200],
+  statistics: ['/settings/statistics', '', 200], logbook: ['/log/view', '', 200],
+  'log-add': ['/log/add', '', 200], 'log-bulk': ['/log/bulk', '', 200],
+  catalog: ['/catalog/', '', 200], 'catalog-add': ['/catalog/add', '', 200],
+  cravings: ['/cravings/cravings', '', 200], goals: ['/goals/', '', 200],
+  'goal-create': ['/goals/create', '', 200], dashboard: ['/dashboard/', '', 200],
+  'not-found': ['/__release_missing_page__', '', 404],
+  'dashboard-empty': ['/dashboard/', '', 200],
+  'dashboard-sparse': ['/dashboard/', '', 200],
+  'data-offline-enabled': ['/settings/data', '', 200],
+  'data-offline-disabled': ['/settings/data', '', 200],
+  'data-settings-action': ['/settings/data', '?supporting_state=data-settings-action', 200],
+  'account-destructive': ['/settings/account', '', 200],
+  'goal-progress': ['/goals/progress', '', 200],
+  'goal-edit': ['/__test__/release/goal-edit', '', 200],
+  'log-edit': ['/__test__/release/log-edit', '', 200],
+  'catalog-search': ['/catalog/search', '?q=Release', 200],
+  'catalog-edit': ['/__test__/release/catalog-edit', '', 200],
+});
+
+
+const STATE_RUNTIME_QUERIES = Object.freeze({
+  dashboard: Object.freeze(['', '?days=7', '?days=30', '?days=90', '?days=365']),
+  'dashboard-empty': Object.freeze(['', '?days=7', '?days=30', '?days=90', '?days=365']),
+  'dashboard-sparse': Object.freeze(['', '?days=7', '?days=30', '?days=90', '?days=365']),
+  'catalog-search': Object.freeze(['?q=Release', '?q=Calm+Cedar']),
+});
+
+
+const STATE_SCENARIOS = Object.freeze(Object.fromEntries(
+  Object.entries(STATE_SCENARIO_BASE).map(([name, scenario]) => {
+    const [visitPath, visitQuery, status] = STATE_VISITS[name];
+    const exactSearch = scenario.search === undefined ? visitQuery : scenario.search;
+    return [name, Object.freeze({
+      ...scenario,
+      search: exactSearch,
+      queries: STATE_RUNTIME_QUERIES[name] || Object.freeze([exactSearch]),
+      visit: Object.freeze({ path: visitPath, query: visitQuery, status }),
+      invariant: `supporting-state:${name}`,
+      precondition: Object.freeze({
+        markerRole: 'heading', markerLevel: 1, markerName: scenario.marker,
+        principal: scenario.identity,
+      }),
+    })];
+  }),
+));
 
 
 function exactActionButton(page, action) {
@@ -45,80 +292,46 @@ function exactPath(path) {
 }
 
 
-async function firstExisting(locators) {
-  for (const locator of locators) {
-    if (await locator.count()) return locator;
-  }
-  throw new Error('catalog could not resolve an authoritative action control');
-}
-
-
-async function navigationControl(page, state, action, profile) {
-  if (profile === 'primaryNavigation' && ['Today', 'Journey', 'Insights', 'You'].includes(action)) {
-    return page.getByRole('navigation', { name: 'Primary' })
-      .getByRole('link', { name: action, exact: true });
-  }
-  if (action === 'Nicotine Tracker home') {
-    return page.getByRole('banner').getByRole('link', { name: action, exact: true });
-  }
-  if (action.startsWith('Open your space for ')) {
-    return page.getByRole('banner').getByRole('link', { name: action, exact: true });
-  }
-  if (['Profile', 'Account', 'Preferences', 'Reminders', 'Data & privacy', 'Statistics']
-    .includes(action)) {
-    return page.getByRole('navigation', { name: 'Settings' })
-      .getByRole('link', { name: action, exact: true });
-  }
-  const main = page.locator('#main-content');
-  return firstExisting([
-    main.getByRole('link', { name: action, exact: true }),
-    main.getByRole('button', { name: action, exact: true }),
-    page.getByRole('link', { name: action, exact: true }),
-    page.getByRole('button', { name: action, exact: true }),
-  ]);
-}
-
-
-async function navigationRequest(page, control) {
-  const values = await control.evaluate((element) => {
-    if (element.tagName === 'A') {
-      const url = new URL(element.href, element.ownerDocument.location.href);
-      return { method: 'GET', path: url.pathname, search: url.search };
-    }
-    const form = element.form || element.closest('form');
-    if (!form) throw new Error('catalog navigation control has no link or form');
-    const method = (form.method || 'GET').toUpperCase();
-    const url = new URL(
-      form.getAttribute('action') || element.ownerDocument.location.href,
-      element.ownerDocument.location.href,
-    );
-    if (method === 'GET') {
-      const payload = new FormData(form);
-      if (element.name) payload.set(element.name, element.value);
-      url.search = new URLSearchParams(payload).toString();
-    }
-    return { method, path: url.pathname, search: url.search };
-  });
-  return {
-    method: values.method,
-    path: exactPath(values.path),
-    search: values.search,
-    status: 200,
-  };
-}
-
-
 function navigationScenario(page, state, action, profile) {
+  const authority = navigationAuthority(state, action, profile);
   return Object.freeze({
     branches: Object.freeze(['success']),
     async resolve(branch) {
       if (branch !== 'success') throw new Error(`unknown navigation branch: ${branch}`);
-      const control = await navigationControl(page, state, action, profile);
+      if (action === 'Apply filters') await page.getByLabel('Search logs').fill('supporting add entry');
+      if (action === 'Search') await page.getByLabel('Search pouches').fill('Calm Cedar');
+      const control = controlFromAuthority(page, authority);
+      let requestPath = authority.request.path;
+      if (requestPath === 'fixture:log-edit') {
+        const snapshot = await accountSnapshot(page);
+        const row = snapshot.logs.find((entry) => entry.notes === 'supporting add entry');
+        if (!row) throw new Error(`${state} catalog fixture has no supporting add entry`);
+        requestPath = `/log/edit/${row.id}`;
+      } else if (requestPath === 'fixture:catalog-edit') {
+        const snapshot = await accountSnapshot(page);
+        const pouch = snapshot.pouches.find((entry) => entry.brand === 'Calm Cedar')
+          || snapshot.pouches.find((entry) => entry.brand === 'Calm Orchard');
+        if (!pouch) throw new Error(`${state} catalog fixture has no editable pouch`);
+        requestPath = `/catalog/edit/${pouch.id}`;
+      } else if (requestPath === 'fixture:goal-edit') {
+        const snapshot = await accountSnapshot(page);
+        if (!snapshot.goals[0]) throw new Error(`${state} catalog fixture has no editable goal`);
+        requestPath = `/goals/edit/${snapshot.goals[0].id}`;
+      }
+      const resolvedAuthority = authority.request.path.startsWith('fixture:')
+        ? Object.freeze({
+          ...authority,
+          attributes: Object.freeze({ href: `${requestPath}${authority.request.search}` }),
+        }) : authority;
       return {
         control,
         descriptor: {
           activation: { kind: 'keyboard', key: 'Enter' },
-          request: await navigationRequest(page, control),
+          request: {
+            method: authority.request.method, path: exactPath(requestPath),
+            search: authority.request.search, status: authority.request.status,
+          },
+          authority: resolvedAuthority,
         },
       };
     },
@@ -220,13 +433,13 @@ function disclosureScenario(page, action) {
 
 function rangeNavigationScenario(page, action) {
   const days = Object.freeze({ '7 days': 7, '30 days': 30, '90 days': 90, '1 year': 365 });
+  const beforeDays = Object.freeze({ '7 days': '30', '30 days': '7', '90 days': '30', '1 year': '90' });
   return Object.freeze({
     branches: Object.freeze(['success']),
     async resolve(branch) {
       if (branch !== 'success') throw new Error(`unknown range branch: ${branch}`);
       const after = String(days[action]);
       const marker = page.locator('[data-dashboard-range-days]');
-      const before = await marker.getAttribute('data-dashboard-range-days');
       return {
         control: page.getByRole('link', { name: action, exact: true }),
         descriptor: {
@@ -236,7 +449,7 @@ function rangeNavigationScenario(page, action) {
           },
           persistence: {
             kind: 'locator', locator: marker, property: 'attribute',
-            name: 'data-dashboard-range-days', expectedBefore: before, expectedAfter: after,
+            name: 'data-dashboard-range-days', expectedBefore: beforeDays[action], expectedAfter: after,
           },
         },
       };
@@ -254,29 +467,148 @@ async function accountSnapshot(page) {
 }
 
 
-async function formRequest(control, status = 302) {
-  const values = await control.evaluate((element) => {
-    const form = element.form || element.closest('form');
-    if (!form) throw new Error('catalog mutation control has no form');
-    const exact = {};
-    for (const [name, value] of new FormData(form).entries()) {
-      if (name === 'csrf_token') continue;
-      if (Object.hasOwn(exact, name)) {
-        exact[name] = Array.isArray(exact[name]) ? [...exact[name], value] : [exact[name], value];
-      } else exact[name] = value;
+async function catalogFormRequest(page, state, action, status = 302) {
+  let path;
+  let exact;
+  const snapshotFor = async () => accountSnapshot(page);
+  if (state === 'profile' && action === 'Save profile') {
+    const snapshot = await snapshotFor();
+    const variant = [
+      { before: null, after: '36' }, { before: 36, after: '37' }, { before: 37, after: '36' },
+    ].find((candidate) => candidate.before === snapshot.profile.age);
+    if (!variant) throw new Error('profile catalog payload precondition is not a literal variant');
+    path = '/settings/profile';
+    exact = { age: variant.after, gender: 'other', weight: '81.4' };
+  } else if (state === 'catalog-add' && action === 'Add pouch') {
+    path = '/catalog/add';
+    exact = { brand: 'Calm Orchard', nicotine_mg: '2.75' };
+  } else if (state === 'catalog-edit' && action === 'Save changes') {
+    const snapshot = await snapshotFor();
+    const pouch = snapshot.pouches.find((item) => ['Calm Orchard', 'Calm Cedar'].includes(item.brand));
+    if (!pouch) throw new Error('catalog-edit immutable pouch fixture is missing');
+    path = `/catalog/edit/${pouch.id}`;
+    exact = { brand: 'Calm Cedar', nicotine_mg: '3.25' };
+  } else if (state === 'goal-create' && action === 'Create goal') {
+    path = '/goals/create';
+    exact = {
+      goal_type: 'daily_pouches', target_value: '7', end_date: '',
+      notification_threshold: '75',
+    };
+  } else if (state === 'goal-edit' && action === 'Save changes') {
+    const snapshot = await snapshotFor();
+    if (!snapshot.goals[0]) throw new Error('goal-edit immutable goal fixture is missing');
+    path = `/goals/edit/${snapshot.goals[0].id}`;
+    exact = {
+      target_value: '6', end_date: '', enable_notifications: 'on',
+      notification_threshold: '75', is_active: 'on',
+    };
+  } else if (state === 'log-add' && action === 'Add entry') {
+    const snapshot = await snapshotFor();
+    const pouch = snapshot.pouches.find((item) => item.brand === 'Release Fixture');
+    if (!pouch) throw new Error('log-add immutable Release Fixture pouch is missing');
+    path = '/log/add';
+    exact = {
+      user_timezone: 'UTC', log_date: '2026-01-11', log_time: '09:15',
+      pouch_id: String(pouch.id), quantity: '2', notes: 'supporting add entry',
+      custom_brand: '', custom_nicotine_mg: '',
+    };
+  } else if (state === 'log-bulk' && action === 'Add entries') {
+    path = '/log/bulk';
+    exact = { log_date: '2026-01-12', bulk_text: '1 Bulk Evidence 4mg at 13:00' };
+  } else if (state === 'log-edit' && action === 'Save changes') {
+    const snapshot = await snapshotFor();
+    const log = snapshot.logs.find((item) => item.notes === 'supporting add entry');
+    if (!log) throw new Error('log-edit immutable supporting entry fixture is missing');
+    path = `/log/edit/${log.id}`;
+    exact = {
+      log_date: '2026-01-11', log_time: '09:15',
+      quantity: '3', notes: 'supporting edit saved',
+    };
+  } else if (state === 'preferences' && action === 'Save preferences') {
+    const snapshot = await snapshotFor();
+    const variant = [
+      { before: 'mg', after: 'percentage' }, { before: 'percentage', after: 'mg' },
+    ].find((candidate) => candidate.before === snapshot.preferences.units_preference);
+    if (!variant) throw new Error('preferences catalog payload precondition is not a literal variant');
+    path = '/settings/preferences';
+    exact = {
+      daily_reset_time: '04:30', preferred_brands: 'Steady Mint',
+      timezone: 'Asia/Riyadh', units_preference: variant.after,
+    };
+  } else if (state === 'reminders' && action === 'Save reminders') {
+    path = '/settings/notifications';
+    exact = {
+      notification_channel: ['email', 'discord'],
+      discord_webhook: 'https://discord.com/api/webhooks/example/token',
+      goal_notifications: 'on', achievement_notifications: 'on', daily_reminders: 'on',
+      weekly_reports: 'on', reminder_time: '09:10', quiet_hours_start: '21:30',
+      quiet_hours_end: '06:15', notification_frequency: 'weekly',
+    };
+  } else if (state === 'goals' && action === 'Pause goal') {
+    const snapshot = await snapshotFor();
+    if (!snapshot.goals[0]) throw new Error('goals immutable pause fixture is missing');
+    path = `/goals/toggle/${snapshot.goals[0].id}`;
+    exact = {};
+  } else if (state.startsWith('data') && action === 'Recalculate') {
+    path = '/settings/data'; exact = { action: 'recalculate_goals' };
+  } else if (state.startsWith('data') && action === 'Download Data') {
+    path = '/settings/data'; exact = { action: 'export_data' };
+  } else if (state.startsWith('data') && ['Cleanup', 'Merge', 'Anonymize Data', 'Delete Logs'].includes(action)) {
+    path = '/settings/data';
+    exact = {
+      Cleanup: { action: 'cleanup_duplicates', confirm_cleanup_duplicates: 'CLEANUP' },
+      Merge: { action: 'merge_custom_pouches', confirm_merge_pouches: 'MERGE' },
+      'Anonymize Data': { action: 'anonymize_data', confirm_anonymize: 'ANONYMIZE' },
+      'Delete Logs': {
+        action: 'delete_old_logs', days_to_keep: '30', confirm_delete_logs: 'DELETE LOGS',
+      },
+    }[action];
+  } else if (action === 'Delete' || action === 'Delete goal') {
+    const snapshot = await snapshotFor();
+    if (state === 'catalog-search' || state === 'catalog') {
+      const brand = state === 'catalog-search' ? 'Calm Cedar' : 'Catalog Delete Fixture';
+      const pouch = snapshot.pouches.find((item) => item.brand === brand);
+      if (!pouch) throw new Error(`${state} immutable ${brand} delete fixture is missing`);
+      path = `/catalog/delete/${pouch.id}`;
+    } else if (state === 'goals') {
+      if (!snapshot.goals[0]) throw new Error('goals immutable delete fixture is missing');
+      path = `/goals/delete/${snapshot.goals[0].id}`;
+    } else {
+      const notes = state === 'logbook' ? 'delete logbook evidence' : 'delete log-add evidence';
+      const log = snapshot.logs.find((item) => item.notes === notes);
+      if (!log) throw new Error(`${state} immutable delete log fixture is missing`);
+      path = `/log/delete/${log.id}`;
     }
-    const url = new URL(
-      form.getAttribute('action') || element.ownerDocument.location.href,
-      element.ownerDocument.location.href,
-    );
-    return { method: (form.method || 'GET').toUpperCase(), path: url.pathname, exact };
-  });
+    exact = {};
+  } else if (state === 'account-destructive' && action === 'Update email') {
+    const snapshot = await snapshotFor();
+    const currentEmail = snapshot.profile.email;
+    const suffix = currentEmail.match(/(?:account(?:-updated)?-)(.+)@example\.com$/)?.[1];
+    if (!suffix) throw new Error('account update immutable principal namespace differs');
+    path = '/settings/account';
+    exact = {
+      action: 'update_email', new_email: `account-updated-${suffix}@example.com`,
+      password: 'account-password',
+    };
+  } else if (state === 'account-destructive' && action === 'Change password') {
+    path = '/settings/account';
+    exact = {
+      action: 'change_password',
+      current_password: status === 200 ? 'wrong-password' : 'account-password',
+      new_password: 'updated-account-password', confirm_password: 'updated-account-password',
+    };
+  } else if (state === 'account-destructive' && action === 'Delete account') {
+    path = '/settings/account';
+    exact = {
+      action: 'delete_account', password: 'updated-account-password',
+      confirmation: status === 200 ? 'keep my account' : 'delete my account',
+    };
+  } else {
+    throw new Error(`catalog form request is not literal for ${state} › ${action}`);
+  }
   return {
-    method: values.method,
-    path: exactPath(values.path),
-    status,
-    payload: { kind: 'form', exact: values.exact },
-    dynamicFields: { csrf_token: 'non-empty' },
+    method: 'POST', path: exactPath(path), status,
+    payload: { kind: 'form', exact }, dynamicFields: { csrf_token: 'non-empty' },
   };
 }
 
@@ -312,16 +644,21 @@ async function validatedMutationPlan(page, state, action, branch) {
       } };
     }
     const snapshot = await accountSnapshot(page);
-    const targetAge = snapshot.profile.age === 36 ? 37 : 36;
+    const variant = [
+      { before: null, after: 36 }, { before: 36, after: 37 }, { before: 37, after: 36 },
+    ]
+      .find((candidate) => candidate.before === snapshot.profile.age);
+    if (!variant) throw new Error('profile catalog precondition is not an immutable age variant');
+    const targetAge = variant.after;
     await age.fill(String(targetAge));
     await page.getByLabel('Gender').selectOption('other');
     await page.getByLabel('Weight').fill('81.4');
     return { control, descriptor: {
       activation: { kind: 'keyboard', key: 'Enter' },
-      request: await formRequest(control),
+      request: await catalogFormRequest(page, state, action),
       feedback: flashFeedback(page, 'Profile updated successfully!'),
       persistence: { kind: 'json', url: '/__test__/account-snapshot', path: 'profile.age',
-        expectedBefore: snapshot.profile.age, expectedAfter: targetAge },
+        expectedBefore: variant.before, expectedAfter: variant.after },
     } };
   }
 
@@ -338,10 +675,10 @@ async function validatedMutationPlan(page, state, action, branch) {
     await page.getByLabel('Nicotine strength').fill('2.75');
     const row = page.locator('.catalog-row', { hasText: 'Calm Orchard' });
     return { control, descriptor: { activation: { kind: 'keyboard', key: 'Enter' },
-      request: await formRequest(control),
+      request: await catalogFormRequest(page, state, action),
       feedback: flashFeedback(page, 'Successfully added Calm Orchard (2.75mg) to your catalog!'),
       persistence: { kind: 'locator', locator: row, property: 'count',
-        expectedBefore: await row.count(), expectedAfter: 1 } } };
+        expectedBefore: 0, expectedAfter: 1 } } };
   }
 
   if (state === 'catalog-edit' && action === 'Save changes') {
@@ -357,10 +694,10 @@ async function validatedMutationPlan(page, state, action, branch) {
     await strength.fill('3.25');
     const row = page.locator('.catalog-row', { hasText: 'Calm Cedar' });
     return { control, descriptor: { activation: { kind: 'keyboard', key: 'Enter' },
-      request: await formRequest(control),
+      request: await catalogFormRequest(page, state, action),
       feedback: flashFeedback(page, 'Successfully updated Calm Cedar (3.25mg)!'),
       persistence: { kind: 'locator', locator: row, property: 'count',
-        expectedBefore: await row.count(), expectedAfter: 1 } } };
+        expectedBefore: 0, expectedAfter: 1 } } };
   }
 
   if (state === 'goal-create' && action === 'Create goal') {
@@ -381,10 +718,10 @@ async function validatedMutationPlan(page, state, action, branch) {
       hasText: 'Daily pouch ceiling',
     });
     return { control, descriptor: { activation: { kind: 'keyboard', key: 'Enter' },
-      request: await formRequest(control),
+      request: await catalogFormRequest(page, state, action),
       feedback: flashFeedback(page, 'Goal created successfully! Target: 7 daily pouches'),
       persistence: { kind: 'locator', locator: row, property: 'count',
-        expectedBefore: await row.count(), expectedAfter: 1 } } };
+        expectedBefore: 0, expectedAfter: 1 } } };
   }
 
   if (state === 'goal-edit' && action === 'Save changes') {
@@ -404,9 +741,9 @@ async function validatedMutationPlan(page, state, action, branch) {
     await page.getByLabel('Notification threshold').fill('75');
     const row = page.locator('article.goal-row[data-goal-state="active"]');
     return { control, descriptor: { activation: { kind: 'keyboard', key: 'Enter' },
-      request: await formRequest(control), feedback: flashFeedback(page, 'Goal updated successfully!'),
+      request: await catalogFormRequest(page, state, action), feedback: flashFeedback(page, 'Goal updated successfully!'),
       persistence: { kind: 'locator', locator: row, property: 'count',
-        expectedBefore: await row.count(), expectedAfter: 1 } } };
+        expectedBefore: 0, expectedAfter: 1 } } };
   }
 
   if (state === 'log-add' && action === 'Add entry') {
@@ -421,14 +758,17 @@ async function validatedMutationPlan(page, state, action, branch) {
     }
     await dialog.getByLabel('Date').fill('2026-01-11');
     await dialog.getByLabel('Time').fill('09:15');
-    await product.selectOption({ index: 1 });
+    const releaseFixture = await product.locator('option', { hasText: 'Release Fixture' })
+      .getAttribute('value');
+    if (!releaseFixture) throw new Error('log-add catalog precondition has no Release Fixture option');
+    await product.selectOption(releaseFixture);
     await dialog.getByLabel('Quantity').fill('2');
     await dialog.getByLabel('Notes').fill('supporting add entry');
     const row = page.locator('.logbook-row', { hasText: 'supporting add entry' });
     return { control, descriptor: { activation: { kind: 'keyboard', key: 'Enter' },
-      request: await formRequest(control), feedback: flashFeedback(page, 'Log entry added successfully!'),
+      request: await catalogFormRequest(page, state, action), feedback: flashFeedback(page, 'Log entry added successfully!'),
       persistence: { kind: 'locator', locator: row, property: 'count',
-        expectedBefore: await row.count(), expectedAfter: 1 } } };
+        expectedBefore: 0, expectedAfter: 1 } } };
   }
 
   if (state === 'log-bulk' && action === 'Add entries') {
@@ -444,10 +784,10 @@ async function validatedMutationPlan(page, state, action, branch) {
     await entries.fill('1 Bulk Evidence 4mg at 13:00');
     const row = page.locator('.logbook-row', { hasText: 'Bulk Evidence' });
     return { control, descriptor: { activation: { kind: 'keyboard', key: 'Enter' },
-      request: await formRequest(control),
+      request: await catalogFormRequest(page, state, action),
       feedback: flashFeedback(page, 'Successfully added 1 log entries!'),
       persistence: { kind: 'locator', locator: row, property: 'count',
-        expectedBefore: await row.count(), expectedAfter: 1 } } };
+        expectedBefore: 0, expectedAfter: 1 } } };
   }
 
   if (state === 'log-edit' && action === 'Save changes') {
@@ -463,9 +803,9 @@ async function validatedMutationPlan(page, state, action, branch) {
     await page.getByLabel('Notes').fill('supporting edit saved');
     const row = page.locator('.logbook-row', { hasText: 'supporting edit saved' });
     return { control, descriptor: { activation: { kind: 'keyboard', key: 'Enter' },
-      request: await formRequest(control), feedback: flashFeedback(page, 'Log entry updated successfully!'),
+      request: await catalogFormRequest(page, state, action), feedback: flashFeedback(page, 'Log entry updated successfully!'),
       persistence: { kind: 'locator', locator: row, property: 'count',
-        expectedBefore: await row.count(), expectedAfter: 1 } } };
+        expectedBefore: 0, expectedAfter: 1 } } };
   }
 
   throw new Error(`validated mutation is not cataloged: ${state} › ${action}`);
@@ -492,8 +832,12 @@ function formMutationScenario(page, state, action) {
       if (branch !== 'success') throw new Error(`unknown form-mutation branch: ${branch}`);
       if (state === 'preferences' && action === 'Save preferences') {
         const snapshot = await accountSnapshot(page);
-        const before = snapshot.preferences.units_preference;
-        const after = before === 'mg' ? 'percentage' : 'mg';
+        const variant = [
+          { before: 'mg', after: 'percentage' },
+          { before: 'percentage', after: 'mg' },
+        ].find((candidate) => candidate.before === snapshot.preferences.units_preference);
+        if (!variant) throw new Error('preferences catalog precondition is not a literal units variant');
+        const after = variant.after;
         await page.getByLabel('Units', { exact: true }).selectOption(after);
         await page.getByLabel('Time zone').selectOption('Asia/Riyadh');
         await page.getByLabel('Daily reset time').fill('04:30');
@@ -501,15 +845,17 @@ function formMutationScenario(page, state, action) {
         if (!await brand.isChecked()) await brand.check();
         const control = exactActionButton(page, action);
         return { control, descriptor: {
-          activation: { kind: 'keyboard', key: 'Enter' }, request: await formRequest(control),
+          activation: { kind: 'keyboard', key: 'Enter' }, request: await catalogFormRequest(page, state, action),
           feedback: flashFeedback(page, 'Preferences updated successfully!'),
           persistence: { kind: 'json', url: '/__test__/account-snapshot',
-            path: 'preferences.units_preference', expectedBefore: before, expectedAfter: after },
+            path: 'preferences.units_preference', expectedBefore: variant.before, expectedAfter: variant.after },
         } };
       }
       if (state === 'reminders' && action === 'Save reminders') {
         const snapshot = await accountSnapshot(page);
-        const before = Boolean(snapshot.preferences.weekly_reports);
+        if (Boolean(snapshot.preferences.weekly_reports) !== false) {
+          throw new Error('reminders catalog precondition expected weekly reports off');
+        }
         for (const name of [
           'Email', 'Discord', 'Goal progress', 'Milestones',
           'Daily logging reminder', 'Weekly progress report',
@@ -525,10 +871,10 @@ function formMutationScenario(page, state, action) {
         await page.getByLabel('Delivery frequency').selectOption('weekly');
         const control = exactActionButton(page, action);
         return { control, descriptor: {
-          activation: { kind: 'keyboard', key: 'Enter' }, request: await formRequest(control),
+          activation: { kind: 'keyboard', key: 'Enter' }, request: await catalogFormRequest(page, state, action),
           feedback: flashFeedback(page, 'Notification settings updated successfully!'),
           persistence: { kind: 'json', url: '/__test__/account-snapshot',
-            path: 'preferences.weekly_reports', expectedBefore: before, expectedAfter: true },
+            path: 'preferences.weekly_reports', expectedBefore: false, expectedAfter: true },
         } };
       }
       if (state === 'goals' && action === 'Pause goal') {
@@ -538,22 +884,23 @@ function formMutationScenario(page, state, action) {
           hasText: 'Daily pouch ceiling',
         });
         return { control, descriptor: {
-          activation: { kind: 'keyboard', key: 'Enter' }, request: await formRequest(control),
+          activation: { kind: 'keyboard', key: 'Enter' }, request: await catalogFormRequest(page, state, action),
           feedback: flashFeedback(page, 'Goal deactivated successfully.'),
           persistence: { kind: 'locator', locator: inactive, property: 'count',
-            expectedBefore: await inactive.count(), expectedAfter: 1 },
+            expectedBefore: 0, expectedAfter: 1 },
         } };
       }
       if (action === 'Recalculate' && state.startsWith('data')) {
         const snapshot = await accountSnapshot(page);
-        const before = snapshot.goals[0]?.current_streak;
-        if (before === undefined) throw new Error(`${state} has no goal to recalculate`);
+        if (snapshot.goals[0]?.current_streak !== 9) {
+          throw new Error(`${state} catalog precondition expected goal streak 9`);
+        }
         const control = exactActionButton(page, action);
         return { control, descriptor: {
-          activation: { kind: 'keyboard', key: 'Enter' }, request: await formRequest(control),
+          activation: { kind: 'keyboard', key: 'Enter' }, request: await catalogFormRequest(page, state, action),
           feedback: flashFeedback(page, 'Recalculated streaks for 1 goals.'),
           persistence: { kind: 'json', url: '/__test__/account-snapshot',
-            path: 'goals.0.current_streak', expectedBefore: before, expectedAfter: 0 },
+            path: 'goals.0.current_streak', expectedBefore: 9, expectedAfter: 0 },
         } };
       }
       throw new Error(`form mutation is not cataloged: ${state} › ${action}`);
@@ -599,14 +946,14 @@ function rowDeleteScenario(page, state, action) {
         return { control, descriptor: {
           activation: { kind: 'keyboard', key: 'Enter' }, dialog: 'dismiss',
           outcome: { kind: 'visible', locator: row },
-          error: { kind: 'dismissed-dialog', locator: row, count: await row.count() },
+          error: { kind: 'dismissed-dialog', locator: row, count: 1 },
         } };
       }
       return { control, descriptor: {
         activation: { kind: 'keyboard', key: 'Enter' }, dialog: 'accept',
-        request: await formRequest(control), feedback: flashFeedback(page, spec.feedback),
+        request: await catalogFormRequest(page, state, action), feedback: flashFeedback(page, spec.feedback),
         persistence: { kind: 'locator', locator: row, property: 'count',
-          expectedBefore: await row.count(), expectedAfter: 0 },
+          expectedBefore: 1, expectedAfter: 0 },
       } };
     },
   });
@@ -667,7 +1014,6 @@ function cravingRecordScenario(page, state, action) {
       if (shared.routed) await page.unroute('**/cravings/api/cravings');
       await intensity.fill('6');
       const rows = page.locator('.craving-row');
-      const before = await rows.count();
       return { control, descriptor: {
         activation: { kind: 'keyboard', key: 'Enter' },
         request: { method: 'POST', path: /^\/cravings\/api\/cravings$/, status: 201,
@@ -675,7 +1021,7 @@ function cravingRecordScenario(page, state, action) {
         feedback: { locator: status,
           text: 'Craving recorded. Thank you for noticing the moment.', ownership },
         persistence: { kind: 'locator', locator: rows, property: 'count',
-          expectedBefore: before, expectedAfter: before + 1 },
+          expectedBefore: 0, expectedAfter: 1 },
       } };
     },
   });
@@ -689,7 +1035,7 @@ function downloadScenario(page, state, action) {
       if (branch !== 'success') throw new Error(`unknown download branch: ${branch}`);
       const control = exactActionButton(page, action);
       const downloadPending = page.waitForEvent('download');
-      const request = await formRequest(control, 200);
+      const request = await catalogFormRequest(page, state, action, 200);
       request.settleNavigation = false;
       return { control, descriptor: {
         activation: { kind: 'keyboard', key: 'Enter' }, request,
@@ -717,11 +1063,15 @@ function offlineToggleScenario(page, state, action) {
         has: control,
       }) };
       const snapshot = await accountSnapshot(page);
-      const before = Boolean(snapshot.preferences.offline_queue_enabled);
-      if (await control.isChecked() !== before) {
+      const variant = [
+        { before: false, after: true }, { before: true, after: false },
+      ].find((candidate) => candidate.before
+        === Boolean(snapshot.preferences.offline_queue_enabled));
+      if (!variant) throw new Error('offline catalog precondition is not a literal boolean variant');
+      if (await control.isChecked() !== variant.before) {
         throw new Error('offline toggle DOM state differs from its authoritative persisted state');
       }
-      const requested = !before;
+      const requested = variant.after;
       if (branch === 'success') {
         return { control, descriptor: {
           activation: { kind: 'keyboard', key: 'Space' },
@@ -730,8 +1080,8 @@ function offlineToggleScenario(page, state, action) {
           feedback: { locator: status,
             text: requested ? 'Offline saving is on.' : 'Offline saving is off.', ownership },
           persistence: { kind: 'json', url: '/__test__/account-snapshot',
-            path: 'preferences.offline_queue_enabled', expectedBefore: before,
-            expectedAfter: requested },
+            path: 'preferences.offline_queue_enabled', expectedBefore: variant.before,
+            expectedAfter: variant.after },
         } };
       }
       if (branch !== 'failure') throw new Error(`unknown offline-toggle branch: ${branch}`);
@@ -760,7 +1110,7 @@ function offlineToggleScenario(page, state, action) {
         feedback: { locator: status,
           text: 'Offline preference could not be saved. Please try again.', ownership },
         focus: { mode: 'retained' },
-        outcome: { kind: 'checked', locator: control, checked: before },
+        outcome: { kind: 'checked', locator: control, checked: variant.before },
         async whilePending() {
           await control.evaluate((element) => {
             element.dispatchEvent(new Event('change', { bubbles: true }));
@@ -862,21 +1212,21 @@ function destructiveDataScenario(page, state, action) {
   const specs = Object.freeze({
     Cleanup: Object.freeze({
       label: 'Type CLEANUP to confirm', confirmation: 'CLEANUP',
-      feedback: 'Removed 1 duplicate log entries.', path: 'logs.length', transform: (value) => value - 1,
+      feedback: 'Removed 1 duplicate log entries.', path: 'logs.length', before: 3, after: 2,
     }),
     Merge: Object.freeze({
       label: 'Type MERGE to confirm', confirmation: 'MERGE',
       feedback: 'Merged 1 similar pouch entries.', path: 'pouches.length',
-      transform: (value) => value - 1,
+      before: 2, after: 1,
     }),
     'Anonymize Data': Object.freeze({
       label: 'Type ANONYMIZE to confirm', confirmation: 'ANONYMIZE',
       feedback: 'Your personal data has been anonymized successfully.', path: 'profile.age',
-      transform: () => null,
+      before: 39, after: null,
     }),
     'Delete Logs': Object.freeze({
       label: 'Type DELETE LOGS to confirm', confirmation: 'DELETE LOGS',
-      feedback: 'Successfully deleted 2 old log entries.', path: 'logs.length', transform: () => 0,
+      feedback: 'Successfully deleted 2 old log entries.', path: 'logs.length', before: 2, after: 0,
     }),
   });
   return Object.freeze({
@@ -896,12 +1246,15 @@ function destructiveDataScenario(page, state, action) {
       await field.fill(spec.confirmation);
       if (action === 'Delete Logs') await page.getByLabel('Days to keep').fill('30');
       const snapshot = await accountSnapshot(page);
-      const before = spec.path.split('.').reduce((value, key) => value?.[key], snapshot);
+      const actualBefore = spec.path.split('.').reduce((value, key) => value?.[key], snapshot);
+      if (actualBefore !== spec.before) {
+        throw new Error(`${state} › ${action} catalog precondition expected ${spec.before}; received ${actualBefore}`);
+      }
       return { control, descriptor: {
-        activation: { kind: 'keyboard', key: 'Enter' }, request: await formRequest(control),
+        activation: { kind: 'keyboard', key: 'Enter' }, request: await catalogFormRequest(page, state, action),
         feedback: flashFeedback(page, spec.feedback),
         persistence: { kind: 'json', url: '/__test__/account-snapshot', path: spec.path,
-          expectedBefore: before, expectedAfter: spec.transform(before) },
+          expectedBefore: spec.before, expectedAfter: spec.after },
       } };
     },
   });
@@ -943,8 +1296,27 @@ function validationOnlyScenario(page, state, action) {
       const message = 'Current password is incorrect.';
       const text = action === 'Delete account' ? 'Password is incorrect.' : message;
       const ownership = { kind: 'container', locator: form };
+      const exactPayload = {
+        'Update email': {
+          action: 'update_email', password: 'wrong-password',
+          new_email: 'browser-changed@example.com',
+        },
+        'Change password': {
+          action: 'change_password', current_password: 'wrong-password',
+          new_password: 'replacement-password', confirm_password: 'replacement-password',
+        },
+        'Delete account': {
+          action: 'delete_account', password: 'wrong-password',
+          confirmation: 'not the confirmation',
+        },
+      }[action];
       return { control, descriptor: {
-        activation: { kind: 'keyboard', key: 'Enter' }, request: await formRequest(control, 200),
+        activation: { kind: 'keyboard', key: 'Enter' },
+        request: {
+          method: 'POST', path: /^\/settings\/account$/, status: 200,
+          payload: { kind: 'form', exact: exactPayload },
+          dynamicFields: { csrf_token: 'non-empty' },
+        },
         error: { locator: error, text, ownership },
         feedback: { locator: error, text, ownership },
         focus: { mode: 'moved', locator: focus },
@@ -968,6 +1340,7 @@ function disposableAccountMutationScenario(page, state, action) {
       const snapshot = await accountSnapshot(page);
       const currentEmail = snapshot.profile.email;
       const suffix = currentEmail.match(/(?:account(?:-updated)?-)(.+)@example\.com$/)?.[1];
+      if (!suffix) throw new Error('account catalog principal is outside its deterministic namespace');
       const updatedEmail = `account-updated-${suffix}@example.com`;
       if (action === 'Update email') {
         const email = form.getByLabel('New email address');
@@ -983,7 +1356,7 @@ function disposableAccountMutationScenario(page, state, action) {
         }
         await email.fill(updatedEmail);
         return { control, descriptor: { activation: { kind: 'keyboard', key: 'Enter' },
-          request: await formRequest(control),
+          request: await catalogFormRequest(page, state, action),
           feedback: flashFeedback(page,
             'Email updated successfully! Please verify your new email address.'),
           persistence: { kind: 'json', url: '/__test__/account-snapshot', path: 'profile.email',
@@ -998,14 +1371,14 @@ function disposableAccountMutationScenario(page, state, action) {
           const error = page.locator('#current_password-error');
           const ownership = { kind: 'container', locator: form };
           return { control, descriptor: { activation: { kind: 'keyboard', key: 'Enter' },
-            request: await formRequest(control, 200),
+            request: await catalogFormRequest(page, state, action, 200),
             error: { locator: error, text: 'Current password is incorrect.', ownership },
             feedback: { locator: error, text: 'Current password is incorrect.', ownership },
             focus: { mode: 'moved', locator: current } } };
         }
         await current.fill('account-password');
         return { control, descriptor: { activation: { kind: 'keyboard', key: 'Enter' },
-          request: await formRequest(control),
+          request: await catalogFormRequest(page, state, action),
           feedback: flashFeedback(page, 'Password changed successfully!'),
           persistence: { kind: 'json',
             url: '/__test__/password-match?password=updated-account-password', path: 'matches',
@@ -1030,7 +1403,7 @@ function disposableAccountDeleteScenario(page, state, action) {
         const error = page.locator('#confirmation-error');
         const ownership = { kind: 'container', locator: form };
         return { control, descriptor: { activation: { kind: 'keyboard', key: 'Enter' },
-          request: await formRequest(control, 200),
+          request: await catalogFormRequest(page, state, action, 200),
           error: { locator: error, text: 'Please type "delete my account" to confirm.', ownership },
           feedback: { locator: error,
             text: 'Please type "delete my account" to confirm.', ownership },
@@ -1043,11 +1416,19 @@ function disposableAccountDeleteScenario(page, state, action) {
       const url = `/__test__/owned-artifact-snapshot?user_id=${snapshot.profile.id}`
         + `&brand=${encodeURIComponent(brand)}`;
       const beforeResponse = await page.request.get(url);
-      const before = await beforeResponse.json();
+      const actualBefore = await beforeResponse.json();
+      const expectedBefore = {
+        users: 1, logs: 1, goals: 1, cravings: 1, owned_pouches: 1,
+        named_pouches: 1, orphan_named_pouches: 0,
+      };
+      if (Object.keys(actualBefore).length !== Object.keys(expectedBefore).length
+        || Object.entries(expectedBefore).some(([key, value]) => actualBefore[key] !== value)) {
+        throw new Error('account deletion catalog precondition differs from the immutable owned-artifact fixture');
+      }
       return { control, descriptor: { activation: { kind: 'keyboard', key: 'Enter' },
-        request: await formRequest(control),
+        request: await catalogFormRequest(page, state, action),
         feedback: flashFeedback(page, 'Your account has been deleted.'),
-        persistence: { kind: 'json', url, expectedBefore: before,
+        persistence: { kind: 'json', url, expectedBefore,
           expectedAfter: { users: 0, logs: 0, goals: 0, cravings: 0, owned_pouches: 0,
             named_pouches: 0, orphan_named_pouches: 0 } } } };
     },
@@ -1066,8 +1447,26 @@ function quickMutationScenario(page, state, action) {
     branches: Object.freeze(['failure', 'success']),
     async resolve(branch) {
       const control = exactActionButton(page, action);
-      const pouchId = await control.getAttribute('data-pouch-id');
-      if (!pouchId) throw new Error(`${state} › ${action} has no catalog-owned pouch id`);
+      const fixture = {
+        'Log one Release Fixture, 3.5 milligrams': {
+          brand: 'Release Fixture', storageStrength: '3.50', displayStrength: '3.5',
+        },
+        'Log one Steady Mint, 6 milligrams': {
+          brand: 'Steady Mint', storageStrength: '6.00', displayStrength: '6',
+        },
+      }[action];
+      if (!fixture) throw new Error(`${state} › ${action} has no immutable quick-add fixture`);
+      const fixtureResponse = await page.request.get(
+        `/__test__/supporting-pouch-fixture?brand=${encodeURIComponent(fixture.brand)}`,
+      );
+      if (fixtureResponse.status() !== 200) {
+        throw new Error(`${state} › ${action} immutable pouch fixture is missing`);
+      }
+      const pouch = await fixtureResponse.json();
+      if (pouch.brand !== fixture.brand || pouch.nicotine_mg !== fixture.storageStrength) {
+        throw new Error(`${state} › ${action} immutable pouch fixture differs`);
+      }
+      const pouchId = String(pouch.id);
       if (branch === 'failure') {
         let releaseFailure;
         const heldFailure = new Promise((resolve) => { releaseFailure = resolve; });
@@ -1122,9 +1521,13 @@ function quickMutationScenario(page, state, action) {
         };
       }
       if (branch !== 'success') throw new Error(`unknown quick mutation branch: ${branch}`);
-      const brand = await control.getAttribute('data-pouch-brand');
-      const strength = await control.getAttribute('data-pouch-strength');
-      const before = (await accountSnapshot(page)).logs.length;
+      const expectedCounts = {
+        'logbook\u0000Log one Release Fixture, 3.5 milligrams': [2, 3],
+        'logbook\u0000Log one Steady Mint, 6 milligrams': [3, 4],
+        'log-add\u0000Log one Release Fixture, 3.5 milligrams': [4, 5],
+        'log-add\u0000Log one Steady Mint, 6 milligrams': [5, 6],
+      }[`${state}\u0000${action}`];
+      if (!expectedCounts) throw new Error(`${state} › ${action} has no literal quick-add counts`);
       return {
         control,
         descriptor: {
@@ -1135,12 +1538,12 @@ function quickMutationScenario(page, state, action) {
           },
           feedback: {
             locator: page.locator('[data-notification-type="success"] [data-notification-message]'),
-            text: `Added 1 ${brand} (${strength}mg)`,
+            text: `Added 1 ${fixture.brand} (${fixture.displayStrength}mg)`,
             ownership: { kind: 'quick-notification', type: 'success' },
           },
           persistence: {
             kind: 'json', url: '/__test__/account-snapshot', path: 'logs.length',
-            expectedBefore: before, expectedAfter: before + 1,
+            expectedBefore: expectedCounts[0], expectedAfter: expectedCounts[1],
           },
           async after() {
             if (shared.routeInstalled) await page.unroute(routePattern);
@@ -1191,5 +1594,6 @@ function supportingScenarioFor(page, state, action) {
 
 module.exports = {
   STATE_SCENARIOS,
+  supportingControlAuthority,
   supportingScenarioFor,
 };

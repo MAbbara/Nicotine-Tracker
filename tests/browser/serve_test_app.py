@@ -53,7 +53,7 @@ datetime = _ReleaseTestDateTime
 from app import create_app  # noqa: E402
 from extensions import db, mail  # noqa: E402
 from routes.auth import get_current_user, login_required  # noqa: E402
-from flask import abort, redirect, render_template, request, url_for  # noqa: E402
+from flask import abort, flash, redirect, render_template, request, url_for  # noqa: E402
 from models import (  # noqa: E402
     Craving,
     DailyCheckIn,
@@ -143,6 +143,15 @@ _freeze_loaded_test_server_clocks()
 def keep_test_server_clock_frozen():
     # Re-apply for any route/service module imported lazily after app creation.
     _freeze_loaded_test_server_clocks()
+    if (
+        request.method == 'POST'
+        and request.path == '/settings/profile'
+        and request.headers.get('X-Supporting-Persistence-Noop') == '1'
+    ):
+        # Adversarial fixture: the transaction looks successful but deliberately
+        # skips persistence so the supporting-action recorder must reject it.
+        flash('Profile updated successfully!', 'success')
+        return redirect('/settings/profile')
 
 
 @app.get('/__test__/release-clock')
@@ -837,6 +846,27 @@ def owned_artifact_snapshot():
             Pouch.brand == brand,
             Pouch.created_by.is_(None),
         ).count(),
+    }
+
+
+@app.get('/__test__/supporting-pouch-fixture')
+@login_required
+def supporting_pouch_fixture():
+    """Resolve a catalog-owned quick-add fixture without trusting rendered attributes."""
+    current_user = get_current_user()
+    brand = request.args.get('brand', type=str)
+    if not brand:
+        abort(400)
+    pouch = Pouch.query.filter(
+        Pouch.brand == brand,
+        (Pouch.is_default.is_(True)) | (Pouch.created_by == current_user.id),
+    ).order_by(Pouch.is_default.asc(), Pouch.id.asc()).first()
+    if pouch is None:
+        abort(404)
+    return {
+        'id': pouch.id,
+        'brand': pouch.brand,
+        'nicotine_mg': str(pouch.nicotine_mg),
     }
 
 
