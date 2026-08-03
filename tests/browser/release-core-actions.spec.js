@@ -199,6 +199,22 @@ test('independent behavior contract rejects omissions, remaps, and dimension ove
     'synthetic-state', 'Synthetic action', ['keyboard'],
   )).not.toThrow();
   expect(() => incompleteRecorder.assertComplete()).toThrow(/focus/);
+
+  const mandatoryLandingRecorder = createBehaviorRecorder(
+    OWNER_TITLES.landing, expect, [],
+  );
+  expect(() => mandatoryLandingRecorder.assertComplete())
+    .toThrow(/runtime dimension evidence/);
+
+  const landingCreate = CORE_BEHAVIOR_OBLIGATIONS.find((obligation) => (
+    obligation.state === 'landing' && obligation.action === 'Create account'
+  ));
+  expect(() => createBehaviorRecorder(
+    OWNER_TITLES.landing, expect, [landingCreate],
+  )).toThrow(/mandatory core obligation/);
+  expect(() => createBehaviorRecorder(
+    syntheticOwner, expect, [syntheticObligation, syntheticObligation],
+  )).toThrow(/duplicate injected obligation/);
 });
 
 

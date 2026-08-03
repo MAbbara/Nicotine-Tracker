@@ -343,8 +343,30 @@ function evidenceToken(state, action, dimension) {
 function createBehaviorRecorder(
   owner,
   expectApi,
-  obligations = CORE_BEHAVIOR_OBLIGATIONS,
+  injectedObligations = [],
 ) {
+  const mandatoryKeys = new Set(CORE_BEHAVIOR_OBLIGATIONS.map((obligation) => (
+    `${obligation.state}\u0000${obligation.action}`
+  )));
+  const injectedKeys = new Set();
+  for (const obligation of injectedObligations) {
+    if (obligation.owner !== owner) {
+      throw new Error(
+        `${obligation.state} › ${obligation.action} injected obligation owner differs from ${owner}`,
+      );
+    }
+    const key = `${obligation.state}\u0000${obligation.action}`;
+    if (mandatoryKeys.has(key)) {
+      throw new Error(
+        `${obligation.state} › ${obligation.action} conflicts with a mandatory core obligation`,
+      );
+    }
+    if (injectedKeys.has(key)) {
+      throw new Error(`${obligation.state} › ${obligation.action} is a duplicate injected obligation`);
+    }
+    injectedKeys.add(key);
+  }
+  const obligations = [...CORE_BEHAVIOR_OBLIGATIONS, ...injectedObligations];
   const expected = obligations.filter((entry) => entry.owner === owner);
   const recordedEvidence = new Set();
   return Object.freeze({
