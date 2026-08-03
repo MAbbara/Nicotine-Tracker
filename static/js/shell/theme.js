@@ -134,9 +134,16 @@ export function initThemeController(doc = globalThis.document, win = globalThis.
     if (!response.ok) throw new Error('Theme preference could not be saved');
   };
 
+  let storage = null;
+  try {
+    storage = win.localStorage;
+  } catch (_) {
+    // Window can deny access before the Storage methods are reachable.
+  }
+
   const controller = createThemeController({
     root,
-    storage: win.localStorage,
+    storage,
     mediaQuery: win.matchMedia?.('(prefers-color-scheme: dark)'),
     themeColorMeta: doc.querySelector?.('meta[name="theme-color"]') || null,
     persistTheme,

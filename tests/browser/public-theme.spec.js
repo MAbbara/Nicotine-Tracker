@@ -90,3 +90,38 @@ test('unavailable anonymous storage falls back safely to System', async ({ page 
 
   await expectThemeContract(page, { saved: 'system', effective: 'dark' });
 });
+
+
+test('blocked localStorage getter still initializes anonymous System handling', async ({ page }) => {
+  const preferenceWrites = [];
+  page.on('request', (request) => {
+    if (request.method() === 'PATCH' && request.url().endsWith('/api/preferences/theme')) {
+      preferenceWrites.push(request.postData());
+    }
+  });
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new DOMException('Storage unavailable', 'SecurityError');
+      },
+    });
+  });
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('/auth/login');
+
+  await expectThemeContract(page, { saved: 'system', effective: 'dark' });
+  await page.evaluate(() => {
+    window.__themeChanges = [];
+    document.documentElement.addEventListener('nicotine-tracker:theme-change', (event) => {
+      window.__themeChanges.push(event.detail);
+    });
+  });
+
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expectThemeContract(page, { saved: 'system', effective: 'light' });
+  await expect.poll(() => page.evaluate(() => window.__themeChanges)).toEqual([
+    { saved: 'system', effective: 'light' },
+  ]);
+  expect(preferenceWrites).toEqual([]);
+});
