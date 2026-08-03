@@ -199,8 +199,11 @@ function initCravingsPage(root = document, fetchImpl = window.fetch.bind(window)
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (!form.reportValidity() || submit.disabled) return;
+    const activeDocument = submit.ownerDocument;
+    const initiatedWithFocus = activeDocument?.activeElement === submit;
     submit.disabled = true;
     submit.setAttribute('aria-disabled', 'true');
+    const focusAfterDisable = activeDocument?.activeElement;
     setStatus(status, 'Saving your craving…', 'loading');
     try {
       const response = await fetchImpl(form.dataset.endpoint, {
@@ -243,6 +246,12 @@ function initCravingsPage(root = document, fetchImpl = window.fetch.bind(window)
     } finally {
       submit.disabled = false;
       submit.removeAttribute('aria-disabled');
+      if (
+        initiatedWithFocus
+        && activeDocument?.activeElement === focusAfterDisable
+        && submit.isConnected
+        && activeDocument?.visibilityState !== 'hidden'
+      ) submit.focus({ preventScroll: true });
     }
   };
 

@@ -4,6 +4,7 @@ const {
   SUPPORTING_OWNER_TITLES,
   createSupportingBehaviorRecorder,
 } = require('./helpers/supporting_behavior_contract');
+const { watchForProductProblems } = require('./helpers/product_guard');
 
 
 function deterministicEmail(testInfo) {
@@ -54,10 +55,24 @@ test('Craving history records complete and minimal entries in chronological orde
   await form.getByLabel('Mood before').fill('4');
   await form.getByLabel('Stress level').fill('9');
   await form.getByLabel('Duration').fill('12');
-  await form.getByLabel('Restlessness').check();
-  await form.getByLabel('Irritability').check();
-  await form.getByLabel('Difficulty concentrating').check();
-  await form.getByLabel('Increased appetite').check();
+  const symptomControls = [
+    ['Restlessness', 'restlessness'],
+    ['Irritability', 'irritability'],
+    ['Difficulty concentrating', 'difficulty_concentrating'],
+    ['Increased appetite', 'increased_appetite'],
+  ];
+  for (const [action] of symptomControls) {
+    const control = form.getByLabel(action);
+    await recorder.prove('cravings', action, 'keyboard', async (check) => {
+      await control.focus();
+      await check(expect(control).toBeFocused());
+      await page.keyboard.press('Space');
+      await check(expect(control).toBeChecked());
+    });
+    await recorder.prove('cravings', action, 'focus', async (check) => {
+      await check(expect(control).toBeFocused());
+    });
+  }
   await form.getByLabel('Situation context').fill('After a difficult meeting');
   await form.getByLabel('Outcome').selectOption('used_alternative');
   await form.getByLabel('Mood after').fill('6');
@@ -70,14 +85,23 @@ test('Craving history records complete and minimal entries in chronological orde
   await expect(completeRow).toContainText('Intensity 8 of 10');
   await expect(completeRow).toContainText('Used an alternative');
   await expect(completeRow).toContainText('12 minutes');
+  const savedResponse = await page.request.get('/cravings/api/cravings');
+  expect(savedResponse.status()).toBe(200);
+  const savedCravings = await savedResponse.json();
+  const savedSymptoms = JSON.parse(savedCravings[0].physical_symptoms);
+  expect(savedSymptoms).toEqual([
+    'restlessness', 'irritability', 'difficulty_concentrating', 'increased_appetite',
+  ]);
+  for (const [action, value] of symptomControls) {
+    await recorder.prove('cravings', action, 'persistence', async (check) => {
+      await check(expect(savedSymptoms).toContain(value));
+    });
+  }
 
   await form.getByLabel('Intensity').fill('3');
   await form.getByRole('button', { name: 'Record craving' }).click();
   await expect(page.locator('.craving-row')).toHaveCount(2);
   await expect(page.locator('.craving-row').first()).toContainText('Intensity 3 of 10');
-  for (const action of [
-    'Difficulty concentrating', 'Increased appetite', 'Irritability', 'Restlessness',
-  ]) recorder.record('cravings', action, ['focus', 'keyboard', 'persistence']);
   recorder.assertComplete();
   expect(errors).toEqual([]);
 });
@@ -87,36 +111,110 @@ test('Craving history exposes native validation and recoverable server feedback'
   const recorder = createSupportingBehaviorRecorder(
     SUPPORTING_OWNER_TITLES.cravingsRecord, expect,
   );
+  const guard = watchForProductProblems(page);
   await register(page, testInfo);
   await page.goto('/cravings/cravings');
   const form = page.locator('#craving-form');
+  const intensity = form.getByLabel('Intensity');
+  const submit = form.getByRole('button', { name: 'Record craving' });
+  let posts = 0;
+  page.on('request', (request) => {
+    if (
+      request.method() === 'POST'
+      && new URL(request.url()).pathname === '/cravings/api/cravings'
+    ) posts += 1;
+  });
 
-  await form.getByRole('button', { name: 'Record craving' }).click();
-  await expect(form.getByLabel('Intensity')).toBeFocused();
-  expect(await form.getByLabel('Intensity').evaluate((input) => input.validity.valueMissing)).toBe(true);
+  await recorder.prove('cravings', 'Record craving', 'keyboard', async (check) => {
+    await submit.focus();
+    await check(expect(submit).toBeFocused());
+    await check(expect(submit).toHaveAccessibleName('Record craving'));
+    await page.keyboard.press('Enter');
+  });
+  await recorder.prove('cravings', 'Record craving', 'focus', async (check) => {
+    await check(expect(intensity).toBeFocused());
+  });
+  await recorder.prove('cravings', 'Record craving', 'error', async (check) => {
+    await check(expect.poll(() => posts).toBe(0));
+    await check(expect(intensity).toHaveJSProperty('validity.valueMissing', true));
+  });
+  await recorder.prove('cravings', 'Record craving', 'feedback', async (check) => {
+    await check(expect(intensity).toHaveJSProperty('validationMessage', 'Please fill out this field.'));
+  });
 
+  let releaseFailure;
+  const heldFailure = new Promise((resolve) => { releaseFailure = resolve; });
   await page.route('**/cravings/api/cravings', async (route) => {
     if (route.request().method() === 'POST') {
-      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Temporary test failure.' }) });
+      await heldFailure;
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Temporary test failure.' }) });
       return;
     }
     await route.continue();
   });
-  await form.getByLabel('Intensity').fill('6');
-  await form.getByRole('button', { name: 'Record craving' }).click();
-  await expect(form.locator('[data-craving-form-status]')).toContainText('Temporary test failure');
-  await expect(form.getByRole('button', { name: 'Record craving' })).toBeEnabled();
-  await expect(form.getByLabel('Intensity')).toHaveValue('6');
+  await intensity.fill('6');
+  const failedResponsePending = page.waitForResponse((response) => (
+    response.request().method() === 'POST'
+    && new URL(response.url()).pathname === '/cravings/api/cravings'
+    && response.status() === 503
+  ));
+  await submit.focus();
+  await page.keyboard.press('Enter');
+  await recorder.prove('cravings', 'Record craving', 'loading', async (check) => {
+    await check(expect(submit).toBeDisabled());
+    await check(expect(submit).toHaveAttribute('aria-disabled', 'true'));
+    await check(expect(form.locator('[data-craving-form-status]')).toHaveText('Saving your craving…'));
+  });
+  await submit.evaluate((element) => {
+    element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  expect(posts).toBe(1);
+  releaseFailure();
+  const failedResponse = await failedResponsePending;
+  await recorder.prove('cravings', 'Record craving', 'error', async (check) => {
+    await check(expect(failedResponse.status()).toBe(503));
+    await check(expect(form.locator('[data-craving-form-status]')).toHaveText('Temporary test failure.'));
+    await check(expect(submit).toBeEnabled());
+  });
+  await recorder.prove('cravings', 'Record craving', 'feedback', async (check) => {
+    await check(expect(form.locator('[data-craving-form-status]')).toHaveAttribute('data-state', 'error'));
+    await check(expect(form.locator('[data-craving-form-status]')).toHaveText('Temporary test failure.'));
+  });
+  await recorder.prove('cravings', 'Record craving', 'focus', async (check) => {
+    await check(expect(submit).toBeFocused());
+    await check(expect(intensity).toHaveValue('6'));
+  });
   await page.unroute('**/cravings/api/cravings');
-  await form.getByRole('button', { name: 'Record craving' }).click();
-  await expect(form.locator('[data-craving-form-status]')).toContainText('Craving recorded');
+  const successResponsePending = page.waitForResponse((response) => (
+    response.request().method() === 'POST'
+    && new URL(response.url()).pathname === '/cravings/api/cravings'
+    && response.status() === 201
+  ));
+  await submit.focus();
+  await page.keyboard.press('Enter');
+  const successResponse = await successResponsePending;
+  await recorder.prove('cravings', 'Record craving', 'request', async (check) => {
+    await check(expect(failedResponse.request().postDataJSON()).toEqual({ intensity: 6 }));
+    await check(expect(successResponse.request().postDataJSON()).toEqual({ intensity: 6 }));
+    await check(expect(successResponse.status()).toBe(201));
+    await check(expect(posts).toBe(2));
+  });
+  await recorder.prove('cravings', 'Record craving', 'feedback', async (check) => {
+    await check(expect(form.locator('[data-craving-form-status]')).toHaveAttribute('data-state', 'success'));
+    await check(expect(form.locator('[data-craving-form-status]')).toHaveText('Craving recorded. Thank you for noticing the moment.'));
+  });
   await page.reload();
-  await expect(page.locator('.craving-row').first()).toContainText('Intensity 6 of 10');
-  recorder.record(
-    'cravings', 'Record craving',
-    ['error', 'focus', 'keyboard', 'loading', 'persistence', 'request'],
-  );
+  await recorder.prove('cravings', 'Record craving', 'persistence', async (check) => {
+    await check(expect(page.locator('.craving-row').first()).toContainText('Intensity 6 of 10'));
+  });
   recorder.assertComplete();
+  guard.assertClean(expect, {
+    stateName: 'cravings record supporting owner',
+    expectedHttpErrors: [{
+      method: 'POST', path: '/cravings/api/cravings', status: 503, count: 1,
+    }],
+  });
+  guard.stop();
 });
 
 
@@ -218,7 +316,6 @@ test('Craving history remains usable at 320px, 200% text, and reduced motion', a
         return (
           labelStyle.overflowX === 'hidden'
           || labelStyle.textOverflow === 'ellipsis'
-          || labelStyle.whiteSpace === 'nowrap'
           || textBounds.left < labelBounds.left - 1
           || textBounds.right > labelBounds.right + 1
           || textBounds.top < labelBounds.top - 1

@@ -51,7 +51,7 @@ date = _ReleaseTestDate
 datetime = _ReleaseTestDateTime
 
 from app import create_app  # noqa: E402
-from extensions import db  # noqa: E402
+from extensions import db, mail  # noqa: E402
 from routes.auth import get_current_user, login_required  # noqa: E402
 from flask import abort, redirect, render_template, url_for  # noqa: E402
 from models import (  # noqa: E402
@@ -70,33 +70,23 @@ from models import (  # noqa: E402
     UserPreferences,
 )
 from services.notification_service import NotificationService  # noqa: E402
+from services import notification_service as notification_service_module  # noqa: E402
+from services.log_service import get_historical_brand  # noqa: E402
 from models.email_verification import EmailVerification  # noqa: E402
+from tests.browser.helpers.outbound_test_boundary import (  # noqa: E402
+    install_outbound_boundary,
+)
 
 
 app = create_app('testing')
 
 
-_EXTERNAL_NOTIFICATIONS = []
-
-
-def _record_external_notification(
-    _service, *, user_id, category, subject, message, priority=0,
-    scheduled_for=None, extra_data=None,
-):
-    """Safe integration double: record the boundary without email or Discord I/O."""
-    _EXTERNAL_NOTIFICATIONS.append({
-        'user_id': user_id,
-        'category': category,
-        'subject': subject,
-        'message': message,
-        'priority': priority,
-        'scheduled_for': scheduled_for.isoformat() if scheduled_for else None,
-        'extra_data': extra_data or {},
-    })
-    return True
-
-
-NotificationService.queue_notification = _record_external_notification
+_OUTBOUND = install_outbound_boundary(
+    NotificationService,
+    notification_service_module.requests,
+    mail,
+    now=lambda: RELEASE_TEST_NOW.replace(tzinfo=None),
+)
 
 
 _DATE_CLOCK_MODULES = {
@@ -607,10 +597,14 @@ with app.app_context():
         owned_data=False,
     ):
         """Build isolated, non-mutating Task 1 release inventory evidence."""
+        is_inventory = email == 'release-inventory@example.com'
         release_user = User(
             email=email,
             email_verified=True,
             timezone='UTC',
+            age=34 if is_inventory else None,
+            gender='prefer_not_to_say' if is_inventory else None,
+            weight=71.5 if is_inventory else None,
         )
         release_user.set_password('browser-password')
         db.session.add(release_user)
@@ -619,7 +613,8 @@ with app.app_context():
             user_id=release_user.id,
             offline_queue_enabled=offline_enabled,
             notification_channel=['email'],
-            preferred_brands=[],
+            units_preference='percentage' if is_inventory else 'mg',
+            preferred_brands=['Release Fixture'] if is_inventory else [],
         ))
 
         owned_pouch = None
@@ -668,6 +663,7 @@ with app.app_context():
                     if owned_pouch else default_pouch.nicotine_mg
                 ),
                 quantity=log_quantity or 1,
+                notes='Release Fixture log' if is_inventory else None,
             ))
         return release_user
 
@@ -737,10 +733,22 @@ def external_notifications():
     current_user = get_current_user()
     return {
         'notifications': [
-            item for item in _EXTERNAL_NOTIFICATIONS
-            if item['user_id'] == current_user.id
+            item for item in _OUTBOUND.records
+            if item['kind'] == 'notification-queue'
+            and item['user_id'] == current_user.id
         ],
+        'boundaries': list(_OUTBOUND.records),
+        'unexpected': list(_OUTBOUND.unexpected),
     }
+
+
+@app.post('/__test__/clear-outbound')
+@login_required
+def clear_outbound():
+    """Reset only the disposable browser server's transport recorder."""
+    _OUTBOUND.records.clear()
+    _OUTBOUND.unexpected.clear()
+    return {'success': True}
 
 
 @app.post('/__test__/clear-verification-cooldown')
@@ -750,6 +758,64 @@ def clear_verification_cooldown():
     EmailVerification.query.filter_by(user_id=current_user.id).delete()
     db.session.commit()
     return {'success': True}
+
+
+@app.get('/__test__/account-snapshot')
+@login_required
+def account_snapshot():
+    """Expose exact isolated database state to browser release assertions."""
+    current_user = get_current_user()
+    preferences = current_user.preferences
+    return {
+        'profile': {
+            'email': current_user.email,
+            'age': current_user.age,
+            'gender': current_user.gender,
+            'weight': float(current_user.weight) if current_user.weight is not None else None,
+        },
+        'preferences': {
+            'units_preference': preferences.units_preference if preferences else None,
+            'preferred_brands': preferences.preferred_brands if preferences else None,
+            'offline_queue_enabled': (
+                preferences.offline_queue_enabled if preferences else None
+            ),
+        },
+        'logs': [{
+            'id': item.id,
+            'brand': get_historical_brand(item),
+            'quantity': item.quantity,
+            'notes': item.notes,
+            'log_time': item.log_time.isoformat(),
+            'pouch_id': item.pouch_id,
+        } for item in current_user.logs.order_by(Log.id).all()],
+        'pouches': [{
+            'id': item.id,
+            'brand': item.brand,
+            'nicotine_mg': str(item.nicotine_mg),
+        } for item in current_user.custom_pouches.order_by(Pouch.id).all()],
+        'goals': [{
+            'id': item.id,
+            'goal_type': item.goal_type,
+            'target_value': item.target_value,
+            'current_streak': item.current_streak,
+            'best_streak': item.best_streak,
+            'is_active': item.is_active,
+        } for item in current_user.goals.order_by(Goal.id).all()],
+    }
+
+
+@app.post('/__test__/age-goals-for-recalculation')
+@login_required
+def age_goals_for_recalculation():
+    """Age UI-created goals and poison streaks so recalculation is observable."""
+    current_user = get_current_user()
+    goals = current_user.goals.all()
+    for goal in goals:
+        goal.start_date = _ReleaseTestDate(2026, 1, 1)
+        goal.current_streak = 9
+        goal.best_streak = 9
+    db.session.commit()
+    return {'goal_ids': [goal.id for goal in goals]}
 
 
 @app.get('/__test__/release/goal-edit')

@@ -139,3 +139,32 @@ test('updateOfflineQueue restores the previous value when the server rejects the
   assert.equal(checkbox.checked, true);
   assert.equal(status.dataset.state, 'error');
 });
+
+
+test('updateOfflineQueue restores focus only while the initiating interaction still owns it', async () => {
+  const { updateOfflineQueue } = await loadModule();
+
+  for (const mode of ['normal', 'moved', 'hidden', 'disconnected']) {
+    const current = controls(false);
+    let focusCalls = 0;
+    const originalFocus = current.checkbox.focus;
+    current.checkbox.focus = function focus(options) {
+      focusCalls += 1;
+      return originalFocus.call(this, options);
+    };
+    current.documentObject.activeElement = current.checkbox;
+    let resolveRequest;
+    const pending = new Promise((resolve) => { resolveRequest = resolve; });
+    const result = updateOfflineQueue({
+      checkbox: current.checkbox,
+      status: current.status,
+      request: () => pending,
+    });
+    if (mode === 'moved') current.documentObject.activeElement = { id: 'next-control' };
+    if (mode === 'hidden') current.documentObject.visibilityState = 'hidden';
+    if (mode === 'disconnected') current.checkbox.isConnected = false;
+    resolveRequest({ success: true, enabled: false });
+    assert.equal(await result, true);
+    assert.equal(focusCalls, mode === 'normal' ? 1 : 0, mode);
+  }
+});

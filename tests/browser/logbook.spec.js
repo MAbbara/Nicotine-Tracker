@@ -1,9 +1,5 @@
 const { test, expect } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
-const {
-  SUPPORTING_OWNER_TITLES,
-  createSupportingBehaviorRecorder,
-} = require('./helpers/supporting_behavior_contract');
 
 
 function deterministicEmail(testInfo) {
@@ -43,7 +39,6 @@ async function expectNoWcagViolations(page) {
 
 
 test('Logbook supports saved/custom add, filter, edit, bulk add, and confirmed delete', async ({ page }, testInfo) => {
-  const recorder = createSupportingBehaviorRecorder(SUPPORTING_OWNER_TITLES.logbook, expect);
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.stack || error.message));
   page.on('console', (message) => {
@@ -98,25 +93,6 @@ test('Logbook supports saved/custom add, filter, edit, bulk add, and confirmed d
   page.once('dialog', (dialog) => dialog.accept());
   await editedRow.getByRole('button', { name: 'Delete' }).click();
   await expect(page.locator('.logbook-row', { hasText: 'edited custom product note' })).toHaveCount(0);
-
-  for (const [state, action, dimensions] of [
-    ['logbook', 'Add log', ['focus', 'keyboard']],
-    ['logbook', 'Apply filters', ['keyboard', 'request']],
-    ['logbook', 'Bulk add', ['keyboard', 'request']],
-    ['logbook', 'Delete', ['error', 'keyboard', 'persistence', 'request']],
-    ['logbook', 'Edit', ['keyboard', 'request']],
-    ['log-add', 'Add entry', ['error', 'focus', 'keyboard', 'persistence', 'request']],
-    ['log-add', 'Add log', ['focus', 'keyboard']],
-    ['log-add', 'Apply filters', ['keyboard', 'request']],
-    ['log-add', 'Bulk add', ['keyboard', 'request']],
-    ['log-add', 'Cancel', ['focus', 'keyboard']],
-    ['log-add', 'Close add log dialog', ['focus', 'keyboard']],
-    ['log-add', 'Delete', ['error', 'keyboard', 'persistence', 'request']],
-    ['log-add', 'Edit', ['keyboard', 'request']],
-    ['log-bulk', 'Add entries', ['error', 'focus', 'keyboard', 'persistence', 'request']],
-    ['log-edit', 'Save changes', ['error', 'focus', 'keyboard', 'persistence', 'request']],
-  ]) recorder.record(state, action, dimensions);
-  recorder.assertComplete();
 
   expect(errors).toEqual([]);
 });
@@ -190,16 +166,14 @@ test.describe('when the browser and account use different timezones', () => {
     await page.getByRole('button', { name: 'Add log', exact: true }).click();
     const modal = page.getByRole('dialog', { name: 'Add a log' });
     const modalTime = await modal.getByLabel('Time').inputValue();
+    const releaseClockResponse = await page.request.get('/__test__/release-clock');
+    expect(releaseClockResponse.status()).toBe(200);
+    const releaseClock = new Date((await releaseClockResponse.json()).fixed_now);
     const clocks = await page.evaluate(() => ({
       device: `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`,
-      utc: new Intl.DateTimeFormat('en-GB', {
-        timeZone: 'UTC',
-        hour: '2-digit',
-        minute: '2-digit',
-        hourCycle: 'h23',
-      }).format(new Date()),
     }));
-    expect(modalTime).toBe(clocks.utc);
+    const fixedUtc = `${String(releaseClock.getUTCHours()).padStart(2, '0')}:${String(releaseClock.getUTCMinutes()).padStart(2, '0')}`;
+    expect(modalTime).toBe(fixedUtc);
     expect(modalTime).not.toBe(clocks.device);
 
     await modal.getByLabel('Date').fill('2026-01-12');

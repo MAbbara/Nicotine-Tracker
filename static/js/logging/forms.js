@@ -49,6 +49,7 @@ export function initLoggingForms(root = document, confirmImpl = window.confirm) 
         returnFocus = trigger;
         if (!dialog.open) dialog.showModal();
         trigger.setAttribute('aria-expanded', 'true');
+        dialog.querySelector('[name="log_date"]')?.focus({ preventScroll: true });
       };
       trigger.addEventListener('click', handleClick);
       cleanups.push(() => trigger.removeEventListener('click', handleClick));

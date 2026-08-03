@@ -4,6 +4,7 @@ const {
   SUPPORTING_OWNER_TITLES,
   createSupportingBehaviorRecorder,
 } = require('./helpers/supporting_behavior_contract');
+const { watchForProductProblems } = require('./helpers/product_guard');
 
 
 let userSequence = 0;
@@ -44,6 +45,32 @@ async function expectNoWcagViolations(page) {
     .withTags(['wcag2a', 'wcag2aa'])
     .analyze();
   expect(results.violations).toEqual([]);
+}
+
+
+async function proveKeyboard(recorder, state, action, page, control, key = 'Enter') {
+  await recorder.prove(state, action, 'keyboard', async (check) => {
+    await control.focus();
+    await check(expect(control).toBeFocused());
+    await check(expect(control).toHaveAccessibleName(action));
+    await page.keyboard.press(key);
+  });
+}
+
+
+async function proveRequest(recorder, state, action, response, expected) {
+  await recorder.prove(state, action, 'request', async (check) => {
+    await check(expect(response.request().method()).toBe(expected.method));
+    await check(expect(new URL(response.url()).pathname).toBe(expected.path));
+    await check(expect(response.status()).toBe(expected.status));
+    if (expected.payload) {
+      await check(expect(Object.fromEntries(
+        new URLSearchParams(response.request().postData() || ''),
+      )).toEqual(expect.objectContaining(expected.payload)));
+    } else {
+      await check(expect(response.request().postData()).toBeNull());
+    }
+  });
 }
 
 
@@ -88,50 +115,221 @@ test('Goals preserve create, edit, toggle, and delete behavior', async ({ page }
   const recorder = createSupportingBehaviorRecorder(SUPPORTING_OWNER_TITLES.goalsLifecycle, expect);
   const errors = collectBrowserErrors(page);
   await register(page, testInfo);
+  const guard = watchForProductProblems(page);
   await page.goto('/goals/');
 
   await expect(page.getByRole('heading', { level: 1, name: 'Goals' })).toBeVisible();
   await expect(page.getByText(/support your Journey plan/i)).toBeVisible();
-  await page.getByRole('link', { name: 'Create a goal' }).click();
+  const createLink = page.getByRole('link', { name: 'Create a goal' });
+  const createNavigation = page.waitForResponse((response) => (
+    response.request().method() === 'GET'
+    && new URL(response.url()).pathname === '/goals/create'
+  ));
+  await proveKeyboard(recorder, 'goals', 'Create a goal', page, createLink);
+  await proveRequest(recorder, 'goals', 'Create a goal', await createNavigation, {
+    method: 'GET', path: '/goals/create', status: 200,
+  });
+
+  const createButton = page.getByRole('button', { name: 'Create goal' });
+  let createPosts = 0;
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname === '/goals/create') {
+      createPosts += 1;
+    }
+  });
+  await proveKeyboard(recorder, 'goal-create', 'Create goal', page, createButton);
+  const goalType = page.getByLabel('Goal type');
+  await recorder.prove('goal-create', 'Create goal', 'focus', async (check) => {
+    await check(expect(goalType).toBeFocused());
+  });
+  await recorder.prove('goal-create', 'Create goal', 'error', async (check) => {
+    await check(expect.poll(() => createPosts).toBe(0));
+    await check(expect(goalType).toHaveJSProperty('validity.valueMissing', true));
+  });
+  await recorder.prove('goal-create', 'Create goal', 'feedback', async (check) => {
+    await check(expect(goalType).toHaveJSProperty('validationMessage', 'Please select an item in the list.'));
+  });
+
+  const createNotifications = page.getByLabel('Notify me as I approach this goal');
+  await recorder.prove('goal-create', 'Notify me as I approach this goal', 'keyboard', async (check) => {
+    await createNotifications.focus();
+    await check(expect(createNotifications).toBeFocused());
+    await page.keyboard.press('Space');
+    await check(expect(createNotifications).not.toBeChecked());
+  });
+  await recorder.prove('goal-create', 'Notify me as I approach this goal', 'focus', async (check) => {
+    await check(expect(createNotifications).toBeFocused());
+  });
   await page.getByLabel('Goal type').selectOption('daily_pouches');
   await page.getByLabel('Target value').fill('7');
   await page.getByLabel('Notification threshold').fill('75');
-  await page.getByRole('button', { name: 'Create goal' }).click();
+  const createResponsePending = page.waitForResponse((response) => (
+    response.request().method() === 'POST'
+    && new URL(response.url()).pathname === '/goals/create'
+  ));
+  await createButton.focus();
+  await page.keyboard.press('Enter');
+  const createResponse = await createResponsePending;
+  await proveRequest(recorder, 'goal-create', 'Create goal', createResponse, {
+    method: 'POST', path: '/goals/create', status: 302,
+    payload: {
+      goal_type: 'daily_pouches', target_value: '7', end_date: '',
+      notification_threshold: '75',
+    },
+  });
 
   const active = page.locator('article.goal-row[data-goal-state="active"]', { hasText: 'Daily pouch ceiling' });
   await expect(active).toContainText('7 pouches');
-  await active.getByRole('link', { name: 'Adjust goal' }).click();
+  await recorder.prove('goal-create', 'Create goal', 'feedback', async (check) => {
+    await check(expect(page.getByRole('status')).toContainText('Goal created successfully!'));
+  });
+  await recorder.prove('goal-create', 'Create goal', 'persistence', async (check) => {
+    await check(expect(active).toContainText('7 pouches'));
+  });
+  const adjustLink = active.getByRole('link', { name: 'Adjust goal' });
+  const adjustResponsePending = page.waitForResponse((response) => (
+    response.request().method() === 'GET'
+    && /\/goals\/edit\/\d+$/.test(new URL(response.url()).pathname)
+  ));
+  await proveKeyboard(recorder, 'goals', 'Adjust goal', page, adjustLink);
+  const adjustResponse = await adjustResponsePending;
+  await recorder.prove('goals', 'Adjust goal', 'request', async (check) => {
+    await check(expect(adjustResponse.request().method()).toBe('GET'));
+    await check(expect(adjustResponse.status()).toBe(200));
+    await check(expect(new URL(adjustResponse.url()).pathname).toMatch(/^\/goals\/edit\/\d+$/));
+    await check(expect(adjustResponse.request().postData()).toBeNull());
+  });
   const activeCheckbox = page.getByLabel('Keep this goal active');
   await expect(activeCheckbox).toBeChecked();
+  const editNotifications = page.getByLabel('Notify me as I approach this goal');
+  await recorder.prove('goal-create', 'Notify me as I approach this goal', 'persistence', async (check) => {
+    await check(expect(editNotifications).not.toBeChecked());
+  });
+
+  const saveButton = page.getByRole('button', { name: 'Save changes' });
+  await page.getByLabel('Target value').fill('');
+  await proveKeyboard(recorder, 'goal-edit', 'Save changes', page, saveButton);
+  const targetValue = page.getByLabel('Target value');
+  await recorder.prove('goal-edit', 'Save changes', 'focus', async (check) => {
+    await check(expect(targetValue).toBeFocused());
+  });
+  await recorder.prove('goal-edit', 'Save changes', 'error', async (check) => {
+    await check(expect(targetValue).toHaveJSProperty('validity.valueMissing', true));
+  });
+  await recorder.prove('goal-edit', 'Save changes', 'feedback', async (check) => {
+    await check(expect(targetValue).toHaveJSProperty('validationMessage', 'Please fill out this field.'));
+  });
+
+  await recorder.prove('goal-edit', 'Keep this goal active', 'keyboard', async (check) => {
+    await activeCheckbox.focus();
+    await check(expect(activeCheckbox).toBeFocused());
+    await page.keyboard.press('Space');
+    await check(expect(activeCheckbox).not.toBeChecked());
+    await page.keyboard.press('Space');
+    await check(expect(activeCheckbox).toBeChecked());
+  });
+  await recorder.prove('goal-edit', 'Keep this goal active', 'focus', async (check) => {
+    await check(expect(activeCheckbox).toBeFocused());
+  });
+  await recorder.prove('goal-edit', 'Notify me as I approach this goal', 'keyboard', async (check) => {
+    await editNotifications.focus();
+    await check(expect(editNotifications).toBeFocused());
+    await page.keyboard.press('Space');
+    await check(expect(editNotifications).toBeChecked());
+  });
+  await recorder.prove('goal-edit', 'Notify me as I approach this goal', 'focus', async (check) => {
+    await check(expect(editNotifications).toBeFocused());
+  });
   await page.getByLabel('Target value').fill('6');
-  await expect(activeCheckbox).toBeChecked();
-  await page.getByRole('button', { name: 'Save changes' }).click();
+  const saveResponsePending = page.waitForResponse((response) => (
+    response.request().method() === 'POST'
+    && /\/goals\/edit\/\d+$/.test(new URL(response.url()).pathname)
+  ));
+  await saveButton.focus();
+  await page.keyboard.press('Enter');
+  const saveResponse = await saveResponsePending;
+  await recorder.prove('goal-edit', 'Save changes', 'request', async (check) => {
+    await check(expect(saveResponse.request().method()).toBe('POST'));
+    await check(expect(saveResponse.status()).toBe(302));
+    await check(expect(new URL(saveResponse.url()).pathname).toMatch(/^\/goals\/edit\/\d+$/));
+    const payload = Object.fromEntries(new URLSearchParams(saveResponse.request().postData() || ''));
+    await check(expect(payload).toEqual(expect.objectContaining({
+      target_value: '6', end_date: '', enable_notifications: 'on',
+      notification_threshold: '75', is_active: 'on',
+    })));
+  });
   await expect(page.locator('article.goal-row[data-goal-state="active"]')).toContainText('6 pouches');
+  await recorder.prove('goal-edit', 'Save changes', 'feedback', async (check) => {
+    await check(expect(page.getByRole('status')).toContainText('Goal updated successfully!'));
+  });
+  await recorder.prove('goal-edit', 'Save changes', 'persistence', async (check) => {
+    await check(expect(page.locator('article.goal-row[data-goal-state="active"]')).toContainText('6 pouches'));
+  });
+
+  await page.locator('article.goal-row[data-goal-state="active"]')
+    .getByRole('link', { name: 'Adjust goal' }).click();
+  await recorder.prove('goal-edit', 'Keep this goal active', 'persistence', async (check) => {
+    await check(expect(page.getByLabel('Keep this goal active')).toBeChecked());
+  });
+  await recorder.prove('goal-edit', 'Notify me as I approach this goal', 'persistence', async (check) => {
+    await check(expect(page.getByLabel('Notify me as I approach this goal')).toBeChecked());
+  });
+  await page.getByRole('link', { name: 'Back to goals' }).click();
 
   const pauseButton = page.locator('article.goal-row[data-goal-state="active"]')
     .getByRole('button', { name: 'Pause goal' });
   await expect(pauseButton).toBeVisible();
-  await pauseButton.click();
+  const pauseResponsePending = page.waitForResponse((response) => (
+    response.request().method() === 'POST'
+    && /\/goals\/toggle\/\d+$/.test(new URL(response.url()).pathname)
+  ));
+  await proveKeyboard(recorder, 'goals', 'Pause goal', page, pauseButton);
+  const pauseResponse = await pauseResponsePending;
+  await recorder.prove('goals', 'Pause goal', 'request', async (check) => {
+    await check(expect(pauseResponse.request().method()).toBe('POST'));
+    await check(expect(pauseResponse.status()).toBe(302));
+    await check(expect(new URL(pauseResponse.url()).pathname).toMatch(/^\/goals\/toggle\/\d+$/));
+  });
   const inactive = page.locator('article.goal-row[data-goal-state="inactive"]', { hasText: 'Daily pouch ceiling' });
   await expect(inactive).toBeVisible();
+  await recorder.prove('goals', 'Pause goal', 'feedback', async (check) => {
+    await check(expect(page.getByRole('status')).toContainText('Goal deactivated successfully.'));
+  });
+  await recorder.prove('goals', 'Pause goal', 'persistence', async (check) => {
+    await check(expect(inactive).toBeVisible());
+  });
   await expect(inactive.getByRole('button', { name: 'Resume goal' })).toHaveCount(0);
   await expect(inactive.locator('form[action*="/goals/toggle/"]')).toHaveCount(0);
 
+  page.once('dialog', (dialog) => dialog.dismiss());
+  await proveKeyboard(
+    recorder, 'goals', 'Delete goal', page,
+    inactive.getByRole('button', { name: 'Delete goal' }),
+  );
+  await recorder.prove('goals', 'Delete goal', 'error', async (check) => {
+    await check(expect(inactive).toBeVisible());
+  });
+
+  const deleteResponsePending = page.waitForResponse((response) => (
+    response.request().method() === 'POST'
+    && /\/goals\/delete\/\d+$/.test(new URL(response.url()).pathname)
+  ));
   page.once('dialog', (dialog) => dialog.accept());
-  await inactive.getByRole('button', { name: 'Delete goal' }).click();
+  await inactive.getByRole('button', { name: 'Delete goal' }).focus();
+  await page.keyboard.press('Enter');
+  const deleteResponse = await deleteResponsePending;
+  await recorder.prove('goals', 'Delete goal', 'request', async (check) => {
+    await check(expect(deleteResponse.request().method()).toBe('POST'));
+    await check(expect(deleteResponse.status()).toBe(302));
+    await check(expect(new URL(deleteResponse.url()).pathname).toMatch(/^\/goals\/delete\/\d+$/));
+  });
   await expect(page.locator('article.goal-row', { hasText: 'Daily pouch ceiling' })).toHaveCount(0);
-  for (const [state, action, dimensions] of [
-    ['goals', 'Adjust goal', ['keyboard', 'request']],
-    ['goals', 'Create a goal', ['keyboard', 'request']],
-    ['goals', 'Delete goal', ['error', 'keyboard', 'persistence', 'request']],
-    ['goals', 'Pause goal', ['keyboard', 'persistence', 'request']],
-    ['goal-create', 'Create goal', ['error', 'focus', 'keyboard', 'persistence', 'request']],
-    ['goal-create', 'Notify me as I approach this goal', ['focus', 'keyboard', 'persistence']],
-    ['goal-edit', 'Keep this goal active', ['focus', 'keyboard', 'persistence']],
-    ['goal-edit', 'Notify me as I approach this goal', ['focus', 'keyboard', 'persistence']],
-    ['goal-edit', 'Save changes', ['error', 'focus', 'keyboard', 'persistence', 'request']],
-  ]) recorder.record(state, action, dimensions);
+  await recorder.prove('goals', 'Delete goal', 'persistence', async (check) => {
+    await check(expect(page.locator('article.goal-row', { hasText: 'Daily pouch ceiling' })).toHaveCount(0));
+  });
   recorder.assertComplete();
+  guard.assertClean(expect, { stateName: 'goals supporting owner' });
+  guard.stop();
   expect(errors).toEqual([]);
 });
 

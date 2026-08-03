@@ -142,6 +142,17 @@ function handleQuickAdd(event) {
     button.dataset.busy = 'true';
     button.textContent = 'Adding...';
     button.disabled = true;
+    let userTransferredFocus = false;
+    const notePointerTransfer = (pointerEvent) => {
+        if (pointerEvent.target !== button) userTransferredFocus = true;
+    };
+    const noteKeyboardTransfer = (keyboardEvent) => {
+        if (keyboardEvent.key === 'Tab' || keyboardEvent.target !== button) {
+            userTransferredFocus = true;
+        }
+    };
+    documentObject?.addEventListener?.('pointerdown', notePointerTransfer, true);
+    documentObject?.addEventListener?.('keydown', noteKeyboardTransfer, true);
     fetch('/log/api/quick_add', {
         method: 'POST',
         headers: {
@@ -170,6 +181,8 @@ function handleQuickAdd(event) {
         showNotification('An error occurred while adding the log entry', 'error');
     })
     .finally(() => {
+        documentObject?.removeEventListener?.('pointerdown', notePointerTransfer, true);
+        documentObject?.removeEventListener?.('keydown', noteKeyboardTransfer, true);
         button.textContent = originalText;
         button.disabled = false;
         delete button.dataset.busy;
@@ -177,6 +190,7 @@ function handleQuickAdd(event) {
             initiatedWithFocus
             && button.isConnected
             && documentObject.visibilityState !== 'hidden'
+            && !userTransferredFocus
         ) button.focus({ preventScroll: true });
     });
 }

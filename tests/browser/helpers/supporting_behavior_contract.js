@@ -1,4 +1,7 @@
-const { DIMENSIONS } = require('./core_behavior_contract');
+const { DIMENSIONS: CORE_DIMENSIONS } = require('./core_behavior_contract');
+
+
+const DIMENSIONS = Object.freeze([...CORE_DIMENSIONS, 'feedback']);
 
 
 const SUPPORTING_OWNER_TITLES = Object.freeze({
@@ -28,6 +31,7 @@ const SUPPORTING_OWNER_TITLES = Object.freeze({
 const PROFILE_EVIDENCE = Object.freeze({
   skip: {
     error: ['not-applicable', 'same-document focus has no recoverable error branch'],
+    feedback: ['not-applicable', 'the focused main region is the direct outcome'],
     focus: ['asserted', 'the exact main region receives focus'],
     keyboard: ['asserted', 'the exact skip link is focused and activated with Enter'],
     loading: ['not-applicable', 'same-document focus is synchronous'],
@@ -36,6 +40,7 @@ const PROFILE_EVIDENCE = Object.freeze({
   },
   navigation: {
     error: ['not-applicable', 'the native destination has no application-managed recovery branch'],
+    feedback: ['not-applicable', 'the destination document is the direct outcome'],
     focus: ['not-applicable', 'this full-page link makes no managed focus promise'],
     keyboard: ['asserted', 'the exact link is focused and activated with Enter'],
     loading: ['not-applicable', 'the browser owns full-document loading'],
@@ -44,6 +49,7 @@ const PROFILE_EVIDENCE = Object.freeze({
   },
   primaryNavigation: {
     error: ['not-applicable', 'the native destination has no application-managed recovery branch'],
+    feedback: ['not-applicable', 'the destination document is the direct outcome'],
     focus: ['not-applicable', 'this full-page link makes no managed focus-transfer promise'],
     keyboard: ['asserted', 'the exact primary link is focused and activated with Enter'],
     loading: ['not-applicable', 'the browser owns full-document loading'],
@@ -52,6 +58,7 @@ const PROFILE_EVIDENCE = Object.freeze({
   },
   draftToggle: {
     error: ['not-applicable', 'the local draft control has no asynchronous error branch'],
+    feedback: ['not-applicable', 'the native checked state is the direct draft outcome'],
     focus: ['asserted', 'the exact control retains focus after keyboard activation'],
     keyboard: ['asserted', 'the exact checkbox is toggled with Space'],
     loading: ['not-applicable', 'the local draft change is synchronous'],
@@ -60,6 +67,7 @@ const PROFILE_EVIDENCE = Object.freeze({
   },
   localControl: {
     error: ['not-applicable', 'the local control has no asynchronous error branch'],
+    feedback: ['not-applicable', 'the opened or closed control state is the direct outcome'],
     focus: ['asserted', 'the exact control retains or returns focus'],
     keyboard: ['asserted', 'the exact control is activated from the keyboard'],
     loading: ['not-applicable', 'the local state change is synchronous'],
@@ -68,6 +76,7 @@ const PROFILE_EVIDENCE = Object.freeze({
   },
   formMutation: {
     error: ['not-applicable', 'the owner verifies the successful canonical mutation'],
+    feedback: ['asserted', 'the exact success status or canonical result is visible'],
     focus: ['not-applicable', 'the full-document result has no managed focus transfer'],
     keyboard: ['asserted', 'the exact submit control is activated with Enter'],
     loading: ['not-applicable', 'the action completes through full-document navigation'],
@@ -76,6 +85,7 @@ const PROFILE_EVIDENCE = Object.freeze({
   },
   validatedMutation: {
     error: ['asserted', 'invalid input is rejected before the successful retry'],
+    feedback: ['asserted', 'exact invalid and successful result feedback are visible'],
     focus: ['asserted', 'the invalid field receives focus'],
     keyboard: ['asserted', 'the exact submit control is activated with Enter'],
     loading: ['not-applicable', 'native validation or full-document navigation owns completion'],
@@ -84,6 +94,7 @@ const PROFILE_EVIDENCE = Object.freeze({
   },
   validationOnly: {
     error: ['asserted', 'the exact invalid credential or confirmation result is asserted'],
+    feedback: ['asserted', 'the exact rejected mutation message is visible'],
     focus: ['not-applicable', 'the full-page server validation result makes no managed focus promise'],
     keyboard: ['asserted', 'the exact submit control is activated with Enter'],
     loading: ['not-applicable', 'the full-document validation response owns completion'],
@@ -92,6 +103,7 @@ const PROFILE_EVIDENCE = Object.freeze({
   },
   asyncAction: {
     error: ['asserted', 'a controlled failure exposes inline recovery after a successful attempt'],
+    feedback: ['asserted', 'exact pending, success, and failure live messages are visible'],
     focus: ['asserted', 'the exact trigger retains focus through completion'],
     keyboard: ['asserted', 'the exact trigger is activated with Enter'],
     loading: ['asserted', 'disabled, busy, and live pending feedback are asserted while held'],
@@ -100,7 +112,8 @@ const PROFILE_EVIDENCE = Object.freeze({
   },
   download: {
     error: ['not-applicable', 'the successful export is the audited boundary'],
-    focus: ['asserted', 'the exact download trigger retains focus'],
+    feedback: ['not-applicable', 'the attachment delivery is the direct browser outcome'],
+    focus: ['not-applicable', 'attachment delivery does not define a managed post-download focus target'],
     keyboard: ['asserted', 'the exact download trigger is activated with Enter'],
     loading: ['not-applicable', 'the browser owns attachment delivery'],
     persistence: ['not-applicable', 'a download does not mutate application state'],
@@ -108,6 +121,7 @@ const PROFILE_EVIDENCE = Object.freeze({
   },
   offlineToggle: {
     error: ['asserted', 'a controlled server failure restores the previous value and exposes recovery'],
+    feedback: ['asserted', 'exact pending, success, and failure live messages are visible'],
     focus: ['asserted', 'the exact checkbox retains focus after completion'],
     keyboard: ['asserted', 'the exact checkbox is toggled with Space'],
     loading: ['asserted', 'disabled, busy, and live pending feedback are asserted while held'],
@@ -116,6 +130,7 @@ const PROFILE_EVIDENCE = Object.freeze({
   },
   destructiveMutation: {
     error: ['asserted', 'wrong confirmation preserves records before the accepted confirmation'],
+    feedback: ['asserted', 'exact rejected and accepted mutation outcomes are visible'],
     focus: ['asserted', 'the rejected confirmation field receives focus or error association'],
     keyboard: ['asserted', 'the exact destructive control is activated with Enter'],
     loading: ['not-applicable', 'the action completes through full-document navigation'],
@@ -124,6 +139,7 @@ const PROFILE_EVIDENCE = Object.freeze({
   },
   rowDelete: {
     error: ['asserted', 'dismissed native confirmation preserves the row before accepted deletion'],
+    feedback: ['not-applicable', 'native confirmation and row presence are the direct outcomes'],
     focus: ['not-applicable', 'browser-native confirmation owns focus while open'],
     keyboard: ['asserted', 'the exact delete trigger is activated with Enter'],
     loading: ['not-applicable', 'the action completes through full-document navigation'],
@@ -132,6 +148,7 @@ const PROFILE_EVIDENCE = Object.freeze({
   },
   quickMutation: {
     error: ['asserted', 'a controlled failure preserves retry state before success'],
+    feedback: ['asserted', 'exact pending, failure, and success feedback are visible'],
     focus: ['asserted', 'the exact quick action retains focus after failure and retry'],
     keyboard: ['asserted', 'the exact quick action is activated with Enter'],
     loading: ['asserted', 'the pending action is held and duplicate activation is suppressed'],
@@ -140,6 +157,7 @@ const PROFILE_EVIDENCE = Object.freeze({
   },
   cravingRecord: {
     error: ['asserted', 'native validation and controlled server failure preserve the form before retry'],
+    feedback: ['asserted', 'exact failure and success form statuses are visible'],
     focus: ['asserted', 'the invalid field and submit trigger focus outcomes are asserted'],
     keyboard: ['asserted', 'the exact submit control is activated with Enter'],
     loading: ['asserted', 'disabled pending state and duplicate suppression are asserted while held'],
@@ -148,6 +166,7 @@ const PROFILE_EVIDENCE = Object.freeze({
   },
   disclosure: {
     error: ['not-applicable', 'the local disclosure has no asynchronous error branch'],
+    feedback: ['not-applicable', 'the open disclosure state is the direct outcome'],
     focus: ['asserted', 'the exact summary retains focus after activation'],
     keyboard: ['asserted', 'the exact summary is closed and reopened with Enter'],
     loading: ['not-applicable', 'the disclosure opens synchronously'],
@@ -284,7 +303,7 @@ group(SUPPORTING_OWNER_TITLES.dataExact, [
   ]),
 ]);
 
-group(SUPPORTING_OWNER_TITLES.logbook, [
+group(SUPPORTING_OWNER_TITLES.loggingGaps, [
   ['logbook', 'Add log', 'localControl'],
   ['logbook', 'Apply filters', 'navigation'],
   ['logbook', 'Bulk add', 'navigation'],
@@ -300,8 +319,6 @@ group(SUPPORTING_OWNER_TITLES.logbook, [
   ['log-add', 'Edit', 'navigation'],
   ['log-bulk', 'Add entries', 'validatedMutation'],
   ['log-edit', 'Save changes', 'validatedMutation'],
-]);
-group(SUPPORTING_OWNER_TITLES.loggingGaps, [
   ['logbook', 'Log one Release Fixture, 3.5 milligrams', 'quickMutation'],
   ['logbook', 'Log one Steady Mint, 6 milligrams', 'quickMutation'],
   ['log-add', 'Log one Release Fixture, 3.5 milligrams', 'quickMutation'],
@@ -425,20 +442,34 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
   const expected = SUPPORTING_BEHAVIOR_OBLIGATIONS.filter((entry) => entry.owner === owner);
   const recordedEvidence = new Set();
   return Object.freeze({
-    record(state, action, observedDimensions) {
+    async prove(state, action, dimension, assertion) {
       const obligation = expected.find((entry) => (
         entry.state === state && entry.action === action
       ));
-      expectApi(obligation, `${owner} owns ${state} › ${action}`).toBeDefined();
-      if (!obligation) return;
-      const applicable = assertedDimensions(obligation);
-      for (const dimension of observedDimensions) {
-        expectApi(
-          applicable,
-          `${state} › ${action} permits recorded ${dimension} evidence`,
-        ).toContain(dimension);
-        recordedEvidence.add(evidenceToken(state, action, dimension));
+      if (!obligation) {
+        const owned = expected.map((entry) => `${entry.state} › ${entry.action}`).join(', ');
+        throw new Error(`${owner} owns ${owned}; not ${state} › ${action}`);
       }
+      const applicable = assertedDimensions(obligation);
+      if (!applicable.includes(dimension)) {
+        throw new Error(`${state} › ${action} ${dimension} is not asserted`);
+      }
+      if (typeof assertion !== 'function') {
+        throw new TypeError(`${state} › ${action} ${dimension} requires an assertion callback`);
+      }
+
+      let assertionCount = 0;
+      const check = async (assertionResult) => {
+        assertionCount += 1;
+        return assertionResult;
+      };
+      await assertion(check);
+      if (assertionCount === 0) {
+        throw new Error(
+          `${state} › ${action} ${dimension} must execute at least one assertion`,
+        );
+      }
+      recordedEvidence.add(evidenceToken(state, action, dimension));
     },
     assertComplete() {
       const expectedEvidence = expected.flatMap((obligation) => (

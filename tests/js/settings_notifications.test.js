@@ -25,10 +25,18 @@ function deferred() {
 
 function fixtures() {
   const attributes = new Map();
+  const documentObject = { activeElement: null, visibilityState: 'visible' };
   const button = {
     disabled: false,
     textContent: 'Test connection',
     dataset: {},
+    isConnected: true,
+    ownerDocument: documentObject,
+    focusCalls: 0,
+    focus() {
+      this.focusCalls += 1;
+      documentObject.activeElement = this;
+    },
   };
   const status = {
     hidden: true,
@@ -37,7 +45,7 @@ function fixtures() {
     setAttribute(name, value) { attributes.set(name, String(value)); },
     getAttribute(name) { return attributes.get(name) ?? null; },
   };
-  return { button, status };
+  return { button, documentObject, status };
 }
 
 test('runNotificationAction exposes pending state and restores a successful action', async () => {
@@ -118,4 +126,26 @@ test('runNotificationAction ignores a duplicate call while the button is busy', 
   assert.equal(calls, 1);
   request.resolve({ success: true, message: 'Done.' });
   assert.equal(await first, true);
+});
+
+
+test('runNotificationAction restores focus only while the initiating interaction still owns it', async () => {
+  const { runNotificationAction } = await loadModule();
+
+  for (const mode of ['normal', 'moved', 'hidden', 'disconnected']) {
+    const current = fixtures();
+    const pending = deferred();
+    current.documentObject.activeElement = current.button;
+    const result = runNotificationAction({
+      button: current.button,
+      status: current.status,
+      request: () => pending.promise,
+    });
+    if (mode === 'moved') current.documentObject.activeElement = { id: 'next-control' };
+    if (mode === 'hidden') current.documentObject.visibilityState = 'hidden';
+    if (mode === 'disconnected') current.button.isConnected = false;
+    pending.resolve({ success: true, message: 'Done.' });
+    assert.equal(await result, true);
+    assert.equal(current.button.focusCalls, mode === 'normal' ? 1 : 0, mode);
+  }
 });
