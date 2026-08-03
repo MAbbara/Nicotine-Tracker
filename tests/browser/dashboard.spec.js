@@ -210,21 +210,7 @@ test('Dashboard supporting actions cover ranges, destinations, and disclosure in
     ]) {
       await page.goto(`/dashboard/?days=${item.from}`);
       const action = item.to === 365 ? '1 year' : `${item.to} days`;
-      const range = page.getByRole('link', { name: action, exact: true });
-      const evidence = recorder.forAction(state, action, { page, control: range });
-      const receipt = await evidence.run({
-        activation: { kind: 'keyboard', key: 'Enter' },
-        request: {
-          method: 'GET', path: /^\/dashboard\/$/,
-          search: `?days=${item.to}`, status: 200,
-        },
-        persistence: {
-          kind: 'locator', locator: page.locator('[data-dashboard-range-days]'),
-          property: 'attribute', name: 'data-dashboard-range-days',
-          expectedBefore: String(item.from), expectedAfter: String(item.to),
-        },
-      });
-      recorder.accept(receipt);
+      await recorder.runScenario(page, state, action, 'success');
       await expect(page.getByRole('link', { name: action, exact: true }))
         .toHaveAttribute('aria-current', 'page');
     }
@@ -235,39 +221,18 @@ test('Dashboard supporting actions cover ranges, destinations, and disclosure in
       ['Review Journey', '/journey/'],
     ]) {
       await page.goto('/dashboard/?days=30');
-      const control = page.getByRole('link', { name: action });
-      const evidence = recorder.forAction(state, action, { page, control });
-      recorder.accept(await evidence.run({
-        activation: { kind: 'keyboard', key: 'Enter' },
-        request: {
-          method: 'GET', path: new RegExp(`^${path.replaceAll('/', '\\/')}$`),
-          status: 200,
-        },
-      }));
+      await recorder.runScenario(page, state, action, 'success');
     }
 
     await page.goto('/dashboard/?days=30');
     if (state !== 'dashboard-empty') {
-      const summary = page.getByText('View daily values', { exact: true });
-      const details = summary.locator('..');
+      const details = page.getByText('View daily values', { exact: true }).locator('..');
       await expect(details).toHaveAttribute('open', '');
-      const evidence = recorder.forAction(
-        state, 'View daily values', { page, control: summary },
-      );
-      recorder.accept(await evidence.run({
-        activation: { kind: 'keyboard', key: 'Enter' },
-        outcome: { kind: 'attribute', locator: details, name: 'open', value: null },
-        focus: { mode: 'retained' },
-      }));
+      await recorder.runScenario(page, state, 'View daily values', 'close');
     } else {
       const action = 'Start with Today';
       const path = '/today/';
-      const control = page.getByRole('link', { name: action });
-      const evidence = recorder.forAction(state, action, { page, control });
-      recorder.accept(await evidence.run({
-        activation: { kind: 'keyboard', key: 'Enter' },
-        request: { method: 'GET', path: /^\/today\/$/, status: 200 },
-      }));
+      await recorder.runScenario(page, state, action, 'success');
     }
   }
 

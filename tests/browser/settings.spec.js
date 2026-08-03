@@ -18,33 +18,6 @@ async function keyboardActivate(page, locator) {
 }
 
 
-async function expectKeyboardNavigation(page, locator, expectedPath, evidence = null) {
-  if (evidence) {
-    const actionEvidence = evidence.recorder.forAction(evidence.state, evidence.action, {
-      page, control: locator,
-    });
-    evidence.recorder.accept(await actionEvidence.run({
-      activation: { kind: 'keyboard', key: 'Enter' },
-      request: {
-        method: 'GET',
-        path: new RegExp(`^${expectedPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`),
-        status: 200,
-      },
-    }));
-  } else {
-    const responsePending = page.waitForResponse((response) => (
-      response.request().isNavigationRequest()
-      && new URL(response.url()).pathname === expectedPath
-    ));
-    await keyboardActivate(page, locator);
-    const response = await responsePending;
-    expect(response.request().method()).toBe('GET');
-    expect(response.status()).toBe(200);
-  }
-  await expect.poll(() => new URL(page.url()).pathname).toBe(expectedPath);
-}
-
-
 async function accept(recorder, tokenPromise) {
   recorder.accept(await tokenPromise);
 }
@@ -89,36 +62,7 @@ test('Profile values persist and actions stay clear of mobile navigation', async
       && new URL(request.url()).pathname === '/settings/profile'
     ) profilePosts += 1;
   });
-  const age = page.getByLabel('Age');
-  const save = page.getByRole('button', { name: 'Save profile' });
-  await age.fill('17');
-  const evidence = recorder.forAction('profile', 'Save profile', { page, control: save });
-  recorder.accept(await evidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    focus: { mode: 'moved', locator: age },
-    error: { locator: age, validationMessage: 'Value must be greater than or equal to 18.' },
-    feedback: { locator: age, validationMessage: 'Value must be greater than or equal to 18.' },
-  }));
-  expect(profilePosts).toBe(0);
-
-  await age.fill(String(targetAge));
-  await page.getByLabel('Gender').selectOption('other');
-  await page.getByLabel('Weight').fill('81.4');
-  recorder.accept(await evidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    request: {
-      method: 'POST', path: /^\/settings\/profile$/, status: 302,
-      payload: { kind: 'form', exact: { age: String(targetAge), gender: 'other', weight: '81.4' } },
-      dynamicFields: { csrf_token: 'non-empty' },
-    },
-    feedback: {
-      locator: page.getByRole('status'), text: 'Profile updated successfully!',
-    },
-    persistence: {
-      kind: 'json', url: '/__test__/account-snapshot', path: 'profile.age',
-      expectedBefore: profileBefore.profile.age, expectedAfter: targetAge,
-    },
-  }));
+  await recorder.runScenario(page, 'profile', 'Save profile', 'invalid', 'success');
   expect(profilePosts).toBe(1);
 
   await expect(page).toHaveURL(/\/settings\/profile$/);
@@ -170,34 +114,8 @@ test('Preferences update with native controls and persist after reload', async (
 
   const preferredBrand = page.getByRole('checkbox', { name: 'Steady Mint' });
   if (await preferredBrand.isChecked()) await preferredBrand.uncheck();
-  const brandEvidence = recorder.forAction('preferences', 'Steady Mint', {
-    page, control: preferredBrand,
-  });
-  recorder.accept(await brandEvidence.run({
-    activation: { kind: 'keyboard', key: 'Space' },
-    outcome: { kind: 'checked', locator: preferredBrand, checked: true },
-    focus: { mode: 'retained' },
-  }));
-  const save = page.getByRole('button', { name: 'Save preferences' });
-  const saveEvidence = recorder.forAction('preferences', 'Save preferences', { page, control: save });
-  recorder.accept(await saveEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    request: {
-      method: 'POST', path: /^\/settings\/preferences$/, status: 302,
-      payload: { kind: 'form', exact: {
-        daily_reset_time: '04:30', preferred_brands: 'Steady Mint',
-        timezone: 'Asia/Riyadh', units_preference: targetUnits,
-      } }, dynamicFields: { csrf_token: 'non-empty' },
-    },
-    feedback: {
-      locator: page.getByRole('status'), text: 'Preferences updated successfully!',
-    },
-    persistence: {
-      kind: 'json', url: '/__test__/account-snapshot',
-      path: 'preferences.units_preference',
-      expectedBefore: preferencesBefore.preferences.units_preference, expectedAfter: targetUnits,
-    },
-  }));
+  await recorder.runScenario(page, 'preferences', 'Steady Mint', 'toggle');
+  await recorder.runScenario(page, 'preferences', 'Save preferences', 'success');
 
   await expect(page).toHaveURL(/\/settings\/preferences$/);
   await expect(page.getByRole('status')).toContainText('Preferences updated successfully!');
@@ -258,49 +176,10 @@ test('Reminders persist and async actions expose success and failure feedback', 
   const recorder = createSupportingBehaviorRecorder(
     SUPPORTING_OWNER_TITLES.settingsReminders, expect,
   );
-  let discordRequests = 0;
-  let weeklyRequests = 0;
-  let releaseDiscordSuccess;
-  let releaseWeeklySuccess;
-  const discordSuccessGate = new Promise((resolve) => { releaseDiscordSuccess = resolve; });
-  const weeklySuccessGate = new Promise((resolve) => { releaseWeeklySuccess = resolve; });
-  const discordBodies = [];
-  const weeklyBodies = [];
   let dialogs = 0;
   page.on('dialog', async (dialog) => {
     dialogs += 1;
     await dialog.dismiss();
-  });
-
-  await page.route('**/settings/test-discord-webhook', async (route) => {
-    discordRequests += 1;
-    discordBodies.push(route.request().postDataJSON());
-    expect(route.request().headers()['x-csrftoken']).toBeTruthy();
-    const success = discordRequests === 1;
-    if (success) await discordSuccessGate;
-    await route.fulfill({
-      status: success ? 200 : 503,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        success,
-        message: success ? 'Discord connection confirmed.' : 'Discord rejected the test.',
-      }),
-    });
-  });
-  await page.route('**/settings/notifications/trigger-weekly', async (route) => {
-    weeklyRequests += 1;
-    weeklyBodies.push(route.request().postDataJSON());
-    expect(route.request().headers()['x-csrftoken']).toBeTruthy();
-    const success = weeklyRequests === 1;
-    if (success) await weeklySuccessGate;
-    await route.fulfill({
-      status: success ? 200 : 503,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        success,
-        message: success ? 'Weekly report queued.' : 'Weekly report could not be queued.',
-      }),
-    });
   });
 
   await login(page);
@@ -357,135 +236,29 @@ test('Reminders persist and async actions expose success and failure feedback', 
       await toggle.uncheck();
       await expect(toggle).not.toBeChecked();
     }
-    const evidence = recorder.forAction('reminders', name, { page, control: toggle });
-    recorder.accept(await evidence.run({
-      activation: { kind: 'keyboard', key: 'Space' },
-      outcome: { kind: 'checked', locator: toggle, checked: true },
-      focus: { mode: 'retained' },
-    }));
+    await recorder.runScenario(page, 'reminders', name, 'toggle');
   }
   await page.getByLabel('Discord webhook URL').fill('https://discord.com/api/webhooks/example/token');
   await page.getByLabel('Daily reminder time').fill('09:10');
   await page.getByLabel('Quiet hours start').fill('21:30');
   await page.getByLabel('Quiet hours end').fill('06:15');
   await page.getByLabel('Delivery frequency').selectOption('weekly');
-  const saveButton = page.getByRole('button', { name: 'Save reminders' });
-  const saveEvidence = recorder.forAction('reminders', 'Save reminders', {
-    page, control: saveButton,
-  });
-  recorder.accept(await saveEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    request: { method: 'POST', path: /^\/settings\/notifications$/, status: 302,
-      payload: { kind: 'form', exact: {
-        notification_channel: ['email', 'discord'],
-        discord_webhook: 'https://discord.com/api/webhooks/example/token',
-        goal_notifications: 'on', achievement_notifications: 'on', daily_reminders: 'on',
-        weekly_reports: 'on', reminder_time: '09:10', quiet_hours_start: '21:30',
-        quiet_hours_end: '06:15', notification_frequency: 'weekly',
-      } }, dynamicFields: { csrf_token: 'non-empty' } },
-    feedback: { locator: page.getByRole('status'), text: 'Notification settings updated successfully!' },
-    persistence: {
-      kind: 'json', url: '/__test__/account-snapshot', path: 'preferences.weekly_reports',
-      expectedBefore: false, expectedAfter: true,
-    },
-  }));
+  await recorder.runScenario(page, 'reminders', 'Save reminders', 'success');
 
   const discordButton = page.locator('#test-discord-webhook');
   const discordStatus = page.locator('#discord-test-status');
-  const discordEvidence = recorder.forAction(
-    'reminders', 'Test Discord connection', { page, control: discordButton },
+  await recorder.runScenario(
+    page, 'reminders', 'Test Discord connection', 'success', 'failure',
   );
-  const discordSuccessReceipt = discordEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    request: { method: 'POST', path: /^\/settings\/test-discord-webhook$/, status: 200,
-      payload: { kind: 'json', exact: {
-        webhook_url: 'https://discord.com/api/webhooks/example/token',
-      } } },
-    loading: { disabled: true, text: 'Testing…',
-      status: { locator: discordStatus, text: 'Testing…' } },
-    feedback: { locator: discordStatus, text: 'Discord connection confirmed.' },
-    focus: { mode: 'retained' },
-  });
-  await expect.poll(() => discordRequests).toBe(1);
-  await expect(discordButton).toBeDisabled();
-  await expect(discordButton).toHaveText('Testing…');
-  await expect(discordStatus).toHaveText('Testing…');
-  await expect(discordStatus).toHaveAttribute('data-state', 'loading');
-  await discordButton.evaluate((button) => {
-    button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-  });
-  await expect.poll(() => discordRequests).toBe(1);
-  releaseDiscordSuccess();
-  recorder.accept(await discordSuccessReceipt);
-  await expect(discordStatus).toHaveText('Discord connection confirmed.');
-  await expect(discordStatus).toHaveAttribute('data-state', 'success');
-  await expect(discordButton).toBeEnabled();
-  await expect(discordButton).toBeFocused();
-  await page.getByRole('checkbox', { name: 'Discord' }).uncheck();
-  await expect(discordButton).toBeDisabled();
-  await page.getByRole('checkbox', { name: 'Discord' }).check();
-  await expect(discordButton).toBeEnabled();
-  recorder.accept(await discordEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    request: { method: 'POST', path: /^\/settings\/test-discord-webhook$/, status: 503,
-      payload: { kind: 'json', exact: {
-        webhook_url: 'https://discord.com/api/webhooks/example/token',
-      } } },
-    error: { locator: discordStatus, text: 'Discord rejected the test.', state: 'error' },
-    feedback: { locator: discordStatus, text: 'Discord rejected the test.' },
-    focus: { mode: 'retained' },
-  }));
-  expect(discordRequests).toBe(2);
+  await expect(discordStatus).toHaveText('Discord rejected the test.');
 
   const weeklyButton = page.locator('#trigger-weekly-report');
   const weeklyStatus = page.locator('#weekly-report-status');
   await expect(weeklyButton).toBeEnabled();
-  const weeklyEvidence = recorder.forAction(
-    'reminders', 'Send weekly report', { page, control: weeklyButton },
+  await recorder.runScenario(
+    page, 'reminders', 'Send weekly report', 'success', 'failure',
   );
-  const weeklySuccessReceipt = weeklyEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    request: { method: 'POST', path: /^\/settings\/notifications\/trigger-weekly$/,
-      status: 200, payload: { kind: 'json', exact: {} } },
-    loading: { disabled: true, text: 'Sending…' },
-    feedback: { locator: weeklyStatus, text: 'Weekly report queued.' },
-    focus: { mode: 'retained' },
-  });
-  await expect.poll(() => weeklyRequests).toBe(1);
-  await expect(weeklyButton).toBeDisabled();
-  await expect(weeklyButton).toHaveText('Sending…');
-  await expect(weeklyStatus).toHaveAttribute('data-state', 'loading');
-  await weeklyButton.evaluate((button) => {
-    button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-  });
-  await expect.poll(() => weeklyRequests).toBe(1);
-  releaseWeeklySuccess();
-  recorder.accept(await weeklySuccessReceipt);
-  await expect(weeklyStatus).toHaveText('Weekly report queued.');
-  await expect(weeklyStatus).toHaveAttribute('data-state', 'success');
-  await expect(weeklyButton).toBeEnabled();
-  await expect(weeklyButton).toBeFocused();
-  await page.getByRole('checkbox', { name: 'Weekly progress report' }).uncheck();
-  await expect(weeklyButton).toBeDisabled();
-  await page.getByRole('checkbox', { name: 'Weekly progress report' }).check();
-  await expect(weeklyButton).toBeEnabled();
-  recorder.accept(await weeklyEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    request: { method: 'POST', path: /^\/settings\/notifications\/trigger-weekly$/,
-      status: 503, payload: { kind: 'json', exact: {} } },
-    error: { locator: weeklyStatus, text: 'Weekly report could not be queued.', state: 'error' },
-    feedback: { locator: weeklyStatus, text: 'Weekly report could not be queued.' },
-    focus: { mode: 'retained' },
-  }));
-  expect(weeklyRequests).toBe(2);
-
-  expect(discordRequests).toBe(2);
-  expect(weeklyRequests).toBe(2);
-  expect(discordBodies).toEqual([
-    { webhook_url: 'https://discord.com/api/webhooks/example/token' },
-    { webhook_url: 'https://discord.com/api/webhooks/example/token' },
-  ]);
-  expect(weeklyBodies).toEqual([{}, {}]);
+  await expect(weeklyStatus).toHaveText('Weekly report could not be queued.');
   expect(dialogs).toBe(0);
 
   await page.unroute('**/settings/test-discord-webhook');
@@ -617,113 +390,19 @@ test('Data privacy controls persist and Statistics hands off to Insights', async
   await expect(page.locator('.data-section h2')).toHaveText([
     'Export', 'Offline use', 'Anonymize', 'Delete logs', 'Delete account',
   ]);
-  const exportDownload = page.waitForEvent('download');
-  const exportButton = page.getByRole('button', { name: 'Download Data' });
-  const exportEvidence = recorder.forAction('data', 'Download Data', {
-    page, control: exportButton,
-  });
-  recorder.accept(await exportEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    request: { method: 'POST', path: /^\/settings\/data$/, status: 200,
-      settleNavigation: false, payload: { kind: 'form', exact: { action: 'export_data' } },
-      dynamicFields: { csrf_token: 'non-empty' } },
-  }));
-  const download = await exportDownload;
-  expect(download.suggestedFilename()).toMatch(/^nicotine_tracker_data_\d{4}-\d{2}-\d{2}\.json$/);
+  await recorder.runScenario(page, 'data', 'Download Data', 'success');
 
-  const offlineToggle = page.getByRole('checkbox', { name: 'Save actions for offline use' });
-  const offlineStatus = page.locator('#offline-queue-status');
-  await expect(offlineToggle).toBeChecked();
-  const offlineEvidence = recorder.forAction(
-    'data', 'Save actions for offline use', { page, control: offlineToggle },
+  await recorder.runScenario(
+    page, 'data', 'Save actions for offline use', 'success', 'failure',
   );
-  recorder.accept(await offlineEvidence.run({
-    activation: { kind: 'keyboard', key: 'Space' },
-    request: { method: 'PATCH', path: /^\/settings\/privacy\/offline-queue$/, status: 200,
-      payload: { kind: 'json', exact: { enabled: false } } },
-    feedback: { locator: offlineStatus, text: 'Offline saving is off.' },
-    persistence: { kind: 'json', url: '/__test__/account-snapshot',
-      path: 'preferences.offline_queue_enabled', expectedBefore: true, expectedAfter: false },
-  }));
-  await page.reload();
-  await expect(offlineToggle).not.toBeChecked();
-  await expect(page.locator('meta[name="offline-queue-enabled"]')).toHaveAttribute('content', 'false');
 
-  const enableResponsePending = page.waitForResponse((response) => (
-    response.request().method() === 'PATCH'
-    && new URL(response.url()).pathname === '/settings/privacy/offline-queue'
-  ));
-  await offlineToggle.focus();
-  await page.keyboard.press('Space');
-  const enableResponse = await enableResponsePending;
-  expect(enableResponse.status()).toBe(200);
-  expect(enableResponse.request().postDataJSON()).toEqual({ enabled: true });
-  await expect(offlineStatus).toContainText('Offline saving is on.');
-  await page.reload();
-  await expect(offlineToggle).toBeChecked();
-  await expect(page.locator('meta[name="offline-queue-enabled"]')).toHaveAttribute('content', 'true');
-
-  let offlineRequestCount = 0;
-  let offlineRequestBody;
-  let offlineCsrfToken;
-  let releaseFailure;
-  const heldFailure = new Promise((resolve) => { releaseFailure = resolve; });
-  await page.route('**/settings/privacy/offline-queue', async (route) => {
-    offlineRequestCount += 1;
-    offlineRequestBody = route.request().postDataJSON();
-    offlineCsrfToken = route.request().headers()['x-csrftoken'];
-    await heldFailure;
-    await route.fulfill({
-      status: 500,
-      contentType: 'application/json',
-      body: JSON.stringify({ success: false }),
-    });
-  });
-  const failedOfflineReceipt = offlineEvidence.run({
-    activation: { kind: 'keyboard', key: 'Space' },
-    request: { method: 'PATCH', path: /^\/settings\/privacy\/offline-queue$/, status: 500,
-      payload: { kind: 'json', exact: { enabled: false } } },
-    loading: { disabled: true,
-      status: { locator: offlineStatus, text: 'Saving offline preference…' } },
-    error: { locator: offlineStatus,
-      text: 'Offline preference could not be saved. Please try again.', state: 'error' },
-    feedback: { locator: offlineStatus,
-      text: 'Offline preference could not be saved. Please try again.' },
-    focus: { mode: 'retained' },
-    outcome: { kind: 'checked', locator: offlineToggle, checked: true },
-  });
-  await expect(offlineToggle).toBeDisabled();
-  await expect(offlineStatus).toHaveAttribute('data-state', 'loading');
-  await offlineToggle.evaluate((element) => {
-    element.dispatchEvent(new Event('change', { bubbles: true }));
-  });
-  await expect.poll(() => offlineRequestCount).toBe(1);
-  expect(offlineRequestBody).toEqual({ enabled: false });
-  expect(offlineCsrfToken).toBeTruthy();
-  releaseFailure();
-  recorder.accept(await failedOfflineReceipt);
-  await expect(offlineStatus).toHaveAttribute('data-state', 'error');
-  await expect(offlineToggle).toBeChecked();
-  await expect(offlineToggle).toBeEnabled();
-  await expect(offlineToggle).toBeFocused();
-  expect(enableResponse.request().postDataJSON()).toEqual({ enabled: true });
-  expect(offlineRequestBody).toEqual({ enabled: false });
-  expect(offlineCsrfToken).toBeTruthy();
-  await expect(page.locator('meta[name="offline-queue-enabled"]')).toHaveAttribute('content', 'true');
-
-  const accountDeletion = page.getByRole('link', { name: 'Review account deletion' });
-  await expect(accountDeletion).toHaveAttribute('href', '/settings/account#account-delete-title');
-  await expectKeyboardNavigation(page, accountDeletion, '/settings/account', {
-    recorder, state: 'data', action: 'Review account deletion',
-  });
+  await recorder.runScenario(page, 'data', 'Review account deletion', 'success');
   await expect(page.locator('#account-delete-title')).toBeVisible();
 
   await page.goto('/settings/statistics');
-  await expect(page.getByRole('heading', { name: 'Statistics', level: 1 })).toBeVisible();
   await expect(page.locator('dl.statistics-facts dt')).toHaveCount(6);
-  await expectKeyboardNavigation(
-    page, page.getByRole('link', { name: 'Explore patterns in Insights' }), '/insights/',
-    { recorder, state: 'statistics', action: 'Explore patterns in Insights' },
+  await recorder.runScenario(
+    page, 'statistics', 'Explore patterns in Insights', 'success',
   );
   await expect(page.getByRole('heading', { name: 'Insights', level: 1 })).toBeVisible();
   recorder.assertComplete();
@@ -747,65 +426,13 @@ test('Account rejects incorrect credentials without losing the form', async ({ p
   const guard = watchForProductProblems(page);
   await page.goto('/settings/account');
 
-  await page.getByLabel('New email address').fill('browser-changed@example.com');
-  const emailForm = page.locator('form', { has: page.locator('input[value="update_email"]') });
-  await emailForm.getByLabel('Current password').fill('wrong-password');
-  const emailButton = page.getByRole('button', { name: 'Update email' });
-  const emailEvidence = recorder.forAction('account', 'Update email', {
-    page, control: emailButton,
-  });
-  recorder.accept(await emailEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    request: { method: 'POST', path: /^\/settings\/account$/, status: 200,
-      payload: { kind: 'form', exact: {
-        action: 'update_email', password: 'wrong-password',
-        new_email: 'browser-changed@example.com',
-      } }, dynamicFields: { csrf_token: 'non-empty' } },
-    error: { locator: page.locator('#password-error'), text: 'Current password is incorrect.' },
-    feedback: { locator: page.locator('#password-error'), text: 'Current password is incorrect.' },
-    focus: { mode: 'moved', locator: emailForm.getByLabel('Current password') },
-  }));
+  await recorder.runScenario(page, 'account', 'Update email', 'rejected');
   await page.reload();
 
-  const passwordForm = page.locator('form', { has: page.locator('input[value="change_password"]') });
-  await passwordForm.getByLabel('Current password').fill('wrong-password');
-  await passwordForm.locator('#new_password').fill('replacement-password');
-  await passwordForm.locator('#confirm_password').fill('replacement-password');
-  const passwordButton = passwordForm.getByRole('button', { name: 'Change password' });
-  const passwordEvidence = recorder.forAction('account', 'Change password', {
-    page, control: passwordButton,
-  });
-  recorder.accept(await passwordEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    request: { method: 'POST', path: /^\/settings\/account$/, status: 200,
-      payload: { kind: 'form', exact: {
-        action: 'change_password', current_password: 'wrong-password',
-        new_password: 'replacement-password', confirm_password: 'replacement-password',
-      } }, dynamicFields: { csrf_token: 'non-empty' } },
-    error: { locator: page.locator('#current_password-error'), text: 'Current password is incorrect.' },
-    feedback: { locator: page.locator('#current_password-error'), text: 'Current password is incorrect.' },
-    focus: { mode: 'moved', locator: passwordForm.getByLabel('Current password') },
-  }));
+  await recorder.runScenario(page, 'account', 'Change password', 'rejected');
   await page.reload();
 
-  const deleteForm = page.locator('form', { has: page.locator('input[value="delete_account"]') });
-  await deleteForm.getByLabel('Password').fill('wrong-password');
-  await deleteForm.getByLabel(/delete my account/i).fill('not the confirmation');
-  const deleteButton = deleteForm.getByRole('button', { name: 'Delete account' });
-  const deleteEvidence = recorder.forAction('account', 'Delete account', {
-    page, control: deleteButton,
-  });
-  recorder.accept(await deleteEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    request: { method: 'POST', path: /^\/settings\/account$/, status: 200,
-      payload: { kind: 'form', exact: {
-        action: 'delete_account', password: 'wrong-password',
-        confirmation: 'not the confirmation',
-      } }, dynamicFields: { csrf_token: 'non-empty' } },
-    error: { locator: page.locator('#delete_password-error'), text: 'Password is incorrect.' },
-    feedback: { locator: page.locator('#delete_password-error'), text: 'Password is incorrect.' },
-    focus: { mode: 'moved', locator: deleteForm.getByLabel('Password') },
-  }));
+  await recorder.runScenario(page, 'account', 'Delete account', 'rejected');
 
   await expect(page.getByRole('heading', { name: 'Account', level: 1 })).toBeVisible();
   await expect(page.getByLabel('New email address')).toHaveValue('release-settings@example.com');
@@ -911,33 +538,10 @@ test('Account email, password, and deletion mutations work for a disposable user
       && new URL(request.url()).pathname === '/settings/account'
     ) accountPosts += 1;
   });
-  const newEmail = page.getByLabel('New email address');
-  const emailButton = emailForm.getByRole('button', { name: 'Update email' });
-  const emailEvidence = recorder.forAction('account-destructive', 'Update email', {
-    page, control: emailButton,
-  });
-  await emailForm.getByLabel('Current password').fill(originalPassword);
-  await newEmail.fill('not-an-email');
-  recorder.accept(await emailEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    focus: { mode: 'moved', locator: newEmail },
-    error: { locator: newEmail,
-      validationMessage: "Please include an '@' in the email address. 'not-an-email' is missing an '@'." },
-  }));
-  expect(accountPosts).toBe(0);
-
-  await newEmail.fill(updatedEmail);
-  recorder.accept(await emailEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    request: { method: 'POST', path: /^\/settings\/account$/, status: 302,
-      payload: { kind: 'form', exact: {
-        action: 'update_email', new_email: updatedEmail, password: originalPassword,
-      } }, dynamicFields: { csrf_token: 'non-empty' } },
-    feedback: { locator: page.getByRole('status'),
-      text: 'Email updated successfully! Please verify your new email address.' },
-    persistence: { kind: 'json', url: '/__test__/account-snapshot', path: 'profile.email',
-      expectedBefore: originalEmail, expectedAfter: updatedEmail },
-  }));
+  await recorder.runScenario(
+    page, 'account-destructive', 'Update email', 'invalid', 'success',
+  );
+  expect(accountPosts).toBe(1);
   await expect(page.getByLabel('New email address')).toHaveValue(updatedEmail);
   await page.reload();
   await expect(page.getByLabel('New email address')).toHaveValue(updatedEmail);
@@ -951,100 +555,25 @@ test('Account email, password, and deletion mutations work for a disposable user
     extra_data: { verification_url: expect.stringMatching(/^http:\/\/127\.0\.0\.1:5000\/auth\/verify_email\//) },
   }));
 
-  const passwordForm = page.locator('form', { has: page.locator('input[value="change_password"]') });
-  const passwordButton = passwordForm.getByRole('button', { name: 'Change password' });
-  const passwordEvidence = recorder.forAction('account-destructive', 'Change password', {
-    page, control: passwordButton,
-  });
-  await passwordForm.getByLabel('Current password').fill('wrong-password');
-  await passwordForm.locator('#new_password').fill(updatedPassword);
-  await passwordForm.locator('#confirm_password').fill(updatedPassword);
-  recorder.accept(await passwordEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    request: { method: 'POST', path: /^\/settings\/account$/, status: 200,
-      payload: { kind: 'form', exact: {
-        action: 'change_password', current_password: 'wrong-password',
-        new_password: updatedPassword, confirm_password: updatedPassword,
-      } }, dynamicFields: { csrf_token: 'non-empty' } },
-    error: { locator: page.locator('#current_password-error'), text: 'Current password is incorrect.' },
-    focus: { mode: 'moved', locator: page.locator('#current_password') },
-  }));
-
-  const refreshedPasswordForm = page.locator('form', { has: page.locator('input[value="change_password"]') });
-  await refreshedPasswordForm.getByLabel('Current password').fill(originalPassword);
-  await refreshedPasswordForm.locator('#new_password').fill(updatedPassword);
-  await refreshedPasswordForm.locator('#confirm_password').fill(updatedPassword);
-  const validPasswordButton = refreshedPasswordForm.getByRole('button', { name: 'Change password' });
-  const validPasswordEvidence = recorder.forAction('account-destructive', 'Change password', {
-    page, control: validPasswordButton,
-  });
-  recorder.accept(await validPasswordEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    request: { method: 'POST', path: /^\/settings\/account$/, status: 302,
-      payload: { kind: 'form', exact: {
-        action: 'change_password', current_password: originalPassword,
-        new_password: updatedPassword, confirm_password: updatedPassword,
-      } }, dynamicFields: { csrf_token: 'non-empty' } },
-    feedback: { locator: page.getByRole('status'), text: 'Password changed successfully!' },
-    persistence: { kind: 'json',
-      url: `/__test__/password-match?password=${encodeURIComponent(updatedPassword)}`,
-      path: 'matches', expectedBefore: false, expectedAfter: true },
-  }));
+  await recorder.runScenario(
+    page, 'account-destructive', 'Change password', 'invalid', 'success',
+  );
   await page.request.get('/auth/logout');
   await login(page, updatedEmail, updatedPassword);
   await page.goto('/settings/account');
 
-  const deleteForm = page.locator('form', { has: page.locator('input[value="delete_account"]') });
-  const deleteButton = deleteForm.getByRole('button', { name: 'Delete account' });
-  const deleteEvidence = recorder.forAction('account-destructive', 'Delete account', {
-    page, control: deleteButton,
-  });
-  await deleteForm.getByLabel('Password').fill(updatedPassword);
-  await deleteForm.getByLabel(/delete my account/i).fill('keep my account');
-  recorder.accept(await deleteEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    request: { method: 'POST', path: /^\/settings\/account$/, status: 200,
-      payload: { kind: 'form', exact: {
-        action: 'delete_account', password: updatedPassword,
-        confirmation: 'keep my account',
-      } }, dynamicFields: { csrf_token: 'non-empty' } },
-    error: { locator: page.locator('#confirmation-error'),
-      text: 'Please type "delete my account" to confirm.' },
-    feedback: { locator: page.locator('#confirmation-error'),
-      text: 'Please type "delete my account" to confirm.' },
-    focus: { mode: 'moved', locator: page.getByLabel(/delete my account/i) },
-  }));
+  const deleteScenario = recorder.forScenario(page, 'account-destructive', 'Delete account');
+  await deleteScenario.run('invalid');
   await expect(page.getByText('Total logs').locator('..')).toContainText('1');
-
-  const refreshedDeleteForm = page.locator('form', { has: page.locator('input[value="delete_account"]') });
-  await refreshedDeleteForm.getByLabel('Password').fill(updatedPassword);
-  await refreshedDeleteForm.getByLabel(/delete my account/i).fill('delete my account');
-  const validDeleteButton = refreshedDeleteForm.getByRole('button', { name: 'Delete account' });
-  const validDeleteEvidence = recorder.forAction('account-destructive', 'Delete account', {
-    page, control: validDeleteButton,
-  });
+  recorder.accept(await deleteScenario.run('success'));
   const ownedSnapshotUrl = `/__test__/owned-artifact-snapshot?user_id=${disposableUserId}`
     + `&brand=${encodeURIComponent(disposableBrand)}`;
-  recorder.accept(await validDeleteEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    request: { method: 'POST', path: /^\/settings\/account$/, status: 302,
-      payload: { kind: 'form', exact: {
-        action: 'delete_account', password: updatedPassword,
-        confirmation: 'delete my account',
-      } }, dynamicFields: { csrf_token: 'non-empty' } },
-    feedback: { locator: page.getByRole('status'), text: 'Your account has been deleted.' },
-    persistence: { kind: 'json', url: ownedSnapshotUrl,
-      expectedBefore: {
-        users: 1, logs: 1, goals: 1, cravings: 1, owned_pouches: 1,
-        named_pouches: 1, orphan_named_pouches: 0,
-      },
-      expectedAfter: {
-        users: 0, logs: 0, goals: 0, cravings: 0, owned_pouches: 0,
-        named_pouches: 0, orphan_named_pouches: 0,
-      } },
-  }));
-  await expect(page).toHaveURL(/\/\?account_deleted=1$/);
+  await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole('status')).toHaveText('Your account has been deleted.');
+  await page.reload();
+  await expect(page.getByRole('status')).toHaveCount(0);
+  await page.goto('/?account_deleted=1');
+  await expect(page.getByRole('status')).toHaveCount(0);
   await page.goto('/settings/account');
   await expect(page).toHaveURL(/\/auth\/login/);
   await page.getByLabel('Email address').fill(updatedEmail);

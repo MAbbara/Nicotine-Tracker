@@ -145,4 +145,9 @@ def test_logout_and_successful_account_deletion_clear_browser_storage(
         follow_redirects=False,
     )
     assert deletion.status_code == 302
-    assert "storage" in deletion.headers["Clear-Site-Data"]
+    assert "Clear-Site-Data" not in deletion.headers
+    landing = logged_in_client.get(deletion.headers["Location"])
+    assert "storage" in landing.headers["Clear-Site-Data"]
+    assert landing.get_data(as_text=True).count(
+        "Your account has been deleted."
+    ) == 1

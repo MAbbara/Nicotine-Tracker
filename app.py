@@ -104,7 +104,13 @@ def create_app(config_name=None):
             if get_current_user() is not None:
                 return redirect(url_for('today.index'))
             session.clear()
-        return render_template('./index.html')
+        clear_deleted_account_site_data = session.pop(
+            '_clear_site_data_after_account_deletion', False
+        )
+        response = make_response(render_template('./index.html'))
+        if clear_deleted_account_site_data:
+            response.headers['Clear-Site-Data'] = '"cache", "cookies", "storage"'
+        return response
     
     # Error handlers
     @app.errorhandler(CSRFError)

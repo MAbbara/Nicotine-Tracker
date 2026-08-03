@@ -134,10 +134,16 @@ def test_account_deletion_removes_exact_owned_rows_without_orphaned_pouch(
     }, follow_redirects=False)
 
     assert response.status_code == 302
-    assert response.headers['Location'].endswith('/?account_deleted=1')
+    assert response.headers['Location'].endswith('/')
+    assert 'Clear-Site-Data' not in response.headers
     landing = logged_in_client.get(response.headers['Location'])
     assert landing.status_code == 200
     assert landing.get_data(as_text=True).count('Your account has been deleted.') == 1
+    assert landing.headers['Clear-Site-Data'] == '"cache", "cookies", "storage"'
+    reload_response = logged_in_client.get('/')
+    assert 'Your account has been deleted.' not in reload_response.get_data(as_text=True)
+    replay = logged_in_client.get('/?account_deleted=1')
+    assert 'Your account has been deleted.' not in replay.get_data(as_text=True)
     assert User.query.filter_by(id=owned_ids['user']).count() == 0
     assert Log.query.filter_by(id=owned_ids['log']).count() == 0
     assert Goal.query.filter_by(id=owned_ids['goal']).count() == 0

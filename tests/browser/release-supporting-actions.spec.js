@@ -85,20 +85,10 @@ async function handoffProductGuard(page, sourceGuard, stateName, options = {}) {
 
 
 async function expectKeyboardNavigation(
-  page, locator, expectedPath, expectedStatus = 200, evidence = null,
+  page, locator, expectedPath, expectedStatus = 200,
 ) {
-  if (evidence) {
-    const actionEvidence = evidence.recorder.forAction(
-      evidence.state, evidence.action, { page, control: locator },
-    );
-    evidence.recorder.accept(await actionEvidence.run({
-      activation: { kind: 'keyboard', key: 'Enter' },
-      request: { method: 'GET', path: exactPath(expectedPath), status: expectedStatus },
-    }));
-  } else {
-    await keyboardActivate(page, locator);
-    await expect.poll(() => new URL(page.url()).pathname).toBe(expectedPath);
-  }
+  await keyboardActivate(page, locator);
+  await expect.poll(() => new URL(page.url()).pathname).toBe(expectedPath);
 }
 
 
@@ -158,42 +148,8 @@ async function addDetailedLog(page, {
 }
 
 
-async function runConfirmedDataAction({
-  page, recorder, state, action, fieldName, confirmation, requestPayload,
-  rejectedFeedback, successFeedback, persistence,
-}) {
-  const field = page.getByLabel(fieldName);
-  let posts = 0;
-  const countPost = (request) => {
-    if (request.method() === 'POST' && new URL(request.url()).pathname === '/settings/data') {
-      posts += 1;
-    }
-  };
-  page.on('request', countPost);
-  await field.fill('WRONG');
-  const control = page.getByRole('button', { name: action });
-  const actionEvidence = recorder.forAction(state, action, { page, control });
-  recorder.accept(await actionEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    focus: { mode: 'moved', locator: field },
-    error: { locator: field, validationMessage: rejectedFeedback },
-    feedback: { locator: field, validationMessage: rejectedFeedback },
-  }));
-  expect(posts).toBe(0);
-
-  await field.fill(confirmation);
-  recorder.accept(await actionEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    request: {
-      method: 'POST', path: /^\/settings\/data$/, status: 302,
-      payload: { kind: 'form', exact: requestPayload },
-      dynamicFields: { csrf_token: 'non-empty' },
-    },
-    feedback: { locator: page.getByRole('status'), text: successFeedback },
-    persistence,
-  }));
-  expect(posts).toBe(1);
-  page.off('request', countPost);
+async function runConfirmedDataAction(page, recorder, state, action) {
+  await recorder.runScenario(page, state, action, 'invalid', 'success');
 }
 
 
@@ -258,6 +214,39 @@ test('every supporting action has three independent exact coverage authorities',
     SUPPORTING_ACTION_POLICY, behaviorReasonMutation,
   )).toThrow(/loading reason differs/);
 
+  for (const [sourceIndex, sourceName] of [
+    [1, 'supporting receipts'], [2, 'supporting policy'],
+    [3, 'supporting behavior obligations'],
+  ]) {
+    const sources = [
+      EXPECTED_ACTIONS,
+      clone(SUPPORTING_ACTION_RECEIPTS),
+      clone(SUPPORTING_ACTION_POLICY),
+      clone(SUPPORTING_BEHAVIOR_OBLIGATIONS),
+    ];
+    sources[sourceIndex].push({
+      ...clone(sources[sourceIndex][0]),
+      state: 'fabricated-extra-state',
+      action: 'Fabricated extra action',
+    });
+    expect(() => validateSupportingCoverage(...sources), `${sourceName} extra action`)
+      .toThrow(/exact (?:length|state|action)/);
+
+    const dimensionSources = [
+      EXPECTED_ACTIONS,
+      clone(SUPPORTING_ACTION_RECEIPTS),
+      clone(SUPPORTING_ACTION_POLICY),
+      clone(SUPPORTING_BEHAVIOR_OBLIGATIONS),
+    ];
+    dimensionSources[sourceIndex][0].dimensions.fabricated = {
+      status: 'asserted', reason: 'fabricated dimension',
+    };
+    expect(
+      () => validateSupportingCoverage(...dimensionSources),
+      `${sourceName} extra dimension`,
+    ).toThrow(/exact dimension/);
+  }
+
   const emptyProfileRecorder = createSupportingBehaviorRecorder(
     SUPPORTING_OWNER_TITLES.settingsProfile, expect,
   );
@@ -275,91 +264,76 @@ test('causal supporting transactions reject unrelated, pre-existing, and reusabl
   const chromeRecorder = createSupportingBehaviorRecorder(
     SUPPORTING_OWNER_TITLES.chrome, expect,
   );
-  const skip = page.getByRole('link', { name: 'Skip to main content' });
-  const main = page.locator('#main-content');
-  const skipAction = chromeRecorder.forAction(
-    'profile', 'Skip to main content', { page, control: skip },
-  );
-  const validReceipt = await skipAction.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    focus: { mode: 'moved', locator: main },
-  });
+  const skipAction = chromeRecorder.forScenario(page, 'profile', 'Skip to main content');
+  const validReceipt = await skipAction.run('success');
   chromeRecorder.accept(validReceipt);
   expect(() => chromeRecorder.accept(validReceipt)).toThrow(/already consumed/);
 
   await page.goto('/settings/profile');
-  const secondSkipReceipt = await skipAction.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    focus: { mode: 'moved', locator: main },
-  });
+  const secondSkipReceipt = await chromeRecorder
+    .forScenario(page, 'profile', 'Skip to main content').run('success');
   const wrongRecorder = createSupportingBehaviorRecorder(
     SUPPORTING_OWNER_TITLES.settingsProfile, expect,
   );
   expect(() => wrongRecorder.accept(secondSkipReceipt)).toThrow(/different recorder/);
   expect(() => chromeRecorder.accept(Object.freeze({}))).toThrow(/forged/);
 
-  await main.focus();
-  const repeatedSkip = await skipAction.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    focus: { mode: 'moved', locator: main },
-  });
-  chromeRecorder.accept(repeatedSkip);
-
   const profileRecorder = createSupportingBehaviorRecorder(
     SUPPORTING_OWNER_TITLES.settingsProfile, expect,
   );
-  const save = page.getByRole('button', { name: 'Save profile' });
-  const saveAction = profileRecorder.forAction('profile', 'Save profile', {
-    page, control: save,
-  });
-  await expect(saveAction.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    persistence: { kind: 'constant', actual: { saved: true }, expectedAfter: { saved: true } },
-  })).rejects.toThrow(/typed persistence descriptor/);
-
-  await page.evaluate(() => {
-    const status = document.createElement('p');
-    status.setAttribute('role', 'status');
-    status.textContent = 'Profile updated successfully!';
-    document.body.prepend(status);
-  });
-  await expect(saveAction.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    request: { method: 'POST', path: /^\/settings\/profile$/, status: 302 },
-    feedback: {
-      locator: page.getByRole('status'), text: 'Profile updated successfully!',
-    },
-  })).rejects.toThrow(/feedback already existed before activation/);
-
-  await page.goto('/settings/profile');
-  const age = page.getByLabel('Age');
-  await age.focus();
-  const currentSave = page.getByRole('button', { name: 'Save profile' });
-  const currentSaveAction = profileRecorder.forAction('profile', 'Save profile', {
-    page, control: currentSave,
-  });
-  await expect(currentSaveAction.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    focus: { mode: 'moved', locator: age },
-  })).rejects.toThrow(/toBeFocused/);
+  const firstPartial = profileRecorder.forScenario(page, 'profile', 'Save profile');
+  const secondPartial = profileRecorder.forScenario(page, 'profile', 'Save profile');
+  expect(await firstPartial.run('invalid')).toBeUndefined();
+  await page.reload();
+  expect(await secondPartial.run('invalid')).toBeUndefined();
+  expect(() => profileRecorder.accept(undefined)).toThrow(/forged/);
+  await expect(profileRecorder.forScenario(page, 'profile', 'Save profile').run('success'))
+    .rejects.toThrow(/expected branch invalid/);
 
   const otherPage = await context.newPage();
   await otherPage.goto('/settings/profile');
   const otherSave = otherPage.getByRole('button', { name: 'Save profile' });
-  const crossPageAction = profileRecorder.forAction('profile', 'Save profile', {
-    page, control: otherSave,
-  });
-  await expect(crossPageAction.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-  })).rejects.toThrow(/control belongs to a different page/);
+  expect(() => profileRecorder.forScenario(page, 'profile', 'Save profile', otherSave))
+    .toThrow(/only page, state, and action/);
   await otherPage.close();
 
-  const wrongControlAction = profileRecorder.forAction('profile', 'Save profile', {
-    page, control: page.getByRole('heading', { name: 'Profile' }),
+  await page.evaluate(() => {
+    const fake = document.createElement('button');
+    fake.id = 'fabricated-save-profile';
+    fake.textContent = 'Save profile';
+    document.body.prepend(fake);
   });
-  await expect(wrongControlAction.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-  })).rejects.toThrow(/toHaveAccessibleName/);
+  expect(() => profileRecorder.forScenario(
+    page, 'profile', 'Save profile', page.locator('#fabricated-save-profile'),
+  )).toThrow(/only page, state, and action/);
+
+  await page.evaluate(() => document.querySelector('#fabricated-save-profile')?.remove());
+
+  const markerRecorder = createSupportingBehaviorRecorder(
+    SUPPORTING_OWNER_TITLES.settingsProfile, expect,
+  );
+  await page.getByRole('heading', { name: 'Profile', level: 1 }).evaluate((heading) => {
+    heading.textContent = 'Fabricated profile state';
+  });
+  await expect(markerRecorder.forScenario(page, 'profile', 'Save profile').run('invalid'))
+    .rejects.toThrow(/authoritative state marker/);
+  await page.reload();
+
+  const descriptorAttempt = profileRecorder.forScenario(page, 'profile', 'Save profile');
+  await expect(descriptorAttempt.run('invalid', {
+    feedback: page.locator('body [role="status"]'),
+    focus: page.locator('body'),
+    persistence: { expectedBefore: 30, expectedAfter: 30 },
+  })).rejects.toThrow(/one enumerated branch name/);
+
+  await page.request.get('/auth/logout');
+  await loginAs(page, 'release-analytics-empty@example.com');
+  await page.goto('/dashboard/');
+  const dashboardRecorder = createSupportingBehaviorRecorder(
+    SUPPORTING_OWNER_TITLES.dashboard, expect,
+  );
+  await expect(dashboardRecorder.forScenario(page, 'dashboard', '7 days').run('success'))
+    .rejects.toThrow(/toBe/);
 });
 
 
@@ -378,14 +352,7 @@ test('every supporting chrome action runs in its exact representative state', as
 
     let sourceGuard = watchForProductProblems(page);
     await visitState(page, state);
-    const skip = page.getByRole('link', { name: 'Skip to main content' });
-    const skipEvidence = recorder.forAction(
-      state.name, 'Skip to main content', { page, control: skip },
-    );
-    recorder.accept(await skipEvidence.run({
-      activation: { kind: 'keyboard', key: 'Enter' },
-      focus: { mode: 'moved', locator: page.locator('#main-content') },
-    }));
+    await recorder.runScenario(page, state.name, 'Skip to main content', 'success');
     await expectGuardClean(sourceGuard, page, `${state.name} skip`, {
       allowAnalytics: state.allowAnalytics,
       expectedStatus: state.status,
@@ -400,13 +367,7 @@ test('every supporting chrome action runs in its exact representative state', as
       `${state.name} before wordmark`,
       { allowAnalytics: state.allowAnalytics, expectedStatus: state.status },
     );
-    await expectKeyboardNavigation(
-      page,
-      page.getByRole('link', { name: 'Nicotine Tracker home' }),
-      state.email ? '/today/' : '/',
-      200,
-      { recorder, state: state.name, action: 'Nicotine Tracker home' },
-    );
+    await recorder.runScenario(page, state.name, 'Nicotine Tracker home', 'success');
     await expectGuardClean(destinationGuard, page, `${state.name} wordmark destination`);
     destinationGuard.stop();
 
@@ -421,21 +382,15 @@ test('every supporting chrome action runs in its exact representative state', as
       `${state.name} before account`,
       { allowAnalytics: state.allowAnalytics, expectedStatus: state.status },
     );
-    await expectKeyboardNavigation(
-      page,
-      page.getByRole('link', { name: accountName }),
-      '/you/',
-      200,
-      { recorder, state: state.name, action: accountName },
-    );
+    await recorder.runScenario(page, state.name, accountName, 'success');
     await expectGuardClean(destinationGuard, page, `${state.name} account destination`);
     destinationGuard.stop();
 
-    for (const [name, destinationPath, allowAnalytics] of [
-      ['Today', '/today/', false],
-      ['Journey', '/journey/', false],
-      ['Insights', '/insights/', true],
-      ['You', '/you/', false],
+    for (const [name, allowAnalytics] of [
+      ['Today', false],
+      ['Journey', false],
+      ['Insights', true],
+      ['You', false],
     ]) {
       sourceGuard = watchForProductProblems(page);
       await visitState(page, state);
@@ -445,12 +400,7 @@ test('every supporting chrome action runs in its exact representative state', as
         `${state.name} before ${name}`,
         { allowAnalytics: state.allowAnalytics, expectedStatus: state.status },
       );
-      const link = page.getByRole('navigation', { name: 'Primary' })
-        .getByRole('link', { name, exact: true });
-      await expectKeyboardNavigation(
-        page, link, destinationPath, 200,
-        { recorder, state: state.name, action: name },
-      );
+      await recorder.runScenario(page, state.name, name, 'success');
       await expectGuardClean(destinationGuard, page, `${state.name} ${name} destination`, {
         allowAnalytics,
       });
@@ -479,27 +429,15 @@ test('every settings navigation action runs in its exact representative state', 
   for (const state of states) {
     await signOut(page);
     await loginAs(page, state.email);
-    for (const [name, destinationPath] of [
-      ['Profile', '/settings/profile'],
-      ['Account', '/settings/account'],
-      ['Preferences', '/settings/preferences'],
-      ['Reminders', '/settings/notifications'],
-      ['Data & privacy', '/settings/data'],
-      ['Statistics', '/settings/statistics'],
+    for (const name of [
+      'Profile', 'Account', 'Preferences', 'Reminders', 'Data & privacy', 'Statistics',
     ]) {
       const sourceGuard = watchForProductProblems(page);
       await visitState(page, state);
       const destinationGuard = await handoffProductGuard(
         page, sourceGuard, `${state.name} before settings ${name}`,
       );
-      await expectKeyboardNavigation(
-        page,
-        page.getByRole('navigation', { name: 'Settings' })
-          .getByRole('link', { name, exact: true }),
-        destinationPath,
-        200,
-        { recorder, state: state.name, action: name },
-      );
+      await recorder.runScenario(page, state.name, name, 'success');
       await expectGuardClean(destinationGuard, page, `${state.name} settings ${name}`);
       destinationGuard.stop();
     }
@@ -579,163 +517,22 @@ test('data actions use isolated disposable records in every exact state', async 
     await page.goto('/settings/data');
     await expect(page.getByText('1 potential group found.')).toBeVisible();
     await expect(page.getByText('1 similar entry found.')).toBeVisible();
-    const cleanupLogsBefore = (await accountSnapshot(page)).logs.length;
-    await runConfirmedDataAction({
-      page, recorder, state, action: 'Cleanup',
-      fieldName: 'Type CLEANUP to confirm', confirmation: 'CLEANUP',
-      requestPayload: {
-        action: 'cleanup_duplicates', confirm_cleanup_duplicates: 'CLEANUP',
-      },
-      rejectedFeedback: 'Please match the requested format.',
-      successFeedback: 'Removed 1 duplicate log entries.',
-      persistence: {
-        kind: 'json', url: '/__test__/account-snapshot', path: 'logs.length',
-        expectedBefore: cleanupLogsBefore, expectedAfter: cleanupLogsBefore - 1,
-      },
-    });
-    const mergePouchesBefore = (await accountSnapshot(page)).pouches.length;
-    await runConfirmedDataAction({
-      page, recorder, state, action: 'Merge',
-      fieldName: 'Type MERGE to confirm', confirmation: 'MERGE',
-      requestPayload: {
-        action: 'merge_custom_pouches', confirm_merge_pouches: 'MERGE',
-      },
-      rejectedFeedback: 'Please match the requested format.',
-      successFeedback: 'Merged 1 similar pouch entries.',
-      persistence: {
-        kind: 'json', url: '/__test__/account-snapshot', path: 'pouches.length',
-        expectedBefore: mergePouchesBefore, expectedAfter: mergePouchesBefore - 1,
-      },
-    });
+    await runConfirmedDataAction(page, recorder, state, 'Cleanup');
+    await runConfirmedDataAction(page, recorder, state, 'Merge');
 
-    const recalculateEvidence = recorder.forAction(
-      state, 'Recalculate', { page, control: page.getByRole('button', { name: 'Recalculate' }) },
-    );
-    recorder.accept(await recalculateEvidence.run({
-      activation: { kind: 'keyboard', key: 'Enter' },
-      request: {
-        method: 'POST', path: /^\/settings\/data$/, status: 302,
-        payload: { kind: 'form', exact: { action: 'recalculate_goals' } },
-        dynamicFields: { csrf_token: 'non-empty' },
-      },
-      feedback: {
-        locator: page.getByRole('status'), text: 'Recalculated streaks for 1 goals.',
-      },
-      persistence: {
-        kind: 'json', url: '/__test__/account-snapshot', path: 'goals.0.current_streak',
-        expectedBefore: 9, expectedAfter: 0,
-      },
-    }));
+    await recorder.runScenario(page, state, 'Recalculate', 'success');
 
-    const anonymizeAgeBefore = (await accountSnapshot(page)).profile.age;
-    await runConfirmedDataAction({
-      page, recorder, state, action: 'Anonymize Data',
-      fieldName: 'Type ANONYMIZE to confirm', confirmation: 'ANONYMIZE',
-      requestPayload: { action: 'anonymize_data', confirm_anonymize: 'ANONYMIZE' },
-      rejectedFeedback: 'Please match the requested format.',
-      successFeedback: 'Your personal data has been anonymized successfully.',
-      persistence: {
-        kind: 'json', url: '/__test__/account-snapshot', path: 'profile.age',
-        expectedBefore: anonymizeAgeBefore, expectedAfter: null,
-      },
-    });
+    await runConfirmedDataAction(page, recorder, state, 'Anonymize Data');
 
-    await page.getByLabel('Days to keep').fill('30');
-    const deleteLogsBefore = (await accountSnapshot(page)).logs.length;
-    await runConfirmedDataAction({
-      page, recorder, state, action: 'Delete Logs',
-      fieldName: 'Type DELETE LOGS to confirm', confirmation: 'DELETE LOGS',
-      requestPayload: {
-        action: 'delete_old_logs', days_to_keep: '30', confirm_delete_logs: 'DELETE LOGS',
-      },
-      rejectedFeedback: 'Please match the requested format.',
-      successFeedback: 'Successfully deleted 2 old log entries.',
-      persistence: {
-        kind: 'json', url: '/__test__/account-snapshot', path: 'logs.length',
-        expectedBefore: deleteLogsBefore, expectedAfter: 0,
-      },
-    });
+    await runConfirmedDataAction(page, recorder, state, 'Delete Logs');
 
     if (state !== 'data') {
-      const downloadPending = page.waitForEvent('download');
-      const exportButton = page.getByRole('button', { name: 'Download Data' });
-      const exportEvidence = recorder.forAction(
-        state, 'Download Data', { page, control: exportButton },
+      await recorder.runScenario(page, state, 'Download Data', 'success');
+      await recorder.runScenario(
+        page, state, 'Save actions for offline use', 'success', 'failure',
       );
-      recorder.accept(await exportEvidence.run({
-        activation: { kind: 'keyboard', key: 'Enter' },
-        request: {
-          method: 'POST', path: /^\/settings\/data$/, status: 200,
-          payload: { kind: 'form', exact: { action: 'export_data' } },
-          dynamicFields: { csrf_token: 'non-empty' }, settleNavigation: false,
-        },
-      }));
-      const download = await downloadPending;
-      expect(download.suggestedFilename()).toMatch(/^nicotine_tracker_data_/);
-      const offline = page.getByRole('checkbox', { name: 'Save actions for offline use' });
-      const requested = !(await offline.isChecked());
-      const offlineStatus = page.locator('#offline-queue-status');
-      const offlineEvidence = recorder.forAction(
-        state, 'Save actions for offline use', { page, control: offline },
-      );
-      recorder.accept(await offlineEvidence.run({
-        activation: { kind: 'keyboard', key: 'Space' },
-        request: {
-          method: 'PATCH', path: /^\/settings\/privacy\/offline-queue$/, status: 200,
-          payload: { kind: 'json', exact: { enabled: requested } },
-        },
-        feedback: {
-          locator: offlineStatus,
-          text: requested ? 'Offline saving is on.' : 'Offline saving is off.', state: 'success',
-        },
-        persistence: {
-          kind: 'locator', locator: offline, property: 'checked',
-          expectedBefore: !requested, expectedAfter: requested, reload: true,
-        },
-      }));
 
-      let releaseFailure;
-      const failureGate = new Promise((resolve) => { releaseFailure = resolve; });
-      let failures = 0;
-      await page.route('**/settings/privacy/offline-queue', async (route) => {
-        failures += 1;
-        await failureGate;
-        await route.fulfill({
-          status: 503, contentType: 'application/json', body: JSON.stringify({ success: false }),
-        });
-      });
-      const retryToggle = page.getByRole('checkbox', { name: 'Save actions for offline use' });
-      const retryEvidence = recorder.forAction(
-        state, 'Save actions for offline use', { page, control: retryToggle },
-      );
-      const retryRun = retryEvidence.run({
-        activation: { kind: 'keyboard', key: 'Space' },
-        request: {
-          method: 'PATCH', path: /^\/settings\/privacy\/offline-queue$/, status: 503,
-          payload: { kind: 'json', exact: { enabled: !requested } },
-        },
-        loading: {
-          disabled: true,
-          status: { locator: page.locator('#offline-queue-status'), text: 'Saving offline preference…' },
-        },
-        error: {
-          locator: page.locator('#offline-queue-status'),
-          text: 'Offline preference could not be saved. Please try again.', state: 'error',
-        },
-        focus: { mode: 'retained' },
-      });
-      await expect(retryToggle).toBeDisabled();
-      await retryToggle.evaluate((element) => element.dispatchEvent(new Event('change', { bubbles: true })));
-      expect(failures).toBe(1);
-      releaseFailure();
-      recorder.accept(await retryRun);
-      await page.unroute('**/settings/privacy/offline-queue');
-
-      await expectKeyboardNavigation(
-        page, page.getByRole('link', { name: 'Review account deletion' }),
-        '/settings/account', 200,
-        { recorder, state, action: 'Review account deletion' },
-      );
+      await recorder.runScenario(page, state, 'Review account deletion', 'success');
     }
   }
 
@@ -759,10 +556,7 @@ test('remaining catalog actions preserve exact navigation and isolated records',
   ]) {
     const response = await page.goto(path);
     expect(response.status()).toBe(200);
-    await expectKeyboardNavigation(
-      page, page.getByRole('link', { name: action, exact: true }), '/catalog/', 200,
-      { recorder, state, action },
-    );
+    await recorder.runScenario(page, state, action, 'success');
   }
   recorder.assertComplete();
 });
@@ -779,88 +573,22 @@ test('remaining logging actions preserve exact navigation and isolated records',
   await page.getByRole('button', { name: 'Add pouch' }).click();
 
   await page.goto('/log/view');
-  const logbookAdd = page.getByRole('button', { name: 'Add log', exact: true });
   let dialog = page.getByRole('dialog', { name: 'Add a log' });
-  const dialogDate = page.locator('#addLogModal [name="log_date"]');
-  const logbookAddEvidence = recorder.forAction(
-    'logbook', 'Add log', { page, control: logbookAdd },
-  );
-  recorder.accept(await logbookAddEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    outcome: { kind: 'visible', locator: dialog },
-    focus: { mode: 'moved', locator: dialogDate },
-  }));
+  await recorder.runScenario(page, 'logbook', 'Add log', 'toggle');
   await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
 
   await page.goto('/log/add');
   dialog = page.getByRole('dialog', { name: 'Add a log' });
   await expect(dialog).toBeVisible();
-  const closeDialog = dialog.getByRole('button', { name: 'Close add log dialog' });
-  const closeEvidence = recorder.forAction(
-    'log-add', 'Close add log dialog', { page, control: closeDialog },
-  );
-  recorder.accept(await closeEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    outcome: { kind: 'hidden', locator: dialog },
-    focus: {
-      mode: 'moved', locator: page.getByRole('button', { name: 'Add log', exact: true }),
-    },
-  }));
+  await recorder.runScenario(page, 'log-add', 'Close add log dialog', 'toggle');
 
   const logAddTrigger = page.getByRole('button', { name: 'Add log', exact: true });
-  const logAddEvidence = recorder.forAction(
-    'log-add', 'Add log', { page, control: logAddTrigger },
-  );
-  recorder.accept(await logAddEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    outcome: { kind: 'visible', locator: dialog },
-    focus: { mode: 'moved', locator: dialogDate },
-  }));
-  const cancelDialog = dialog.getByRole('button', { name: 'Cancel' });
-  const cancelEvidence = recorder.forAction(
-    'log-add', 'Cancel', { page, control: cancelDialog },
-  );
-  recorder.accept(await cancelEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    outcome: { kind: 'hidden', locator: dialog },
-    focus: { mode: 'moved', locator: logAddTrigger },
-  }));
+  await recorder.runScenario(page, 'log-add', 'Add log', 'toggle');
+  await recorder.runScenario(page, 'log-add', 'Cancel', 'toggle');
 
   await logAddTrigger.click();
-  const addEntry = dialog.getByRole('button', { name: 'Add entry' });
-  const product = dialog.getByLabel('Product');
-  const addEntryEvidence = recorder.forAction(
-    'log-add', 'Add entry', { page, control: addEntry },
-  );
-  recorder.accept(await addEntryEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    focus: { mode: 'moved', locator: product },
-    error: { locator: product, validationMessage: 'Please select an item in the list.' },
-    feedback: { locator: product, validationMessage: 'Please select an item in the list.' },
-  }));
-  await dialog.getByLabel('Date').fill('2026-01-11');
-  await dialog.getByLabel('Time').fill('09:15');
-  await product.selectOption({ index: 1 });
-  const selectedProductId = await product.inputValue();
-  await dialog.getByLabel('Quantity').fill('2');
-  await dialog.getByLabel('Notes').fill('supporting add entry');
+  await recorder.runScenario(page, 'log-add', 'Add entry', 'invalid', 'success');
   const addedRow = page.locator('.logbook-row', { hasText: 'supporting add entry' });
-  recorder.accept(await addEntryEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    request: {
-      method: 'POST', path: /^\/log\/add$/, status: 302,
-      payload: { kind: 'form', exact: {
-        user_timezone: 'UTC', log_date: '2026-01-11', log_time: '09:15',
-        pouch_id: selectedProductId, quantity: '2', notes: 'supporting add entry',
-        custom_brand: '', custom_nicotine_mg: '',
-      } }, dynamicFields: { csrf_token: 'non-empty' },
-    },
-    feedback: { locator: page.getByRole('status'), text: 'Log entry added successfully!' },
-    persistence: {
-      kind: 'locator', locator: addedRow, property: 'count',
-      expectedBefore: 0, expectedAfter: 1,
-    },
-  }));
 
   for (const [state, path] of [['logbook', '/log/view'], ['log-add', '/log/add']]) {
     await page.goto(path);
@@ -874,17 +602,7 @@ test('remaining logging actions preserve exact navigation and isolated records',
       await expect(dialog).not.toBeVisible();
     }
     await page.getByLabel('Search logs').fill('supporting add entry');
-    const filterControl = page.getByRole('button', { name: 'Apply filters' });
-    const filterEvidence = recorder.forAction(
-      state, 'Apply filters', { page, control: filterControl },
-    );
-    recorder.accept(await filterEvidence.run({
-      activation: { kind: 'keyboard', key: 'Enter' },
-      request: {
-        method: 'GET', path: /^\/log\/view$/,
-        search: '?q=supporting+add+entry&from_date=&to_date=', status: 200,
-      },
-    }));
+    await recorder.runScenario(page, state, 'Apply filters', 'success');
 
     await page.goto(path);
     if (state === 'log-add') {
@@ -896,10 +614,7 @@ test('remaining logging actions preserve exact navigation and isolated records',
       }
       await expect(dialog).not.toBeVisible();
     }
-    await expectKeyboardNavigation(
-      page, page.getByRole('link', { name: 'Bulk add' }), '/log/bulk', 200,
-      { recorder, state, action: 'Bulk add' },
-    );
+    await recorder.runScenario(page, state, 'Bulk add', 'success');
 
     await page.goto(path);
     if (state === 'log-add') {
@@ -911,79 +626,17 @@ test('remaining logging actions preserve exact navigation and isolated records',
       }
       await expect(dialog).not.toBeVisible();
     }
-    const row = page.locator('.logbook-row', { hasText: 'supporting add entry' });
-    const edit = row.getByRole('link', { name: 'Edit' });
-    const editPath = new URL(await edit.getAttribute('href'), page.url()).pathname;
-    await expectKeyboardNavigation(
-      page, edit, editPath, 200, { recorder, state, action: 'Edit' },
-    );
+    await recorder.runScenario(page, state, 'Edit', 'success');
   }
 
   await page.goto('/log/bulk');
-  const addEntries = page.getByRole('button', { name: 'Add entries' });
-  const entries = page.getByLabel('Entries', { exact: true });
-  const bulkEvidence = recorder.forAction(
-    'log-bulk', 'Add entries', { page, control: addEntries },
-  );
-  recorder.accept(await bulkEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    focus: { mode: 'moved', locator: entries },
-    error: { locator: entries, validationMessage: 'Please fill out this field.' },
-    feedback: { locator: entries, validationMessage: 'Please fill out this field.' },
-  }));
-  await page.getByLabel('Date for these entries').fill('2026-01-12');
-  await entries.fill('1 Bulk Evidence 4mg at 13:00');
+  await recorder.runScenario(page, 'log-bulk', 'Add entries', 'invalid', 'success');
   const bulkRow = page.locator('.logbook-row', { hasText: 'Bulk Evidence' });
-  recorder.accept(await bulkEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    request: {
-      method: 'POST', path: /^\/log\/bulk$/, status: 302,
-      payload: { kind: 'form', exact: {
-        log_date: '2026-01-12', bulk_text: '1 Bulk Evidence 4mg at 13:00',
-      } }, dynamicFields: { csrf_token: 'non-empty' },
-    },
-    feedback: { locator: page.getByRole('status'), text: 'Successfully added 1 log entries!' },
-    persistence: {
-      kind: 'locator', locator: bulkRow, property: 'count',
-      expectedBefore: 0, expectedAfter: 1,
-    },
-  }));
 
   const supportingRow = page.locator('.logbook-row', { hasText: 'supporting add entry' });
   await supportingRow.getByRole('link', { name: 'Edit' }).click();
-  const saveChanges = page.getByRole('button', { name: 'Save changes' });
-  await page.getByLabel('Quantity').fill('');
-  const editQuantity = page.getByLabel('Quantity');
-  const editEvidence = recorder.forAction(
-    'log-edit', 'Save changes', { page, control: saveChanges },
-  );
-  recorder.accept(await editEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    focus: { mode: 'moved', locator: editQuantity },
-    error: { locator: editQuantity, validationMessage: 'Please fill out this field.' },
-    feedback: { locator: editQuantity, validationMessage: 'Please fill out this field.' },
-  }));
-  await editQuantity.fill('3');
-  await page.getByLabel('Notes').fill('supporting edit saved');
-  const exactEditPayload = {
-    log_date: await page.getByLabel('Date').inputValue(),
-    log_time: await page.getByLabel('Time').inputValue(),
-    quantity: '3', notes: 'supporting edit saved',
-  };
+  await recorder.runScenario(page, 'log-edit', 'Save changes', 'invalid', 'success');
   const editedRow = page.locator('.logbook-row', { hasText: 'supporting edit saved' });
-  recorder.accept(await editEvidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    request: {
-      method: 'POST', path: /^\/log\/edit\/\d+$/, status: 302,
-      payload: { kind: 'form', exact: exactEditPayload },
-      dynamicFields: { csrf_token: 'non-empty' },
-    },
-    feedback: { locator: page.getByRole('status'), text: 'Log entry updated successfully!' },
-    persistence: {
-      kind: 'locator', locator: editedRow, property: 'count',
-      expectedBefore: 0, expectedAfter: 1,
-    },
-  }));
 
   for (const [state, path, note, time] of [
     ['logbook', '/log/view', 'delete logbook evidence', '10:15'],
@@ -1000,28 +653,7 @@ test('remaining logging actions preserve exact navigation and isolated records',
       }
       await expect(dialog).not.toBeVisible();
     }
-    const deleteRow = page.locator('.logbook-row', { hasText: note });
-    const deleteButton = deleteRow.getByRole('button', { name: 'Delete' });
-    const deleteEvidence = recorder.forAction(state, 'Delete', { page, control: deleteButton });
-    recorder.accept(await deleteEvidence.run({
-      activation: { kind: 'keyboard', key: 'Enter' },
-      dialog: 'dismiss',
-      outcome: { kind: 'visible', locator: deleteRow },
-      error: { kind: 'dismissed-dialog', locator: deleteRow, count: 1 },
-    }));
-    recorder.accept(await deleteEvidence.run({
-      activation: { kind: 'keyboard', key: 'Enter' },
-      dialog: 'accept',
-      request: {
-        method: 'POST', path: /^\/log\/delete\/\d+$/, status: 302,
-        payload: { kind: 'form', exact: {} }, dynamicFields: { csrf_token: 'non-empty' },
-      },
-      feedback: { locator: page.getByRole('status'), text: 'Log entry deleted successfully!' },
-      persistence: {
-        kind: 'locator', locator: deleteRow, property: 'count',
-        expectedBefore: 1, expectedAfter: 0,
-      },
-    }));
+    await recorder.runScenario(page, state, 'Delete', 'dismiss', 'accept');
   }
 
   for (const [state, path] of [['logbook', '/log/view'], ['log-add', '/log/add']]) {
@@ -1036,83 +668,15 @@ test('remaining logging actions preserve exact navigation and isolated records',
         await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
         await expect(dialog).not.toBeVisible();
       }
-      let requests = 0;
-      let releaseFailure;
-      const heldFailure = new Promise((resolve) => { releaseFailure = resolve; });
-      await page.route('**/log/api/quick_add', async (route) => {
-        requests += 1;
-        if (requests === 1) {
-          await heldFailure;
-          await route.fulfill({
-            status: 503,
-            contentType: 'application/json',
-            body: JSON.stringify({ success: false, error: 'Quick add is temporarily unavailable.' }),
-          });
-          return;
-        }
-        await route.continue();
-      });
-      const button = page.getByRole('button', { name: action });
-      const actionEvidence = recorder.forAction(state, action, { page, control: button });
-      const failedRun = actionEvidence.run({
-        activation: { kind: 'keyboard', key: 'Enter' },
-        request: {
-          method: 'POST', path: /^\/log\/api\/quick_add$/, status: 503,
-          payload: {
-            kind: 'json', exact: {
-              pouch_id: await button.getAttribute('data-pouch-id'), quantity: 1,
-            },
-          },
-        },
-        loading: { disabled: true, text: 'Adding...' },
-        error: {
-          locator: page.getByRole('alert'), text: 'Quick add is temporarily unavailable.',
-        },
-        feedback: {
-          locator: page.getByRole('alert'), text: 'Quick add is temporarily unavailable.',
-        },
-        focus: { mode: 'retained' },
-      });
-      await expect(button).toBeDisabled();
-      await button.evaluate((element) => {
-        element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      });
-      expect(requests).toBe(1);
-      releaseFailure();
-      recorder.accept(await failedRun);
-
-      const pouchId = Number(await button.getAttribute('data-pouch-id'));
-      const brand = await button.getAttribute('data-pouch-brand');
-      const strength = await button.getAttribute('data-pouch-strength');
-      const expectedSuccess = `Added 1 ${brand} (${strength}mg)`;
-      const logsBeforeSuccess = (await accountSnapshot(page)).logs.length;
-      recorder.accept(await actionEvidence.run({
-        activation: { kind: 'keyboard', key: 'Enter' },
-        request: {
-          method: 'POST', path: /^\/log\/api\/quick_add$/, status: 200,
-          payload: { kind: 'json', exact: { pouch_id: String(pouchId), quantity: 1 } },
-        },
-        feedback: { locator: page.getByRole('status'), text: expectedSuccess },
-        persistence: {
-          kind: 'json', url: '/__test__/account-snapshot', path: 'logs.length',
-          expectedBefore: logsBeforeSuccess, expectedAfter: logsBeforeSuccess + 1,
-        },
-      }));
-      await page.unroute('**/log/api/quick_add');
+      await recorder.runScenario(page, state, action, 'failure', 'success');
     }
   }
 
   await page.goto('/log/bulk');
-  await expectKeyboardNavigation(
-    page, page.getByRole('link', { name: 'Cancel' }), '/log/view', 200,
-    { recorder, state: 'log-bulk', action: 'Cancel' },
-  );
+  await recorder.runScenario(page, 'log-bulk', 'Cancel', 'success');
   const editLink = page.locator('.logbook-row').first().getByRole('link', { name: 'Edit' });
   await expectKeyboardNavigation(page, editLink, new URL(await editLink.getAttribute('href'), page.url()).pathname);
-  await expectKeyboardNavigation(
-    page, page.getByRole('link', { name: 'Cancel' }), '/log/view', 200,
-    { recorder, state: 'log-edit', action: 'Cancel' },
-  );
+  await recorder.runScenario(page, 'log-edit', 'Cancel', 'success');
   recorder.assertComplete();
   await page.waitForLoadState('networkidle');
   guard.assertClean(expect, {
@@ -1135,9 +699,8 @@ test('standalone craving support link reaches Today without external traffic', a
   });
   await loginAs(page, 'release-inventory@example.com');
   await page.goto('/cravings/cravings');
-  await expectKeyboardNavigation(
-    page, page.getByRole('link', { name: 'Get immediate support on Today' }), '/today/', 200,
-    { recorder, state: 'cravings', action: 'Get immediate support on Today' },
+  await recorder.runScenario(
+    page, 'cravings', 'Get immediate support on Today', 'success',
   );
   expect(external).toEqual([]);
   recorder.assertComplete();
@@ -1156,10 +719,7 @@ test('remaining goal actions preserve exact navigation and disposable state', as
   ]) {
     const response = await page.goto(path);
     expect(response.status()).toBe(200);
-    await expectKeyboardNavigation(
-      page, page.getByRole('link', { name: action, exact: true }), '/goals/', 200,
-      { recorder, state, action },
-    );
+    await recorder.runScenario(page, state, action, 'success');
   }
   recorder.assertComplete();
 });
@@ -1174,10 +734,7 @@ test('public error recovery actions reach a safe destination', async ({ page }) 
     ['server-error', '/__test__/error/500', 500, 'Back to the start page'],
   ]) {
     expect((await page.goto(path)).status()).toBe(status);
-    await expectKeyboardNavigation(
-      page, page.getByRole('link', { name: action }), '/', 200,
-      { recorder, state, action },
-    );
+    await recorder.runScenario(page, state, action, 'success');
   }
   recorder.assertComplete();
 });

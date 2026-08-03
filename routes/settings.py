@@ -688,11 +688,11 @@ def account():
                 # Clear session
                 from flask import session
                 session.clear()
-                
+                flash('Your account has been deleted.', 'info')
+                session['_clear_site_data_after_account_deletion'] = True
+
                 current_app.logger.info(f'Account deleted for user {user_email}')
-                response = redirect(url_for('index', account_deleted='1'))
-                response.headers['Clear-Site-Data'] = '"cache", "cookies", "storage"'
-                return response
+                return redirect(url_for('index'))
                 
             return redirect(url_for('settings.account'))
         

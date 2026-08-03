@@ -1,4 +1,12 @@
 const { DIMENSIONS: CORE_DIMENSIONS } = require('./core_behavior_contract');
+const {
+  SUPPORTING_ACTION_BASELINES,
+  SUPPORTING_BASELINE_STATES,
+} = require('./supporting_action_baseline');
+const {
+  STATE_SCENARIOS,
+  supportingScenarioFor,
+} = require('./supporting_action_scenarios');
 
 
 const DIMENSIONS = Object.freeze([...CORE_DIMENSIONS, 'feedback']);
@@ -455,40 +463,6 @@ const supportingTransactionReceipts = new WeakMap();
 let supportingPageMarkerSequence = 0;
 
 
-const STATE_PATHS = Object.freeze({
-  'account-destructive': /^\/settings\/account$/,
-  'anonymous-not-found': /^\/__release_missing_page__$/,
-  'bad-request': /^\/__test__\/error\/400$/,
-  account: /^\/settings\/account$/,
-  catalog: /^\/catalog\/$/,
-  'catalog-add': /^\/catalog\/add$/,
-  'catalog-edit': /^(?:\/__test__\/release\/catalog-edit|\/catalog\/edit\/\d+)$/,
-  'catalog-search': /^\/catalog\/search$/,
-  cravings: /^\/cravings\/cravings$/,
-  dashboard: /^\/dashboard\/$/,
-  'dashboard-empty': /^\/dashboard\/$/,
-  'dashboard-sparse': /^\/dashboard\/$/,
-  data: /^\/settings\/data$/,
-  'data-offline-disabled': /^\/settings\/data$/,
-  'data-offline-enabled': /^\/settings\/data$/,
-  'data-settings-action': /^\/settings\/data$/,
-  'goal-create': /^\/goals\/create$/,
-  'goal-edit': /^(?:\/__test__\/release\/goal-edit|\/goals\/edit\/\d+)$/,
-  'goal-progress': /^\/goals\/progress$/,
-  goals: /^\/goals\/$/,
-  'log-add': /^\/log\/(?:add|view)$/,
-  'log-bulk': /^\/log\/bulk$/,
-  'log-edit': /^(?:\/__test__\/release\/log-edit|\/log\/edit\/\d+)$/,
-  logbook: /^\/log\/view$/,
-  'not-found': /^\/__release_missing_page__$/,
-  preferences: /^\/settings\/preferences$/,
-  profile: /^\/settings\/profile$/,
-  reminders: /^\/settings\/notifications$/,
-  'server-error': /^\/__test__\/error\/500$/,
-  statistics: /^\/settings\/statistics$/,
-});
-
-
 function isLocator(value) {
   return Boolean(value)
     && typeof value.count === 'function'
@@ -547,6 +521,7 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
   const expected = SUPPORTING_BEHAVIOR_OBLIGATIONS.filter((entry) => entry.owner === owner);
   const recordedEvidence = new Set();
   const recorderIdentity = Object.freeze({ owner });
+  const boundStatePrincipals = new Map();
 
   function obligationForOwner(state, action) {
     const obligation = expected.find((entry) => (
@@ -586,11 +561,41 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
     }
     if (!isLocator(control)) throw new TypeError('typed evidence requires a Playwright control locator');
     const path = new URL(page.url()).pathname;
-    const statePath = STATE_PATHS[obligation.state];
-    if (!statePath?.test(path)) {
+    const stateScenario = STATE_SCENARIOS[obligation.state];
+    if (!stateScenario?.path?.test(path)) {
       throw new Error(
         `${obligation.state} › ${obligation.action} received an artifact from wrong state ${path}`,
       );
+    }
+    if (!stateScenario.marker) {
+      throw new Error(`${obligation.state} has no authoritative state marker`);
+    }
+    const stateMarker = page.getByRole('heading', {
+      name: stateScenario.marker,
+      level: 1,
+      exact: typeof stateScenario.marker === 'string',
+    });
+    if (await stateMarker.count() !== 1 || !await stateMarker.isVisible()) {
+      throw new Error(
+        `${obligation.state} › ${obligation.action} has no visible authoritative state marker`,
+      );
+    }
+    const identityResponse = await page.request.get('/__test__/account-snapshot');
+    const expectedIdentity = stateScenario.identity;
+    if (expectedIdentity === undefined) {
+      throw new Error(`${obligation.state} has no authoritative state identity`);
+    }
+    if (expectedIdentity !== null) {
+      expectApi(identityResponse.status()).toBe(200);
+      const identityProfile = (await identityResponse.json()).profile;
+      const identity = identityProfile.email;
+      if (expectedIdentity instanceof RegExp) {
+        expectApi(identity).toMatch(expectedIdentity);
+        if (!boundStatePrincipals.has(obligation.state)) {
+          boundStatePrincipals.set(obligation.state, identityProfile.id);
+        }
+        expectApi(identityProfile.id).toBe(boundStatePrincipals.get(obligation.state));
+      } else expectApi(identity).toBe(expectedIdentity);
     }
     await expectApi(control).toHaveCount(1);
     await expectApi(control).toHaveAccessibleName(actionNamePattern(obligation.action));
@@ -604,6 +609,42 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
     if (controlPageMarker !== pageMarker) {
       throw new Error('typed evidence control belongs to a different page');
     }
+    const semanticRole = await control.evaluate((element) => {
+      const explicit = element.getAttribute('role');
+      if (explicit) return explicit;
+      if (element.tagName === 'A' && element.hasAttribute('href')) return 'link';
+      if (element.tagName === 'BUTTON') return 'button';
+      if (element.tagName === 'SUMMARY') return 'summary';
+      if (element.tagName === 'INPUT' && element.type === 'checkbox') return 'checkbox';
+      if (element.tagName === 'INPUT' && ['submit', 'button'].includes(element.type)) return 'button';
+      return null;
+    });
+    if (!semanticRole) throw new Error('authoritative control must expose an interactive role');
+    const controlHasBoundary = await control.evaluate((element) => Boolean(
+      element.closest('nav, header, main, form, [role="dialog"], dialog, section, article'),
+    ));
+    if (!controlHasBoundary && obligation.action !== 'Skip to main content') {
+      throw new Error('authoritative control must belong to an exact interaction landmark');
+    }
+    const authoritativeControl = semanticRole === 'summary'
+      ? page.locator('summary').filter({ hasText: actionNamePattern(obligation.action) })
+      : page.getByRole(semanticRole, { name: actionNamePattern(obligation.action) });
+    const visibleCandidates = [];
+    for (let index = 0; index < await authoritativeControl.count(); index += 1) {
+      const candidate = authoritativeControl.nth(index);
+      if (!await candidate.isVisible()) continue;
+      const sameBoundary = await control.evaluate((element, possibleMatch) => {
+        const boundary = (node) => node.closest(
+          'nav, header, main, form, [role="dialog"], dialog, section, article',
+        );
+        return boundary(element) === boundary(possibleMatch);
+      }, await candidate.elementHandle());
+      if (sameBoundary) visibleCandidates.push(candidate);
+    }
+    expectApi(visibleCandidates).toHaveLength(1);
+    const sameControl = await control.evaluate((element, candidate) => element === candidate,
+      await visibleCandidates[0].elementHandle());
+    if (!sameControl) throw new Error('typed evidence did not bind the authoritative unique control');
   }
 
   function validateActivation(activation) {
@@ -674,7 +715,7 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
     ));
   }
 
-  async function assertCausalFeedback(kind, descriptor, before) {
+  async function assertCausalFeedback(kind, descriptor, before, control) {
     if (!descriptor || !isLocator(descriptor.locator)) {
       throw new TypeError(`causal ${kind} requires a typed locator descriptor`);
     }
@@ -716,6 +757,30 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
     }
     if (descriptor.state !== undefined) {
       await expectApi(descriptor.locator).toHaveAttribute('data-state', descriptor.state);
+    }
+    let ownedArtifact;
+    if (descriptor.ownership?.kind === 'quick-notification') {
+      ownedArtifact = await descriptor.locator.evaluate((element, type) => (
+        element.closest('[data-notification-type]')?.getAttribute('data-notification-type') === type
+      ), descriptor.ownership.type);
+      ownedArtifact = ownedArtifact && await control.evaluate((element) => (
+        element.hasAttribute('data-quick-add')
+      ));
+    } else if (descriptor.ownership?.kind === 'container') {
+      const owner = descriptor.ownership.locator;
+      if (!isLocator(owner)) throw new TypeError(`${kind} container ownership requires a locator`);
+      await expectApi(owner).toHaveCount(1);
+      ownedArtifact = await owner.evaluate((element, artifact) => element.contains(artifact),
+        await descriptor.locator.elementHandle());
+    } else if (descriptor.ownership?.kind === 'field') {
+      ownedArtifact = await descriptor.locator.evaluate((element) => (
+        element.matches('input, select, textarea') && Boolean(element.closest('form'))
+      ));
+    } else {
+      throw new Error(`${kind} has no catalog-owned artifact relationship`);
+    }
+    if (!ownedArtifact) {
+      throw new Error(`${kind} is not an authoritative action-owned artifact`);
     }
   }
 
@@ -802,8 +867,9 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
     } else throw new TypeError(`unknown transaction outcome: ${outcome.kind}`);
   }
 
-  function forAction(state, action, { page, control } = {}) {
+  function createCatalogBranchTransaction(state, action, page, control) {
     const obligation = obligationForOwner(state, action);
+    const transactionIdentity = { state, action, dimensions: new Set() };
     let controlBound = false;
     async function ensureControlBound() {
       if (controlBound) return;
@@ -840,7 +906,6 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
         }
 
         await ensureControlBound();
-        const transactionIdentity = Object.freeze({ state, action });
         const beforeFeedback = feedback ? await captureFeedbackState(feedback.locator) : null;
         const beforeError = error?.kind === 'dismissed-dialog'
           ? await error.locator.count()
@@ -855,10 +920,32 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
           throw new Error('error already existed before activation');
         }
         const focusTarget = focus?.mode === 'retained' ? control : focus?.locator;
+        if (focus?.mode === 'moved') {
+          const ownedFocus = await control.evaluate((element, target) => {
+            if (target.id === 'main-content') return true;
+            const boundary = (node) => node.closest('form, section, article, main');
+            if (boundary(element) === boundary(target)) return true;
+            const controlledDialog = target.closest('[role="dialog"], dialog');
+            if (controlledDialog?.id
+              && element.getAttribute('aria-controls') === controlledDialog.id) return true;
+            const sourceDialog = element.closest('[role="dialog"], dialog');
+            return Boolean(
+              sourceDialog?.id && target.getAttribute('aria-controls') === sourceDialog.id,
+            );
+          }, await focusTarget.elementHandle());
+          if (!ownedFocus) throw new Error('focus target is not owned by the authoritative action');
+        }
         const beforePersistence = persistence
           ? await capturePersistence(page, persistence) : undefined;
         if (persistence?.expectedBefore !== undefined) {
           expectApi(beforePersistence).toEqual(persistence.expectedBefore);
+        }
+        if (persistence && persistence.expectedBefore === undefined) {
+          throw new Error('authoritative persistence requires exact expectedBefore');
+        }
+        if (persistence && JSON.stringify(persistence.expectedBefore)
+          === JSON.stringify(persistence.expectedAfter)) {
+          throw new Error('authoritative persistence must prove a before-to-after change');
         }
 
         let responseSettled = false;
@@ -909,6 +996,9 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
           }
           dimensions.push('loading');
         }
+        if (typeof arguments[0]?.whilePending === 'function') {
+          await arguments[0].whilePending();
+        }
 
         let response = null;
         if (request) {
@@ -922,7 +1012,7 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
         }
         await assertTransactionOutcome(outcome);
         if (feedback) {
-          await assertCausalFeedback('feedback', feedback, beforeFeedback);
+          await assertCausalFeedback('feedback', feedback, beforeFeedback, control);
           dimensions.push('feedback');
         }
         if (error) {
@@ -932,7 +1022,7 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
             }
             await assertDismissedDialogError(error, beforeError);
           } else {
-            await assertCausalFeedback('error', error, beforeError);
+            await assertCausalFeedback('error', error, beforeError, control);
           }
           dimensions.push('error');
         }
@@ -947,11 +1037,86 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
           expectApi(afterPersistence).toEqual(persistence.expectedAfter);
           dimensions.push('persistence');
         }
-        return issueTransactionReceipt(
+        const receipt = issueTransactionReceipt(
           obligation, transactionIdentity, page, control, dimensions,
+        );
+        if (typeof arguments[0]?.after === 'function') await arguments[0].after();
+        return receipt;
+      },
+    });
+  }
+
+  function forScenario(page, state, action) {
+    if (arguments.length !== 3) {
+      throw new TypeError('scenario callers may provide only page, state, and action');
+    }
+    const obligation = obligationForOwner(state, action);
+    const scenario = supportingScenarioFor(page, state, action);
+    const dimensions = new Set();
+    let branchIndex = 0;
+    let finalReceiptIssued = false;
+    let authoritativeControl = null;
+    return Object.freeze({
+      async run(branch) {
+        if (arguments.length !== 1 || typeof branch !== 'string') {
+          throw new TypeError('scenario branches accept one enumerated branch name');
+        }
+        if (finalReceiptIssued) throw new Error('scenario transaction already completed');
+        const expectedBranch = scenario.branches[branchIndex];
+        if (branch !== expectedBranch) {
+          throw new Error(
+            `${state} › ${action} expected branch ${expectedBranch}; received ${branch}`,
+          );
+        }
+        const { control, descriptor } = await scenario.resolve(branch);
+        authoritativeControl ||= control;
+        const branchTransaction = createCatalogBranchTransaction(
+          state, action, page, control,
+        );
+        const branchReceipt = await branchTransaction.run(descriptor);
+        const branchEvidence = supportingTransactionReceipts.get(branchReceipt);
+        if (!branchEvidence || branchEvidence.recorderIdentity !== recorderIdentity) {
+          throw new Error('scenario branch did not produce owned transaction evidence');
+        }
+        branchEvidence.consumed = true;
+        for (const dimension of branchEvidence.dimensions) dimensions.add(dimension);
+        branchIndex += 1;
+        if (branchIndex !== scenario.branches.length) return undefined;
+        const required = assertedDimensions(obligation);
+        const missing = required.filter((dimension) => !dimensions.has(dimension));
+        if (missing.length) {
+          throw new Error(`${state} › ${action} scenario omitted ${missing.join(', ')}`);
+        }
+        finalReceiptIssued = true;
+        return issueTransactionReceipt(
+          obligation,
+          { state, action, complete: true, dimensions: new Set() },
+          page,
+          authoritativeControl,
+          required,
         );
       },
     });
+  }
+
+  async function runScenario(page, state, action, ...branches) {
+    const transaction = forScenario(page, state, action);
+    let receipt;
+    for (const branch of branches) receipt = await transaction.run(branch);
+    if (!receipt) {
+      throw new Error(`${state} › ${action} scenario did not complete its branch sequence`);
+    }
+    const evidence = supportingTransactionReceipts.get(receipt);
+    if (!evidence || evidence.recorderIdentity !== recorderIdentity) {
+      throw new Error('scenario did not produce an owned opaque receipt');
+    }
+    const transactionDimensions = evidence.transactionIdentity.dimensions;
+    for (const dimension of evidence.dimensions) transactionDimensions.add(dimension);
+    evidence.consumed = true;
+    for (const dimension of evidence.dimensions) {
+      recordedEvidence.add(evidenceToken(state, action, dimension));
+    }
+    return receipt;
   }
 
   return Object.freeze({
@@ -963,16 +1128,23 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
         }
         if (transaction.consumed) throw new Error('transaction receipt was already consumed');
         transaction.consumed = true;
-        for (const dimension of transaction.dimensions) {
-          recordedEvidence.add(evidenceToken(
-            transaction.state, transaction.action, dimension,
-          ));
+        const transactionDimensions = transaction.transactionIdentity.dimensions;
+        for (const dimension of transaction.dimensions) transactionDimensions.add(dimension);
+        const obligation = obligationForOwner(transaction.state, transaction.action);
+        const required = assertedDimensions(obligation);
+        if (required.every((dimension) => transactionDimensions.has(dimension))) {
+          for (const dimension of required) {
+            recordedEvidence.add(evidenceToken(
+              transaction.state, transaction.action, dimension,
+            ));
+          }
         }
         return;
       }
       throw new Error('forged transaction receipt');
     },
-    forAction,
+    forScenario,
+    runScenario,
     assertComplete() {
       const expectedEvidence = expected.flatMap((obligation) => (
         assertedDimensions(obligation).map((dimension) => evidenceToken(
@@ -1003,37 +1175,70 @@ function indexedCoverage(entries, sourceName) {
 
 
 function validateSupportingCoverage(expectedActions, receipts, policies, obligations) {
-  const receiptIndex = indexedCoverage(receipts, 'supporting receipts');
-  const policyIndex = indexedCoverage(policies, 'supporting policy');
-  const obligationIndex = indexedCoverage(obligations, 'supporting behavior obligations');
-  for (const state of SUPPORTING_ACTION_STATES) {
+  const baselineIndex = indexedCoverage(SUPPORTING_ACTION_BASELINES, 'supporting baseline');
+  if (SUPPORTING_ACTION_BASELINES.length !== 388 || SUPPORTING_BASELINE_STATES.length !== 30) {
+    throw new Error('supporting baseline exact length must remain 388 actions across 30 states');
+  }
+  const sources = [
+    ['supporting receipts', receipts],
+    ['supporting policy', policies],
+    ['supporting behavior obligations', obligations],
+  ];
+  const baselineStates = [...SUPPORTING_BASELINE_STATES].sort();
+  const baselineKeys = [...baselineIndex.keys()].sort();
+  const indexes = new Map();
+  for (const [sourceName, source] of sources) {
+    const index = indexedCoverage(source, sourceName);
+    indexes.set(sourceName, index);
+    if (source.length !== SUPPORTING_ACTION_BASELINES.length) {
+      throw new Error(`${sourceName} exact length differs from supporting baseline`);
+    }
+    const states = [...new Set(source.map(({ state }) => state))].sort();
+    if (JSON.stringify(states) !== JSON.stringify(baselineStates)) {
+      throw new Error(`${sourceName} exact state set differs from supporting baseline`);
+    }
+    if (JSON.stringify([...index.keys()].sort()) !== JSON.stringify(baselineKeys)) {
+      throw new Error(`${sourceName} exact action key set differs from supporting baseline`);
+    }
+  }
+  if (JSON.stringify([...SUPPORTING_ACTION_STATES].sort()) !== JSON.stringify(baselineStates)) {
+    throw new Error('runtime supporting exact state set differs from supporting baseline');
+  }
+
+  for (const state of SUPPORTING_BASELINE_STATES) {
     const actions = expectedActions[state];
     if (!actions) throw new Error(`${state} supporting action inventory is missing`);
-    for (const [sourceName, source] of [
-      ['receipt', receipts], ['policy', policies], ['behavior obligation', obligations],
-    ]) {
-      const actual = source.filter((entry) => entry.state === state)
-        .map(({ action }) => action).sort();
-      if (JSON.stringify(actual) !== JSON.stringify([...actions].sort())) {
-        throw new Error(`${state} independent ${sourceName} actions differ from action inventory`);
-      }
+    const baselineActions = SUPPORTING_ACTION_BASELINES
+      .filter((entry) => entry.state === state).map(({ action }) => action).sort();
+    if (JSON.stringify([...actions].sort()) !== JSON.stringify(baselineActions)) {
+      throw new Error(`${state} independent manifest actions differ from exact baseline inventory`);
     }
     for (const action of actions) {
       const key = `${state}\u0000${action}`;
-      const receipt = receiptIndex.get(key);
-      const policy = policyIndex.get(key);
-      const obligation = obligationIndex.get(key);
-      if (!receipt) throw new Error(`${state} › ${action} missing supporting receipt`);
-      if (!policy) throw new Error(`${state} › ${action} missing supporting policy`);
-      if (!obligation) throw new Error(`${state} › ${action} missing runtime obligation`);
-      if (receipt.owner !== policy.owner || receipt.owner !== obligation.owner) {
+      const baseline = baselineIndex.get(key);
+      const receipt = indexes.get('supporting receipts').get(key);
+      const policy = indexes.get('supporting policy').get(key);
+      const obligation = indexes.get('supporting behavior obligations').get(key);
+      if (receipt.owner !== baseline.owner
+        || policy.owner !== baseline.owner || obligation.owner !== baseline.owner) {
         throw new Error(`${state} › ${action} receipt owner differs from policy or behavior`);
       }
-      if (receipt.profile !== policy.profile || receipt.profile !== obligation.profile) {
+      if (receipt.profile !== baseline.profile
+        || policy.profile !== baseline.profile || obligation.profile !== baseline.profile) {
         throw new Error(`${state} › ${action} receipt profile differs from policy or behavior`);
       }
-      for (const dimension of DIMENSIONS) {
+      for (const [sourceName, entry] of [
+        ['supporting baseline', baseline], ['supporting receipts', receipt],
+        ['supporting policy', policy], ['supporting behavior obligations', obligation],
+      ]) {
+        const dimensionKeys = Object.keys(entry.dimensions).sort();
+        if (JSON.stringify(dimensionKeys) !== JSON.stringify([...DIMENSIONS].sort())) {
+          throw new Error(`${state} › ${action} ${sourceName} exact dimension set differs`);
+        }
+      }
+      for (const dimension of Object.keys(baseline.dimensions)) {
         const statuses = [
+          baseline.dimensions[dimension]?.status,
           receipt.dimensions[dimension]?.status,
           policy.dimensions[dimension]?.status,
           obligation.dimensions[dimension]?.status,
@@ -1044,6 +1249,7 @@ function validateSupportingCoverage(expectedActions, receipts, policies, obligat
           );
         }
         const reasons = [
+          baseline.dimensions[dimension]?.reason,
           receipt.dimensions[dimension]?.reason,
           policy.dimensions[dimension]?.reason,
           obligation.dimensions[dimension]?.reason,

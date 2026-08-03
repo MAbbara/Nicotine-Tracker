@@ -62,13 +62,7 @@ test('Craving history records complete and minimal entries in chronological orde
     ['Increased appetite', 'increased_appetite'],
   ];
   for (const [action] of symptomControls) {
-    const control = form.getByLabel(action);
-    const evidence = recorder.forAction('cravings', action, { page, control });
-    recorder.accept(await evidence.run({
-      activation: { kind: 'keyboard', key: 'Space' },
-      outcome: { kind: 'checked', locator: control, checked: true },
-      focus: { mode: 'retained' },
-    }));
+    await recorder.runScenario(page, 'cravings', action, 'toggle');
   }
   await form.getByLabel('Situation context').fill('After a difficult meeting');
   await form.getByLabel('Outcome').selectOption('used_alternative');
@@ -106,8 +100,6 @@ test('Craving history exposes native validation and recoverable server feedback'
   await register(page, testInfo);
   await page.goto('/cravings/cravings');
   const form = page.locator('#craving-form');
-  const intensity = form.getByLabel('Intensity');
-  const submit = form.getByRole('button', { name: 'Record craving' });
   let posts = 0;
   page.on('request', (request) => {
     if (
@@ -116,67 +108,11 @@ test('Craving history exposes native validation and recoverable server feedback'
     ) posts += 1;
   });
 
-  const evidence = recorder.forAction('cravings', 'Record craving', { page, control: submit });
-  recorder.accept(await evidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    focus: { mode: 'moved', locator: intensity },
-    error: { locator: intensity, validationMessage: 'Please fill out this field.' },
-    feedback: { locator: intensity, validationMessage: 'Please fill out this field.' },
-  }));
-  expect(posts).toBe(0);
-
-  let releaseFailure;
-  const heldFailure = new Promise((resolve) => { releaseFailure = resolve; });
-  await page.route('**/cravings/api/cravings', async (route) => {
-    if (route.request().method() === 'POST') {
-      await heldFailure;
-      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Temporary test failure.' }) });
-      return;
-    }
-    await route.continue();
-  });
-  await intensity.fill('6');
-  const status = form.locator('[data-craving-form-status]');
-  const failedTransaction = evidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    request: {
-      method: 'POST', path: /^\/cravings\/api\/cravings$/, status: 503,
-      payload: { kind: 'json', exact: { intensity: 6 } },
-    },
-    loading: {
-      disabled: true,
-      status: { locator: status, text: 'Saving your craving…' },
-    },
-    error: { locator: status, text: 'Temporary test failure.', state: 'error' },
-    feedback: { locator: status, text: 'Temporary test failure.' },
-    focus: { mode: 'retained' },
-  });
-  await expect(status).toHaveText('Saving your craving…');
-  await expect(submit).toHaveAttribute('aria-disabled', 'true');
-  await submit.evaluate((element) => {
-    element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-  });
-  expect(posts).toBe(1);
-  releaseFailure();
-  recorder.accept(await failedTransaction);
-  await expect(submit).toBeEnabled();
-  await expect(intensity).toHaveValue('6');
-  await page.unroute('**/cravings/api/cravings');
-  recorder.accept(await evidence.run({
-    activation: { kind: 'keyboard', key: 'Enter' },
-    request: {
-      method: 'POST', path: /^\/cravings\/api\/cravings$/, status: 201,
-      payload: { kind: 'json', exact: { intensity: 6 } },
-    },
-    feedback: {
-      locator: status, text: 'Craving recorded. Thank you for noticing the moment.',
-    },
-    persistence: {
-      kind: 'locator', locator: page.locator('.craving-row'), property: 'count',
-      expectedBefore: 0, expectedAfter: 1,
-    },
-  }));
+  await recorder.runScenario(
+    page, 'cravings', 'Record craving', 'invalid', 'failure', 'success',
+  );
   expect(posts).toBe(2);
+  const status = form.locator('[data-craving-form-status]');
   await expect(status).toHaveAttribute('data-state', 'success');
   await expect(page.locator('.craving-row').first()).toContainText('Intensity 6 of 10');
   recorder.assertComplete();
