@@ -1,7 +1,7 @@
 import { activateActionEnhancement } from './action_enhancement.js';
 import { createTimelineDomAdapter } from './timeline.js';
 import { getOfflineQueueRuntime } from './offline_queue.js';
-import { installDialogFocusTrap } from '../shell/dialog_focus.js';
+import { installDialogFocusTrap, restoreDialogFocus } from '../shell/dialog_focus.js';
 
 const QUICK_LOG_CONTROLLERS = new WeakMap();
 
@@ -1099,7 +1099,9 @@ export function createQuickLogDomView(root, dialog) {
   }
 
   function returnFocus() {
-    if (trigger && typeof trigger.focus === 'function') trigger.focus();
+    const sourceTrigger = trigger;
+    trigger = null;
+    return restoreDialogFocus(dialog, sourceTrigger);
   }
 
   function setBusy(value) {

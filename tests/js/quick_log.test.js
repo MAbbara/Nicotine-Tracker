@@ -37,6 +37,42 @@ async function loadQuickLog() {
   return import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 }
 
+async function loadDialogFocus() {
+  const source = fs.readFileSync(
+    path.join(projectRoot, 'static', 'js', 'shell', 'dialog_focus.js'),
+    'utf8',
+  );
+  return import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+}
+
+function makeFocusDocument({ hidden = false } = {}) {
+  const documentRef = {
+    hidden,
+    visibilityState: hidden ? 'hidden' : 'visible',
+    activeElement: null,
+    defaultView: {
+      getComputedStyle(element) { return element.computedStyle; },
+    },
+    querySelector() { return null; },
+  };
+  const makeElement = ({ connected = true } = {}) => ({
+    ownerDocument: documentRef,
+    isConnected: connected,
+    hidden: false,
+    disabled: false,
+    computedStyle: { display: 'block', visibility: 'visible' },
+    focusCalls: 0,
+    closest() { return null; },
+    matches() { return true; },
+    getAttribute() { return null; },
+    getClientRects() { return [{}]; },
+    focus() { this.focusCalls += 1; documentRef.activeElement = this; },
+  });
+  documentRef.body = makeElement();
+  documentRef.documentElement = makeElement();
+  return { documentRef, makeElement };
+}
+
 async function loadTimeline() {
   const source = fs.readFileSync(
     path.join(projectRoot, 'static', 'js', 'today', 'timeline.js'),
@@ -135,6 +171,33 @@ function deferred() {
   });
   return { promise, resolve, reject };
 }
+
+test('dialog focus restoration is inert while the document is hidden', async () => {
+  const { restoreDialogFocus } = await loadDialogFocus();
+  const { documentRef, makeElement } = makeFocusDocument({ hidden: true });
+  const dialog = makeElement();
+  dialog.contains = () => false;
+  const opener = makeElement();
+  documentRef.activeElement = documentRef.body;
+
+  assert.equal(restoreDialogFocus(dialog, opener), false);
+  assert.equal(opener.focusCalls, 0);
+  assert.equal(documentRef.activeElement, documentRef.body);
+});
+
+test('dialog focus restoration preserves a connected visible outside target', async () => {
+  const { restoreDialogFocus } = await loadDialogFocus();
+  const { documentRef, makeElement } = makeFocusDocument();
+  const dialog = makeElement();
+  dialog.contains = () => false;
+  const opener = makeElement();
+  const intentionalTarget = makeElement();
+  documentRef.activeElement = intentionalTarget;
+
+  assert.equal(restoreDialogFocus(dialog, opener), false);
+  assert.equal(opener.focusCalls, 0);
+  assert.equal(documentRef.activeElement, intentionalTarget);
+});
 
 test('OPEN creates one structured editing draft from the smart default', async () => {
   const { quickLogReducer } = await loadQuickLog();

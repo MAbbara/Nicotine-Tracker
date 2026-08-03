@@ -1,7 +1,7 @@
 import { bootstrapQuickLog, formatOffsetIso, toDateTimeLocal } from './quick_log.js';
 import { createTimelineDomAdapter } from './timeline.js';
 import { activateActionEnhancement } from './action_enhancement.js';
-import { installDialogFocusTrap } from '../shell/dialog_focus.js';
+import { installDialogFocusTrap, restoreDialogFocus } from '../shell/dialog_focus.js';
 
 const OUTCOMES = new Set(['resisted', 'used_nicotine', 'used_alternative']);
 const CRAVING_FLOW_CONTROLLERS = new WeakMap();
@@ -1231,7 +1231,9 @@ export function createCravingFlowDomView(root, dialog) {
   }
 
   function returnFocus() {
-    sourceTrigger?.focus?.();
+    const trigger = sourceTrigger;
+    sourceTrigger = null;
+    return restoreDialogFocus(dialog, trigger);
   }
 
   function setBusy(operation, value) {

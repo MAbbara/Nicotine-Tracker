@@ -320,6 +320,66 @@ test('quick log, craving support, and Add log dialogs trap and return keyboard f
 });
 
 
+test('Quick Log Escape recovers to main when its opener is disconnected', async ({ page }) => {
+  await login(page, 'today-targeted@example.com');
+  const quickLogTrigger = page.locator('#today-log-action');
+  const quickLogDialog = page.getByRole('dialog', { name: 'Log nicotine use' });
+  await quickLogTrigger.click();
+  await expect(quickLogDialog).toBeVisible();
+  await quickLogTrigger.evaluate((element) => element.remove());
+  await page.keyboard.press('Escape');
+  await expect(quickLogDialog).toBeHidden();
+  await expect(page.locator('#main-content')).toBeFocused();
+});
+
+
+test('craving Escape recovers to main when its opener is hidden', async ({ page }) => {
+  await login(page, 'today-targeted@example.com');
+  const cravingTrigger = page.locator('#today-craving-action');
+  const cravingDialog = page.getByRole('dialog', { name: 'Take the next useful step' });
+  await cravingTrigger.click();
+  await expect(cravingDialog).toBeVisible();
+  await cravingTrigger.evaluate((element) => { element.hidden = true; });
+  await page.keyboard.press('Escape');
+  await expect(cravingDialog).toBeHidden();
+  await expect(page.locator('#main-content')).toBeFocused();
+});
+
+
+test('Quick Log explicit close preserves intentional visible focus', async ({ page }) => {
+  await login(page, 'today-targeted@example.com');
+  const quickLogTrigger = page.locator('#today-log-action');
+  const quickLogDialog = page.getByRole('dialog', { name: 'Log nicotine use' });
+  const journey = page.getByRole('navigation', { name: 'Primary' })
+    .getByRole('link', { name: 'Journey', exact: true });
+  await quickLogTrigger.click();
+  const closeQuickLog = quickLogDialog.getByRole('button', { name: 'Close quick log' });
+  await closeQuickLog.evaluate((button) => {
+    button.addEventListener('click', () => {
+      button.closest('dialog').close();
+      document.querySelector('nav[aria-label="Primary"] a[href*="journey"]')?.focus();
+    }, { once: true });
+  });
+  await closeQuickLog.click();
+  await expect(quickLogDialog).toBeHidden();
+  await expect(journey).toBeFocused();
+});
+
+
+test('Add Log explicit cancel recovers to main when its opener is disconnected', async ({ page }) => {
+  await login(page, 'today-targeted@example.com');
+  await page.goto('/log/view');
+  const addLogTrigger = page.getByRole('button', { name: 'Add log', exact: true });
+  const addLogDialog = page.getByRole('dialog', { name: 'Add a log' });
+  await addLogTrigger.click();
+  await expect(addLogDialog).toBeVisible();
+  await addLogTrigger.evaluate((element) => element.remove());
+  await addLogDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(addLogDialog).toBeHidden();
+  await expect(page.locator('#main-content')).toBeFocused();
+});
+
+
 test('Today, Insights, Profile, and Logbook support 200% text and reduced motion', async ({ page }) => {
   test.setTimeout(60_000);
   const errors = collectBrowserErrors(page);

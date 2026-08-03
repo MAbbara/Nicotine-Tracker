@@ -1,4 +1,4 @@
-import { installDialogFocusTrap } from '../shell/dialog_focus.js';
+import { installDialogFocusTrap, restoreDialogFocus } from '../shell/dialog_focus.js';
 
 function syncCustomProductFields(form) {
   const select = form.querySelector('[data-product-select]');
@@ -62,7 +62,7 @@ export function initLoggingForms(root = document, confirmImpl = window.confirm) 
       root.querySelectorAll('[aria-controls="addLogModal"]').forEach((trigger) => {
         trigger.setAttribute('aria-expanded', 'false');
       });
-      returnFocus?.focus();
+      restoreDialogFocus(dialog, returnFocus);
       returnFocus = null;
     };
     dialog.addEventListener('close', handleClose);
