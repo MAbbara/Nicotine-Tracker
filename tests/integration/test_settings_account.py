@@ -3,6 +3,9 @@
 from pathlib import Path
 
 from bs4 import BeautifulSoup
+from datetime import datetime
+
+from models import Craving, Goal, Log, Pouch, User
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -84,6 +87,42 @@ def test_password_and_deletion_errors_are_field_adjacent(logged_in_client):
     assert delete_soup.select_one("#delete_password-error").get_text(
         " ", strip=True
     ) == "Password is incorrect."
+
+
+def test_account_deletion_removes_exact_owned_rows_without_orphaned_pouch(
+        logged_in_client, db_session, test_user, test_pouch, test_log,
+        test_goal):
+    craving = Craving(
+        user_id=test_user.id,
+        craving_time=datetime.utcnow(),
+        intensity=6,
+        notes='account deletion ownership proof',
+    )
+    db_session.add(craving)
+    db_session.commit()
+    owned_ids = {
+        'user': test_user.id,
+        'pouch': test_pouch.id,
+        'log': test_log.id,
+        'goal': test_goal.id,
+        'craving': craving.id,
+    }
+
+    response = logged_in_client.post('/settings/account', data={
+        'action': 'delete_account',
+        'password': 'password123',
+        'confirmation': 'delete my account',
+    }, follow_redirects=False)
+
+    assert response.status_code == 302
+    assert User.query.filter_by(id=owned_ids['user']).count() == 0
+    assert Log.query.filter_by(id=owned_ids['log']).count() == 0
+    assert Goal.query.filter_by(id=owned_ids['goal']).count() == 0
+    assert Craving.query.filter_by(id=owned_ids['craving']).count() == 0
+    assert Pouch.query.filter_by(id=owned_ids['pouch']).count() == 0
+    assert Pouch.query.filter(
+        Pouch.id == owned_ids['pouch'], Pouch.created_by.is_(None)
+    ).count() == 0
 
 
 def test_account_template_retires_legacy_cards_and_palette():

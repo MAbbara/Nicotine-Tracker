@@ -1,5 +1,10 @@
 const { test, expect } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
+const {
+  SUPPORTING_OWNER_TITLES,
+  createSupportingBehaviorRecorder,
+} = require('./helpers/supporting_behavior_contract');
+const { watchForProductProblems } = require('./helpers/product_guard');
 
 
 let userSequence = 0;
@@ -25,12 +30,17 @@ async function register(page, testInfo) {
 }
 
 
-async function loginPopulated(page) {
+async function login(page, email = 'today-targeted@example.com') {
   await page.goto('/auth/login');
-  await page.getByLabel('Email address').fill('today-targeted@example.com');
+  await page.getByLabel('Email address').fill(email);
   await page.getByLabel('Password').fill('browser-password');
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL(/\/today\/?$/);
+}
+
+
+async function loginPopulated(page) {
+  return login(page);
 }
 
 
@@ -99,6 +109,180 @@ test('Dashboard keeps one server-first compatibility review with purposeful dest
 
   await expectNoWcagViolations(page);
   expect(errors).toEqual([]);
+});
+
+
+test('Dashboard range control requests every exact preset from the keyboard', async ({ page }) => {
+  const errors = collectUnexpectedErrors(page);
+  await login(page, 'release-analytics-ready@example.com');
+  const cases = [
+    { from: 30, to: 7, key: 'ArrowUp' },
+    { from: 7, to: 30, key: 'ArrowDown' },
+    { from: 30, to: 90, key: 'ArrowDown' },
+    { from: 90, to: 365, key: 'ArrowDown' },
+  ];
+
+  for (const item of cases) {
+    await page.goto(`/dashboard/?days=${item.from}`);
+    const range = page.getByLabel('Review range');
+    await expect(range).toHaveValue(String(item.from));
+    const responsePending = page.waitForResponse((response) => (
+      response.request().isNavigationRequest()
+      && response.request().method() === 'GET'
+      && new URL(response.url()).pathname === '/dashboard/'
+      && new URL(response.url()).search === `?days=${item.to}`
+    ));
+    await range.focus();
+    await expect(range).toBeFocused();
+    await page.keyboard.press(item.key);
+    const response = await responsePending;
+    expect(response.status()).toBe(200);
+    expect(response.request().postData()).toBeNull();
+    await expect(page).toHaveURL(new RegExp(`/dashboard/\\?days=${item.to}$`));
+    await expect(page.getByLabel('Review range')).toHaveValue(String(item.to));
+    await expect(page.locator('[data-dashboard-range-days]')).toHaveAttribute(
+      'data-dashboard-range-days', String(item.to),
+    );
+    await expect(page.getByRole('table', { name: 'Recent daily intake data' })
+      .locator('tbody tr')).toHaveCount(item.to);
+  }
+  expect(errors).toEqual([]);
+});
+
+
+for (const [state, email] of [
+  ['empty', 'release-analytics-empty@example.com'],
+  ['sparse', 'release-analytics-sparse@example.com'],
+]) {
+  test(`Dashboard ${state} state renders the same bounded range control`, async ({ page }) => {
+    const errors = collectUnexpectedErrors(page);
+    await login(page, email);
+    await page.goto('/dashboard/?days=90');
+    await expect(page.getByLabel('Review range')).toHaveValue('90');
+    await expect(page.locator('[data-dashboard-range-days]')).toHaveAttribute(
+      'data-dashboard-range-days', '90',
+    );
+    expect(errors).toEqual([]);
+  });
+}
+
+
+test('Dashboard supporting actions cover ranges, destinations, and disclosure in every data state', async ({ page }) => {
+  test.setTimeout(180_000);
+  const recorder = createSupportingBehaviorRecorder(
+    SUPPORTING_OWNER_TITLES.dashboard, expect,
+  );
+  const guard = watchForProductProblems(page);
+  const states = [
+    ['dashboard', 'release-analytics-ready@example.com'],
+    ['dashboard-empty', 'release-analytics-empty@example.com'],
+    ['dashboard-sparse', 'release-analytics-sparse@example.com'],
+  ];
+
+  for (const [state, email] of states) {
+    await page.request.get('/auth/logout');
+    await login(page, email);
+
+    // The range is a native select rather than another release-manifest link;
+    // exercise every rendered option from the keyboard in each exact data state.
+    for (const item of [
+      { from: 30, to: 7, key: 'ArrowUp' },
+      { from: 7, to: 30, key: 'ArrowDown' },
+      { from: 30, to: 90, key: 'ArrowDown' },
+      { from: 90, to: 365, key: 'ArrowDown' },
+    ]) {
+      await page.goto(`/dashboard/?days=${item.from}`);
+      const range = page.getByLabel('Review range');
+      const responsePending = page.waitForResponse((response) => (
+        response.request().isNavigationRequest()
+        && response.request().method() === 'GET'
+        && new URL(response.url()).pathname === '/dashboard/'
+        && new URL(response.url()).search === `?days=${item.to}`
+      ));
+      await range.focus();
+      await expect(range).toBeFocused();
+      await page.keyboard.press(item.key);
+      const response = await responsePending;
+      expect(response.status()).toBe(200);
+      expect(response.request().postData()).toBeNull();
+      await expect(page.getByLabel('Review range')).toHaveValue(String(item.to));
+      await expect(page.locator('[data-dashboard-range-days]')).toHaveAttribute(
+        'data-dashboard-range-days', String(item.to),
+      );
+    }
+
+    for (const [action, path] of [
+      ['Go to Today', '/today/'],
+      ['Open Insights', '/insights/'],
+      ['Review Journey', '/journey/'],
+    ]) {
+      await page.goto('/dashboard/?days=30');
+      const control = page.getByRole('link', { name: action });
+      const responsePending = page.waitForResponse((response) => (
+        response.request().isNavigationRequest()
+        && response.request().method() === 'GET'
+        && new URL(response.url()).pathname === path
+      ));
+      const evidence = recorder.forAction(state, action, { page, control });
+      const keyboardToken = await evidence.keyboard({
+        key: 'Enter',
+        outcome: {
+          kind: 'response', pending: responsePending,
+          method: 'GET', path: new RegExp(`^${path.replaceAll('/', '\\/')}$`), status: 200,
+        },
+      });
+      recorder.accept(keyboardToken);
+      recorder.accept(await evidence.request({
+        activation: keyboardToken,
+        method: 'GET', path: new RegExp(`^${path.replaceAll('/', '\\/')}$`), status: 200,
+      }));
+      await page.waitForLoadState('load');
+    }
+
+    await page.goto('/dashboard/?days=30');
+    if (state !== 'dashboard-empty') {
+      const summary = page.getByText('View daily values', { exact: true });
+      const details = summary.locator('..');
+      await expect(details).toHaveAttribute('open', '');
+      const evidence = recorder.forAction(
+        state, 'View daily values', { page, control: summary },
+      );
+      const keyboardToken = await evidence.keyboard({
+        key: 'Enter',
+        outcome: { kind: 'attribute', locator: details, name: 'open', value: null },
+      });
+      recorder.accept(keyboardToken);
+      recorder.accept(await evidence.focus({ locator: summary }));
+    } else {
+      const action = 'Start with Today';
+      const path = '/today/';
+      const control = page.getByRole('link', { name: action });
+      const responsePending = page.waitForResponse((response) => (
+        response.request().isNavigationRequest()
+        && response.request().method() === 'GET'
+        && new URL(response.url()).pathname === path
+      ));
+      const evidence = recorder.forAction(state, action, { page, control });
+      const keyboardToken = await evidence.keyboard({
+        key: 'Enter',
+        outcome: {
+          kind: 'response', pending: responsePending,
+          method: 'GET', path: /^\/today\/$/, status: 200,
+        },
+      });
+      recorder.accept(keyboardToken);
+      recorder.accept(await evidence.request({
+        activation: keyboardToken,
+        method: 'GET', path: /^\/today\/$/, status: 200,
+      }));
+    }
+  }
+
+  recorder.assertComplete();
+  guard.assertClean(expect, {
+    stateName: 'Dashboard supporting owner', allowAnalytics: true,
+  });
+  guard.stop();
 });
 
 

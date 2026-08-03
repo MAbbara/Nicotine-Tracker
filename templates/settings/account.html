@@ -24,7 +24,8 @@
                     value=user.email,
                     autocomplete='email',
                     error=account_errors.get('new_email'),
-                    required=true
+                    required=true,
+                    autofocus=account_errors.get('new_email')
                 ) }}
                 {{ field(
                     'password',
@@ -32,7 +33,8 @@
                     type='password',
                     autocomplete='current-password',
                     error=account_errors.get('email_password'),
-                    required=true
+                    required=true,
+                    autofocus=account_errors.get('email_password')
                 ) }}
             </div>
 
@@ -59,7 +61,8 @@
                     type='password',
                     autocomplete='current-password',
                     error=account_errors.get('current_password'),
-                    required=true
+                    required=true,
+                    autofocus=account_errors.get('current_password')
                 ) }}
                 <div class="c-field{% if account_errors.get('new_password') %} c-field--error{% endif %}">
                     <label class="c-field__label" for="new_password">New password<span aria-hidden="true"> *</span></label>
@@ -73,6 +76,7 @@
                         autocomplete="new-password"
                         required
                         aria-required="true"
+                        {% if account_errors.get('new_password') %}autofocus{% endif %}
                         aria-describedby="new_password-description{% if account_errors.get('new_password') %} new_password-error{% endif %}"
                         {% if account_errors.get('new_password') %}aria-invalid="true"{% endif %}
                     >
@@ -84,7 +88,8 @@
                     type='password',
                     autocomplete='new-password',
                     error=account_errors.get('confirm_password'),
-                    required=true
+                    required=true,
+                    autofocus=account_errors.get('confirm_password')
                 ) }}
             </div>
 
@@ -160,6 +165,7 @@
                         autocomplete="current-password"
                         required
                         aria-required="true"
+                        {% if account_errors.get('delete_password') %}autofocus{% endif %}
                         {% if account_errors.get('delete_password') %}aria-describedby="delete_password-error" aria-invalid="true"{% endif %}
                     >
                     {% if account_errors.get('delete_password') %}<p class="c-field__error" id="delete_password-error" role="alert">{{ account_errors.get('delete_password') }}</p>{% endif %}
@@ -168,7 +174,8 @@
                     'confirmation',
                     'Type “delete my account” to confirm',
                     error=account_errors.get('confirmation'),
-                    required=true
+                    required=true,
+                    autofocus=account_errors.get('confirmation') and not account_errors.get('delete_password')
                 ) }}
             </div>
 

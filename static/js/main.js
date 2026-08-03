@@ -32,6 +32,11 @@ function initializeApp() {
     initializeTooltips();
     initializeFormValidations();
 
+    const pendingQuickAddFeedback = sessionStorage.getItem('quick-add-feedback');
+    if (pendingQuickAddFeedback) {
+        sessionStorage.removeItem('quick-add-feedback');
+        showNotification(pendingQuickAddFeedback, 'success');
+    }
     initializeQuickAdd();
 }
 
@@ -164,11 +169,12 @@ function handleQuickAdd(event) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            showNotification(data.message, 'success');
             if (button.hasAttribute('data-quick-add-refresh')) {
+                sessionStorage.setItem('quick-add-feedback', data.message);
                 window.location.reload();
                 return;
             }
+            showNotification(data.message, 'success');
             if (typeof refreshDashboard === 'function') {
                 refreshDashboard();
             }
@@ -199,6 +205,7 @@ function handleQuickAdd(event) {
 function showNotification(message, type = 'info') {
     const notification = document.createElement('div');
     notification.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-sm ${getNotificationClasses(type)}`;
+    notification.setAttribute?.('data-notification-type', type);
     notification.innerHTML = `
         <div class="flex items-center">
             <div class="flex-shrink-0">${getNotificationIcon(type)}</div>
@@ -212,6 +219,10 @@ function showNotification(message, type = 'info') {
                 </button>
             </div>
         </div>`;
+    const messageNode = notification.querySelector?.('p');
+    messageNode?.setAttribute?.('role', type === 'error' ? 'alert' : 'status');
+    messageNode?.setAttribute?.('aria-live', type === 'error' ? 'assertive' : 'polite');
+    messageNode?.setAttribute?.('data-notification-message', '');
     document.body.appendChild(notification);
     setTimeout(() => { if (notification.parentNode) notification.remove(); }, 5000);
 }

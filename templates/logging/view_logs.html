@@ -43,6 +43,8 @@
         data-quick-add
         data-quick-add-refresh
         data-pouch-id="{{ pouch.id }}"
+        data-pouch-brand="{{ pouch.brand }}"
+        data-pouch-strength="{{ pouch.nicotine_mg_display() }}"
         data-quantity="1"
         aria-label="Log one {{ pouch.brand }}, {{ pouch.nicotine_mg_display() }} milligrams"
       >
@@ -100,7 +102,7 @@
           {% set total = log.get_total_nicotine() %}
           {% set local_date = log.get_user_date(user_timezone) if user_timezone else log.log_date %}
           {% set local_time = log.get_user_time(user_timezone) if log.log_time and user_timezone else (log.log_time.time() if log.log_time else none) %}
-          <article class="logbook-row">
+          <article class="logbook-row" data-log-id="{{ log.id }}">
             <div class="logbook-row__primary">
               <time datetime="{{ log.log_time.strftime('%Y-%m-%dT%H:%M:%SZ') if log.log_time else local_date.isoformat() }}">
                 {{ local_time.strftime('%H:%M') if local_time else 'Time not recorded' }}

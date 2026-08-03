@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, session, jsonify
-from models import User, Log, Pouch, Goal        # import models from the package
+from models import Craving, User, Log, Pouch, Goal        # import models from the package
 from extensions import db
 from routes.auth import login_required, get_current_user
 from services.log_service import (
@@ -40,6 +40,23 @@ DATA_ACTIONS: frozenset[str] = frozenset({
     'export_data', 'cleanup_duplicates', 'merge_custom_pouches',
     'recalculate_goals', 'anonymize_data', 'delete_old_logs',
 })
+
+
+def _delete_account_owned_data(user):
+    """Delete ownership rows not covered by the User ORM cascades.
+
+    Logs, goals, plans, preferences, settings, notifications, tokens, and
+    related plan/check-in rows are owned through delete-orphan User
+    relationships. Cravings have only a foreign key, while custom pouches use
+    a nullable creator link; both therefore need explicit deletion before the
+    User row is removed.
+    """
+    user_id = user.id
+    custom_pouches = Pouch.query.filter_by(created_by=user_id).all()
+    Craving.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+    for pouch in custom_pouches:
+        db.session.delete(pouch)
+    db.session.delete(user)
 
 
 def _duplicate_log_groups(user_id):
@@ -665,8 +682,7 @@ def account():
                 user_email = user.email
                 current_app.logger.info(f'Account deletion initiated for user {user_email}')
                 
-                # Delete user account (cascade will handle related records)
-                db.session.delete(user)
+                _delete_account_owned_data(user)
                 db.session.commit()
                 
                 # Clear session

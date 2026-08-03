@@ -1,4 +1,4 @@
-{% macro field(name, label, type='text', value='', description=None, error=None, placeholder=None, autocomplete=None, required=False, min=None, max=None, step=None, disabled=False) -%}
+{% macro field(name, label, type='text', value='', description=None, error=None, placeholder=None, autocomplete=None, required=False, min=None, max=None, step=None, disabled=False, autofocus=False) -%}
   {% set described = [name ~ '-description' if description else none,
                       name ~ '-error' if error else none]
                       | reject('equalto', none) | join(' ') %}
@@ -15,6 +15,7 @@
       {% if autocomplete %}autocomplete="{{ autocomplete }}"{% endif %}
       {% if required %}required aria-required="true"{% endif %}
       {% if disabled %}disabled{% endif %}
+      {% if autofocus %}autofocus{% endif %}
       {% if min is not none %}min="{{ min }}"{% endif %}
       {% if max is not none %}max="{{ max }}"{% endif %}
       {% if step is not none %}step="{{ step }}"{% endif %}

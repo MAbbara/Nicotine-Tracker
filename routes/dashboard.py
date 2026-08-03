@@ -17,6 +17,7 @@ from services.timezone_service import (
 )
 
 dashboard_bp = Blueprint('dashboard', __name__, template_folder="../templates/dashboard")
+DASHBOARD_RANGE_PRESETS = (7, 30, 90, 365)
 
 
 def _user_reset_time(user):
@@ -141,7 +142,13 @@ def index():
         today, _, _ = _current_user_day(
             resolved_timezone, reset_time
         )
-        analytics_start = today - timedelta(days=29)
+        requested_days = request.args.get('days', 30, type=int)
+        range_days = (
+            requested_days
+            if requested_days in DASHBOARD_RANGE_PRESETS
+            else 30
+        )
+        analytics_start = today - timedelta(days=range_days - 1)
         analytics_summaries = _summaries_for_date_range(
             user.id, resolved_timezone, analytics_start, today, reset_time
         )
@@ -157,6 +164,8 @@ def index():
         return render_template('dashboard.html',
                              today_intake=today_intake,
                              analytics_trend=analytics_trend,
+                             range_days=range_days,
+                             range_presets=DASHBOARD_RANGE_PRESETS,
                              user=user)
 
         
@@ -168,6 +177,8 @@ def index():
             error="Unable to load dashboard data",
             user=user,
             analytics_trend=[],
+            range_days=30,
+            range_presets=DASHBOARD_RANGE_PRESETS,
         )
 
 

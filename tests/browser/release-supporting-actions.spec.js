@@ -22,13 +22,21 @@ async function keyboardActivate(page, locator) {
 }
 
 
-async function proveKeyboardActivation(page, locator, recorder, state, action, key = 'Enter') {
-  await recorder.prove(state, action, 'keyboard', async (check) => {
-    await locator.focus();
-    await check(expect(locator).toBeFocused());
-    await check(expect(locator).toHaveAccessibleName(action));
-    await page.keyboard.press(key);
-  });
+async function typedActivation(page, locator, recorder, state, action, outcome, key = 'Enter') {
+  const evidence = recorder.forAction(state, action, { page, control: locator });
+  const token = await evidence.keyboard({ key, outcome });
+  recorder.accept(token);
+  return { evidence, token };
+}
+
+
+async function accept(recorder, tokenPromise) {
+  recorder.accept(await tokenPromise);
+}
+
+
+function exactPath(path) {
+  return new RegExp(`^${path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
 }
 
 
@@ -92,9 +100,14 @@ async function expectKeyboardNavigation(
     response.request().isNavigationRequest()
     && new URL(response.url()).pathname === expectedPath
   ), { timeout: 15_000 });
+  let actionEvidence;
   if (evidence) {
-    await proveKeyboardActivation(
+    actionEvidence = await typedActivation(
       page, locator, evidence.recorder, evidence.state, evidence.action,
+      {
+        kind: 'response', pending: responsePending, method: 'GET',
+        path: exactPath(expectedPath), status: expectedStatus,
+      },
     );
   } else {
     await keyboardActivate(page, locator);
@@ -116,14 +129,10 @@ async function expectKeyboardNavigation(
   await page.waitForLoadState('load');
   await expect.poll(() => new URL(page.url()).pathname).toBe(expectedPath);
   if (evidence) {
-    await evidence.recorder.prove(
-      evidence.state, evidence.action, 'request', async (check) => {
-        await check(expect(response.request().method()).toBe('GET'));
-        await check(expect(new URL(response.url()).pathname).toBe(expectedPath));
-        await check(expect(response.status()).toBe(expectedStatus));
-        await check(expect(response.request().postData()).toBeNull());
-      },
-    );
+    await accept(evidence.recorder, actionEvidence.evidence.request({
+      activation: actionEvidence.token, method: 'GET',
+      path: exactPath(expectedPath), status: expectedStatus,
+    }));
   }
   return response;
 }
@@ -198,39 +207,46 @@ async function runConfirmedDataAction({
   };
   page.on('request', countPost);
   await field.fill('WRONG');
-  await proveKeyboardActivation(page, page.getByRole('button', { name: action }), recorder, state, action);
-  await recorder.prove(state, action, 'focus', async (check) => {
-    await check(expect(field).toBeFocused());
-  });
-  await recorder.prove(state, action, 'error', async (check) => {
-    await check(expect.poll(() => posts).toBe(0));
-    await check(expect(field).toBeFocused());
-  });
-  await recorder.prove(state, action, 'feedback', async (check) => {
-    await check(expect(field).toHaveJSProperty('validationMessage', rejectedFeedback));
-  });
+  const control = page.getByRole('button', { name: action });
+  const actionEvidence = await typedActivation(
+    page, control, recorder, state, action,
+    { kind: 'focused', locator: field },
+  );
+  expect(posts).toBe(0);
+  await accept(recorder, actionEvidence.evidence.focus({ locator: field }));
+  await accept(recorder, actionEvidence.evidence.error({
+    locator: field, validationMessage: rejectedFeedback,
+  }));
+  await accept(recorder, actionEvidence.evidence.feedback({
+    locator: field, validationMessage: rejectedFeedback,
+  }));
 
   await field.fill(confirmation);
   const responsePending = page.waitForResponse((response) => (
     response.request().method() === 'POST'
     && new URL(response.url()).pathname === '/settings/data'
   ));
-  await field.focus();
-  await page.getByRole('button', { name: action }).focus();
-  await page.keyboard.press('Enter');
-  const response = await responsePending;
-  await recorder.prove(state, action, 'request', async (check) => {
-    await check(expect(response.request().method()).toBe('POST'));
-    await check(expect(new URL(response.url()).pathname).toBe('/settings/data'));
-    await check(expect(response.status()).toBe(302));
-    await check(expect(formPayload(response.request())).toEqual(expect.objectContaining(requestPayload)));
-    await check(expect(posts).toBe(1));
+  const validToken = await actionEvidence.evidence.keyboard({
+    key: 'Enter', outcome: {
+      kind: 'response', pending: responsePending, method: 'POST',
+      path: /^\/settings\/data$/, status: 302,
+    },
   });
+  recorder.accept(validToken);
+  await responsePending;
+  await accept(recorder, actionEvidence.evidence.request({
+    activation: validToken, method: 'POST', path: /^\/settings\/data$/, status: 302,
+    payload: { kind: 'form', exact: requestPayload },
+    dynamicFields: { csrf_token: 'non-empty' },
+  }));
+  expect(posts).toBe(1);
   page.off('request', countPost);
-  await recorder.prove(state, action, 'feedback', async (check) => {
-    await check(expect(page.getByRole('status')).toHaveText(successFeedback));
-  });
-  await recorder.prove(state, action, 'persistence', verifyPersistence);
+  await accept(recorder, actionEvidence.evidence.feedback({
+    locator: page.getByRole('status'), text: successFeedback,
+  }));
+  await accept(recorder, actionEvidence.evidence.persistence({
+    snapshot: await verifyPersistence(),
+  }));
 }
 
 
@@ -273,30 +289,48 @@ test('every supporting action has an independent exact behavior obligation', asy
     SUPPORTING_OWNER_TITLES.settingsProfile, expect,
   );
   expect(emptyProfileRecorder.record).toBeUndefined();
+  expect(emptyProfileRecorder.prove).toBeUndefined();
   expect(() => emptyProfileRecorder.assertComplete())
     .toThrow(/supporting runtime dimension evidence/);
+});
 
-  await expect(emptyProfileRecorder.prove(
-    'profile', 'Save profile', 'keyboard', async () => {},
-  )).rejects.toThrow(/must execute at least one assertion/);
-  await expect(emptyProfileRecorder.prove(
-    'profile', 'Save profile', 'keyboard', async (check) => {
-      await check(expect(false).toBe(true));
-    },
-  )).rejects.toThrow();
-  expect(() => emptyProfileRecorder.assertComplete())
-    .toThrow(/supporting runtime dimension evidence/);
 
-  await expect(emptyProfileRecorder.prove(
-    'preferences', 'Save preferences', 'keyboard', async (check) => {
-      await check(expect(true).toBe(true));
-    },
-  )).rejects.toThrow(/owns profile › Save profile/);
-  await expect(emptyProfileRecorder.prove(
-    'profile', 'Save profile', 'loading', async (check) => {
-      await check(expect(true).toBe(true));
-    },
-  )).rejects.toThrow(/not asserted/);
+test('typed supporting evidence rejects self-authorized and mismatched artifacts', async ({ page }) => {
+  await loginAs(page, 'release-settings@example.com');
+  await page.goto('/settings/profile');
+  const recorder = createSupportingBehaviorRecorder(
+    SUPPORTING_OWNER_TITLES.settingsProfile, expect,
+  );
+  const save = page.getByRole('button', { name: 'Save profile' });
+  const action = recorder.forAction('profile', 'Save profile', { page, control: save });
+
+  await expect(action.keyboard({ key: 'Enter', outcome: true }))
+    .rejects.toThrow(/typed keyboard outcome/);
+  await expect(action.keyboard({ key: 'Enter', outcome: Promise.resolve() }))
+    .rejects.toThrow(/typed keyboard outcome/);
+  await expect(action.feedback({
+    locator: page.getByRole('heading', { name: 'Profile' }),
+    text: 'Profile',
+  })).rejects.toThrow(/status, alert, or native validation/);
+  await expect(action.focus()).rejects.toThrow(/focus locator/);
+  await expect(action.loading({ locator: save, disabled: true }))
+    .rejects.toThrow(/not asserted/);
+
+  const wrongRecorder = createSupportingBehaviorRecorder(
+    SUPPORTING_OWNER_TITLES.settingsPreferences, expect,
+  );
+  await page.goto('/settings/preferences');
+  const wrongAction = wrongRecorder.forAction(
+    'preferences', 'Steady Mint',
+    { page, control: page.getByRole('checkbox', { name: 'Steady Mint' }) },
+  );
+  await page.getByRole('checkbox', { name: 'Steady Mint' }).focus();
+  const wrongToken = await wrongAction.focus({
+    locator: page.getByRole('checkbox', { name: 'Steady Mint' }),
+  });
+  expect(() => recorder.accept(wrongToken)).toThrow(/different recorder/);
+  expect(() => recorder.accept(Object.freeze({}))).toThrow(/forged evidence token/);
+  expect(() => recorder.assertComplete()).toThrow(/supporting runtime dimension evidence/);
 });
 
 
@@ -316,12 +350,11 @@ test('every supporting chrome action runs in its exact representative state', as
     let sourceGuard = watchForProductProblems(page);
     await visitState(page, state);
     const skip = page.getByRole('link', { name: 'Skip to main content' });
-    await proveKeyboardActivation(
+    const skipEvidence = await typedActivation(
       page, skip, recorder, state.name, 'Skip to main content',
+      { kind: 'focused', locator: page.locator('#main-content') },
     );
-    await recorder.prove(state.name, 'Skip to main content', 'focus', async (check) => {
-      await check(expect(page.locator('#main-content')).toBeFocused());
-    });
+    await accept(recorder, skipEvidence.evidence.focus({ locator: page.locator('#main-content') }));
     await expectGuardClean(sourceGuard, page, `${state.name} skip`, {
       allowAnalytics: state.allowAnalytics,
       expectedStatus: state.status,
@@ -523,11 +556,12 @@ test('data actions use isolated disposable records in every exact state', async 
       },
       rejectedFeedback: 'Please match the requested format.',
       successFeedback: 'Removed 1 duplicate log entries.',
-      verifyPersistence: async (check) => {
+      verifyPersistence: async () => {
         const afterCleanup = await accountSnapshot(page);
-        await check(expect(
-          afterCleanup.logs.filter((entry) => entry.notes === `duplicate ${state}`),
-        ).toHaveLength(1));
+        return {
+          actual: [afterCleanup.logs.filter((entry) => entry.notes === `duplicate ${state}`).length],
+          expected: [1],
+        };
       },
     });
     await runConfirmedDataAction({
@@ -538,15 +572,20 @@ test('data actions use isolated disposable records in every exact state', async 
       },
       rejectedFeedback: 'Please match the requested format.',
       successFeedback: 'Merged 1 similar pouch entries.',
-      verifyPersistence: async (check) => {
+      verifyPersistence: async () => {
         const afterMerge = await accountSnapshot(page);
         const retained = afterMerge.pouches.filter(
           (entry) => entry.brand.toLowerCase() === mergeBrand.toLowerCase(),
         );
-        await check(expect(retained).toHaveLength(1));
-        await check(expect(
-          afterMerge.logs.find((entry) => entry.notes === `merge-linked ${state}`).pouch_id,
-        ).toBe(retained[0].id));
+        return {
+          actual: {
+            retained: retained.length,
+            linkedPouch: afterMerge.logs.find(
+              (entry) => entry.notes === `merge-linked ${state}`,
+            ).pouch_id,
+          },
+          expected: { retained: 1, linkedPouch: retained[0].id },
+        };
       },
     });
 
@@ -554,26 +593,29 @@ test('data actions use isolated disposable records in every exact state', async 
       response.request().method() === 'POST'
       && new URL(response.url()).pathname === '/settings/data'
     ));
-    await proveKeyboardActivation(
+    const recalculateEvidence = await typedActivation(
       page, page.getByRole('button', { name: 'Recalculate' }), recorder, state, 'Recalculate',
+      {
+        kind: 'response', pending: recalculateResponsePending, method: 'POST',
+        path: /^\/settings\/data$/, status: 302,
+      },
     );
-    const recalculateResponse = await recalculateResponsePending;
-    await recorder.prove(state, 'Recalculate', 'request', async (check) => {
-      await check(expect(recalculateResponse.status()).toBe(302));
-      await check(expect(new URL(recalculateResponse.url()).pathname).toBe('/settings/data'));
-      await check(expect(formPayload(recalculateResponse.request())).toEqual(expect.objectContaining({
-        action: 'recalculate_goals',
-      })));
-    });
-    await recorder.prove(state, 'Recalculate', 'feedback', async (check) => {
-      await check(expect(page.getByRole('status')).toHaveText('Recalculated streaks for 1 goals.'));
-    });
-    await recorder.prove(state, 'Recalculate', 'persistence', async (check) => {
-      const afterRecalculation = await accountSnapshot(page);
-      await check(expect(afterRecalculation.goals).toEqual([
-        expect.objectContaining({ current_streak: 0, best_streak: 1 }),
-      ]));
-    });
+    await accept(recorder, recalculateEvidence.evidence.request({
+      activation: recalculateEvidence.token, method: 'POST',
+      path: /^\/settings\/data$/, status: 302,
+      payload: { kind: 'form', exact: { action: 'recalculate_goals' } },
+      dynamicFields: { csrf_token: 'non-empty' },
+    }));
+    await accept(recorder, recalculateEvidence.evidence.feedback({
+      locator: page.getByRole('status'), text: 'Recalculated streaks for 1 goals.',
+    }));
+    const afterRecalculation = await accountSnapshot(page);
+    await accept(recorder, recalculateEvidence.evidence.persistence({ snapshot: {
+      actual: afterRecalculation.goals.map(({ current_streak, best_streak }) => ({
+        current_streak, best_streak,
+      })),
+      expected: [{ current_streak: 0, best_streak: 1 }],
+    } }));
 
     await runConfirmedDataAction({
       page, recorder, state, action: 'Anonymize Data',
@@ -581,15 +623,22 @@ test('data actions use isolated disposable records in every exact state', async 
       requestPayload: { action: 'anonymize_data', confirm_anonymize: 'ANONYMIZE' },
       rejectedFeedback: 'Please match the requested format.',
       successFeedback: 'Your personal data has been anonymized successfully.',
-      verifyPersistence: async (check) => {
+      verifyPersistence: async () => {
         const afterAnonymize = await accountSnapshot(page);
-        await check(expect(afterAnonymize.profile).toEqual(expect.objectContaining({
-          age: null, gender: null, weight: null,
-        })));
-        await check(expect(afterAnonymize.preferences).toEqual(expect.objectContaining({
-          units_preference: 'mg', preferred_brands: null,
-        })));
-        await check(expect(afterAnonymize.logs.every((entry) => entry.notes === null)).toBe(true));
+        return {
+          actual: {
+            age: afterAnonymize.profile.age,
+            gender: afterAnonymize.profile.gender,
+            weight: afterAnonymize.profile.weight,
+            units: afterAnonymize.preferences.units_preference,
+            brands: afterAnonymize.preferences.preferred_brands,
+            notesCleared: afterAnonymize.logs.every((entry) => entry.notes === null),
+          },
+          expected: {
+            age: null, gender: null, weight: null, units: 'mg', brands: null,
+            notesCleared: true,
+          },
+        };
       },
     });
 
@@ -602,9 +651,9 @@ test('data actions use isolated disposable records in every exact state', async 
       },
       rejectedFeedback: 'Please match the requested format.',
       successFeedback: 'Successfully deleted 2 old log entries.',
-      verifyPersistence: async (check) => {
+      verifyPersistence: async () => {
         const afterDelete = await accountSnapshot(page);
-        await check(expect(afterDelete.logs).toEqual([]));
+        return { actual: afterDelete.logs, expected: [] };
       },
     });
 
@@ -615,46 +664,50 @@ test('data actions use isolated disposable records in every exact state', async 
         && new URL(response.url()).pathname === '/settings/data'
       ));
       const exportButton = page.getByRole('button', { name: 'Download Data' });
-      await proveKeyboardActivation(page, exportButton, recorder, state, 'Download Data');
+      const exportEvidence = await typedActivation(
+        page, exportButton, recorder, state, 'Download Data',
+        {
+          kind: 'response', pending: exportResponsePending, method: 'POST',
+          path: /^\/settings\/data$/, status: 200, settleNavigation: false,
+        },
+      );
       const [download, exportResponse] = await Promise.all([downloadPending, exportResponsePending]);
-      await recorder.prove(state, 'Download Data', 'request', async (check) => {
-        await check(expect(exportResponse.request().method()).toBe('POST'));
-        await check(expect(exportResponse.status()).toBe(200));
-        await check(expect(new URL(exportResponse.url()).pathname).toBe('/settings/data'));
-        await check(expect(formPayload(exportResponse.request())).toEqual(expect.objectContaining({
-          action: 'export_data',
-        })));
-        await check(expect(download.suggestedFilename()).toMatch(/^nicotine_tracker_data_/));
-      });
+      await accept(recorder, exportEvidence.evidence.request({
+        activation: exportEvidence.token, method: 'POST', path: /^\/settings\/data$/, status: 200,
+        payload: { kind: 'form', exact: { action: 'export_data' } },
+        dynamicFields: { csrf_token: 'non-empty' },
+      }));
+      expect(download.suggestedFilename()).toMatch(/^nicotine_tracker_data_/);
       const offline = page.getByRole('checkbox', { name: 'Save actions for offline use' });
       const requested = !(await offline.isChecked());
       const successPending = page.waitForResponse((response) => (
         response.request().method() === 'PATCH'
         && new URL(response.url()).pathname === '/settings/privacy/offline-queue'
       ));
-      await recorder.prove(state, 'Save actions for offline use', 'keyboard', async (check) => {
-        await offline.focus();
-        await check(expect(offline).toBeFocused());
-        await page.keyboard.press('Space');
-      });
+      const offlineEvidence = await typedActivation(
+        page, offline, recorder, state, 'Save actions for offline use',
+        {
+          kind: 'response', pending: successPending, method: 'PATCH',
+          path: /^\/settings\/privacy\/offline-queue$/, status: 200,
+        }, 'Space',
+      );
       const success = await successPending;
-      await recorder.prove(state, 'Save actions for offline use', 'request', async (check) => {
-        await check(expect(success.request().method()).toBe('PATCH'));
-        await check(expect(new URL(success.url()).pathname).toBe('/settings/privacy/offline-queue'));
-        await check(expect(success.status()).toBe(200));
-        await check(expect(success.request().postDataJSON()).toEqual({ enabled: requested }));
-      });
-      await recorder.prove(state, 'Save actions for offline use', 'feedback', async (check) => {
-        await check(expect(page.locator('#offline-queue-status')).toHaveAttribute('data-state', 'success'));
-        await check(expect(page.locator('#offline-queue-status')).toHaveText(
-          requested ? 'Offline saving is on.' : 'Offline saving is off.',
-        ));
-      });
+      await accept(recorder, offlineEvidence.evidence.request({
+        activation: offlineEvidence.token, method: 'PATCH',
+        path: /^\/settings\/privacy\/offline-queue$/, status: 200,
+        payload: { kind: 'json', exact: { enabled: requested } },
+      }));
+      const offlineStatus = page.locator('#offline-queue-status');
+      await accept(recorder, offlineEvidence.evidence.feedback({
+        locator: offlineStatus,
+        text: requested ? 'Offline saving is on.' : 'Offline saving is off.',
+      }));
+      await expect(offlineStatus).toHaveAttribute('data-state', 'success');
       await page.reload();
-      await recorder.prove(state, 'Save actions for offline use', 'persistence', async (check) => {
-        await check(expect(page.getByRole('checkbox', { name: 'Save actions for offline use' }))
-          .toBeChecked({ checked: requested }));
-      });
+      await accept(recorder, offlineEvidence.evidence.persistence({
+        locator: page.getByRole('checkbox', { name: 'Save actions for offline use' }),
+        checked: requested,
+      }));
 
       let releaseFailure;
       const failureGate = new Promise((resolve) => { releaseFailure = resolve; });
@@ -667,25 +720,24 @@ test('data actions use isolated disposable records in every exact state', async 
         });
       });
       const retryToggle = page.getByRole('checkbox', { name: 'Save actions for offline use' });
-      await retryToggle.focus();
-      await page.keyboard.press('Space');
-      await recorder.prove(state, 'Save actions for offline use', 'loading', async (check) => {
-        await check(expect(retryToggle).toBeDisabled());
-        await check(expect(page.locator('#offline-queue-status')).toHaveAttribute('data-state', 'loading'));
-        await check(expect(page.locator('#offline-queue-status')).toHaveText('Saving offline preference…'));
-      });
+      const retryEvidence = recorder.forAction(
+        state, 'Save actions for offline use', { page, control: retryToggle },
+      );
+      recorder.accept(await retryEvidence.keyboard({
+        key: 'Space', outcome: { kind: 'disabled', locator: retryToggle, disabled: true },
+      }));
+      await accept(recorder, retryEvidence.loading({
+        disabled: true,
+        status: { locator: page.locator('#offline-queue-status'), text: 'Saving offline preference…' },
+      }));
       await retryToggle.evaluate((element) => element.dispatchEvent(new Event('change', { bubbles: true })));
       expect(failures).toBe(1);
       releaseFailure();
-      await recorder.prove(state, 'Save actions for offline use', 'error', async (check) => {
-        await check(expect(page.locator('#offline-queue-status')).toHaveAttribute('data-state', 'error'));
-        await check(expect(page.locator('#offline-queue-status')).toHaveText(
-          'Offline preference could not be saved. Please try again.',
-        ));
-      });
-      await recorder.prove(state, 'Save actions for offline use', 'focus', async (check) => {
-        await check(expect(retryToggle).toBeFocused());
-      });
+      await accept(recorder, retryEvidence.error({
+        locator: page.locator('#offline-queue-status'),
+        text: 'Offline preference could not be saved. Please try again.', state: 'error',
+      }));
+      await accept(recorder, retryEvidence.focus({ locator: retryToggle }));
       await page.unroute('**/settings/privacy/offline-queue');
 
       await expectKeyboardNavigation(
@@ -737,81 +789,100 @@ test('remaining logging actions preserve exact navigation and isolated records',
 
   await page.goto('/log/view');
   const logbookAdd = page.getByRole('button', { name: 'Add log', exact: true });
-  await proveKeyboardActivation(page, logbookAdd, recorder, 'logbook', 'Add log');
   let dialog = page.getByRole('dialog', { name: 'Add a log' });
-  await recorder.prove('logbook', 'Add log', 'focus', async (check) => {
-    await check(expect(dialog).toBeVisible());
-    await check(expect(dialog.getByLabel('Date')).toBeFocused());
-  });
+  const logbookAddEvidence = await typedActivation(
+    page, logbookAdd, recorder, 'logbook', 'Add log',
+    { kind: 'focused', locator: dialog.getByLabel('Date') },
+  );
+  await expect(dialog).toBeVisible();
+  await accept(recorder, logbookAddEvidence.evidence.focus({ locator: dialog.getByLabel('Date') }));
   await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
 
   await page.goto('/log/add');
   dialog = page.getByRole('dialog', { name: 'Add a log' });
   await expect(dialog).toBeVisible();
   const closeDialog = dialog.getByRole('button', { name: 'Close add log dialog' });
-  await proveKeyboardActivation(
+  const closeEvidence = await typedActivation(
     page, closeDialog, recorder, 'log-add', 'Close add log dialog',
+    { kind: 'focused', locator: page.getByRole('button', { name: 'Add log', exact: true }) },
   );
-  await recorder.prove('log-add', 'Close add log dialog', 'focus', async (check) => {
-    await check(expect(dialog).not.toBeVisible());
-    await check(expect(page.getByRole('button', { name: 'Add log', exact: true })).toBeFocused());
-  });
+  await expect(dialog).not.toBeVisible();
+  await accept(recorder, closeEvidence.evidence.focus({
+    locator: page.getByRole('button', { name: 'Add log', exact: true }),
+  }));
 
   const logAddTrigger = page.getByRole('button', { name: 'Add log', exact: true });
-  await proveKeyboardActivation(page, logAddTrigger, recorder, 'log-add', 'Add log');
-  await recorder.prove('log-add', 'Add log', 'focus', async (check) => {
-    await check(expect(dialog).toBeVisible());
-    await check(expect(dialog.getByLabel('Date')).toBeFocused());
-  });
+  const logAddEvidence = await typedActivation(
+    page, logAddTrigger, recorder, 'log-add', 'Add log',
+    { kind: 'focused', locator: dialog.getByLabel('Date') },
+  );
+  await expect(dialog).toBeVisible();
+  await accept(recorder, logAddEvidence.evidence.focus({ locator: dialog.getByLabel('Date') }));
   const cancelDialog = dialog.getByRole('button', { name: 'Cancel' });
-  await proveKeyboardActivation(page, cancelDialog, recorder, 'log-add', 'Cancel');
-  await recorder.prove('log-add', 'Cancel', 'focus', async (check) => {
-    await check(expect(dialog).not.toBeVisible());
-    await check(expect(logAddTrigger).toBeFocused());
-  });
+  const cancelEvidence = await typedActivation(
+    page, cancelDialog, recorder, 'log-add', 'Cancel',
+    { kind: 'focused', locator: logAddTrigger },
+  );
+  await expect(dialog).not.toBeVisible();
+  await accept(recorder, cancelEvidence.evidence.focus({ locator: logAddTrigger }));
 
   await logAddTrigger.click();
   const addEntry = dialog.getByRole('button', { name: 'Add entry' });
-  await proveKeyboardActivation(page, addEntry, recorder, 'log-add', 'Add entry');
   const product = dialog.getByLabel('Product');
-  await recorder.prove('log-add', 'Add entry', 'focus', async (check) => {
-    await check(expect(product).toBeFocused());
-  });
-  await recorder.prove('log-add', 'Add entry', 'error', async (check) => {
-    await check(expect(product).toHaveJSProperty('validity.valueMissing', true));
-  });
-  await recorder.prove('log-add', 'Add entry', 'feedback', async (check) => {
-    await check(expect(product).toHaveJSProperty('validationMessage', 'Please select an item in the list.'));
-  });
+  const addEntryEvidence = await typedActivation(
+    page, addEntry, recorder, 'log-add', 'Add entry',
+    { kind: 'focused', locator: product },
+  );
+  await accept(recorder, addEntryEvidence.evidence.focus({ locator: product }));
+  await accept(recorder, addEntryEvidence.evidence.error({
+    locator: product, validationMessage: 'Please select an item in the list.',
+  }));
+  await accept(recorder, addEntryEvidence.evidence.feedback({
+    locator: product, validationMessage: 'Please select an item in the list.',
+  }));
   await dialog.getByLabel('Date').fill('2026-01-11');
+  await dialog.getByLabel('Time').fill('09:15');
   await product.selectOption({ index: 1 });
+  const selectedProductId = await product.inputValue();
   await dialog.getByLabel('Quantity').fill('2');
   await dialog.getByLabel('Notes').fill('supporting add entry');
   const addEntryResponsePending = page.waitForResponse((response) => (
     response.request().method() === 'POST'
     && new URL(response.url()).pathname === '/log/add'
   ));
-  await addEntry.focus();
-  await page.keyboard.press('Enter');
+  const validAddEntry = await addEntryEvidence.evidence.keyboard({
+    key: 'Enter', outcome: {
+      kind: 'response', pending: addEntryResponsePending, method: 'POST',
+      path: /^\/log\/add$/, status: 302,
+    },
+  });
+  recorder.accept(validAddEntry);
   const addEntryResponse = await addEntryResponsePending;
-  await recorder.prove('log-add', 'Add entry', 'request', async (check) => {
-    await check(expect(addEntryResponse.status()).toBe(302));
-    await check(expect(formPayload(addEntryResponse.request())).toEqual(expect.objectContaining({
-      log_date: '2026-01-11', quantity: '2', notes: 'supporting add entry',
-    })));
-  });
-  await recorder.prove('log-add', 'Add entry', 'feedback', async (check) => {
-    await check(expect(page.getByRole('status')).toHaveText('Log entry added successfully!'));
-  });
-  await recorder.prove('log-add', 'Add entry', 'persistence', async (check) => {
-    await check(expect(page.locator('.logbook-row', { hasText: 'supporting add entry' })).toBeVisible());
-  });
+  await accept(recorder, addEntryEvidence.evidence.request({
+    activation: validAddEntry, method: 'POST', path: /^\/log\/add$/, status: 302,
+    payload: { kind: 'form', exact: {
+      user_timezone: 'UTC', log_date: '2026-01-11', log_time: '09:15',
+      pouch_id: selectedProductId, quantity: '2', notes: 'supporting add entry',
+      custom_brand: '', custom_nicotine_mg: '',
+    } }, dynamicFields: { csrf_token: 'non-empty' },
+  }));
+  await accept(recorder, addEntryEvidence.evidence.feedback({
+    locator: page.getByRole('status'), text: 'Log entry added successfully!',
+  }));
+  await accept(recorder, addEntryEvidence.evidence.persistence({
+    locator: page.locator('.logbook-row', { hasText: 'supporting add entry' }), count: 1,
+  }));
 
   for (const [state, path] of [['logbook', '/log/view'], ['log-add', '/log/add']]) {
     await page.goto(path);
     if (state === 'log-add') {
       dialog = page.getByRole('dialog', { name: 'Add a log' });
       await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
+      await page.waitForTimeout(100);
+      if (await dialog.isVisible()) {
+        await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
+      }
+      await expect(dialog).not.toBeVisible();
     }
     await page.getByLabel('Search logs').fill('supporting add entry');
     const filterNavigationPending = page.waitForNavigation({ waitUntil: 'load' });
@@ -819,25 +890,30 @@ test('remaining logging actions preserve exact navigation and isolated records',
       response.request().method() === 'GET'
       && new URL(response.url()).pathname === '/log/view'
     ));
-    await proveKeyboardActivation(
-      page, page.getByRole('button', { name: 'Apply filters' }),
-      recorder, state, 'Apply filters',
+    const filterEvidence = await typedActivation(
+      page, page.getByRole('button', { name: 'Apply filters' }), recorder, state, 'Apply filters',
+      {
+        kind: 'response', pending: filterResponsePending, method: 'GET', path: /^\/log\/view$/,
+        search: '?q=supporting+add+entry&from_date=&to_date=', status: 200,
+      },
     );
     const [filterResponse] = await Promise.all([
       filterResponsePending, filterNavigationPending,
     ]);
-    await recorder.prove(state, 'Apply filters', 'request', async (check) => {
-      await check(expect(filterResponse.status()).toBe(200));
-      await check(expect(new URL(filterResponse.url()).search).toBe(
-        '?q=supporting+add+entry&from_date=&to_date=',
-      ));
-      await check(expect(filterResponse.request().postData()).toBeNull());
-    });
+    await accept(recorder, filterEvidence.evidence.request({
+      activation: filterEvidence.token, method: 'GET', path: /^\/log\/view$/,
+      search: '?q=supporting+add+entry&from_date=&to_date=', status: 200,
+    }));
 
     await page.goto(path);
     if (state === 'log-add') {
       dialog = page.getByRole('dialog', { name: 'Add a log' });
       await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
+      await page.waitForTimeout(100);
+      if (await dialog.isVisible()) {
+        await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
+      }
+      await expect(dialog).not.toBeVisible();
     }
     await expectKeyboardNavigation(
       page, page.getByRole('link', { name: 'Bulk add' }), '/log/bulk', 200,
@@ -848,6 +924,11 @@ test('remaining logging actions preserve exact navigation and isolated records',
     if (state === 'log-add') {
       dialog = page.getByRole('dialog', { name: 'Add a log' });
       await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
+      await page.waitForTimeout(100);
+      if (await dialog.isVisible()) {
+        await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
+      }
+      await expect(dialog).not.toBeVisible();
     }
     const row = page.locator('.logbook-row', { hasText: 'supporting add entry' });
     const edit = row.getByRole('link', { name: 'Edit' });
@@ -859,75 +940,90 @@ test('remaining logging actions preserve exact navigation and isolated records',
 
   await page.goto('/log/bulk');
   const addEntries = page.getByRole('button', { name: 'Add entries' });
-  await proveKeyboardActivation(page, addEntries, recorder, 'log-bulk', 'Add entries');
   const entries = page.getByLabel('Entries', { exact: true });
-  await recorder.prove('log-bulk', 'Add entries', 'focus', async (check) => {
-    await check(expect(entries).toBeFocused());
-  });
-  await recorder.prove('log-bulk', 'Add entries', 'error', async (check) => {
-    await check(expect(entries).toHaveJSProperty('validity.valueMissing', true));
-  });
-  await recorder.prove('log-bulk', 'Add entries', 'feedback', async (check) => {
-    await check(expect(entries).toHaveJSProperty('validationMessage', 'Please fill out this field.'));
-  });
+  const bulkEvidence = await typedActivation(
+    page, addEntries, recorder, 'log-bulk', 'Add entries',
+    { kind: 'focused', locator: entries },
+  );
+  await accept(recorder, bulkEvidence.evidence.focus({ locator: entries }));
+  await accept(recorder, bulkEvidence.evidence.error({
+    locator: entries, validationMessage: 'Please fill out this field.',
+  }));
+  await accept(recorder, bulkEvidence.evidence.feedback({
+    locator: entries, validationMessage: 'Please fill out this field.',
+  }));
   await page.getByLabel('Date for these entries').fill('2026-01-12');
   await entries.fill('1 Bulk Evidence 4mg at 13:00');
   const bulkResponsePending = page.waitForResponse((response) => (
     response.request().method() === 'POST'
     && new URL(response.url()).pathname === '/log/bulk'
   ));
-  await addEntries.focus();
-  await page.keyboard.press('Enter');
-  const bulkResponse = await bulkResponsePending;
-  await recorder.prove('log-bulk', 'Add entries', 'request', async (check) => {
-    await check(expect(bulkResponse.status()).toBe(302));
-    await check(expect(formPayload(bulkResponse.request())).toEqual(expect.objectContaining({
+  const validBulk = await bulkEvidence.evidence.keyboard({
+    key: 'Enter', outcome: {
+      kind: 'response', pending: bulkResponsePending, method: 'POST',
+      path: /^\/log\/bulk$/, status: 302,
+    },
+  });
+  recorder.accept(validBulk);
+  await accept(recorder, bulkEvidence.evidence.request({
+    activation: validBulk, method: 'POST', path: /^\/log\/bulk$/, status: 302,
+    payload: { kind: 'form', exact: {
       log_date: '2026-01-12', bulk_text: '1 Bulk Evidence 4mg at 13:00',
-    })));
-  });
-  await recorder.prove('log-bulk', 'Add entries', 'feedback', async (check) => {
-    await check(expect(page.getByRole('status')).toHaveText('Successfully added 1 log entries!'));
-  });
-  await recorder.prove('log-bulk', 'Add entries', 'persistence', async (check) => {
-    await check(expect(page.locator('.logbook-row', { hasText: 'Bulk Evidence' })).toBeVisible());
-  });
+    } }, dynamicFields: { csrf_token: 'non-empty' },
+  }));
+  await accept(recorder, bulkEvidence.evidence.feedback({
+    locator: page.getByRole('status'), text: 'Successfully added 1 log entries!',
+  }));
+  await accept(recorder, bulkEvidence.evidence.persistence({
+    locator: page.locator('.logbook-row', { hasText: 'Bulk Evidence' }), count: 1,
+  }));
 
   const supportingRow = page.locator('.logbook-row', { hasText: 'supporting add entry' });
   await supportingRow.getByRole('link', { name: 'Edit' }).click();
   const saveChanges = page.getByRole('button', { name: 'Save changes' });
   await page.getByLabel('Quantity').fill('');
-  await proveKeyboardActivation(page, saveChanges, recorder, 'log-edit', 'Save changes');
   const editQuantity = page.getByLabel('Quantity');
-  await recorder.prove('log-edit', 'Save changes', 'focus', async (check) => {
-    await check(expect(editQuantity).toBeFocused());
-  });
-  await recorder.prove('log-edit', 'Save changes', 'error', async (check) => {
-    await check(expect(editQuantity).toHaveJSProperty('validity.valueMissing', true));
-  });
-  await recorder.prove('log-edit', 'Save changes', 'feedback', async (check) => {
-    await check(expect(editQuantity).toHaveJSProperty('validationMessage', 'Please fill out this field.'));
-  });
+  const editEvidence = await typedActivation(
+    page, saveChanges, recorder, 'log-edit', 'Save changes',
+    { kind: 'focused', locator: editQuantity },
+  );
+  await accept(recorder, editEvidence.evidence.focus({ locator: editQuantity }));
+  await accept(recorder, editEvidence.evidence.error({
+    locator: editQuantity, validationMessage: 'Please fill out this field.',
+  }));
+  await accept(recorder, editEvidence.evidence.feedback({
+    locator: editQuantity, validationMessage: 'Please fill out this field.',
+  }));
   await editQuantity.fill('3');
   await page.getByLabel('Notes').fill('supporting edit saved');
+  const exactEditPayload = {
+    log_date: await page.getByLabel('Date').inputValue(),
+    log_time: await page.getByLabel('Time').inputValue(),
+    quantity: '3', notes: 'supporting edit saved',
+  };
   const editSaveResponsePending = page.waitForResponse((response) => (
     response.request().method() === 'POST'
     && /\/log\/edit\/\d+$/.test(new URL(response.url()).pathname)
   ));
-  await saveChanges.focus();
-  await page.keyboard.press('Enter');
-  const editSaveResponse = await editSaveResponsePending;
-  await recorder.prove('log-edit', 'Save changes', 'request', async (check) => {
-    await check(expect(editSaveResponse.status()).toBe(302));
-    await check(expect(formPayload(editSaveResponse.request())).toEqual(expect.objectContaining({
-      quantity: '3', notes: 'supporting edit saved',
-    })));
+  const validEdit = await editEvidence.evidence.keyboard({
+    key: 'Enter', outcome: {
+      kind: 'response', pending: editSaveResponsePending, method: 'POST',
+      path: /^\/log\/edit\/\d+$/, status: 302,
+    },
   });
-  await recorder.prove('log-edit', 'Save changes', 'feedback', async (check) => {
-    await check(expect(page.getByRole('status')).toHaveText('Log entry updated successfully!'));
-  });
-  await recorder.prove('log-edit', 'Save changes', 'persistence', async (check) => {
-    await check(expect(page.locator('.logbook-row', { hasText: 'supporting edit saved' })).toContainText('3 pouches'));
-  });
+  recorder.accept(validEdit);
+  await accept(recorder, editEvidence.evidence.request({
+    activation: validEdit, method: 'POST', path: /^\/log\/edit\/\d+$/, status: 302,
+    payload: { kind: 'form', exact: exactEditPayload },
+    dynamicFields: { csrf_token: 'non-empty' },
+  }));
+  await accept(recorder, editEvidence.evidence.feedback({
+    locator: page.getByRole('status'), text: 'Log entry updated successfully!',
+  }));
+  await accept(recorder, editEvidence.evidence.persistence({
+    locator: page.locator('.logbook-row', { hasText: 'supporting edit saved' }),
+    text: /3 pouches/,
+  }));
 
   for (const [state, path, note, time] of [
     ['logbook', '/log/view', 'delete logbook evidence', '10:15'],
@@ -938,33 +1034,43 @@ test('remaining logging actions preserve exact navigation and isolated records',
     if (state === 'log-add') {
       dialog = page.getByRole('dialog', { name: 'Add a log' });
       await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
+      await page.waitForTimeout(100);
+      if (await dialog.isVisible()) {
+        await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
+      }
+      await expect(dialog).not.toBeVisible();
     }
     const deleteRow = page.locator('.logbook-row', { hasText: note });
     const deleteButton = deleteRow.getByRole('button', { name: 'Delete' });
     page.once('dialog', (confirmation) => confirmation.dismiss());
-    await proveKeyboardActivation(page, deleteButton, recorder, state, 'Delete');
-    let dismissalPreservedRow = false;
-    await recorder.prove(state, 'Delete', 'error', async (check) => {
-      await check(expect(deleteRow).toBeVisible());
-      dismissalPreservedRow = await deleteRow.isVisible();
-    });
+    const deleteEvidence = await typedActivation(
+      page, deleteButton, recorder, state, 'Delete',
+      { kind: 'visible', locator: deleteRow },
+    );
+    await accept(recorder, deleteEvidence.evidence.error({ locator: deleteRow, count: 1 }));
 
     const deleteResponsePending = page.waitForResponse((response) => (
       response.request().method() === 'POST'
       && /\/log\/delete\/\d+$/.test(new URL(response.url()).pathname)
     ));
     page.once('dialog', (confirmation) => confirmation.accept());
-    await deleteButton.click();
-    const deleteResponse = await deleteResponsePending;
-    await recorder.prove(state, 'Delete', 'request', async (check) => {
-      await check(expect(deleteResponse.request().method()).toBe('POST'));
-      await check(expect(deleteResponse.status()).toBe(302));
-      await check(expect(new URL(deleteResponse.url()).pathname).toMatch(/^\/log\/delete\/\d+$/));
+    const validDelete = await deleteEvidence.evidence.keyboard({
+      key: 'Enter', outcome: {
+        kind: 'response', pending: deleteResponsePending, method: 'POST',
+        path: /^\/log\/delete\/\d+$/, status: 302,
+      },
     });
-    await recorder.prove(state, 'Delete', 'persistence', async (check) => {
-      await check(expect(dismissalPreservedRow).toBe(true));
-      await check(expect(page.locator('.logbook-row', { hasText: note })).toHaveCount(0));
-    });
+    recorder.accept(validDelete);
+    await accept(recorder, deleteEvidence.evidence.request({
+      activation: validDelete, method: 'POST', path: /^\/log\/delete\/\d+$/, status: 302,
+      payload: { kind: 'form', exact: {} }, dynamicFields: { csrf_token: 'non-empty' },
+    }));
+    await accept(recorder, deleteEvidence.evidence.feedback({
+      locator: page.getByRole('status'), text: 'Log entry deleted successfully!',
+    }));
+    await accept(recorder, deleteEvidence.evidence.persistence({
+      locator: page.locator('.logbook-row', { hasText: note }), count: 0,
+    }));
   }
 
   for (const [state, path] of [['logbook', '/log/view'], ['log-add', '/log/add']]) {
@@ -1001,55 +1107,66 @@ test('remaining logging actions preserve exact navigation and isolated records',
         && new URL(response.url()).pathname === '/log/api/quick_add'
         && response.status() === 503
       ));
-      await proveKeyboardActivation(page, button, recorder, state, action);
-      await recorder.prove(state, action, 'loading', async (check) => {
-        await check(expect(button).toBeDisabled());
-        await check(expect(button).toContainText('Adding...'));
-      });
+      const actionEvidence = await typedActivation(
+        page, button, recorder, state, action,
+        { kind: 'disabled', locator: button, disabled: true },
+      );
+      await accept(recorder, actionEvidence.evidence.loading({
+        disabled: true, text: 'Adding...',
+      }));
       await button.evaluate((element) => {
         element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       });
       expect(requests).toBe(1);
       releaseFailure();
       const failedResponse = await failedResponsePending;
-      await recorder.prove(state, action, 'error', async (check) => {
-        await check(expect(failedResponse.status()).toBe(503));
-        await check(expect(page.getByText('Quick add is temporarily unavailable.')).toBeVisible());
-        await check(expect(button).toBeEnabled());
-      });
-      await recorder.prove(state, action, 'feedback', async (check) => {
-        await check(expect(page.getByText('Quick add is temporarily unavailable.')).toBeVisible());
-      });
-      await recorder.prove(state, action, 'focus', async (check) => {
-        await check(expect.poll(() => page.evaluate(() => ({
-          tag: document.activeElement?.tagName,
-          name: document.activeElement?.getAttribute?.('aria-label'),
-          id: document.activeElement?.id || null,
-        }))).toEqual({ tag: 'BUTTON', name: action, id: null }));
-      });
+      expect(failedResponse.status()).toBe(503);
+      await expect(button).toBeEnabled();
+      await accept(recorder, actionEvidence.evidence.error({
+        locator: page.getByRole('alert'), text: 'Quick add is temporarily unavailable.',
+      }));
+      await accept(recorder, actionEvidence.evidence.feedback({
+        locator: page.getByRole('alert'), text: 'Quick add is temporarily unavailable.',
+      }));
+      await accept(recorder, actionEvidence.evidence.focus({ locator: button }));
 
       const successPending = page.waitForResponse((response) => (
         response.request().method() === 'POST'
         && new URL(response.url()).pathname === '/log/api/quick_add'
         && response.status() === 200
       ));
-      await keyboardActivate(page, button);
+      const pouchId = Number(await button.getAttribute('data-pouch-id'));
+      const brand = await button.getAttribute('data-pouch-brand');
+      const strength = await button.getAttribute('data-pouch-strength');
+      const expectedSuccess = `Added 1 ${brand} (${strength}mg)`;
+      const logsBeforeSuccess = (await accountSnapshot(page)).logs;
+      const successToken = await actionEvidence.evidence.keyboard({
+        key: 'Enter', outcome: {
+          kind: 'response', pending: successPending, method: 'POST',
+          path: /^\/log\/api\/quick_add$/, status: 200,
+        },
+      });
+      recorder.accept(successToken);
       const success = await successPending;
-      await recorder.prove(state, action, 'request', async (check) => {
-        await check(expect(failedResponse.request().method()).toBe('POST'));
-        await check(expect(failedResponse.request().postDataJSON()).toEqual(expect.objectContaining({
-          quantity: 1,
-        })));
-        await check(expect(success.request().method()).toBe('POST'));
-        await check(expect(success.status()).toBe(200));
-        await check(expect(success.request().postDataJSON()).toEqual(expect.objectContaining({
-          quantity: 1,
-        })));
+      await accept(recorder, actionEvidence.evidence.request({
+        activation: successToken, method: 'POST', path: /^\/log\/api\/quick_add$/, status: 200,
+        payload: { kind: 'json', exact: { pouch_id: String(pouchId), quantity: 1 } },
+      }));
+      expect(failedResponse.request().postDataJSON()).toEqual({
+        pouch_id: String(pouchId), quantity: 1,
       });
       await page.waitForLoadState('load');
-      await recorder.prove(state, action, 'persistence', async (check) => {
-        await check(expect(page.locator('.logbook-row')).not.toHaveCount(0));
-      });
+      await accept(recorder, actionEvidence.evidence.feedback({
+        locator: page.getByRole('status'), text: expectedSuccess,
+      }));
+      const logsAfterSuccess = (await accountSnapshot(page)).logs;
+      const priorIds = new Set(logsBeforeSuccess.map(({ id }) => id));
+      const newLogs = logsAfterSuccess.filter(({ id }) => !priorIds.has(id));
+      expect(newLogs).toEqual([expect.objectContaining({ pouch_id: pouchId, quantity: 1 })]);
+      const exactRow = page.locator(`.logbook-row[data-log-id="${newLogs[0].id}"]`);
+      await expect(exactRow).toContainText(brand);
+      await expect(exactRow).toContainText('1 pouch');
+      await accept(recorder, actionEvidence.evidence.persistence({ locator: exactRow, count: 1 }));
       await page.unroute('**/log/api/quick_add');
     }
   }
@@ -1112,56 +1229,6 @@ test('remaining goal actions preserve exact navigation and disposable state', as
       page, page.getByRole('link', { name: action, exact: true }), '/goals/', 200,
       { recorder, state, action },
     );
-  }
-  recorder.assertComplete();
-});
-
-
-test('dashboard actions run in ready empty and sparse states', async ({ page }) => {
-  const recorder = createSupportingBehaviorRecorder(SUPPORTING_OWNER_TITLES.dashboard, expect);
-  for (const [state, email] of [
-    ['dashboard', 'release-analytics-ready@example.com'],
-    ['dashboard-empty', 'release-analytics-empty@example.com'],
-    ['dashboard-sparse', 'release-analytics-sparse@example.com'],
-  ]) {
-    await signOut(page);
-    await loginAs(page, email);
-    for (const [action, destination] of [
-      ['Go to Today', '/today/'],
-      ['Open Insights', '/insights/'],
-      ['Review Journey', '/journey/'],
-    ]) {
-      await page.goto('/dashboard/');
-      await expectKeyboardNavigation(
-        page, page.getByRole('link', { name: action }), destination, 200,
-        { recorder, state, action },
-      );
-    }
-    await page.goto('/dashboard/');
-    const disclosure = page.getByText('View daily values', { exact: true });
-    if (await disclosure.count()) {
-      await recorder.prove(state, 'View daily values', 'keyboard', async (check) => {
-        await disclosure.focus();
-        await check(expect(disclosure).toBeFocused());
-        await check(expect(disclosure.locator('..')).toHaveAttribute('open', ''));
-        await check(expect(disclosure).toHaveAccessibleName(/^View daily values −$/));
-        await page.keyboard.press('Enter');
-        await check(expect(disclosure.locator('..')).not.toHaveAttribute('open', ''));
-        await check(expect(disclosure).toHaveAccessibleName(/^View daily values \+$/));
-        await page.keyboard.press('Enter');
-      });
-      await recorder.prove(state, 'View daily values', 'focus', async (check) => {
-        await check(expect(disclosure).toBeFocused());
-        await check(expect(disclosure.locator('..')).toHaveAttribute('open', ''));
-        await check(expect(disclosure).toHaveAccessibleName(/^View daily values −$/));
-      });
-    }
-    if (state === 'dashboard-empty') {
-      await expectKeyboardNavigation(
-        page, page.getByRole('link', { name: 'Start with Today' }), '/today/', 200,
-        { recorder, state, action: 'Start with Today' },
-      );
-    }
   }
   recorder.assertComplete();
 });

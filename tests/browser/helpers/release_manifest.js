@@ -4,10 +4,10 @@ const {
   obligationFor,
 } = require('./core_behavior_contract');
 const {
+  SUPPORTING_ACTION_POLICY,
   SUPPORTING_ACTION_STATES,
-  SUPPORTING_BEHAVIOR_OBLIGATIONS,
-  supportingObligationFor,
-} = require('./supporting_behavior_contract');
+  supportingPolicyFor,
+} = require('./supporting_action_policy');
 
 
 const RELEASE_PAGES = [
@@ -614,15 +614,15 @@ for (const stateName of SUPPORTING_ACTION_STATES) {
   const actions = EXPECTED_ACTIONS[stateName];
   const coveredBy = {};
   for (const action of actions) {
-    const obligation = supportingObligationFor(stateName, action);
-    if (!obligation) {
-      throw new Error(`${stateName} › ${action} has no independent supporting obligation`);
+    const policy = supportingPolicyFor(stateName, action);
+    if (!policy) {
+      throw new Error(`${stateName} › ${action} has no independent supporting policy`);
     }
     coveredBy[action] = Object.freeze({
       action,
       state: stateName,
-      test: obligation.owner,
-      dimensions: obligation.dimensions,
+      test: policy.owner,
+      dimensions: policy.dimensions,
     });
   }
   Object.defineProperty(actions, 'coveredBy', {
@@ -658,7 +658,7 @@ module.exports = {
   RELEASE_PAGES,
   RELEASE_STATES,
   SUPPORTING_ACTION_STATES,
-  SUPPORTING_BEHAVIOR_OBLIGATIONS,
+  SUPPORTING_ACTION_POLICY,
   loginAs,
   resolveReleaseState,
 };

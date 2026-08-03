@@ -595,7 +595,11 @@ def test_dashboard_compatibility_context_omits_retired_recent_list(
     captured = _rendered_context(dashboard_routes, logged_in_client, '/dashboard/')
 
     assert 'recent_logs' not in captured
-    assert set(captured) == {'analytics_trend', 'today_intake', 'user'}
+    assert set(captured) == {
+        'analytics_trend', 'range_days', 'range_presets', 'today_intake', 'user'
+    }
+    assert captured['range_days'] == 30
+    assert captured['range_presets'] == (7, 30, 90, 365)
 
 
 def test_dashboard_totals_follow_snapshots_and_count_unknown_strength(

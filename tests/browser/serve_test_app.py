@@ -53,7 +53,7 @@ datetime = _ReleaseTestDateTime
 from app import create_app  # noqa: E402
 from extensions import db, mail  # noqa: E402
 from routes.auth import get_current_user, login_required  # noqa: E402
-from flask import abort, redirect, render_template, url_for  # noqa: E402
+from flask import abort, redirect, render_template, request, url_for  # noqa: E402
 from models import (  # noqa: E402
     Craving,
     DailyCheckIn,
@@ -768,6 +768,7 @@ def account_snapshot():
     preferences = current_user.preferences
     return {
         'profile': {
+            'id': current_user.id,
             'email': current_user.email,
             'age': current_user.age,
             'gender': current_user.gender,
@@ -801,6 +802,27 @@ def account_snapshot():
             'best_streak': item.best_streak,
             'is_active': item.is_active,
         } for item in current_user.goals.order_by(Goal.id).all()],
+    }
+
+
+@app.get('/__test__/owned-artifact-snapshot')
+def owned_artifact_snapshot():
+    """Expose exact post-deletion counts for one disposable browser identity."""
+    user_id = request.args.get('user_id', type=int)
+    brand = request.args.get('brand', type=str)
+    if user_id is None or not brand:
+        abort(400)
+    return {
+        'users': User.query.filter_by(id=user_id).count(),
+        'logs': Log.query.filter_by(user_id=user_id).count(),
+        'goals': Goal.query.filter_by(user_id=user_id).count(),
+        'cravings': Craving.query.filter_by(user_id=user_id).count(),
+        'owned_pouches': Pouch.query.filter_by(created_by=user_id).count(),
+        'named_pouches': Pouch.query.filter_by(brand=brand).count(),
+        'orphan_named_pouches': Pouch.query.filter(
+            Pouch.brand == brand,
+            Pouch.created_by.is_(None),
+        ).count(),
     }
 
 

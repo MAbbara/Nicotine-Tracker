@@ -74,3 +74,40 @@ test('history helpers parse legacy symptoms and format naive UTC in the account 
     /1:00\s*PM|13:00/i,
   );
 });
+
+
+for (const scenario of [
+  ['moved focus', { activeElement: { id: 'next-control' }, visibilityState: 'visible' }, true],
+  ['hidden document', { activeElement: null, visibilityState: 'hidden' }, true],
+  ['disconnected submit', { activeElement: null, visibilityState: 'visible' }, false],
+]) {
+  const [name, documentState, connected] = scenario;
+  test(`craving submit does not restore focus after ${name}`, async () => {
+    const { shouldRestoreSubmitFocus } = await loadModule();
+    const focusOwner = { id: 'disabled-focus-placeholder' };
+    const submit = { isConnected: connected };
+    const activeDocument = {
+      ...documentState,
+      activeElement: documentState.activeElement || focusOwner,
+    };
+
+    assert.equal(shouldRestoreSubmitFocus({
+      initiatedWithFocus: true,
+      activeDocument,
+      focusAfterDisable: focusOwner,
+      submit,
+    }), false);
+  });
+}
+
+
+test('craving submit restores focus while its visible connected initiator still owns it', async () => {
+  const { shouldRestoreSubmitFocus } = await loadModule();
+  const focusOwner = { id: 'disabled-focus-placeholder' };
+  assert.equal(shouldRestoreSubmitFocus({
+    initiatedWithFocus: true,
+    activeDocument: { activeElement: focusOwner, visibilityState: 'visible' },
+    focusAfterDisable: focusOwner,
+    submit: { isConnected: true },
+  }), true);
+});

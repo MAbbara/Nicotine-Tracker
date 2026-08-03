@@ -63,15 +63,11 @@ test('Craving history records complete and minimal entries in chronological orde
   ];
   for (const [action] of symptomControls) {
     const control = form.getByLabel(action);
-    await recorder.prove('cravings', action, 'keyboard', async (check) => {
-      await control.focus();
-      await check(expect(control).toBeFocused());
-      await page.keyboard.press('Space');
-      await check(expect(control).toBeChecked());
-    });
-    await recorder.prove('cravings', action, 'focus', async (check) => {
-      await check(expect(control).toBeFocused());
-    });
+    const evidence = recorder.forAction('cravings', action, { page, control });
+    recorder.accept(await evidence.keyboard({
+      key: 'Space', outcome: { kind: 'checked', locator: control, checked: true },
+    }));
+    recorder.accept(await evidence.focus({ locator: control }));
   }
   await form.getByLabel('Situation context').fill('After a difficult meeting');
   await form.getByLabel('Outcome').selectOption('used_alternative');
@@ -93,9 +89,12 @@ test('Craving history records complete and minimal entries in chronological orde
     'restlessness', 'irritability', 'difficulty_concentrating', 'increased_appetite',
   ]);
   for (const [action, value] of symptomControls) {
-    await recorder.prove('cravings', action, 'persistence', async (check) => {
-      await check(expect(savedSymptoms).toContain(value));
+    const evidence = recorder.forAction('cravings', action, {
+      page, control: form.getByLabel(action),
     });
+    recorder.accept(await evidence.persistence({
+      snapshot: { actual: [savedSymptoms.includes(value)], expected: [true] },
+    }));
   }
 
   await form.getByLabel('Intensity').fill('3');
@@ -125,22 +124,18 @@ test('Craving history exposes native validation and recoverable server feedback'
     ) posts += 1;
   });
 
-  await recorder.prove('cravings', 'Record craving', 'keyboard', async (check) => {
-    await submit.focus();
-    await check(expect(submit).toBeFocused());
-    await check(expect(submit).toHaveAccessibleName('Record craving'));
-    await page.keyboard.press('Enter');
-  });
-  await recorder.prove('cravings', 'Record craving', 'focus', async (check) => {
-    await check(expect(intensity).toBeFocused());
-  });
-  await recorder.prove('cravings', 'Record craving', 'error', async (check) => {
-    await check(expect.poll(() => posts).toBe(0));
-    await check(expect(intensity).toHaveJSProperty('validity.valueMissing', true));
-  });
-  await recorder.prove('cravings', 'Record craving', 'feedback', async (check) => {
-    await check(expect(intensity).toHaveJSProperty('validationMessage', 'Please fill out this field.'));
-  });
+  const evidence = recorder.forAction('cravings', 'Record craving', { page, control: submit });
+  recorder.accept(await evidence.keyboard({
+    key: 'Enter', outcome: { kind: 'focused', locator: intensity },
+  }));
+  expect(posts).toBe(0);
+  recorder.accept(await evidence.focus({ locator: intensity }));
+  recorder.accept(await evidence.error({
+    locator: intensity, validationMessage: 'Please fill out this field.',
+  }));
+  recorder.accept(await evidence.feedback({
+    locator: intensity, validationMessage: 'Please fill out this field.',
+  }));
 
   let releaseFailure;
   const heldFailure = new Promise((resolve) => { releaseFailure = resolve; });
@@ -158,55 +153,58 @@ test('Craving history exposes native validation and recoverable server feedback'
     && new URL(response.url()).pathname === '/cravings/api/cravings'
     && response.status() === 503
   ));
-  await submit.focus();
-  await page.keyboard.press('Enter');
-  await recorder.prove('cravings', 'Record craving', 'loading', async (check) => {
-    await check(expect(submit).toBeDisabled());
-    await check(expect(submit).toHaveAttribute('aria-disabled', 'true'));
-    await check(expect(form.locator('[data-craving-form-status]')).toHaveText('Saving your craving…'));
-  });
+  recorder.accept(await evidence.keyboard({
+    key: 'Enter', outcome: { kind: 'disabled', locator: submit, disabled: true },
+  }));
+  recorder.accept(await evidence.loading({
+    disabled: true,
+    status: { locator: form.locator('[data-craving-form-status]'), text: 'Saving your craving…' },
+  }));
+  await expect(submit).toHaveAttribute('aria-disabled', 'true');
   await submit.evaluate((element) => {
     element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });
   expect(posts).toBe(1);
   releaseFailure();
   const failedResponse = await failedResponsePending;
-  await recorder.prove('cravings', 'Record craving', 'error', async (check) => {
-    await check(expect(failedResponse.status()).toBe(503));
-    await check(expect(form.locator('[data-craving-form-status]')).toHaveText('Temporary test failure.'));
-    await check(expect(submit).toBeEnabled());
-  });
-  await recorder.prove('cravings', 'Record craving', 'feedback', async (check) => {
-    await check(expect(form.locator('[data-craving-form-status]')).toHaveAttribute('data-state', 'error'));
-    await check(expect(form.locator('[data-craving-form-status]')).toHaveText('Temporary test failure.'));
-  });
-  await recorder.prove('cravings', 'Record craving', 'focus', async (check) => {
-    await check(expect(submit).toBeFocused());
-    await check(expect(intensity).toHaveValue('6'));
-  });
+  expect(failedResponse.status()).toBe(503);
+  const status = form.locator('[data-craving-form-status]');
+  recorder.accept(await evidence.error({
+    locator: status, text: 'Temporary test failure.', state: 'error',
+  }));
+  recorder.accept(await evidence.feedback({ locator: status, text: 'Temporary test failure.' }));
+  await expect(submit).toBeEnabled();
+  recorder.accept(await evidence.focus({ locator: submit }));
+  await expect(intensity).toHaveValue('6');
   await page.unroute('**/cravings/api/cravings');
   const successResponsePending = page.waitForResponse((response) => (
     response.request().method() === 'POST'
     && new URL(response.url()).pathname === '/cravings/api/cravings'
     && response.status() === 201
   ));
-  await submit.focus();
-  await page.keyboard.press('Enter');
-  const successResponse = await successResponsePending;
-  await recorder.prove('cravings', 'Record craving', 'request', async (check) => {
-    await check(expect(failedResponse.request().postDataJSON()).toEqual({ intensity: 6 }));
-    await check(expect(successResponse.request().postDataJSON()).toEqual({ intensity: 6 }));
-    await check(expect(successResponse.status()).toBe(201));
-    await check(expect(posts).toBe(2));
+  const successKeyboard = await evidence.keyboard({
+    key: 'Enter',
+    outcome: {
+      kind: 'response', pending: successResponsePending,
+      method: 'POST', path: /^\/cravings\/api\/cravings$/, status: 201,
+    },
   });
-  await recorder.prove('cravings', 'Record craving', 'feedback', async (check) => {
-    await check(expect(form.locator('[data-craving-form-status]')).toHaveAttribute('data-state', 'success'));
-    await check(expect(form.locator('[data-craving-form-status]')).toHaveText('Craving recorded. Thank you for noticing the moment.'));
-  });
+  recorder.accept(successKeyboard);
+  recorder.accept(await evidence.request({
+    activation: successKeyboard, method: 'POST',
+    path: /^\/cravings\/api\/cravings$/, status: 201,
+    payload: { kind: 'json', exact: { intensity: 6 } },
+  }));
+  expect(failedResponse.request().postDataJSON()).toEqual({ intensity: 6 });
+  expect(posts).toBe(2);
+  recorder.accept(await evidence.feedback({
+    locator: status, text: 'Craving recorded. Thank you for noticing the moment.',
+  }));
+  await expect(status).toHaveAttribute('data-state', 'success');
   await page.reload();
-  await recorder.prove('cravings', 'Record craving', 'persistence', async (check) => {
-    await check(expect(page.locator('.craving-row').first()).toContainText('Intensity 6 of 10'));
-  });
+  recorder.accept(await evidence.persistence({
+    locator: page.locator('.craving-row').first(), text: /Intensity 6 of 10/,
+  }));
   recorder.assertComplete();
   guard.assertClean(expect, {
     stateName: 'cravings record supporting owner',

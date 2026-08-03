@@ -168,6 +168,17 @@ function setStatus(status, message, state = '') {
   status.dataset.state = state;
 }
 
+function shouldRestoreSubmitFocus({
+  initiatedWithFocus, activeDocument, focusAfterDisable, submit,
+}) {
+  return Boolean(
+    initiatedWithFocus
+    && activeDocument?.activeElement === focusAfterDisable
+    && submit?.isConnected
+    && activeDocument?.visibilityState !== 'hidden'
+  );
+}
+
 async function loadCravings({ endpoint, list, timezone, fetchImpl }) {
   list.setAttribute('aria-busy', 'true');
   try {
@@ -246,12 +257,9 @@ function initCravingsPage(root = document, fetchImpl = window.fetch.bind(window)
     } finally {
       submit.disabled = false;
       submit.removeAttribute('aria-disabled');
-      if (
-        initiatedWithFocus
-        && activeDocument?.activeElement === focusAfterDisable
-        && submit.isConnected
-        && activeDocument?.visibilityState !== 'hidden'
-      ) submit.focus({ preventScroll: true });
+      if (shouldRestoreSubmitFocus({
+        initiatedWithFocus, activeDocument, focusAfterDisable, submit,
+      })) submit.focus({ preventScroll: true });
     }
   };
 
@@ -279,4 +287,5 @@ export {
   loadCravings,
   parseSymptoms,
   renderCravings,
+  shouldRestoreSubmitFocus,
 };
