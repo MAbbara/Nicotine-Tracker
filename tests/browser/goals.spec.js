@@ -53,7 +53,7 @@ test('Goals console and analytics stay clean when no analytics target is present
   await register(page, testInfo);
 
   const analyticsResponse = page.waitForResponse('/goals/api/goals');
-  await page.goto('/goals/');
+  await recorder.visitState(page, 'goals');
   await analyticsResponse;
   await expect(page.getByTestId('goals-analytics').locator('[data-goals-total]')).toHaveText('0');
   await expect(page.getByTestId('goals-analytics').locator('[data-goals-active]')).toHaveText('0');
@@ -90,11 +90,12 @@ test('Goals preserve create, edit, toggle, and delete behavior', async ({ page }
   const errors = collectBrowserErrors(page);
   await register(page, testInfo);
   const guard = watchForProductProblems(page);
-  await page.goto('/goals/');
+  await recorder.visitState(page, 'goals');
 
   await expect(page.getByRole('heading', { level: 1, name: 'Goals' })).toBeVisible();
   await expect(page.getByText(/support your Journey plan/i)).toBeVisible();
   await recorder.runScenario(page, 'goals', 'Create a goal', 'success');
+  await recorder.visitState(page, 'goal-create');
 
   let createPosts = 0;
   page.on('request', (request) => {
@@ -111,7 +112,9 @@ test('Goals preserve create, edit, toggle, and delete behavior', async ({ page }
   expect(createPosts).toBe(1);
   const active = page.locator('article.goal-row[data-goal-state="active"]', { hasText: 'Daily pouch ceiling' });
   await expect(active).toContainText('7 pouches');
+  await recorder.visitState(page, 'goals');
   await recorder.runScenario(page, 'goals', 'Adjust goal', 'success');
+  await recorder.visitState(page, 'goal-edit');
   const activeCheckbox = page.getByLabel('Keep this goal active');
   await expect(activeCheckbox).toBeChecked();
   const editNotifications = page.getByLabel('Notify me as I approach this goal');
@@ -138,6 +141,7 @@ test('Goals preserve create, edit, toggle, and delete behavior', async ({ page }
   await expect(page.locator('article.goal-row[data-goal-state="active"]')
     .getByRole('button', { name: 'Pause goal' })).toBeVisible();
   const inactive = page.locator('article.goal-row[data-goal-state="inactive"]', { hasText: 'Daily pouch ceiling' });
+  await recorder.visitState(page, 'goals');
   await recorder.runScenario(page, 'goals', 'Pause goal', 'success');
   await expect(inactive).toBeVisible();
   await expect(inactive.getByRole('button', { name: 'Resume goal' })).toHaveCount(0);

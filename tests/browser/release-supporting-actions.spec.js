@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const fs = require('node:fs');
 const {
   EXPECTED_ACTIONS,
   RELEASE_STATES,
@@ -8,6 +9,9 @@ const {
   resolveReleaseState,
 } = require('./helpers/release_manifest');
 const {
+  SUPPORTING_ACTION_BASELINES,
+} = require('./helpers/supporting_action_baseline');
+const {
   SUPPORTING_ACTION_POLICY,
 } = require('./helpers/supporting_action_policy');
 const {
@@ -16,12 +20,17 @@ const {
   createSupportingBehaviorRecorder,
   validateSupportingCoverage,
 } = require('./helpers/supporting_behavior_contract');
+const {
+  STATE_SCENARIOS,
+  supportingControlAuthority,
+} = require('./helpers/supporting_action_scenarios');
 const { watchForProductProblems } = require('./helpers/product_guard');
 
 
 const SUPPORTING_EXPECTED_ACTIONS = Object.freeze(Object.fromEntries(
   SUPPORTING_ACTION_STATES.map((state) => [state, EXPECTED_ACTIONS[state]]),
 ));
+let disposableRegistrationSequence = 0;
 
 
 async function keyboardActivate(page, locator) {
@@ -40,29 +49,6 @@ async function signOut(page) {
   const response = await page.request.get('/auth/logout');
   expect(response.status()).toBe(200);
   await page.goto('/');
-}
-
-
-async function visitState(page, state) {
-  const response = await page.goto(state.path);
-  expect(response.status()).toBe(state.status);
-  await page.waitForLoadState('networkidle');
-  const openDialog = page.locator('dialog[open]');
-  if (new URL(page.url()).searchParams.get('open_add_modal') === '1') {
-    await expect(openDialog).toHaveCount(1);
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      if (await openDialog.count()) {
-        await page.keyboard.press('Escape');
-        await expect(openDialog).toHaveCount(0);
-      }
-      await page.waitForTimeout(50);
-    }
-  }
-  if (await openDialog.count()) {
-    await page.keyboard.press('Escape');
-    await expect(openDialog).toHaveCount(0);
-  }
-  return response;
 }
 
 
@@ -98,7 +84,9 @@ async function expectKeyboardNavigation(
 
 
 async function registerDisposable(page, testInfo, label) {
-  const suffix = `${label}-${testInfo.project.name}-${testInfo.workerIndex}`
+  disposableRegistrationSequence += 1;
+  const uniqueRunId = `${process.pid}${testInfo.workerIndex}${disposableRegistrationSequence}`;
+  const suffix = `${label}-${testInfo.project.name}-${uniqueRunId}`
     .replace(/[^a-z0-9-]/gi, '-').toLowerCase();
   const email = `${suffix}@example.com`;
   await page.goto('/auth/register');
@@ -182,6 +170,17 @@ test('every supporting action has three independent exact coverage authorities',
     SUPPORTING_ACTION_POLICY,
     SUPPORTING_BEHAVIOR_OBLIGATIONS,
   )).toBe(true);
+
+  const genericSelectors = new Set([
+    'button[type="submit"]', 'button[type="button"]',
+    'input[type="checkbox"]', 'summary', 'button[data-pouch-id]',
+  ]);
+  const genericAuthorities = SUPPORTING_ACTION_BASELINES.filter((entry) => {
+    const authority = supportingControlAuthority(entry.state, entry.action, entry.profile);
+    return authority.scope?.selector === '#main-content'
+      && genericSelectors.has(authority.selector);
+  }).map(({ state, action }) => `${state} › ${action}`);
+  expect(genericAuthorities, 'generic supporting control authorities').toEqual([]);
 
   const clone = (value) => structuredClone(value);
   const extraManifestState = clone(SUPPORTING_EXPECTED_ACTIONS);
@@ -281,19 +280,84 @@ test('every supporting action has three independent exact coverage authorities',
 });
 
 
+test('every mutation authority has an exact form and request identity', () => {
+  const mutationProfiles = new Set([
+    'destructiveMutation', 'download', 'formMutation', 'rowDelete', 'validatedMutation',
+  ]);
+  const missingMutationForms = SUPPORTING_ACTION_BASELINES.filter((entry) => {
+    const authority = supportingControlAuthority(entry.state, entry.action, entry.profile);
+    return mutationProfiles.has(entry.profile) && !authority.form;
+  }).map(({ state, action }) => `${state} › ${action}`);
+  expect(missingMutationForms, 'mutation authorities without exact form identity').toEqual([]);
+});
+
+
+test('supporting owners cannot authorize state entry through the local manifest visitor', () => {
+  const source = fs.readFileSync(__filename, 'utf8');
+  expect(source).not.toMatch(/async function visitState\(/);
+  expect(source).not.toMatch(/await visitState\(/);
+  expect(source).not.toMatch(/page\.goto\(state\.path/);
+});
+
+
+test('catalog state binding rejects disposable Data, anonymous, and local-visit substitutions', async ({ page }, testInfo) => {
+  await registerDisposable(page, testInfo, 'data-data-offline-disabled');
+  await page.goto('/settings/data');
+  const chromeRecorder = createSupportingBehaviorRecorder(
+    SUPPORTING_OWNER_TITLES.chrome, expect,
+  );
+  await chromeRecorder.visitState(page, 'data-offline-enabled');
+  await expect(chromeRecorder
+    .forScenario(page, 'data-offline-enabled', 'Skip to main content').run('success'))
+    .rejects.toThrow(/authoritative state (?:principal|invariant)/);
+
+  await signOut(page);
+  await loginAs(page, 'release-settings@example.com');
+  await chromeRecorder.visitState(page, 'anonymous-not-found');
+  await expect(chromeRecorder
+    .forScenario(page, 'anonymous-not-found', 'Skip to main content').run('success'))
+    .rejects.toThrow(/authoritative anonymous principal/);
+
+  await page.goto('/settings/profile');
+  await expect(chromeRecorder
+    .forScenario(page, 'profile', 'Skip to main content').run('success'))
+    .rejects.toThrow(/authoritative state invariant/);
+});
+
+
+test('offline supporting states reject the opposite persisted precondition', async ({ page }) => {
+  const recorder = createSupportingBehaviorRecorder(SUPPORTING_OWNER_TITLES.dataExact, expect);
+  for (const [state, email, opposite] of [
+    ['data-offline-enabled', 'release-offline-enabled@example.com', false],
+    ['data-offline-disabled', 'release-offline-disabled@example.com', true],
+  ]) {
+    await signOut(page);
+    await loginAs(page, email);
+    await recorder.visitState(page, state);
+    const control = page.getByRole('checkbox', { name: 'Save actions for offline use' });
+    if (opposite) await control.check();
+    else await control.uncheck();
+    await page.reload();
+    await expect(recorder.forScenario(
+      page, state, 'Save actions for offline use',
+    ).run('success')).rejects.toThrow(/precondition/);
+  }
+});
+
+
 test('causal supporting transactions reject unrelated, pre-existing, and reusable evidence', async ({ page, context }) => {
   await loginAs(page, 'release-settings@example.com');
-  await page.goto('/settings/profile');
 
   const chromeRecorder = createSupportingBehaviorRecorder(
     SUPPORTING_OWNER_TITLES.chrome, expect,
   );
+  await chromeRecorder.visitState(page, 'profile');
   const skipAction = chromeRecorder.forScenario(page, 'profile', 'Skip to main content');
   const validReceipt = await skipAction.run('success');
   chromeRecorder.accept(validReceipt);
   expect(() => chromeRecorder.accept(validReceipt)).toThrow(/already consumed/);
 
-  await page.goto('/settings/profile');
+  await chromeRecorder.visitState(page, 'profile');
   const secondSkipReceipt = await chromeRecorder
     .forScenario(page, 'profile', 'Skip to main content').run('success');
   const wrongRecorder = createSupportingBehaviorRecorder(
@@ -352,12 +416,12 @@ test('causal supporting transactions reject unrelated, pre-existing, and reusabl
 
   await page.request.get('/auth/logout');
   await loginAs(page, 'release-analytics-empty@example.com');
-  await page.goto('/dashboard/');
   const dashboardRecorder = createSupportingBehaviorRecorder(
     SUPPORTING_OWNER_TITLES.dashboard, expect,
   );
+  await dashboardRecorder.visitState(page, 'dashboard');
   await expect(dashboardRecorder.forScenario(page, 'dashboard', '7 days').run('success'))
-    .rejects.toThrow(/toBe/);
+    .rejects.toThrow(/authoritative state principal/);
 });
 
 
@@ -367,13 +431,14 @@ test('catalog authority rejects real control, request, artifact, state, and prec
   const chromeRecorder = createSupportingBehaviorRecorder(
     SUPPORTING_OWNER_TITLES.chrome, expect,
   );
-  await page.goto('/settings/profile');
+  await chromeRecorder.visitState(page, 'profile');
   const today = page.getByRole('navigation', { name: 'Primary' })
     .getByRole('link', { name: 'Today', exact: true });
   await today.evaluate((link) => link.setAttribute('href', '/journey/'));
   await expect(chromeRecorder.forScenario(page, 'profile', 'Today').run('success'))
     .rejects.toThrow(/catalog control (?:contract|selector)/);
 
+  await chromeRecorder.visitState(page, 'data');
   await page.goto('/settings/data?supporting_state=data-settings-action');
   await expect(chromeRecorder.forScenario(page, 'data', 'Skip to main content').run('success'))
     .rejects.toThrow(/authoritative state (?:query|invariant)/);
@@ -381,7 +446,7 @@ test('catalog authority rejects real control, request, artifact, state, and prec
   const settingsDataRecorder = createSupportingBehaviorRecorder(
     SUPPORTING_OWNER_TITLES.settingsData, expect,
   );
-  await page.goto('/settings/data?supporting_state=data');
+  await settingsDataRecorder.visitState(page, 'data');
   await page.evaluate(() => {
     const real = document.querySelector('a[href="/settings/account#account-delete-title"]');
     real.setAttribute('aria-label', 'Original deletion review link');
@@ -397,7 +462,7 @@ test('catalog authority rejects real control, request, artifact, state, and prec
   const profileRecorder = createSupportingBehaviorRecorder(
     SUPPORTING_OWNER_TITLES.settingsProfile, expect,
   );
-  await page.goto('/settings/profile');
+  await profileRecorder.visitState(page, 'profile');
   await page.locator('form[action="/settings/profile"]').evaluate((form) => {
     form.method = 'get';
     form.action = '/settings/preferences';
@@ -405,7 +470,7 @@ test('catalog authority rejects real control, request, artifact, state, and prec
   await expect(profileRecorder.forScenario(page, 'profile', 'Save profile').run('invalid'))
     .rejects.toThrow(/catalog control contract|toHaveCount/);
 
-  await page.goto('/settings/profile');
+  await profileRecorder.visitState(page, 'profile');
   await page.evaluate(() => {
     const real = [...document.querySelectorAll('button')]
       .find((button) => button.textContent.trim() === 'Save profile');
@@ -421,7 +486,7 @@ test('catalog authority rejects real control, request, artifact, state, and prec
   const accountRecorder = createSupportingBehaviorRecorder(
     SUPPORTING_OWNER_TITLES.settingsAccountValidation, expect,
   );
-  await page.goto('/settings/account');
+  await accountRecorder.visitState(page, 'account');
   await page.evaluate(() => {
     const form = document.querySelector('input[value="update_email"]').form;
     const rogue = document.createElement('input');
@@ -435,13 +500,13 @@ test('catalog authority rejects real control, request, artifact, state, and prec
 
   await page.request.get('/auth/logout');
   await loginAs(page, 'release-analytics-ready@example.com');
-  await page.goto('/dashboard/');
-  await page.locator('[data-dashboard-range-days]').evaluate((marker) => {
-    marker.setAttribute('data-dashboard-range-days', '999');
-  });
   const dashboardRecorder = createSupportingBehaviorRecorder(
     SUPPORTING_OWNER_TITLES.dashboard, expect,
   );
+  await dashboardRecorder.visitState(page, 'dashboard');
+  await page.locator('[data-dashboard-range-days]').evaluate((marker) => {
+    marker.setAttribute('data-dashboard-range-days', '999');
+  });
   await expect(dashboardRecorder.forScenario(page, 'dashboard', '7 days').run('success'))
     .rejects.toThrow(/catalog precondition/);
 });
@@ -469,6 +534,70 @@ test('catalog authority rejects successful-looking transactions with unchanged p
 });
 
 
+test('catalog authority rejects route-fulfilled account feedback with no server action invariant', async ({ page }) => {
+  await loginAs(page, 'release-settings@example.com');
+  const recorder = createSupportingBehaviorRecorder(
+    SUPPORTING_OWNER_TITLES.settingsAccountValidation, expect,
+  );
+  await recorder.visitState(page, 'account');
+  await page.route('**/settings/account', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/html',
+      body: `<!doctype html><html><body><main id="main-content">
+        <h1>Account</h1>
+        <form method="post" action="/settings/account">
+          <input type="hidden" name="action" value="update_email">
+          <label for="new_email">New email address</label>
+          <input id="new_email" name="new_email" type="email">
+          <label for="password">Current password</label>
+          <input id="password" name="password" type="password" autofocus>
+          <p id="password-error" role="alert">Current password is incorrect.</p>
+          <div class="settings-save-row"><button type="submit">Update email</button></div>
+        </form>
+      </main></body></html>`,
+    });
+  });
+  await expect(recorder.forScenario(page, 'account', 'Update email').run('rejected'))
+    .rejects.toThrow(/server action invariant/);
+  await page.unroute('**/settings/account');
+});
+
+
+test('catalog authority rejects unrelated focus injected into a substituted account response', async ({ page }) => {
+  await loginAs(page, 'release-settings@example.com');
+  const recorder = createSupportingBehaviorRecorder(
+    SUPPORTING_OWNER_TITLES.settingsAccountValidation, expect,
+  );
+  await recorder.visitState(page, 'account');
+  await page.route('**/settings/account', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/html',
+      headers: { 'x-supporting-action-invariant': 'account:update_email:rejected' },
+      body: `<!doctype html><html><body><main id="main-content">
+        <h1>Account</h1>
+        <input id="unrelated-focus" autofocus>
+        <form method="post" action="/settings/account">
+          <input type="hidden" name="action" value="update_email">
+          <label for="new_email">New email address</label>
+          <input id="new_email" name="new_email" type="email">
+          <label for="password">Current password</label>
+          <input id="password" name="password" type="password">
+          <p id="password-error" role="alert">Current password is incorrect.</p>
+          <div class="settings-save-row"><button type="submit">Update email</button></div>
+        </form>
+      </main></body></html>`,
+    });
+  });
+  await expect(recorder.forScenario(page, 'account', 'Update email').run('rejected'))
+    .rejects.toThrow(/focus|server action invariant/);
+  await page.unroute('**/settings/account');
+});
+
+
 test('every supporting chrome action runs in its exact representative state', async ({ page }, testInfo) => {
   test.setTimeout(720_000);
   const recorder = createSupportingBehaviorRecorder(SUPPORTING_OWNER_TITLES.chrome, expect);
@@ -483,21 +612,22 @@ test('every supporting chrome action runs in its exact representative state', as
     if (state.email) await loginAs(page, state.email);
 
     let sourceGuard = watchForProductProblems(page);
-    await visitState(page, state);
+    await recorder.visitState(page, state.name);
     await recorder.runScenario(page, state.name, 'Skip to main content', 'success');
     await expectGuardClean(sourceGuard, page, `${state.name} skip`, {
       allowAnalytics: state.allowAnalytics,
-      expectedStatus: state.status,
+      expectedStatus: STATE_SCENARIOS[state.name].visit.status,
     });
     sourceGuard.stop();
 
     sourceGuard = watchForProductProblems(page);
-    await visitState(page, state);
+    await recorder.visitState(page, state.name);
     let destinationGuard = await handoffProductGuard(
       page,
       sourceGuard,
       `${state.name} before wordmark`,
-      { allowAnalytics: state.allowAnalytics, expectedStatus: state.status },
+      { allowAnalytics: state.allowAnalytics,
+        expectedStatus: STATE_SCENARIOS[state.name].visit.status },
     );
     await recorder.runScenario(page, state.name, 'Nicotine Tracker home', 'success');
     await expectGuardClean(destinationGuard, page, `${state.name} wordmark destination`);
@@ -506,13 +636,14 @@ test('every supporting chrome action runs in its exact representative state', as
     if (!state.email) return;
 
     sourceGuard = watchForProductProblems(page);
-    await visitState(page, state);
+    await recorder.visitState(page, state.name);
     const accountName = `Open your space for ${state.email}`;
     destinationGuard = await handoffProductGuard(
       page,
       sourceGuard,
       `${state.name} before account`,
-      { allowAnalytics: state.allowAnalytics, expectedStatus: state.status },
+      { allowAnalytics: state.allowAnalytics,
+        expectedStatus: STATE_SCENARIOS[state.name].visit.status },
     );
     await recorder.runScenario(page, state.name, accountName, 'success');
     await expectGuardClean(destinationGuard, page, `${state.name} account destination`);
@@ -525,12 +656,13 @@ test('every supporting chrome action runs in its exact representative state', as
       ['You', false],
     ]) {
       sourceGuard = watchForProductProblems(page);
-      await visitState(page, state);
+      await recorder.visitState(page, state.name);
       destinationGuard = await handoffProductGuard(
         page,
         sourceGuard,
         `${state.name} before ${name}`,
-        { allowAnalytics: state.allowAnalytics, expectedStatus: state.status },
+        { allowAnalytics: state.allowAnalytics,
+          expectedStatus: STATE_SCENARIOS[state.name].visit.status },
       );
       await recorder.runScenario(page, state.name, name, 'success');
       await expectGuardClean(destinationGuard, page, `${state.name} ${name} destination`, {
@@ -565,7 +697,7 @@ test('every settings navigation action runs in its exact representative state', 
       'Profile', 'Account', 'Preferences', 'Reminders', 'Data & privacy', 'Statistics',
     ]) {
       const sourceGuard = watchForProductProblems(page);
-      await visitState(page, state);
+      await recorder.visitState(page, state.name);
       const destinationGuard = await handoffProductGuard(
         page, sourceGuard, `${state.name} before settings ${name}`,
       );
@@ -684,14 +816,13 @@ test('data actions use isolated disposable records in every exact state', async 
 test('remaining catalog actions preserve exact navigation and isolated records', async ({ page }) => {
   const recorder = createSupportingBehaviorRecorder(SUPPORTING_OWNER_TITLES.catalogGaps, expect);
   await loginAs(page, 'release-inventory@example.com');
-  for (const [state, path, action] of [
-    ['catalog-add', '/catalog/add', '← Your pouches'],
-    ['catalog-add', '/catalog/add', 'Cancel'],
-    ['catalog-edit', '/__test__/release/catalog-edit', '← Your pouches'],
-    ['catalog-edit', '/__test__/release/catalog-edit', 'Cancel'],
+  for (const [state, action] of [
+    ['catalog-add', '← Your pouches'],
+    ['catalog-add', 'Cancel'],
+    ['catalog-edit', '← Your pouches'],
+    ['catalog-edit', 'Cancel'],
   ]) {
-    const response = await page.goto(path);
-    expect(response.status()).toBe(200);
+    await recorder.visitState(page, state);
     await recorder.runScenario(page, state, action, 'success');
   }
   recorder.assertComplete();
@@ -708,12 +839,12 @@ test('remaining logging actions preserve exact navigation and isolated records',
   await page.getByLabel('Nicotine strength').fill('3.5');
   await page.getByRole('button', { name: 'Add pouch' }).click();
 
-  await page.goto('/log/view');
+  await recorder.visitState(page, 'logbook');
   let dialog = page.getByRole('dialog', { name: 'Add a log' });
   await recorder.runScenario(page, 'logbook', 'Add log', 'toggle');
   await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
 
-  await page.goto('/log/add');
+  await recorder.visitState(page, 'log-add');
   dialog = page.getByRole('dialog', { name: 'Add a log' });
   await expect(dialog).toBeVisible();
   await recorder.runScenario(page, 'log-add', 'Close add log dialog', 'toggle');
@@ -727,7 +858,7 @@ test('remaining logging actions preserve exact navigation and isolated records',
   const addedRow = page.locator('.logbook-row', { hasText: 'supporting add entry' });
 
   for (const [state, path] of [['logbook', '/log/view'], ['log-add', '/log/add']]) {
-    await page.goto(path);
+    await recorder.visitState(page, state);
     if (state === 'log-add') {
       dialog = page.getByRole('dialog', { name: 'Add a log' });
       await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
@@ -740,7 +871,7 @@ test('remaining logging actions preserve exact navigation and isolated records',
     await page.getByLabel('Search logs').fill('supporting add entry');
     await recorder.runScenario(page, state, 'Apply filters', 'success');
 
-    await page.goto(path);
+    await recorder.visitState(page, state);
     if (state === 'log-add') {
       dialog = page.getByRole('dialog', { name: 'Add a log' });
       await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
@@ -752,7 +883,7 @@ test('remaining logging actions preserve exact navigation and isolated records',
     }
     await recorder.runScenario(page, state, 'Bulk add', 'success');
 
-    await page.goto(path);
+    await recorder.visitState(page, state);
     if (state === 'log-add') {
       dialog = page.getByRole('dialog', { name: 'Add a log' });
       await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
@@ -765,12 +896,13 @@ test('remaining logging actions preserve exact navigation and isolated records',
     await recorder.runScenario(page, state, 'Edit', 'success');
   }
 
-  await page.goto('/log/bulk');
+  await recorder.visitState(page, 'log-bulk');
   await recorder.runScenario(page, 'log-bulk', 'Add entries', 'invalid', 'success');
   const bulkRow = page.locator('.logbook-row', { hasText: 'Bulk Evidence' });
 
   const supportingRow = page.locator('.logbook-row', { hasText: 'supporting add entry' });
   await supportingRow.getByRole('link', { name: 'Edit' }).click();
+  await recorder.visitState(page, 'log-edit');
   await recorder.runScenario(page, 'log-edit', 'Save changes', 'invalid', 'success');
   const editedRow = page.locator('.logbook-row', { hasText: 'supporting edit saved' });
 
@@ -779,7 +911,7 @@ test('remaining logging actions preserve exact navigation and isolated records',
     ['log-add', '/log/add', 'delete log-add evidence', '10:30'],
   ]) {
     await addDetailedLog(page, { date: '2026-01-13', time, notes: note });
-    await page.goto(path);
+    await recorder.visitState(page, state);
     if (state === 'log-add') {
       dialog = page.getByRole('dialog', { name: 'Add a log' });
       await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
@@ -797,7 +929,7 @@ test('remaining logging actions preserve exact navigation and isolated records',
       'Log one Release Fixture, 3.5 milligrams',
       'Log one Steady Mint, 6 milligrams',
     ]) {
-      await page.goto(path);
+      await recorder.visitState(page, state);
       if (state === 'log-add') {
         const dialog = page.getByRole('dialog', { name: 'Add a log' });
         await expect(dialog).toBeVisible();
@@ -808,10 +940,11 @@ test('remaining logging actions preserve exact navigation and isolated records',
     }
   }
 
-  await page.goto('/log/bulk');
+  await recorder.visitState(page, 'log-bulk');
   await recorder.runScenario(page, 'log-bulk', 'Cancel', 'success');
   const editLink = page.locator('.logbook-row').first().getByRole('link', { name: 'Edit' });
   await expectKeyboardNavigation(page, editLink, new URL(await editLink.getAttribute('href'), page.url()).pathname);
+  await recorder.visitState(page, 'log-edit');
   await recorder.runScenario(page, 'log-edit', 'Cancel', 'success');
   recorder.assertComplete();
   await page.waitForLoadState('networkidle');
@@ -834,7 +967,7 @@ test('standalone craving support link reaches Today without external traffic', a
     if (new URL(request.url()).origin !== 'http://127.0.0.1:5000') external.push(request.url());
   });
   await loginAs(page, 'release-inventory@example.com');
-  await page.goto('/cravings/cravings');
+  await recorder.visitState(page, 'cravings');
   await recorder.runScenario(
     page, 'cravings', 'Get immediate support on Today', 'success',
   );
@@ -846,15 +979,14 @@ test('standalone craving support link reaches Today without external traffic', a
 test('remaining goal actions preserve exact navigation and disposable state', async ({ page }) => {
   const recorder = createSupportingBehaviorRecorder(SUPPORTING_OWNER_TITLES.goalsGaps, expect);
   await loginAs(page, 'journey-review-desktop@example.com');
-  for (const [state, path, action] of [
-    ['goal-create', '/goals/create', 'Back to goals'],
-    ['goal-create', '/goals/create', 'Cancel'],
-    ['goal-progress', '/goals/progress', 'Back to goals'],
-    ['goal-edit', '/__test__/release/goal-edit', 'Back to goals'],
-    ['goal-edit', '/__test__/release/goal-edit', 'Cancel'],
+  for (const [state, action] of [
+    ['goal-create', 'Back to goals'],
+    ['goal-create', 'Cancel'],
+    ['goal-progress', 'Back to goals'],
+    ['goal-edit', 'Back to goals'],
+    ['goal-edit', 'Cancel'],
   ]) {
-    const response = await page.goto(path);
-    expect(response.status()).toBe(200);
+    await recorder.visitState(page, state);
     await recorder.runScenario(page, state, action, 'success');
   }
   recorder.assertComplete();
@@ -864,12 +996,12 @@ test('remaining goal actions preserve exact navigation and disposable state', as
 test('public error recovery actions reach a safe destination', async ({ page }) => {
   const recorder = createSupportingBehaviorRecorder(SUPPORTING_OWNER_TITLES.errors, expect);
   await signOut(page);
-  for (const [state, path, status, action] of [
-    ['anonymous-not-found', '/__release_missing_page__', 404, 'Back to the start page'],
-    ['bad-request', '/__test__/error/400', 400, 'Return safely'],
-    ['server-error', '/__test__/error/500', 500, 'Back to the start page'],
+  for (const [state, action] of [
+    ['anonymous-not-found', 'Back to the start page'],
+    ['bad-request', 'Return safely'],
+    ['server-error', 'Back to the start page'],
   ]) {
-    expect((await page.goto(path)).status()).toBe(status);
+    await recorder.visitState(page, state);
     await recorder.runScenario(page, state, action, 'success');
   }
   recorder.assertComplete();

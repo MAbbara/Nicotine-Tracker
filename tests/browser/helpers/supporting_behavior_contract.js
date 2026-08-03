@@ -5,6 +5,7 @@ const {
 } = require('./supporting_action_baseline');
 const {
   STATE_SCENARIOS,
+  resolvedSupportingControlAuthority,
   supportingControlAuthority,
   supportingScenarioFor,
 } = require('./supporting_action_scenarios');
@@ -564,7 +565,9 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
     return receipt;
   }
 
-  async function assertBoundControl(obligation, page, control, authority) {
+  async function assertBoundControl(
+    obligation, page, control, authority, checkRuntimePrecondition = true,
+  ) {
     if (!page || typeof page.url !== 'function' || !page.keyboard) {
       throw new TypeError('typed evidence requires a Playwright page');
     }
@@ -595,22 +598,58 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
         `${obligation.state} › ${obligation.action} has no visible authoritative state marker`,
       );
     }
-    const identityResponse = await page.request.get('/__test__/account-snapshot');
+    const runtimeResponse = await page.request.get('/__test__/supporting-state-snapshot');
+    expectApi(runtimeResponse.status()).toBe(200);
+    const runtimeState = await runtimeResponse.json();
+    if (runtimeState.invariant !== stateScenario.invariant) {
+      throw new Error(
+        `${obligation.state} › ${obligation.action} authoritative state invariant differs`,
+      );
+    }
+    if (checkRuntimePrecondition) {
+      for (const [name, value] of Object.entries(stateScenario.precondition.runtime || {})) {
+        const runtimeName = { offlineQueueEnabled: 'offline_queue_enabled' }[name] || name;
+        if (runtimeState[runtimeName] !== value) {
+          throw new Error(
+            `${obligation.state} › ${obligation.action} runtime precondition ${name} differs`,
+          );
+        }
+      }
+    }
+    const identityResponse = await page.request.get('/__test__/account-snapshot', {
+      maxRedirects: 0,
+    });
     const expectedIdentity = stateScenario.identity;
     if (expectedIdentity === undefined) {
       throw new Error(`${obligation.state} has no authoritative state identity`);
     }
-    if (expectedIdentity !== null) {
-      expectApi(identityResponse.status()).toBe(200);
+    if (identityResponse.status() !== stateScenario.precondition.identityStatus) {
+      if (expectedIdentity === null) {
+        throw new Error(`${obligation.state} authoritative anonymous principal differs`);
+      }
+      throw new Error(`${obligation.state} authoritative identity status differs`);
+    }
+    if (expectedIdentity === null) {
+      if (runtimeState.authenticated || runtimeState.principal !== null) {
+        throw new Error(`${obligation.state} authoritative anonymous principal differs`);
+      }
+    } else {
       const identityProfile = (await identityResponse.json()).profile;
       const identity = identityProfile.email;
+      if (!runtimeState.authenticated || runtimeState.principal !== identity) {
+        throw new Error(`${obligation.state} authoritative runtime principal differs`);
+      }
       if (expectedIdentity instanceof RegExp) {
-        expectApi(identity).toMatch(expectedIdentity);
+        if (!expectedIdentity.test(identity)) {
+          throw new Error(`${obligation.state} authoritative state principal differs`);
+        }
         if (!boundStatePrincipals.has(obligation.state)) {
           boundStatePrincipals.set(obligation.state, identityProfile.id);
         }
         expectApi(identityProfile.id).toBe(boundStatePrincipals.get(obligation.state));
-      } else expectApi(identity).toBe(expectedIdentity);
+      } else if (identity !== expectedIdentity) {
+        throw new Error(`${obligation.state} authoritative state principal differs`);
+      }
     }
     await expectApi(control).toHaveCount(1);
     await expectApi(control).toHaveAccessibleName(actionNamePattern(obligation.action));
@@ -657,6 +696,13 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
         || actualForm.method !== authority.form.method
         || actualForm.path !== authority.form.action) {
         throw new Error('catalog control contract form method or action differs');
+      }
+      for (const [name, value] of Object.entries(authority.form.fields || {})) {
+        const fields = control.locator('xpath=ancestor::form[1]').locator(
+          `input[type="hidden"][name="${name}"]`,
+        );
+        await expectApi(fields).toHaveCount(1);
+        await expectApi(fields).toHaveAttribute('value', value);
       }
     }
     if (obligation.profile === 'rangeNavigation') {
@@ -911,6 +957,14 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
     expectApi(new URL(response.url()).pathname).toMatch(descriptor.path);
     if (descriptor.search !== undefined) expectApi(new URL(response.url()).search).toBe(descriptor.search);
     if (descriptor.status !== undefined) expectApi(response.status()).toBe(descriptor.status);
+    if (descriptor.responseInvariant !== undefined) {
+      const actualInvariant = await response.headerValue('x-supporting-action-invariant');
+      if (actualInvariant !== descriptor.responseInvariant) {
+        throw new Error(
+          `server action invariant expected ${descriptor.responseInvariant}; received ${actualInvariant}`,
+        );
+      }
+    }
     if (descriptor.method === 'GET') expectApi(request.postData()).toBeNull();
     else if (descriptor.payload) {
       assertExactPayload(
@@ -939,13 +993,17 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
     } else throw new TypeError(`unknown transaction outcome: ${outcome.kind}`);
   }
 
-  function createCatalogBranchTransaction(state, action, page, control, authority) {
+  function createCatalogBranchTransaction(
+    state, action, page, control, authority, checkRuntimePrecondition,
+  ) {
     const obligation = obligationForOwner(state, action);
     const transactionIdentity = { state, action, dimensions: new Set() };
     let controlBound = false;
     async function ensureControlBound() {
       if (controlBound) return;
-      await assertBoundControl(obligation, page, control, authority);
+      await assertBoundControl(
+        obligation, page, control, authority, checkRuntimePrecondition,
+      );
       controlBound = true;
     }
     return Object.freeze({
@@ -1143,9 +1201,11 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
         const { control, descriptor } = await scenario.resolve(branch);
         authoritativeControl ||= control;
         const authority = descriptor.authority
-          || supportingControlAuthority(state, action, obligation.profile);
+          || await resolvedSupportingControlAuthority(
+            page, state, action, obligation.profile,
+          );
         const branchTransaction = createCatalogBranchTransaction(
-          state, action, page, control, authority,
+          state, action, page, control, authority, branchIndex === 0,
         );
         const branchReceipt = await branchTransaction.run(descriptor);
         const branchEvidence = supportingTransactionReceipts.get(branchReceipt);
@@ -1202,6 +1262,14 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
     }
     const scenario = STATE_SCENARIOS[state];
     if (!scenario) throw new Error(`unknown supporting state visit: ${state}`);
+    const setupResponse = await page.request.post('/__test__/supporting-state-setup', {
+      data: { state },
+    });
+    expectApi(setupResponse.status()).toBe(200);
+    expectApi(await setupResponse.json()).toEqual(expectApi.objectContaining({
+      state,
+      invariant: scenario.invariant,
+    }));
     const requestedUrl = `${scenario.visit.path}${scenario.visit.query}`;
     const response = await page.goto(requestedUrl);
     if (!response) throw new Error(`${state} catalog visit returned no document response`);
@@ -1299,6 +1367,8 @@ function validateSupportingCoverage(expectedActions, receipts, policies, obligat
       || scenario.precondition?.markerLevel !== 1
       || scenario.precondition?.markerName !== scenario.marker
       || scenario.precondition?.principal !== scenario.identity
+      || scenario.precondition?.identityStatus !== (scenario.identity === null ? 302 : 200)
+      || !Object.isFrozen(scenario.precondition?.runtime)
       || typeof scenario.search !== 'string'
       || !Array.isArray(scenario.queries) || !scenario.queries.length
       || scenario.queries.some((query) => typeof query !== 'string')

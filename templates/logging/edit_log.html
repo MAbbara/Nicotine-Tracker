@@ -12,7 +12,7 @@
     <p>Correct the timing, quantity, or context. The recorded product stays attached to this entry.</p>
   </header>
 
-  <form class="logging-form logging-form--page" method="post">
+  <form class="logging-form logging-form--page" method="post" action="{{ url_for('logging.edit_log', log_id=log.id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="logging-form__product-summary">
       <p class="eyebrow">Recorded product</p>

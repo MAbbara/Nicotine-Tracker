@@ -11,7 +11,7 @@
         <p>Save the exact brand and strength once. It will then be ready whenever you log.</p>
     </header>
 
-    <form class="catalog-form" method="post" data-validate>
+    <form class="catalog-form" method="post" action="{{ url_for('catalog.add_pouch') }}" data-validate>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="c-field">
             <label class="c-field__label" for="brand">Brand<span aria-hidden="true"> *</span></label>

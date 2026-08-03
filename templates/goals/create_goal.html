@@ -11,7 +11,7 @@
     <p>Choose one limit that can support your Journey plan. Start with something realistic enough to teach you what helps.</p>
   </header>
 
-  <form method="post" class="goal-form" data-validate>
+  <form method="post" action="{{ url_for('goals.create_goal') }}" class="goal-form" data-validate>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <div class="c-field">

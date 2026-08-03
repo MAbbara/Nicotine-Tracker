@@ -44,7 +44,7 @@ test('Craving history records complete and minimal entries in chronological orde
     if (message.type() === 'error') errors.push(message.text());
   });
   await register(page, testInfo);
-  await page.goto('/cravings/cravings');
+  await recorder.visitState(page, 'cravings');
 
   await expect(page.getByRole('heading', { name: 'Craving history', level: 1 })).toBeVisible();
   await expect(page.getByRole('link', { name: /Get immediate support on Today/i })).toHaveAttribute('href', '/today/');
@@ -98,7 +98,7 @@ test('Craving history exposes native validation and recoverable server feedback'
   );
   const guard = watchForProductProblems(page);
   await register(page, testInfo);
-  await page.goto('/cravings/cravings');
+  await recorder.visitState(page, 'cravings');
   const form = page.locator('#craving-form');
   let posts = 0;
   page.on('request', (request) => {

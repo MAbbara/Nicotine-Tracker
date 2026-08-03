@@ -48,9 +48,10 @@ test('Catalog supports create, Quick Log availability, edit, search, and confirm
   });
   await register(page, testInfo);
   const guard = watchForProductProblems(page);
-  await page.goto('/catalog/');
+  await recorder.visitState(page, 'catalog');
 
   await recorder.runScenario(page, 'catalog', 'Add a pouch', 'success');
+  await recorder.visitState(page, 'catalog-add');
 
   let addPosts = 0;
   page.on('request', (request) => {
@@ -70,23 +71,29 @@ test('Catalog supports create, Quick Log availability, edit, search, and confirm
     .toHaveCount(1);
   await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
 
-  await page.goto('/catalog/');
+  await recorder.visitState(page, 'catalog');
   await recorder.runScenario(page, 'catalog', 'Edit', 'success');
 
+  await recorder.visitState(page, 'catalog-edit');
   await recorder.runScenario(
     page, 'catalog-edit', 'Save changes', 'invalid', 'success',
   );
   const editedRow = page.locator('.catalog-row', { hasText: 'Calm Cedar' });
 
+  await recorder.visitState(page, 'catalog');
   await page.getByLabel('Search pouches').fill('Calm Cedar');
   await recorder.runScenario(page, 'catalog', 'Search', 'success');
   await expect(page.locator('.catalog-row', { hasText: 'Calm Cedar' })).toHaveCount(1);
+  await recorder.visitState(page, 'catalog-search');
   await recorder.runScenario(page, 'catalog-search', 'Search', 'success');
 
-  await recorder.runScenario(page, 'catalog-search', 'Edit', 'success');
+  await recorder.visitState(page, 'catalog-search');
   await page.goto('/catalog/search?q=Calm+Cedar');
+  await recorder.runScenario(page, 'catalog-search', 'Edit', 'success');
+  await recorder.visitState(page, 'catalog-search');
   await recorder.runScenario(page, 'catalog-search', '← Back to all pouches', 'success');
 
+  await recorder.visitState(page, 'catalog-search');
   await page.getByLabel('Search pouches').fill('Calm Cedar');
   await page.getByRole('button', { name: 'Search' }).click();
   await recorder.runScenario(page, 'catalog-search', 'Delete', 'dismiss', 'accept');
@@ -95,6 +102,7 @@ test('Catalog supports create, Quick Log availability, edit, search, and confirm
   await page.getByLabel('Brand').fill('Catalog Delete Fixture');
   await page.getByLabel('Nicotine strength').fill('1.5');
   await page.getByRole('button', { name: 'Add pouch' }).click();
+  await recorder.visitState(page, 'catalog');
   await recorder.runScenario(page, 'catalog', 'Delete', 'dismiss', 'accept');
 
   recorder.assertComplete();

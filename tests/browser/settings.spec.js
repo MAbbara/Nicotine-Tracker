@@ -396,6 +396,7 @@ test('Data privacy controls persist and Statistics hands off to Insights', async
     page, 'data', 'Save actions for offline use', 'success', 'failure',
   );
 
+  await recorder.visitState(page, 'data');
   await recorder.runScenario(page, 'data', 'Review account deletion', 'success');
   await expect(page.locator('#account-delete-title')).toBeVisible();
 
@@ -560,7 +561,7 @@ test('Account email, password, and deletion mutations work for a disposable user
   );
   await page.request.get('/auth/logout');
   await login(page, updatedEmail, updatedPassword);
-  await page.goto('/settings/account');
+  await recorder.visitState(page, 'account-destructive');
 
   const deleteScenario = recorder.forScenario(page, 'account-destructive', 'Delete account');
   await deleteScenario.run('invalid');

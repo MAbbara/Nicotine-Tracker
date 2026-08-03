@@ -12,7 +12,7 @@
     <p>Paste several simple entries for one date. Review the examples before saving; you can edit individual entries afterward.</p>
   </header>
 
-  <form class="logging-form logging-form--page" method="post" data-validate>
+  <form class="logging-form logging-form--page" method="post" action="{{ url_for('logging.bulk_add') }}" data-validate>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="c-field">
       <label class="c-field__label" for="log_date">Date for these entries</label>

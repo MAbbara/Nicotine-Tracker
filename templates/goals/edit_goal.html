@@ -11,7 +11,7 @@
     <p>Change the target when the current one is no longer helping. An honest adjustment keeps your Journey plan grounded in what you are learning.</p>
   </header>
 
-  <form method="post" class="goal-form" data-validate>
+  <form method="post" action="{{ url_for('goals.edit_goal', goal_id=goal.id) }}" class="goal-form" data-validate>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <div class="c-field">

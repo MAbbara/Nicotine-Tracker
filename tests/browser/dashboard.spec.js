@@ -208,7 +208,8 @@ test('Dashboard supporting actions cover ranges, destinations, and disclosure in
       { from: 30, to: 90 },
       { from: 90, to: 365 },
     ]) {
-      await page.goto(`/dashboard/?days=${item.from}`);
+      await recorder.visitState(page, state);
+      if (item.from !== 30) await page.goto(`/dashboard/?days=${item.from}`);
       const action = item.to === 365 ? '1 year' : `${item.to} days`;
       await recorder.runScenario(page, state, action, 'success');
       await expect(page.getByRole('link', { name: action, exact: true }))
@@ -220,11 +221,11 @@ test('Dashboard supporting actions cover ranges, destinations, and disclosure in
       ['Open Insights', '/insights/'],
       ['Review Journey', '/journey/'],
     ]) {
-      await page.goto('/dashboard/?days=30');
+      await recorder.visitState(page, state);
       await recorder.runScenario(page, state, action, 'success');
     }
 
-    await page.goto('/dashboard/?days=30');
+    await recorder.visitState(page, state);
     if (state !== 'dashboard-empty') {
       const details = page.getByText('View daily values', { exact: true }).locator('..');
       await expect(details).toHaveAttribute('open', '');

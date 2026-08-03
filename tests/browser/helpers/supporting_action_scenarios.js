@@ -88,13 +88,22 @@ function navigationAuthority(state, action, profile) {
     'fixture:goal-edit': 'a[href^="/goals/edit/"]',
   });
   const selector = role === 'button'
-    ? 'button[type="submit"]'
+    ? `button.c-button--${action === 'Apply filters' ? 'primary' : 'secondary'}[type="submit"]`
     : resolved.startsWith('fixture:')
       ? fixtureSelectors[resolved]
       : `a[href="${href}"]`;
+  const scope = role === 'button'
+    ? Object.freeze({ selector: action === 'Apply filters'
+      ? 'form.logbook-filters[action="/log/view"]'
+      : 'form.catalog-search[action="/catalog/search"]' })
+    : CONTROL_SCOPES.main;
   return Object.freeze({
-    scope: CONTROL_SCOPES.main, role, selector,
-    name: action, attributes: Object.freeze(role === 'link' ? { href } : {}),
+    scope, role, selector,
+    name: action,
+    attributes: Object.freeze(role === 'link' ? { href } : { type: 'submit' }),
+    ...(role === 'button' ? { form: Object.freeze({
+      method: 'get', action: resolved, fields: Object.freeze({}),
+    }) } : {}),
     request: Object.freeze({ method: 'GET', path: resolved, search, status: 200 }),
   });
 }
@@ -111,23 +120,92 @@ function controlFromAuthority(page, authority) {
 }
 
 
+function controlAuthority(scope, role, name, selector, options = {}) {
+  const scopeContract = typeof scope === 'string'
+    ? Object.freeze({ selector: scope }) : Object.freeze(scope);
+  return Object.freeze({
+    scope: scopeContract,
+    role,
+    name,
+    selector,
+    attributes: Object.freeze(options.attributes || {}),
+    ...(options.form ? { form: Object.freeze({
+      ...options.form,
+      fields: Object.freeze(options.form.fields || {}),
+    }) } : {}),
+    ...(options.request ? { request: Object.freeze(options.request) } : {}),
+  });
+}
+
+
+function postForm(action, fields = {}) {
+  return { method: 'post', action, fields };
+}
+
+
 function supportingControlAuthority(state, action, profile) {
   if (['navigation', 'primaryNavigation'].includes(profile)) {
     return navigationAuthority(state, action, profile);
   }
   if (profile === 'skip') {
-    return Object.freeze({
-      scope: Object.freeze({ selector: 'body' }), role: 'link', name: action,
-      selector: 'a.skip-link', attributes: Object.freeze({ href: '#main-content' }),
+    return controlAuthority('body', 'link', action, 'a.skip-link[href="#main-content"]', {
+      attributes: { href: '#main-content' },
     });
   }
   if (state === 'profile' && action === 'Save profile') {
-    return Object.freeze({
-      scope: Object.freeze({ selector: '.profile-section form[action="/settings/profile"] .settings-save-row' }),
-      role: 'button', name: action, selector: 'button.c-button--primary[type="submit"]',
-      attributes: Object.freeze({ type: 'submit' }),
-      form: Object.freeze({ method: 'post', action: '/settings/profile' }),
+    return controlAuthority(
+      '.profile-section form[action="/settings/profile"] .settings-save-row',
+      'button', action, 'button.c-button--primary[type="submit"]', {
+        attributes: { type: 'submit' }, form: postForm('/settings/profile'),
+      },
+    );
+  }
+  if (state === 'preferences' && action === 'Save preferences') {
+    return controlAuthority(
+      'form[action="/settings/preferences"] .settings-save-row',
+      'button', action, 'button.c-button--primary[type="submit"]', {
+        attributes: { type: 'submit' }, form: postForm('/settings/preferences'),
+      },
+    );
+  }
+  if (state === 'reminders' && action === 'Save reminders') {
+    return controlAuthority(
+      'form[action="/settings/notifications"] .settings-save-row',
+      'button', action, 'button.c-button--primary[type="submit"]', {
+        attributes: { type: 'submit' }, form: postForm('/settings/notifications'),
+      },
+    );
+  }
+  if (['data', 'data-offline-enabled', 'data-offline-disabled', 'data-settings-action']
+    .includes(state)) {
+    const dataActions = Object.freeze({
+      'Download Data': ['export_data', 'secondary'],
+      Cleanup: ['cleanup_duplicates', 'danger'],
+      Merge: ['merge_custom_pouches', 'danger'],
+      Recalculate: ['recalculate_goals', 'secondary'],
+      'Anonymize Data': ['anonymize_data', 'danger'],
+      'Delete Logs': ['delete_old_logs', 'danger'],
     });
+    if (dataActions[action]) {
+      const [value, variant] = dataActions[action];
+      const scope = `form[action="/settings/data"]:has(input[name="action"][value="${value}"])`;
+      return controlAuthority(scope, 'button', action,
+        `button.c-button--${variant}[type="submit"]`, {
+          attributes: { type: 'submit' },
+          form: postForm('/settings/data', { action: value }),
+        });
+    }
+    if (action === 'Save actions for offline use') {
+      return controlAuthority(
+        'section[aria-labelledby="data-offline-title"]', 'checkbox', action,
+        'input#offline_queue_enabled[name="offline_queue_enabled"]', {
+          attributes: {
+            id: 'offline_queue_enabled', name: 'offline_queue_enabled', type: 'checkbox',
+            'data-endpoint': '/settings/privacy/offline-queue',
+          },
+        },
+      );
+    }
   }
   if (['account', 'account-destructive'].includes(state)
     && ['Update email', 'Change password', 'Delete account'].includes(action)) {
@@ -135,12 +213,13 @@ function supportingControlAuthority(state, action, profile) {
       'Update email': 'update_email', 'Change password': 'change_password',
       'Delete account': 'delete_account',
     }[action];
-    return Object.freeze({
-      scope: Object.freeze({ selector: `form:has(input[name="action"][value="${actionValue}"]) .settings-save-row` }),
-      role: 'button', name: action, selector: 'button[type="submit"]',
-      attributes: Object.freeze({ type: 'submit' }),
-      form: Object.freeze({ method: 'post', action: '/settings/account' }),
-    });
+    return controlAuthority(
+      `form[action="/settings/account"]:has(input[name="action"][value="${actionValue}"]) .settings-save-row`,
+      'button', action, `button.c-button--${action === 'Delete account' ? 'danger' : 'primary'}[type="submit"]`, {
+        attributes: { type: 'submit' },
+        form: postForm('/settings/account', { action: actionValue }),
+      },
+    );
   }
   if (profile === 'rangeNavigation') {
     const days = { '7 days': '7', '30 days': '30', '90 days': '90', '1 year': '365' }[action];
@@ -158,37 +237,172 @@ function supportingControlAuthority(state, action, profile) {
       logbook: { selector: '.logbook-row', hasText: 'delete logbook evidence' },
       'log-add': { selector: '.logbook-row', hasText: 'delete log-add evidence' },
     }[state];
-    return Object.freeze({
-      scope: Object.freeze(scope), role: 'button', name: action,
-      selector: 'button[type="submit"]',
-      attributes: Object.freeze({ type: 'submit' }),
-    });
+    const deleteForms = {
+      'catalog-search': ['form.catalog-delete-form', 'button.catalog-action--danger', 'fixture:catalog-delete-search'],
+      catalog: ['form.catalog-delete-form', 'button.catalog-action--danger', 'fixture:catalog-delete'],
+      goals: ['form.goal-delete-form', 'button.goal-action--danger', 'fixture:goal-delete'],
+      logbook: ['form[data-confirm-delete]', 'button.c-button--danger', 'fixture:log-delete-logbook'],
+      'log-add': ['form[data-confirm-delete]', 'button.c-button--danger', 'fixture:log-delete-log-add'],
+    }[state];
+    return controlAuthority(
+      { ...scope, selector: `${scope.selector}:has(${deleteForms[0]})` },
+      'button', action, `${deleteForms[0]} ${deleteForms[1]}[type="submit"]`, {
+        attributes: { type: 'submit' }, form: postForm(deleteForms[2]),
+      },
+    );
   }
-  const profileSelectors = Object.freeze({
-    asyncAction: 'button[type="button"]',
-    cravingRecord: 'button[type="submit"]',
-    destructiveMutation: 'button[type="submit"]',
-    disclosure: 'summary',
-    download: 'button[type="submit"]',
-    draftToggle: 'input[type="checkbox"]',
-    formMutation: 'button[type="submit"]',
-    localControl: 'button[type="button"]',
-    offlineToggle: 'input[type="checkbox"]',
-    quickMutation: 'button[data-pouch-id]',
-    validatedMutation: 'button[type="submit"]',
-    validationOnly: 'button[type="submit"]',
+
+  if (profile === 'draftToggle') {
+    const draftControls = Object.freeze({
+      'preferences\u0000Steady Mint': ['form[action="/settings/preferences"]', 'input[name="preferred_brands"][value="Steady Mint"]'],
+      'reminders\u0000Email': ['form[action="/settings/notifications"]', 'input#notification_channel_email'],
+      'reminders\u0000Discord': ['form[action="/settings/notifications"]', 'input#notification_channel_discord'],
+      'reminders\u0000Goal progress': ['form[action="/settings/notifications"]', 'input#goal_notifications'],
+      'reminders\u0000Milestones': ['form[action="/settings/notifications"]', 'input#achievement_notifications'],
+      'reminders\u0000Daily logging reminder': ['form[action="/settings/notifications"]', 'input#daily_reminders'],
+      'reminders\u0000Weekly progress report': ['form[action="/settings/notifications"]', 'input#weekly_reports'],
+      'cravings\u0000Restlessness': ['form#craving-form', 'input[name="physical_symptoms"][value="restlessness"]'],
+      'cravings\u0000Irritability': ['form#craving-form', 'input[name="physical_symptoms"][value="irritability"]'],
+      'cravings\u0000Difficulty concentrating': ['form#craving-form', 'input[name="physical_symptoms"][value="difficulty_concentrating"]'],
+      'cravings\u0000Increased appetite': ['form#craving-form', 'input[name="physical_symptoms"][value="increased_appetite"]'],
+      'goal-create\u0000Notify me as I approach this goal': ['form.goal-form[action="/goals/create"]', 'input#enable_notifications'],
+      'goal-edit\u0000Keep this goal active': ['form.goal-form', 'input#is_active'],
+      'goal-edit\u0000Notify me as I approach this goal': ['form.goal-form', 'input#enable_notifications'],
+    })[`${state}\u0000${action}`];
+    if (draftControls) {
+      return controlAuthority(draftControls[0], 'checkbox', action, draftControls[1], {
+        attributes: { type: 'checkbox' },
+      });
+    }
+  }
+
+  if (profile === 'asyncAction') {
+    const asyncControls = {
+      'Test Discord connection': ['test-discord-webhook', '/settings/test-discord-webhook'],
+      'Send weekly report': [
+        'trigger-weekly-report', '/settings/notifications/trigger-weekly',
+      ],
+    }[action];
+    return controlAuthority(
+      `.reminders-action:has(button#${asyncControls[0]})`, 'button', action,
+      `button#${asyncControls[0]}[data-endpoint="${asyncControls[1]}"]`, {
+        attributes: { id: asyncControls[0], type: 'button', 'data-endpoint': asyncControls[1] },
+      },
+    );
+  }
+
+  if (profile === 'localControl') {
+    if (action === 'Add log') {
+      return controlAuthority(
+        '.logbook-intro__actions', 'button', action,
+        'button[data-logbook-add-action][aria-controls="addLogModal"]', {
+          attributes: { type: 'button', 'aria-controls': 'addLogModal' },
+        },
+      );
+    }
+    const close = action === 'Close add log dialog';
+    return controlAuthority(
+      'dialog#addLogModal form#add-log-form', 'button', action,
+      close
+        ? 'button.log-dialog__close[data-hs-overlay="#addLogModal"]'
+        : 'footer.log-dialog__actions button.c-button--secondary[data-hs-overlay="#addLogModal"]',
+      { attributes: { type: 'button', 'data-hs-overlay': '#addLogModal' } },
+    );
+  }
+
+  if (profile === 'quickMutation') {
+    const fixture = {
+      'Log one Release Fixture, 3.5 milligrams': ['Release Fixture', '3.5'],
+      'Log one Steady Mint, 6 milligrams': ['Steady Mint', '6'],
+    }[action];
+    return controlAuthority(
+      '.logbook-quick__list', 'button', action,
+      `button[data-quick-add][data-pouch-brand="${fixture[0]}"][data-pouch-strength="${fixture[1]}"]`, {
+        attributes: {
+          type: 'button', 'data-pouch-brand': fixture[0],
+          'data-pouch-strength': fixture[1], 'data-quantity': '1',
+        },
+      },
+    );
+  }
+
+  if (profile === 'cravingRecord') {
+    return controlAuthority(
+      'form#craving-form .craving-form-actions', 'button', action,
+      'button.c-button--primary[type="submit"]', { attributes: { type: 'submit' } },
+    );
+  }
+
+  if (profile === 'disclosure') {
+    return controlAuthority(
+      'figure[data-dashboard-trend] details.analytics-figure__table',
+      'summary', action, 'summary',
+    );
+  }
+
+  const mutationControls = Object.freeze({
+    'log-add\u0000Add entry': ['form#add-log-form .log-dialog__actions', 'button.c-button--primary[type="submit"]', '/log/add'],
+    'log-bulk\u0000Add entries': ['form.logging-form--page[action="/log/bulk"] .logging-form__actions', 'button.c-button--primary[type="submit"]', '/log/bulk'],
+    'log-edit\u0000Save changes': ['form.logging-form--page .logging-form__actions', 'button.c-button--primary[type="submit"]', 'fixture:log-edit'],
+    'catalog-add\u0000Add pouch': ['form.catalog-form[action="/catalog/add"] .catalog-form__actions', 'button.c-button--primary[type="submit"]', '/catalog/add'],
+    'catalog-edit\u0000Save changes': ['form.catalog-form .catalog-form__actions', 'button.c-button--primary[type="submit"]', 'fixture:catalog-edit'],
+    'goal-create\u0000Create goal': ['form.goal-form[action="/goals/create"] .goal-form__actions', 'button.c-button--primary[type="submit"]', '/goals/create'],
+    'goal-edit\u0000Save changes': ['form.goal-form .goal-form__actions', 'button.c-button--primary[type="submit"]', 'fixture:goal-edit'],
+    'goals\u0000Pause goal': ['article.goal-row[data-goal-state="active"] form[action^="/goals/toggle/"]', 'button.c-button--secondary[type="submit"]', 'fixture:goal-toggle'],
   });
-  const selector = profileSelectors[profile];
-  if (!selector) {
-    throw new Error(`control catalog has no selector for ${state} › ${action} (${profile})`);
+  const mutationControl = mutationControls[`${state}\u0000${action}`];
+  if (mutationControl) {
+    return controlAuthority(
+      mutationControl[0], 'button', action, mutationControl[1], {
+        attributes: { type: 'submit' }, form: postForm(mutationControl[2]),
+      },
+    );
+  }
+
+  throw new Error(`control catalog has no exact authority for ${state} › ${action} (${profile})`);
+}
+
+
+async function resolvedSupportingControlAuthority(page, state, action, profile) {
+  const authority = supportingControlAuthority(state, action, profile);
+  const fixture = authority.form?.action;
+  if (!String(fixture || '').startsWith('fixture:')) return authority;
+  const snapshot = await accountSnapshot(page);
+  let resolved;
+  if (fixture === 'fixture:log-edit') {
+    const item = snapshot.logs.find((entry) => entry.notes === 'supporting add entry');
+    if (!item) throw new Error('log edit authority fixture is missing');
+    resolved = `/log/edit/${item.id}`;
+  } else if (fixture === 'fixture:catalog-edit') {
+    const item = snapshot.pouches.find((entry) => ['Calm Cedar', 'Calm Orchard'].includes(entry.brand));
+    if (!item) throw new Error('catalog edit authority fixture is missing');
+    resolved = `/catalog/edit/${item.id}`;
+  } else if (fixture === 'fixture:goal-edit') {
+    if (!snapshot.goals[0]) throw new Error('goal edit authority fixture is missing');
+    resolved = `/goals/edit/${snapshot.goals[0].id}`;
+  } else if (fixture === 'fixture:goal-toggle') {
+    if (!snapshot.goals[0]) throw new Error('goal toggle authority fixture is missing');
+    resolved = `/goals/toggle/${snapshot.goals[0].id}`;
+  } else if (fixture === 'fixture:goal-delete') {
+    if (!snapshot.goals[0]) throw new Error('goal delete authority fixture is missing');
+    resolved = `/goals/delete/${snapshot.goals[0].id}`;
+  } else if (fixture.startsWith('fixture:catalog-delete')) {
+    const brand = fixture.endsWith('-search') ? 'Calm Cedar' : 'Catalog Delete Fixture';
+    const item = snapshot.pouches.find((entry) => entry.brand === brand);
+    if (!item) throw new Error(`catalog delete authority fixture ${brand} is missing`);
+    resolved = `/catalog/delete/${item.id}`;
+  } else if (fixture.startsWith('fixture:log-delete')) {
+    const notes = fixture.endsWith('logbook')
+      ? 'delete logbook evidence' : 'delete log-add evidence';
+    const item = snapshot.logs.find((entry) => entry.notes === notes);
+    if (!item) throw new Error(`log delete authority fixture ${notes} is missing`);
+    resolved = `/log/delete/${item.id}`;
+  } else {
+    throw new Error(`unknown form authority fixture: ${fixture}`);
   }
   return Object.freeze({
-    scope: CONTROL_SCOPES.main,
-    role: profile === 'draftToggle' || profile === 'offlineToggle' ? 'checkbox'
-      : profile === 'disclosure' ? 'summary'
-        : profile === 'navigation' || profile === 'primaryNavigation' ? 'link' : 'button',
-    name: action,
-    selector,
+    ...authority,
+    form: Object.freeze({ ...authority.form, action: resolved }),
   });
 }
 
@@ -201,10 +415,14 @@ const STATE_SCENARIO_BASE = Object.freeze({
   account: Object.freeze({ path: /^\/settings\/account$/, identity: 'release-settings@example.com', marker: 'Account' }),
   preferences: Object.freeze({ path: /^\/settings\/preferences$/, identity: 'release-settings@example.com', marker: 'Preferences' }),
   reminders: Object.freeze({ path: /^\/settings\/notifications$/, identity: 'release-settings@example.com', marker: 'Reminders' }),
-  data: Object.freeze({ path: /^\/settings\/data$/, pathText: '/settings/data', search: '?supporting_state=data', status: 200, identity: /^(?:release-settings|data-data-[\w-]+)@example\.com$/, marker: 'Data & privacy' }),
+  data: Object.freeze({ path: /^\/settings\/data$/, pathText: '/settings/data', search: '?supporting_state=data', status: 200, identity: /^(?:release-settings|data-data-(?:chromium-desktop|chromium-mobile)-\d+)@example\.com$/, marker: 'Data & privacy', runtime: Object.freeze({ offlineQueueEnabled: false }) }),
   statistics: Object.freeze({ path: /^\/settings\/statistics$/, identity: 'release-settings@example.com', marker: 'Statistics' }),
   logbook: Object.freeze({ path: /^\/log\/view$/, identity: /^(?:release-inventory|logbook-\d+|logging-gaps-[\w-]+)@example\.com$/, marker: 'Logbook' }),
-  'log-add': Object.freeze({ path: /^\/log\/view$/, search: '?open_add_modal=1', identity: /^(?:release-inventory|logbook-\d+|logging-gaps-[\w-]+)@example\.com$/, marker: 'Logbook' }),
+  'log-add': Object.freeze({
+    path: /^\/log\/view$/, search: '?open_add_modal=1',
+    identity: /^(?:release-inventory|logbook-\d+|logging-gaps-[\w-]+)@example\.com$/,
+    marker: 'Logbook',
+  }),
   'log-bulk': Object.freeze({ path: /^\/log\/bulk$/, identity: /^(?:release-inventory|logbook-\d+|logging-gaps-[\w-]+)@example\.com$/, marker: 'Bulk add logs' }),
   catalog: Object.freeze({ path: /^\/catalog\/$/, identity: /^(?:release-inventory|catalog-\d+)@example\.com$/, marker: 'Your pouches' }),
   'catalog-add': Object.freeze({ path: /^\/catalog\/add$/, identity: /^(?:release-inventory|catalog-\d+)@example\.com$/, marker: 'Add a pouch' }),
@@ -215,10 +433,10 @@ const STATE_SCENARIO_BASE = Object.freeze({
   'not-found': Object.freeze({ path: /^\/__release_missing_page__$/, identity: 'release-inventory@example.com', marker: 'Page not found' }),
   'dashboard-empty': Object.freeze({ path: /^\/dashboard\/$/, identity: 'release-analytics-empty@example.com', marker: 'Dashboard' }),
   'dashboard-sparse': Object.freeze({ path: /^\/dashboard\/$/, identity: 'release-analytics-sparse@example.com', marker: 'Dashboard' }),
-  'data-offline-enabled': Object.freeze({ path: /^\/settings\/data$/, identity: /^(?:release-offline-enabled|data-[\w-]+)@example\.com$/, marker: 'Data & privacy' }),
-  'data-offline-disabled': Object.freeze({ path: /^\/settings\/data$/, identity: /^(?:release-offline-disabled|data-[\w-]+)@example\.com$/, marker: 'Data & privacy' }),
-  'data-settings-action': Object.freeze({ path: /^\/settings\/data$/, pathText: '/settings/data', search: '?supporting_state=data-settings-action', status: 200, identity: /^(?:release-settings|data-data-settings-action-[\w-]+)@example\.com$/, marker: 'Data & privacy' }),
-  'account-destructive': Object.freeze({ path: /^\/settings\/account$/, identity: /^(?:release-destructive|account(?:-updated)?-(?:chromium|webkit)-(?:desktop|mobile))@example\.com$/, marker: 'Account' }),
+  'data-offline-enabled': Object.freeze({ path: /^\/settings\/data$/, identity: /^(?:release-offline-enabled|data-data-offline-enabled-(?:chromium-desktop|chromium-mobile)-\d+)@example\.com$/, marker: 'Data & privacy', runtime: Object.freeze({ offlineQueueEnabled: true }) }),
+  'data-offline-disabled': Object.freeze({ path: /^\/settings\/data$/, identity: /^(?:release-offline-disabled|data-data-offline-disabled-(?:chromium-desktop|chromium-mobile)-\d+)@example\.com$/, marker: 'Data & privacy', runtime: Object.freeze({ offlineQueueEnabled: false }) }),
+  'data-settings-action': Object.freeze({ path: /^\/settings\/data$/, pathText: '/settings/data', search: '?supporting_state=data-settings-action', status: 200, identity: /^(?:release-settings|data-data-settings-action-(?:chromium-desktop|chromium-mobile)-\d+)@example\.com$/, marker: 'Data & privacy', runtime: Object.freeze({ offlineQueueEnabled: false }) }),
+  'account-destructive': Object.freeze({ path: /^\/settings\/account$/, identity: /^(?:release-destructive(?:-updated)?|account(?:-updated)?-(?:chromium-desktop|chromium-mobile))@example\.com$/, marker: 'Account' }),
   'goal-progress': Object.freeze({ path: /^\/goals\/progress$/, identity: /^(?:journey-review-desktop|goals-[\w-]+)@example\.com$/, marker: 'Goal progress' }),
   'goal-edit': Object.freeze({ path: /^\/goals\/edit\/\d+$/, identity: /^(?:journey-review-desktop|goals-[\w-]+)@example\.com$/, marker: 'Adjust goal' }),
   'log-edit': Object.freeze({ path: /^\/log\/edit\/\d+$/, identity: /^(?:release-inventory|logbook-\d+|logging-gaps-[\w-]+)@example\.com$/, marker: 'Edit log' }),
@@ -276,6 +494,8 @@ const STATE_SCENARIOS = Object.freeze(Object.fromEntries(
       precondition: Object.freeze({
         markerRole: 'heading', markerLevel: 1, markerName: scenario.marker,
         principal: scenario.identity,
+        identityStatus: scenario.identity === null ? 302 : 200,
+        runtime: scenario.runtime || Object.freeze({}),
       }),
     })];
   }),
@@ -287,8 +507,36 @@ function exactActionButton(page, action) {
 }
 
 
+const ACCOUNT_EMAIL_VARIANTS = Object.freeze([
+  Object.freeze({
+    before: 'release-destructive@example.com',
+    after: 'release-destructive-updated@example.com',
+    brand: 'Disposable Cedar release-destructive',
+  }),
+  Object.freeze({
+    before: 'account-chromium-desktop@example.com',
+    after: 'account-updated-chromium-desktop@example.com',
+    brand: 'Disposable Cedar chromium-desktop',
+  }),
+  Object.freeze({
+    before: 'account-chromium-mobile@example.com',
+    after: 'account-updated-chromium-mobile@example.com',
+    brand: 'Disposable Cedar chromium-mobile',
+  }),
+]);
+
+
 function exactPath(path) {
   return new RegExp(`^${path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
+}
+
+
+async function prepareShellActionState(page, state) {
+  if (state !== 'log-add') return;
+  const dialog = page.locator('dialog#addLogModal[open]');
+  if (!await dialog.count()) return;
+  await page.keyboard.press('Escape');
+  await dialog.waitFor({ state: 'hidden' });
 }
 
 
@@ -298,6 +546,7 @@ function navigationScenario(page, state, action, profile) {
     branches: Object.freeze(['success']),
     async resolve(branch) {
       if (branch !== 'success') throw new Error(`unknown navigation branch: ${branch}`);
+      await prepareShellActionState(page, state);
       if (action === 'Apply filters') await page.getByLabel('Search logs').fill('supporting add entry');
       if (action === 'Search') await page.getByLabel('Search pouches').fill('Calm Cedar');
       const control = controlFromAuthority(page, authority);
@@ -339,11 +588,12 @@ function navigationScenario(page, state, action, profile) {
 }
 
 
-function skipScenario(page, action) {
+function skipScenario(page, state, action) {
   return Object.freeze({
     branches: Object.freeze(['success']),
     async resolve(branch) {
       if (branch !== 'success') throw new Error(`unknown skip branch: ${branch}`);
+      await prepareShellActionState(page, state);
       return {
         control: page.getByRole('link', { name: action, exact: true }),
         descriptor: {
@@ -356,17 +606,40 @@ function skipScenario(page, action) {
 }
 
 
-function draftToggleScenario(page, action) {
+const DRAFT_TRANSITIONS = Object.freeze({
+  'preferences\u0000Steady Mint': Object.freeze({ before: false, after: true }),
+  'reminders\u0000Email': Object.freeze({ before: false, after: true }),
+  'reminders\u0000Discord': Object.freeze({ before: false, after: true }),
+  'reminders\u0000Goal progress': Object.freeze({ before: false, after: true }),
+  'reminders\u0000Milestones': Object.freeze({ before: false, after: true }),
+  'reminders\u0000Daily logging reminder': Object.freeze({ before: false, after: true }),
+  'reminders\u0000Weekly progress report': Object.freeze({ before: false, after: true }),
+  'cravings\u0000Restlessness': Object.freeze({ before: false, after: true }),
+  'cravings\u0000Irritability': Object.freeze({ before: false, after: true }),
+  'cravings\u0000Difficulty concentrating': Object.freeze({ before: false, after: true }),
+  'cravings\u0000Increased appetite': Object.freeze({ before: false, after: true }),
+  'goal-create\u0000Notify me as I approach this goal': Object.freeze({ before: true, after: false }),
+  'goal-edit\u0000Keep this goal active': Object.freeze({ before: true, after: false }),
+  'goal-edit\u0000Notify me as I approach this goal': Object.freeze({ before: false, after: true }),
+});
+
+
+function draftToggleScenario(page, state, action) {
   return Object.freeze({
     branches: Object.freeze(['toggle']),
     async resolve(branch) {
       if (branch !== 'toggle') throw new Error(`unknown draft-toggle branch: ${branch}`);
       const control = page.getByRole('checkbox', { name: action, exact: true });
+      const transition = DRAFT_TRANSITIONS[`${state}\u0000${action}`];
+      if (!transition) throw new Error(`${state} › ${action} has no literal draft transition`);
+      if (await control.isChecked() !== transition.before) {
+        throw new Error(`${state} › ${action} catalog draft precondition differs`);
+      }
       return {
         control,
         descriptor: {
           activation: { kind: 'keyboard', key: 'Space' },
-          outcome: { kind: 'checked', locator: control, checked: !await control.isChecked() },
+          outcome: { kind: 'checked', locator: control, checked: transition.after },
           focus: { mode: 'retained' },
         },
       };
@@ -582,12 +855,13 @@ async function catalogFormRequest(page, state, action, status = 302) {
     exact = {};
   } else if (state === 'account-destructive' && action === 'Update email') {
     const snapshot = await snapshotFor();
-    const currentEmail = snapshot.profile.email;
-    const suffix = currentEmail.match(/(?:account(?:-updated)?-)(.+)@example\.com$/)?.[1];
-    if (!suffix) throw new Error('account update immutable principal namespace differs');
+    const variant = ACCOUNT_EMAIL_VARIANTS.find((item) => (
+      item.before === snapshot.profile.email
+    ));
+    if (!variant) throw new Error('account update immutable principal variant differs');
     path = '/settings/account';
     exact = {
-      action: 'update_email', new_email: `account-updated-${suffix}@example.com`,
+      action: 'update_email', new_email: variant.after,
       password: 'account-password',
     };
   } else if (state === 'account-destructive' && action === 'Change password') {
@@ -1052,6 +1326,14 @@ function downloadScenario(page, state, action) {
 }
 
 
+const OFFLINE_TRANSITIONS = Object.freeze({
+  data: Object.freeze({ before: false, after: true }),
+  'data-offline-enabled': Object.freeze({ before: true, after: false }),
+  'data-offline-disabled': Object.freeze({ before: false, after: true }),
+  'data-settings-action': Object.freeze({ before: false, after: true }),
+});
+
+
 function offlineToggleScenario(page, state, action) {
   const shared = { routeInstalled: false, requests: 0, releaseFailure: null };
   return Object.freeze({
@@ -1063,15 +1345,18 @@ function offlineToggleScenario(page, state, action) {
         has: control,
       }) };
       const snapshot = await accountSnapshot(page);
-      const variant = [
-        { before: false, after: true }, { before: true, after: false },
-      ].find((candidate) => candidate.before
-        === Boolean(snapshot.preferences.offline_queue_enabled));
-      if (!variant) throw new Error('offline catalog precondition is not a literal boolean variant');
-      if (await control.isChecked() !== variant.before) {
+      const transition = OFFLINE_TRANSITIONS[state];
+      if (!transition) throw new Error(`${state} has no literal offline transition`);
+      const expectedCurrent = branch === 'success' ? transition.before : transition.after;
+      if (snapshot.preferences.offline_queue_enabled !== expectedCurrent) {
+        throw new Error(
+          `${state} catalog precondition expected ${expectedCurrent}; received ${snapshot.preferences.offline_queue_enabled}`,
+        );
+      }
+      if (await control.isChecked() !== expectedCurrent) {
         throw new Error('offline toggle DOM state differs from its authoritative persisted state');
       }
-      const requested = variant.after;
+      const requested = branch === 'success' ? transition.after : transition.before;
       if (branch === 'success') {
         return { control, descriptor: {
           activation: { kind: 'keyboard', key: 'Space' },
@@ -1080,8 +1365,8 @@ function offlineToggleScenario(page, state, action) {
           feedback: { locator: status,
             text: requested ? 'Offline saving is on.' : 'Offline saving is off.', ownership },
           persistence: { kind: 'json', url: '/__test__/account-snapshot',
-            path: 'preferences.offline_queue_enabled', expectedBefore: variant.before,
-            expectedAfter: variant.after },
+            path: 'preferences.offline_queue_enabled', expectedBefore: transition.before,
+            expectedAfter: transition.after },
         } };
       }
       if (branch !== 'failure') throw new Error(`unknown offline-toggle branch: ${branch}`);
@@ -1110,7 +1395,7 @@ function offlineToggleScenario(page, state, action) {
         feedback: { locator: status,
           text: 'Offline preference could not be saved. Please try again.', ownership },
         focus: { mode: 'retained' },
-        outcome: { kind: 'checked', locator: control, checked: variant.before },
+        outcome: { kind: 'checked', locator: control, checked: transition.after },
         async whilePending() {
           await control.evaluate((element) => {
             element.dispatchEvent(new Event('change', { bubbles: true }));
@@ -1316,6 +1601,7 @@ function validationOnlyScenario(page, state, action) {
           method: 'POST', path: /^\/settings\/account$/, status: 200,
           payload: { kind: 'form', exact: exactPayload },
           dynamicFields: { csrf_token: 'non-empty' },
+          responseInvariant: `account:${exactPayload.action}:rejected`,
         },
         error: { locator: error, text, ownership },
         feedback: { locator: error, text, ownership },
@@ -1337,12 +1623,14 @@ function disposableAccountMutationScenario(page, state, action) {
       }[action];
       const form = page.locator('form', { has: page.locator(`input[value="${actionValue}"]`) });
       const control = form.getByRole('button', { name: action, exact: true });
-      const snapshot = await accountSnapshot(page);
-      const currentEmail = snapshot.profile.email;
-      const suffix = currentEmail.match(/(?:account(?:-updated)?-)(.+)@example\.com$/)?.[1];
-      if (!suffix) throw new Error('account catalog principal is outside its deterministic namespace');
-      const updatedEmail = `account-updated-${suffix}@example.com`;
       if (action === 'Update email') {
+        const snapshot = await accountSnapshot(page);
+        const currentEmail = snapshot.profile.email;
+        const emailVariant = ACCOUNT_EMAIL_VARIANTS.find((item) => item.before === currentEmail);
+        if (!emailVariant) {
+          throw new Error('account catalog principal is outside its finite email variants');
+        }
+        const updatedEmail = emailVariant.after;
         const email = form.getByLabel('New email address');
         await form.getByLabel('Current password').fill('account-password');
         if (branch === 'invalid') {
@@ -1412,7 +1700,13 @@ function disposableAccountDeleteScenario(page, state, action) {
       if (branch !== 'success') throw new Error(`unknown account-delete branch: ${branch}`);
       await confirmation.fill('delete my account');
       const snapshot = await accountSnapshot(page);
-      const brand = snapshot.pouches[0]?.brand;
+      const emailVariant = ACCOUNT_EMAIL_VARIANTS.find((item) => (
+        item.after === snapshot.profile.email
+      ));
+      if (!emailVariant) {
+        throw new Error('account deletion principal is outside its finite email variants');
+      }
+      const brand = emailVariant.brand;
       const url = `/__test__/owned-artifact-snapshot?user_id=${snapshot.profile.id}`
         + `&brand=${encodeURIComponent(brand)}`;
       const beforeResponse = await page.request.get(url);
@@ -1563,8 +1857,8 @@ function supportingScenarioFor(page, state, action) {
   if (['navigation', 'primaryNavigation'].includes(baseline.profile)) {
     return navigationScenario(page, state, action, baseline.profile);
   }
-  if (baseline.profile === 'skip') return skipScenario(page, action);
-  if (baseline.profile === 'draftToggle') return draftToggleScenario(page, action);
+  if (baseline.profile === 'skip') return skipScenario(page, state, action);
+  if (baseline.profile === 'draftToggle') return draftToggleScenario(page, state, action);
   if (baseline.profile === 'localControl') return localControlScenario(page, state, action);
   if (baseline.profile === 'disclosure') return disclosureScenario(page, action);
   if (baseline.profile === 'rangeNavigation') return rangeNavigationScenario(page, action);
@@ -1594,6 +1888,7 @@ function supportingScenarioFor(page, state, action) {
 
 module.exports = {
   STATE_SCENARIOS,
+  resolvedSupportingControlAuthority,
   supportingControlAuthority,
   supportingScenarioFor,
 };

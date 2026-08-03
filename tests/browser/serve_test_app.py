@@ -53,7 +53,7 @@ datetime = _ReleaseTestDateTime
 from app import create_app  # noqa: E402
 from extensions import db, mail  # noqa: E402
 from routes.auth import get_current_user, login_required  # noqa: E402
-from flask import abort, flash, redirect, render_template, request, url_for  # noqa: E402
+from flask import abort, flash, redirect, render_template, request, session, url_for  # noqa: E402
 from models import (  # noqa: E402
     Craving,
     DailyCheckIn,
@@ -154,9 +154,99 @@ def keep_test_server_clock_frozen():
         return redirect('/settings/profile')
 
 
+@app.after_request
+def add_supporting_action_invariant(response):
+    """Mark account form responses that actually traversed the Flask action."""
+    if request.method == 'POST' and request.path == '/settings/account':
+        action = request.form.get('action')
+        action_names = {
+            'update_email': 'update_email',
+            'change_password': 'change_password',
+            'delete_account': 'delete_account',
+        }
+        if action in action_names:
+            outcome = 'rejected' if response.status_code == 200 else 'success'
+            response.headers['X-Supporting-Action-Invariant'] = (
+                f'account:{action_names[action]}:{outcome}'
+            )
+    return response
+
+
 @app.get('/__test__/release-clock')
 def release_clock_fixture():
     return {'fixed_now': RELEASE_TEST_NOW.isoformat().replace('+00:00', 'Z')}
+
+
+_SUPPORTING_STATES = frozenset({
+    'anonymous-not-found', 'bad-request', 'server-error',
+    'profile', 'account', 'preferences', 'reminders', 'data', 'statistics',
+    'logbook', 'log-add', 'log-bulk', 'catalog', 'catalog-add', 'cravings',
+    'goals', 'goal-create', 'dashboard', 'not-found', 'dashboard-empty',
+    'dashboard-sparse', 'data-offline-enabled', 'data-offline-disabled',
+    'data-settings-action', 'account-destructive', 'goal-progress',
+    'goal-edit', 'log-edit', 'catalog-search', 'catalog-edit',
+})
+
+_SUPPORTING_OFFLINE_PRECONDITIONS = {
+    'data': False,
+    'data-offline-enabled': True,
+    'data-offline-disabled': False,
+    'data-settings-action': False,
+}
+
+
+@app.post('/__test__/supporting-state-setup')
+def supporting_state_setup():
+    """Establish a catalog-owned state marker and deterministic draft preconditions."""
+    payload = request.get_json(silent=True) or {}
+    state = payload.get('state')
+    if state not in _SUPPORTING_STATES:
+        abort(400)
+    invariant = f'supporting-state:{state}'
+    session['supporting_state_invariant'] = invariant
+    current_user = get_current_user()
+    if current_user is not None and current_user.preferences is not None:
+        preferences = current_user.preferences
+        changed = False
+        if state in _SUPPORTING_OFFLINE_PRECONDITIONS:
+            preferences.offline_queue_enabled = _SUPPORTING_OFFLINE_PRECONDITIONS[state]
+            changed = True
+        if state == 'preferences':
+            preferences.preferred_brands = []
+            changed = True
+        if state == 'reminders':
+            preferences.notification_channel = []
+            preferences.goal_notifications = False
+            preferences.achievement_notifications = False
+            preferences.daily_reminders = False
+            preferences.weekly_reports = False
+            changed = True
+        if changed:
+            db.session.commit()
+    return {
+        'state': state,
+        'invariant': invariant,
+        'offline_queue_enabled': (
+            current_user.preferences.offline_queue_enabled
+            if current_user is not None and current_user.preferences is not None
+            else None
+        ),
+    }
+
+
+@app.get('/__test__/supporting-state-snapshot')
+def supporting_state_snapshot():
+    """Expose the runtime marker and persisted state facts used by the recorder."""
+    current_user = get_current_user()
+    preferences = current_user.preferences if current_user is not None else None
+    return {
+        'invariant': session.get('supporting_state_invariant'),
+        'authenticated': current_user is not None,
+        'principal': current_user.email if current_user is not None else None,
+        'offline_queue_enabled': (
+            preferences.offline_queue_enabled if preferences is not None else None
+        ),
+    }
 
 
 @app.get('/__test__/error/<int:status_code>')
