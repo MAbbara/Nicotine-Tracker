@@ -69,9 +69,34 @@ from models import (  # noqa: E402
     UserPreferredPouch,
     UserPreferences,
 )
+from services.notification_service import NotificationService  # noqa: E402
+from models.email_verification import EmailVerification  # noqa: E402
 
 
 app = create_app('testing')
+
+
+_EXTERNAL_NOTIFICATIONS = []
+
+
+def _record_external_notification(
+    _service, *, user_id, category, subject, message, priority=0,
+    scheduled_for=None, extra_data=None,
+):
+    """Safe integration double: record the boundary without email or Discord I/O."""
+    _EXTERNAL_NOTIFICATIONS.append({
+        'user_id': user_id,
+        'category': category,
+        'subject': subject,
+        'message': message,
+        'priority': priority,
+        'scheduled_for': scheduled_for.isoformat() if scheduled_for else None,
+        'extra_data': extra_data or {},
+    })
+    return True
+
+
+NotificationService.queue_notification = _record_external_notification
 
 
 _DATE_CLOCK_MODULES = {
@@ -702,6 +727,27 @@ def cleanup_today_events():
         ).delete(synchronize_session=False)
     for craving in cravings:
         db.session.delete(craving)
+    db.session.commit()
+    return {'success': True}
+
+
+@app.get('/__test__/external-notifications')
+@login_required
+def external_notifications():
+    current_user = get_current_user()
+    return {
+        'notifications': [
+            item for item in _EXTERNAL_NOTIFICATIONS
+            if item['user_id'] == current_user.id
+        ],
+    }
+
+
+@app.post('/__test__/clear-verification-cooldown')
+@login_required
+def clear_verification_cooldown():
+    current_user = get_current_user()
+    EmailVerification.query.filter_by(user_id=current_user.id).delete()
     db.session.commit()
     return {'success': True}
 

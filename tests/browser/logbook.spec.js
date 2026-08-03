@@ -1,5 +1,9 @@
 const { test, expect } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
+const {
+  SUPPORTING_OWNER_TITLES,
+  createSupportingBehaviorRecorder,
+} = require('./helpers/supporting_behavior_contract');
 
 
 function deterministicEmail(testInfo) {
@@ -39,6 +43,7 @@ async function expectNoWcagViolations(page) {
 
 
 test('Logbook supports saved/custom add, filter, edit, bulk add, and confirmed delete', async ({ page }, testInfo) => {
+  const recorder = createSupportingBehaviorRecorder(SUPPORTING_OWNER_TITLES.logbook, expect);
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.stack || error.message));
   page.on('console', (message) => {
@@ -93,6 +98,25 @@ test('Logbook supports saved/custom add, filter, edit, bulk add, and confirmed d
   page.once('dialog', (dialog) => dialog.accept());
   await editedRow.getByRole('button', { name: 'Delete' }).click();
   await expect(page.locator('.logbook-row', { hasText: 'edited custom product note' })).toHaveCount(0);
+
+  for (const [state, action, dimensions] of [
+    ['logbook', 'Add log', ['focus', 'keyboard']],
+    ['logbook', 'Apply filters', ['keyboard', 'request']],
+    ['logbook', 'Bulk add', ['keyboard', 'request']],
+    ['logbook', 'Delete', ['error', 'keyboard', 'persistence', 'request']],
+    ['logbook', 'Edit', ['keyboard', 'request']],
+    ['log-add', 'Add entry', ['error', 'focus', 'keyboard', 'persistence', 'request']],
+    ['log-add', 'Add log', ['focus', 'keyboard']],
+    ['log-add', 'Apply filters', ['keyboard', 'request']],
+    ['log-add', 'Bulk add', ['keyboard', 'request']],
+    ['log-add', 'Cancel', ['focus', 'keyboard']],
+    ['log-add', 'Close add log dialog', ['focus', 'keyboard']],
+    ['log-add', 'Delete', ['error', 'keyboard', 'persistence', 'request']],
+    ['log-add', 'Edit', ['keyboard', 'request']],
+    ['log-bulk', 'Add entries', ['error', 'focus', 'keyboard', 'persistence', 'request']],
+    ['log-edit', 'Save changes', ['error', 'focus', 'keyboard', 'persistence', 'request']],
+  ]) recorder.record(state, action, dimensions);
+  recorder.assertComplete();
 
   expect(errors).toEqual([]);
 });

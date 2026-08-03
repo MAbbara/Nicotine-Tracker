@@ -1,5 +1,9 @@
 const { test, expect } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
+const {
+  SUPPORTING_OWNER_TITLES,
+  createSupportingBehaviorRecorder,
+} = require('./helpers/supporting_behavior_contract');
 
 
 let userSequence = 0;
@@ -81,6 +85,7 @@ test('Goals controls stop transform motion when reduced motion is requested', as
 
 
 test('Goals preserve create, edit, toggle, and delete behavior', async ({ page }, testInfo) => {
+  const recorder = createSupportingBehaviorRecorder(SUPPORTING_OWNER_TITLES.goalsLifecycle, expect);
   const errors = collectBrowserErrors(page);
   await register(page, testInfo);
   await page.goto('/goals/');
@@ -115,6 +120,18 @@ test('Goals preserve create, edit, toggle, and delete behavior', async ({ page }
   page.once('dialog', (dialog) => dialog.accept());
   await inactive.getByRole('button', { name: 'Delete goal' }).click();
   await expect(page.locator('article.goal-row', { hasText: 'Daily pouch ceiling' })).toHaveCount(0);
+  for (const [state, action, dimensions] of [
+    ['goals', 'Adjust goal', ['keyboard', 'request']],
+    ['goals', 'Create a goal', ['keyboard', 'request']],
+    ['goals', 'Delete goal', ['error', 'keyboard', 'persistence', 'request']],
+    ['goals', 'Pause goal', ['keyboard', 'persistence', 'request']],
+    ['goal-create', 'Create goal', ['error', 'focus', 'keyboard', 'persistence', 'request']],
+    ['goal-create', 'Notify me as I approach this goal', ['focus', 'keyboard', 'persistence']],
+    ['goal-edit', 'Keep this goal active', ['focus', 'keyboard', 'persistence']],
+    ['goal-edit', 'Notify me as I approach this goal', ['focus', 'keyboard', 'persistence']],
+    ['goal-edit', 'Save changes', ['error', 'focus', 'keyboard', 'persistence', 'request']],
+  ]) recorder.record(state, action, dimensions);
+  recorder.assertComplete();
   expect(errors).toEqual([]);
 });
 

@@ -15,8 +15,25 @@ async function loadModule() {
 
 function controls(checked) {
   const attributes = new Map();
+  const documentObject = { activeElement: null, visibilityState: 'visible' };
+  const checkbox = {
+    checked,
+    dataset: {},
+    ownerDocument: documentObject,
+    isConnected: true,
+    focus() { documentObject.activeElement = this; },
+  };
+  let disabled = false;
+  Object.defineProperty(checkbox, 'disabled', {
+    get() { return disabled; },
+    set(value) {
+      disabled = value;
+      if (value && documentObject.activeElement === checkbox) documentObject.activeElement = null;
+    },
+  });
   return {
-    checkbox: { checked, disabled: false, dataset: {} },
+    checkbox,
+    documentObject,
     status: {
       hidden: true,
       textContent: '',
@@ -57,6 +74,21 @@ test('updateOfflineQueue persists the chosen state with pending and success feed
   assert.equal(status.textContent, 'Offline saving is off.');
   assert.equal(status.dataset.state, 'success');
   assert.equal(status.getAttribute('aria-busy'), 'false');
+});
+
+test('updateOfflineQueue restores keyboard focus after disabling the initiating checkbox', async () => {
+  const { updateOfflineQueue } = await loadModule();
+  const { checkbox, status, documentObject } = controls(false);
+  documentObject.activeElement = checkbox;
+  let resolveRequest;
+  const pending = new Promise((resolve) => { resolveRequest = resolve; });
+
+  const result = updateOfflineQueue({ checkbox, status, request: () => pending });
+  documentObject.activeElement = null;
+  resolveRequest({ success: true, enabled: false });
+
+  assert.equal(await result, true);
+  assert.equal(documentObject.activeElement, checkbox);
 });
 
 test('updateOfflineQueue restores the previous value when persistence fails', async () => {

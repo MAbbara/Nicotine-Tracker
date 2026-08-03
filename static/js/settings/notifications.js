@@ -10,8 +10,11 @@ export async function runNotificationAction({
 
   const originalLabel = button.textContent;
   const originallyDisabled = button.disabled;
+  const activeDocument = button.ownerDocument;
+  const initiatedWithFocus = activeDocument?.activeElement === button;
   button.dataset.busy = 'true';
   button.disabled = true;
+  const focusAfterDisable = activeDocument?.activeElement;
   button.textContent = pendingLabel;
   status.hidden = false;
   status.textContent = pendingLabel;
@@ -40,6 +43,16 @@ export async function runNotificationAction({
     button.textContent = originalLabel;
     button.disabled = originallyDisabled;
     delete button.dataset.busy;
+    const focusWasNotMoved = (
+      activeDocument?.activeElement === focusAfterDisable
+      || activeDocument?.activeElement === button
+    );
+    if (
+      initiatedWithFocus
+      && focusWasNotMoved
+      && button.isConnected
+      && activeDocument?.visibilityState === 'visible'
+    ) button.focus();
   }
 }
 

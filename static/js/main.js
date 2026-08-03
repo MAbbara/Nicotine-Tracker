@@ -132,10 +132,14 @@ function initializeQuickAdd() {
 
 function handleQuickAdd(event) {
     const button = event.currentTarget;
+    if (button.dataset.busy === 'true') return;
     const pouchId = button.getAttribute('data-pouch-id');
     const quantity = button.getAttribute('data-quantity') || 1;
     if (!pouchId) return;
     const originalText = button.textContent;
+    const documentObject = button.ownerDocument;
+    const initiatedWithFocus = documentObject?.activeElement === button;
+    button.dataset.busy = 'true';
     button.textContent = 'Adding...';
     button.disabled = true;
     fetch('/log/api/quick_add', {
@@ -168,6 +172,12 @@ function handleQuickAdd(event) {
     .finally(() => {
         button.textContent = originalText;
         button.disabled = false;
+        delete button.dataset.busy;
+        if (
+            initiatedWithFocus
+            && button.isConnected
+            && documentObject.visibilityState !== 'hidden'
+        ) button.focus({ preventScroll: true });
     });
 }
 

@@ -3,6 +3,11 @@ const {
   OWNER_TITLES,
   obligationFor,
 } = require('./core_behavior_contract');
+const {
+  SUPPORTING_ACTION_STATES,
+  SUPPORTING_BEHAVIOR_OBLIGATIONS,
+  supportingObligationFor,
+} = require('./supporting_behavior_contract');
 
 
 const RELEASE_PAGES = [
@@ -605,6 +610,28 @@ attachActionCoverage(
 );
 
 
+for (const stateName of SUPPORTING_ACTION_STATES) {
+  const actions = EXPECTED_ACTIONS[stateName];
+  const coveredBy = {};
+  for (const action of actions) {
+    const obligation = supportingObligationFor(stateName, action);
+    if (!obligation) {
+      throw new Error(`${stateName} › ${action} has no independent supporting obligation`);
+    }
+    coveredBy[action] = Object.freeze({
+      action,
+      state: stateName,
+      test: obligation.owner,
+      dimensions: obligation.dimensions,
+    });
+  }
+  Object.defineProperty(actions, 'coveredBy', {
+    value: Object.freeze(coveredBy),
+    enumerable: false,
+  });
+}
+
+
 function resolveReleaseState(state, projectName) {
   const device = projectName.includes('mobile') ? 'mobile' : 'desktop';
   return {
@@ -630,6 +657,8 @@ module.exports = {
   EXPECTED_ACTIONS,
   RELEASE_PAGES,
   RELEASE_STATES,
+  SUPPORTING_ACTION_STATES,
+  SUPPORTING_BEHAVIOR_OBLIGATIONS,
   loginAs,
   resolveReleaseState,
 };

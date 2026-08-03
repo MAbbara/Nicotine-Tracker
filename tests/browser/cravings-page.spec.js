@@ -1,5 +1,9 @@
 const { test, expect } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
+const {
+  SUPPORTING_OWNER_TITLES,
+  createSupportingBehaviorRecorder,
+} = require('./helpers/supporting_behavior_contract');
 
 
 function deterministicEmail(testInfo) {
@@ -30,6 +34,9 @@ async function expectNoWcagViolations(page) {
 
 
 test('Craving history records complete and minimal entries in chronological order', async ({ page }, testInfo) => {
+  const recorder = createSupportingBehaviorRecorder(
+    SUPPORTING_OWNER_TITLES.cravingsSymptoms, expect,
+  );
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.stack || error.message));
   page.on('console', (message) => {
@@ -49,6 +56,8 @@ test('Craving history records complete and minimal entries in chronological orde
   await form.getByLabel('Duration').fill('12');
   await form.getByLabel('Restlessness').check();
   await form.getByLabel('Irritability').check();
+  await form.getByLabel('Difficulty concentrating').check();
+  await form.getByLabel('Increased appetite').check();
   await form.getByLabel('Situation context').fill('After a difficult meeting');
   await form.getByLabel('Outcome').selectOption('used_alternative');
   await form.getByLabel('Mood after').fill('6');
@@ -66,11 +75,18 @@ test('Craving history records complete and minimal entries in chronological orde
   await form.getByRole('button', { name: 'Record craving' }).click();
   await expect(page.locator('.craving-row')).toHaveCount(2);
   await expect(page.locator('.craving-row').first()).toContainText('Intensity 3 of 10');
+  for (const action of [
+    'Difficulty concentrating', 'Increased appetite', 'Irritability', 'Restlessness',
+  ]) recorder.record('cravings', action, ['focus', 'keyboard', 'persistence']);
+  recorder.assertComplete();
   expect(errors).toEqual([]);
 });
 
 
 test('Craving history exposes native validation and recoverable server feedback', async ({ page }, testInfo) => {
+  const recorder = createSupportingBehaviorRecorder(
+    SUPPORTING_OWNER_TITLES.cravingsRecord, expect,
+  );
   await register(page, testInfo);
   await page.goto('/cravings/cravings');
   const form = page.locator('#craving-form');
@@ -91,6 +107,16 @@ test('Craving history exposes native validation and recoverable server feedback'
   await expect(form.locator('[data-craving-form-status]')).toContainText('Temporary test failure');
   await expect(form.getByRole('button', { name: 'Record craving' })).toBeEnabled();
   await expect(form.getByLabel('Intensity')).toHaveValue('6');
+  await page.unroute('**/cravings/api/cravings');
+  await form.getByRole('button', { name: 'Record craving' }).click();
+  await expect(form.locator('[data-craving-form-status]')).toContainText('Craving recorded');
+  await page.reload();
+  await expect(page.locator('.craving-row').first()).toContainText('Intensity 6 of 10');
+  recorder.record(
+    'cravings', 'Record craving',
+    ['error', 'focus', 'keyboard', 'loading', 'persistence', 'request'],
+  );
+  recorder.assertComplete();
 });
 
 

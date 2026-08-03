@@ -1,5 +1,9 @@
 const { test, expect } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
+const {
+  SUPPORTING_OWNER_TITLES,
+  createSupportingBehaviorRecorder,
+} = require('./helpers/supporting_behavior_contract');
 
 
 function deterministicEmail(testInfo) {
@@ -30,6 +34,7 @@ async function expectNoWcagViolations(page) {
 
 
 test('Catalog supports create, Quick Log availability, edit, search, and confirmed delete', async ({ page }, testInfo) => {
+  const recorder = createSupportingBehaviorRecorder(SUPPORTING_OWNER_TITLES.catalog, expect);
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.stack || error.message));
   page.on('console', (message) => {
@@ -74,6 +79,20 @@ test('Catalog supports create, Quick Log availability, edit, search, and confirm
   page.once('dialog', (confirmation) => confirmation.accept());
   await page.locator('.catalog-row', { hasText: 'Calm Cedar' }).getByRole('button', { name: 'Delete' }).click();
   await expect(page.locator('.catalog-row', { hasText: 'Calm Cedar' })).toHaveCount(0);
+
+  for (const [state, action, dimensions] of [
+    ['catalog', 'Add a pouch', ['keyboard', 'request']],
+    ['catalog', 'Delete', ['error', 'keyboard', 'persistence', 'request']],
+    ['catalog', 'Edit', ['keyboard', 'request']],
+    ['catalog', 'Search', ['keyboard', 'request']],
+    ['catalog-add', 'Add pouch', ['error', 'focus', 'keyboard', 'persistence', 'request']],
+    ['catalog-search', '← Back to all pouches', ['keyboard', 'request']],
+    ['catalog-search', 'Delete', ['error', 'keyboard', 'persistence', 'request']],
+    ['catalog-search', 'Edit', ['keyboard', 'request']],
+    ['catalog-search', 'Search', ['keyboard', 'request']],
+    ['catalog-edit', 'Save changes', ['error', 'focus', 'keyboard', 'persistence', 'request']],
+  ]) recorder.record(state, action, dimensions);
+  recorder.assertComplete();
 
   expect(errors).toEqual([]);
 });

@@ -4,8 +4,11 @@ export async function updateOfflineQueue({ checkbox, status, request }) {
 
   const requestedState = checkbox.checked === true;
   const previousState = !requestedState;
+  const documentObject = checkbox.ownerDocument;
+  const initiatedWithFocus = documentObject?.activeElement === checkbox;
   checkbox.dataset.busy = 'true';
   checkbox.disabled = true;
+  const focusAfterDisable = documentObject?.activeElement;
   status.hidden = false;
   status.textContent = 'Saving offline preference…';
   status.dataset.state = 'loading';
@@ -35,6 +38,12 @@ export async function updateOfflineQueue({ checkbox, status, request }) {
     delete checkbox.dataset.busy;
     status.hidden = false;
     status.setAttribute('aria-busy', 'false');
+    if (
+      initiatedWithFocus
+      && documentObject?.activeElement === focusAfterDisable
+      && checkbox.isConnected !== false
+      && documentObject.visibilityState !== 'hidden'
+    ) checkbox.focus?.({ preventScroll: true });
   }
 }
 
