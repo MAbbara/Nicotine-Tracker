@@ -6423,3 +6423,334 @@
     }
   }
 }
+
+/*
+ * At the 320px reflow boundary, enlarged text makes rem-sized gutters and
+ * multi-column mobile primitives compete for more inline space than exists.
+ * Keep text enlarged; reassign the available width to readable content.
+ */
+@media (max-width: 24rem) {
+  .app-content {
+    min-width: 0;
+    padding-inline: max(1rem, env(safe-area-inset-left)) max(1rem, env(safe-area-inset-right));
+  }
+
+  .primary-nav,
+  .today-shell .primary-nav,
+  .journey-shell .primary-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.125rem;
+    padding: 0.25rem max(0.25rem, env(safe-area-inset-right)) max(0.25rem, env(safe-area-inset-bottom)) max(0.25rem, env(safe-area-inset-left));
+    overflow: visible;
+  }
+
+  .primary-nav__link,
+  .today-shell .primary-nav__link,
+  .journey-shell .primary-nav__link {
+    min-height: 44px;
+    flex-flow: row nowrap;
+    gap: 0.125rem;
+    padding-inline: 0.25rem;
+  }
+
+  .primary-nav__link .c-icon {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .primary-nav__link > span,
+  .today-shell .primary-nav__link > span,
+  .journey-shell .primary-nav__link > span {
+    overflow: visible;
+    overflow-wrap: normal;
+    text-overflow: clip;
+    white-space: nowrap;
+    word-break: normal;
+  }
+
+  .today-status__facts {
+    grid-template-columns: minmax(0, 1fr);
+    column-gap: 0;
+  }
+
+  .today-status__facts dd,
+  .today-action small,
+  .today-timeline__copy,
+  .journey-facts dd,
+  .journey-stage-list li,
+  .journey-history li,
+  .logbook-row__primary h4,
+  .logbook-row__facts dd {
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+
+  .today-timeline__item {
+    grid-template-columns: 0.9rem minmax(0, 1fr);
+    column-gap: var(--space-3);
+  }
+
+  .today-timeline__item time {
+    grid-column: 1 / -1;
+  }
+
+  .today-timeline__marker {
+    grid-column: 1;
+  }
+
+  .today-timeline__copy {
+    grid-column: 2;
+  }
+
+  .journey-plan,
+  .journey-current,
+  .journey-editor,
+  .journey-editor-preview,
+  .legacy-review {
+    padding-inline: 1rem;
+  }
+
+  .journey-facts > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+
+  .journey-editor__buttons {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .journey-editor__buttons .c-button {
+    width: 100%;
+    min-width: 0;
+    white-space: normal;
+  }
+
+  .journey-editor input:not([type="hidden"]),
+  .journey-editor select {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .settings-page,
+  .insights-page {
+    padding-inline: max(1rem, env(safe-area-inset-left)) max(1rem, env(safe-area-inset-right));
+  }
+
+  .settings-content,
+  .settings-content__body,
+  .settings-content__body > *,
+  .logbook-page,
+  .logbook-page > *,
+  .logbook-filters,
+  .logbook-row,
+  .insights-page,
+  .insights-page > *,
+  .insights-figure,
+  .analytics-chart {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .settings-content input:not([type="checkbox"]):not([type="radio"]),
+  .settings-content select,
+  .settings-content textarea,
+  .logging-form input,
+  .logging-form select,
+  .logging-form textarea {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .settings-save-row {
+    justify-content: stretch;
+  }
+
+  .settings-save-row .c-button {
+    width: 100%;
+  }
+
+  .logbook-filters,
+  .logbook-row {
+    padding-inline: 1rem;
+  }
+
+  .logbook-quick__action {
+    min-width: 0;
+  }
+
+  .insights-actions,
+  .insights-figure__heading,
+  .insights-toggle {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .insights-actions {
+    width: 100%;
+  }
+
+  .insights-range {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .insights-actions > .c-button {
+    width: 100%;
+    min-width: 0;
+    white-space: normal;
+  }
+
+  .insights-toggle {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .trend-toggle {
+    min-width: 0;
+    padding-inline: 0.25rem;
+    font-size: 0.75rem;
+  }
+
+  .insights-figure--heatmap,
+  .insights-supporting-measures {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .insights-supporting-measures > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+
+  .insights-supporting-measures dd {
+    text-align: start;
+  }
+
+  .insights-intro h1 {
+    font-size: 2.25rem;
+  }
+
+  .c-field__check {
+    display: grid;
+    min-width: 0;
+    max-width: 100%;
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: var(--space-2);
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+
+  .c-field__check-input {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+  }
+
+  .quick-log,
+  .craving-flow,
+  .log-dialog {
+    box-sizing: border-box;
+    inset-inline: 0;
+    width: 100dvw;
+    max-width: 100dvw;
+    max-height: 100dvh;
+  }
+
+  .quick-log__panel,
+  .craving-flow__panel,
+  .log-dialog__position,
+  .log-dialog__panel {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    max-height: 100dvh;
+  }
+
+  .quick-log__header,
+  .quick-log__form,
+  .craving-flow__header,
+  .craving-flow__step,
+  .log-dialog__header,
+  .log-dialog__body,
+  .log-dialog__actions {
+    padding-inline: max(1rem, env(safe-area-inset-left)) max(1rem, env(safe-area-inset-right));
+  }
+
+  .quick-log__header,
+  .craving-flow__header,
+  .log-dialog__header {
+    gap: var(--space-2);
+  }
+
+  .quick-log__header > div,
+  .craving-flow__header > div,
+  .log-dialog__header > div,
+  .quick-log__form,
+  .craving-flow__body,
+  .craving-flow__step,
+  .log-dialog__body {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .quick-log__header h2,
+  .craving-flow__header h2,
+  .craving-flow__step-heading h3,
+  .quick-log__brand {
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+
+  .quick-log__header h2,
+  .craving-flow__header h2,
+  .craving-flow__step-heading h3 {
+    font-size: 1.5rem;
+  }
+
+  .quick-log__brand {
+    font-size: 1.25rem;
+  }
+
+  .quick-log__close,
+  .craving-flow__close,
+  .log-dialog__close {
+    width: 44px;
+    height: 44px;
+  }
+
+  .craving-flow__scale {
+    grid-template-columns: repeat(5, minmax(44px, 1fr));
+    gap: 0.25rem;
+  }
+
+  .craving-flow__scale span,
+  .craving-flow__outcomes span,
+  .craving-flow__symptoms span {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0.25rem;
+  }
+
+  .log-dialog {
+    overflow: hidden;
+    border-radius: 0;
+  }
+
+  .log-dialog__panel {
+    overflow-x: hidden;
+    overflow-y: auto;
+    border-radius: 0;
+  }
+
+  .log-dialog input[type="date"] {
+    padding-inline: 0.5rem;
+    font-size: 0.875rem;
+  }
+}

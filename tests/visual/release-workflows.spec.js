@@ -4,6 +4,7 @@ const {
   rebuildArtifactCatalog,
   runWorkflowCapture,
 } = require('./helpers/release_visual');
+const { expectNarrowReflow } = require('./helpers/narrow_reflow');
 
 test.use({ trace: 'off' });
 
@@ -88,8 +89,8 @@ for (const workflow of DIALOG_WORKFLOWS) {
     });
 
     expect(result.bytes).toBeGreaterThan(1_000);
-    expect(result.geometry.viewport.width).toBe(320);
     expect(result.geometry.openDialogs).toHaveLength(1);
+    await expectNarrowReflow(page, result, { kind: 'dialog', stateName: workflow.name });
   });
 }
 
@@ -132,6 +133,7 @@ test('Today check-in at 320px and 200% text', async ({ page, context }, testInfo
   });
 
   expect(result.geometry.visibleCheckIn).toBe(true);
+  await expectNarrowReflow(page, result, { stateName: 'today-check-in' });
 });
 
 
@@ -175,6 +177,9 @@ for (const narrow of [false, true]) {
     });
 
     expect(result.geometry.visibleJourneyPreview).toBe(true);
+    if (narrow) {
+      await expectNarrowReflow(page, result, { stateName: 'journey-revision' });
+    }
   });
 }
 
@@ -208,7 +213,7 @@ for (const surface of [
       },
     });
 
-    expect(result.geometry.viewport.width).toBe(320);
+    await expectNarrowReflow(page, result, { stateName: surface.name });
   });
 }
 

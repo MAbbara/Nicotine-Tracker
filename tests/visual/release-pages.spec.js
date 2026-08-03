@@ -5,6 +5,7 @@ const {
   rebuildArtifactCatalog,
   runPageCapture,
 } = require('./helpers/release_visual');
+const { expectNarrowReflow } = require('./helpers/narrow_reflow');
 
 
 const DARK_STATE_NAMES = [
@@ -68,8 +69,8 @@ test.describe('release page visual captures', () => {
       });
 
       expect(result.bytes, `${stateName} narrow PNG bytes`).toBeGreaterThan(1_000);
-      expect(result.geometry.viewport.width).toBe(320);
       expect(result.geometry.textScale).toBe(2);
+      await expectNarrowReflow(page, result, { stateName });
     });
   }
 
