@@ -37,6 +37,14 @@ async function collectNarrowReflowFacts(page, { kind, stateName }) {
       }
       return false;
     };
+    const measureText = (element, text) => {
+      const style = getComputedStyle(element);
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      context.font = [style.fontStyle, style.fontWeight, style.fontSize, style.fontFamily]
+        .filter(Boolean).join(' ');
+      return context.measureText(text).width;
+    };
 
     const root = document.documentElement;
     const documentOverflowElements = [...document.body.querySelectorAll('*')]
@@ -63,6 +71,7 @@ async function collectNarrowReflowFacts(page, { kind, stateName }) {
       const rect = rectOf(link);
       return {
         label: label?.textContent.trim() || '',
+        top: rect.top,
         width: rect.width,
         height: rect.height,
         inside: rect.left >= navRect.left - 1
@@ -99,6 +108,51 @@ async function collectNarrowReflowFacts(page, { kind, stateName }) {
       clientWidth: element.clientWidth,
       scrollWidth: element.scrollWidth,
     }));
+    const labelInternalProblems = [...contentRoot.querySelectorAll('a, button, label')]
+      .filter(visible)
+      .filter((element) => !element.closest('.primary-nav'))
+      .filter((element) => (element.innerText || '').trim())
+      .filter((element) => element.scrollWidth > element.clientWidth + 1)
+      .map((element) => ({
+        tag: element.tagName.toLowerCase(),
+        className: typeof element.className === 'string' ? element.className : '',
+        text: element.innerText.trim().replace(/\s+/g, ' ').slice(0, 80),
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+        insideHorizontalScroller: hasHorizontalScrollAncestor(element, contentRoot),
+      }));
+    const nativeControlFitProblems = [...contentRoot.querySelectorAll(
+      'select, input[type="date"], input[type="time"]',
+    )].filter(visible).map((element) => {
+      const style = getComputedStyle(element);
+      let visibleText = '';
+      let affordanceAllowance = 0;
+      if (element instanceof HTMLSelectElement) {
+        visibleText = element.selectedOptions[0]?.textContent.trim() || '';
+        affordanceAllowance = 32;
+      } else if (element.type === 'date') {
+        visibleText = element.value ? '08/03/2026' : 'mm/dd/yyyy';
+        affordanceAllowance = 36;
+      } else {
+        visibleText = element.value ? '11:59 PM' : '--:-- --';
+        affordanceAllowance = 36;
+      }
+      const requiredWidth = measureText(element, visibleText)
+        + Number.parseFloat(style.paddingInlineStart)
+        + Number.parseFloat(style.paddingInlineEnd)
+        + Number.parseFloat(style.borderInlineStartWidth)
+        + Number.parseFloat(style.borderInlineEndWidth)
+        + affordanceAllowance;
+      return {
+        tag: element.tagName.toLowerCase(),
+        id: element.id || '',
+        type: element.type,
+        visibleText,
+        clientWidth: element.clientWidth,
+        fontSize: Number.parseFloat(style.fontSize),
+        requiredWidth,
+      };
+    }).filter(({ clientWidth, requiredWidth }) => requiredWidth > clientWidth + 1);
 
     const dialogHorizontalProblems = dialog ? [...dialog.querySelectorAll('*')]
       .filter(visible)
@@ -117,17 +171,17 @@ async function collectNarrowReflowFacts(page, { kind, stateName }) {
         scrollWidth: element.scrollWidth,
         rect: rectOf(element),
       })) : [];
-    const dialogScrollOwners = dialog ? [dialog, ...dialog.querySelectorAll('*')]
+    const dialogComputedScrollOwners = dialog ? [dialog, ...dialog.querySelectorAll('*')]
       .filter(visible)
       .filter((element) => !element.matches('input, select, textarea'))
       .filter((element) => {
         const overflow = getComputedStyle(element).overflowY;
-        return ['auto', 'scroll'].includes(overflow)
-          && element.scrollHeight > element.clientHeight + 1;
+        return ['auto', 'scroll'].includes(overflow);
       }).map((element) => ({
         tag: element.tagName.toLowerCase(),
         id: element.id || '',
         className: typeof element.className === 'string' ? element.className : '',
+        actuallyScrolling: element.scrollHeight > element.clientHeight + 1,
       })) : [];
 
     const todayFacts = [...document.querySelectorAll('.today-status__facts')].map((facts) => {
@@ -174,10 +228,12 @@ async function collectNarrowReflowFacts(page, { kind, stateName }) {
         mainPaddingBottom: Number.parseFloat(mainStyle?.paddingBottom) || 0,
       } : null,
       horizontalControlProblems,
+      labelInternalProblems,
+      nativeControlFitProblems,
       dialog: dialogRect ? {
         rect: dialogRect,
         horizontalProblems: dialogHorizontalProblems,
-        scrollOwners: dialogScrollOwners,
+        computedScrollOwners: dialogComputedScrollOwners,
         headings: dialogHeadings,
       } : null,
       todayFacts,
@@ -192,11 +248,59 @@ async function collectNarrowReflowFacts(page, { kind, stateName }) {
 }
 
 
-async function expectNarrowReflow(page, result, { kind = 'page', stateName }) {
+async function expectFinalActionClearsNav(page, stateName) {
+  const clearance = await page.evaluate(async () => {
+    const visible = (element) => {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== 'none'
+        && style.visibility !== 'hidden'
+        && rect.width > 0
+        && rect.height > 0;
+    };
+    const nav = document.querySelector('.primary-nav');
+    const main = document.querySelector('main');
+    if (!nav || !main) return null;
+    const actions = [...main.querySelectorAll([
+      'a[href]',
+      'button:not([disabled])',
+      'input[type="button"]:not([disabled])',
+      'input[type="submit"]:not([disabled])',
+    ].join(', '))].filter(visible).filter((element) => !element.closest('dialog'));
+    const finalAction = actions.at(-1);
+    if (!finalAction) return { action: null };
+    finalAction.focus({ preventScroll: true });
+    finalAction.scrollIntoView({ behavior: 'instant', block: 'end', inline: 'nearest' });
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const actionRect = finalAction.getBoundingClientRect();
+    const navRect = nav.getBoundingClientRect();
+    return {
+      action: (finalAction.innerText || finalAction.value || finalAction.getAttribute('aria-label') || '')
+        .trim().replace(/\s+/g, ' ').slice(0, 80),
+      actionBottom: actionRect.bottom,
+      navTop: navRect.top,
+    };
+  });
+  expect(clearance, `${stateName}: page must expose a final action and fixed navigation`).not.toBeNull();
+  expect(clearance.action, `${stateName}: page must expose a final actionable control`).toBeTruthy();
+  expect(
+    clearance.actionBottom,
+    `${stateName}: final action “${clearance.action}” must scroll fully above the fixed navigation`,
+  ).toBeLessThanOrEqual(clearance.navTop + 1);
+}
+
+
+async function expectNarrowSurface(page, result, {
+  kind = 'page',
+  maxNavRows,
+  stateName,
+  expectedWidth,
+  requireSingleNavRow = false,
+}) {
   const facts = await collectNarrowReflowFacts(page, { kind, stateName });
   expect(
     facts.document.scrollWidth,
-    `${stateName}: document must not scroll horizontally at 320px / 200% text; `
+    `${stateName}: document must not scroll horizontally at the narrow viewport; `
       + `outside elements: ${JSON.stringify(facts.document.overflowElements)}`,
   ).toBe(facts.document.clientWidth);
 
@@ -212,6 +316,22 @@ async function expectNarrowReflow(page, result, { kind = 'page', stateName }) {
       )),
       `${stateName}: all four primary destinations must stay usable with intact one-line labels`,
     ).toEqual([]);
+    if (requireSingleNavRow) {
+      const navLinkTops = await page.locator('.primary-nav__link').evaluateAll((links) => (
+        [...new Set(links.map((link) => Math.round(link.getBoundingClientRect().top)))]
+      ));
+      expect(
+        navLinkTops,
+        `${stateName}: normal narrow navigation must keep four familiar destinations in one row`,
+      ).toHaveLength(1);
+    }
+    if (maxNavRows) {
+      const navLinkTops = new Set(facts.nav.links.map((link) => Math.round(link.top)));
+      expect(
+        navLinkTops.size,
+        `${stateName}: enlarged-text navigation must use no more than ${maxNavRows} rows`,
+      ).toBeLessThanOrEqual(maxNavRows);
+    }
     expect(
       facts.nav.mainPaddingBottom,
       `${stateName}: main content must reserve the measured fixed-navigation height`,
@@ -221,6 +341,14 @@ async function expectNarrowReflow(page, result, { kind = 'page', stateName }) {
   expect(
     facts.horizontalControlProblems,
     `${stateName}: visible controls and actions must remain fully inside their content surface`,
+  ).toEqual([]);
+  expect(
+    facts.labelInternalProblems,
+    `${stateName}: visible action labels must fit internally, including inside local scrollers`,
+  ).toEqual([]);
+  expect(
+    facts.nativeControlFitProblems,
+    `${stateName}: native select/date/time values must fit with padding and browser affordances`,
   ).toEqual([]);
 
   if (stateName === 'today') {
@@ -249,7 +377,7 @@ async function expectNarrowReflow(page, result, { kind = 'page', stateName }) {
   if (kind === 'dialog') {
     expect(facts.dialog, `${stateName}: expected an open dialog`).not.toBeNull();
     expect(facts.dialog.rect.left).toBeGreaterThanOrEqual(0);
-    expect(facts.dialog.rect.right).toBeLessThanOrEqual(320);
+    expect(facts.dialog.rect.right).toBeLessThanOrEqual(expectedWidth);
     expect(facts.dialog.rect.top).toBeGreaterThanOrEqual(0);
     expect(facts.dialog.rect.bottom).toBeLessThanOrEqual(900);
     expect(
@@ -257,8 +385,12 @@ async function expectNarrowReflow(page, result, { kind = 'page', stateName }) {
       `${stateName}: dialog content must wrap inside the visual viewport`,
     ).toEqual([]);
     expect(
-      facts.dialog.scrollOwners.length,
-      `${stateName}: dialog must have one vertical scroll owner`,
+      facts.dialog.computedScrollOwners.length,
+      `${stateName}: dialog must declare exactly one intended vertical scroll owner`,
+    ).toBe(1);
+    expect(
+      facts.dialog.computedScrollOwners.filter(({ actuallyScrolling }) => actuallyScrolling).length,
+      `${stateName}: dialog must have no more than one actively scrolling surface`,
     ).toBeLessThanOrEqual(1);
     expect(
       facts.dialog.headings.filter(({ lines }) => lines > 4),
@@ -266,8 +398,40 @@ async function expectNarrowReflow(page, result, { kind = 'page', stateName }) {
     ).toEqual([]);
   }
 
-  expect(result.geometry.viewport.width).toBe(320);
+  if (kind !== 'dialog') await expectFinalActionClearsNav(page, stateName);
+  expect(result.geometry.viewport.width).toBe(expectedWidth);
 }
 
 
-module.exports = { expectNarrowReflow };
+async function expectNarrowReflow(page, result, { kind = 'page', stateName }) {
+  await expectNarrowSurface(page, result, {
+    kind,
+    maxNavRows: kind === 'dialog' ? undefined : 2,
+    stateName,
+    expectedWidth: 320,
+  });
+}
+
+
+async function expectNarrowMobileReflow(page, result, { kind = 'page', stateName, width }) {
+  await expectNarrowSurface(page, result, {
+    kind,
+    stateName,
+    expectedWidth: width,
+    requireSingleNavRow: kind !== 'dialog',
+  });
+  const undersizedNativeControls = await page.locator(
+    'select, input[type="date"], input[type="time"]',
+  ).evaluateAll((controls) => controls.filter((element) => {
+    const style = getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    return style.display !== 'none' && rect.width > 0 && Number.parseFloat(style.fontSize) < 14;
+  }).map((element) => ({ id: element.id, fontSize: getComputedStyle(element).fontSize })));
+  expect(
+    undersizedNativeControls,
+    `${stateName}: normal narrow native controls must retain at least 14px text`,
+  ).toEqual([]);
+}
+
+
+module.exports = { expectNarrowMobileReflow, expectNarrowReflow };

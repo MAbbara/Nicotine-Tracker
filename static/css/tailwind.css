@@ -6432,13 +6432,13 @@
 @media (max-width: 24rem) {
   .app-content {
     min-width: 0;
-    padding-inline: max(1rem, env(safe-area-inset-left)) max(1rem, env(safe-area-inset-right));
+    padding-inline: max(0.5rem, 12px, env(safe-area-inset-left)) max(0.5rem, 12px, env(safe-area-inset-right));
   }
 
   .primary-nav,
   .today-shell .primary-nav,
   .journey-shell .primary-nav {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(4.375rem, 100%), 1fr));
     gap: 0.125rem;
     padding: 0.25rem max(0.25rem, env(safe-area-inset-right)) max(0.25rem, env(safe-area-inset-bottom)) max(0.25rem, env(safe-area-inset-left));
     overflow: visible;
@@ -6504,10 +6504,13 @@
 
   .journey-plan,
   .journey-current,
-  .journey-editor,
   .journey-editor-preview,
   .legacy-review {
-    padding-inline: 1rem;
+    padding-inline: 0.5rem;
+  }
+
+  .journey-editor {
+    padding-inline: 0.25rem;
   }
 
   .journey-facts > div {
@@ -6536,7 +6539,7 @@
 
   .settings-page,
   .insights-page {
-    padding-inline: max(1rem, env(safe-area-inset-left)) max(1rem, env(safe-area-inset-right));
+    padding-inline: 0;
   }
 
   .settings-content,
@@ -6575,7 +6578,7 @@
 
   .logbook-filters,
   .logbook-row {
-    padding-inline: 1rem;
+    padding-inline: 0.5rem;
   }
 
   .logbook-quick__action {
@@ -6594,8 +6597,16 @@
   }
 
   .insights-range {
+    display: grid;
     flex: 1 1 100%;
     min-width: 0;
+    grid-template-columns: repeat(auto-fit, minmax(min(4rem, 100%), 1fr));
+    overflow-x: visible;
+  }
+
+  .insights-range__option {
+    min-width: 0;
+    justify-content: center;
   }
 
   .insights-actions > .c-button {
@@ -6680,7 +6691,35 @@
   .log-dialog__header,
   .log-dialog__body,
   .log-dialog__actions {
-    padding-inline: max(1rem, env(safe-area-inset-left)) max(1rem, env(safe-area-inset-right));
+    padding-inline: max(0.5rem, 8px, env(safe-area-inset-left)) max(0.5rem, 8px, env(safe-area-inset-right));
+  }
+
+  .settings-content select,
+  .settings-content input[type="date"],
+  .settings-content input[type="time"],
+  .logging-form select,
+  .logging-form input[type="date"],
+  .logging-form input[type="time"],
+  .journey-editor select,
+  .journey-editor input[type="date"],
+  .journey-editor input[type="time"],
+  .quick-log select,
+  .quick-log input[type="date"],
+  .quick-log input[type="time"],
+  .craving-flow select,
+  .craving-flow input[type="date"],
+  .craving-flow input[type="time"] {
+    padding-inline: max(0.25rem, 8px);
+    font-size: max(0.625rem, 14px);
+  }
+
+  .app-content :is(
+    a[href],
+    button:not([disabled]),
+    input[type="button"]:not([disabled]),
+    input[type="submit"]:not([disabled])
+  ) {
+    scroll-margin-block-end: calc(5.5rem + 44px + env(safe-area-inset-bottom));
   }
 
   .quick-log__header,
