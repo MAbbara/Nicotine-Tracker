@@ -37,6 +37,14 @@ async function register(page, testInfo, recorder = null) {
   await confirmation.fill(recorder ? 'short' : 'browser-password');
   const terms = page.getByLabel(/I understand this is a personal tracking tool/i);
   if (recorder) {
+    const registrationPosts = [];
+    const captureRegistrationPost = (request) => {
+      if (
+        request.method() === 'POST'
+        && new URL(request.url()).pathname === '/auth/register'
+      ) registrationPosts.push(request);
+    };
+    page.on('request', captureRegistrationPost);
     await terms.focus();
     await page.keyboard.press('Space');
     await expect(terms).toBeChecked();
@@ -50,6 +58,7 @@ async function register(page, testInfo, recorder = null) {
     await page.keyboard.press('Enter');
     await expect(password).toBeFocused();
     await expect(page.locator('#password-error')).toHaveText('Use at least 6 characters.');
+    expect(registrationPosts).toHaveLength(0);
     await password.fill('browser-password');
     await confirmation.fill('browser-password');
     const responsePending = page.waitForResponse((response) => (
@@ -65,6 +74,9 @@ async function register(page, testInfo, recorder = null) {
         email: deterministicEmail(testInfo),
         password: 'browser-password',
       }));
+    expect(registrationPosts).toHaveLength(1);
+    expect(registrationPosts[0]).toBe(response.request());
+    page.off('request', captureRegistrationPost);
   } else {
     await terms.check();
     await page.getByRole('button', { name: 'Create Account' }).click();

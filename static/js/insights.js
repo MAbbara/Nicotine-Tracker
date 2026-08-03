@@ -315,7 +315,9 @@ async function exportRange(root, days) {
     setLoadStatus(root, 'There is no data to export in this range yet.');
     return;
   }
+  const initiatedWithFocus = document.activeElement === button;
   button.disabled = true;
+  const focusAfterDisable = document.activeElement;
   button.setAttribute('aria-busy', 'true');
   setLoadStatus(root, 'Preparing CSV…');
   try {
@@ -343,7 +345,17 @@ async function exportRange(root, days) {
   } finally {
     button.disabled = false;
     button.setAttribute('aria-busy', 'false');
-    button.focus();
+    const focusWasNotMoved = (
+      document.activeElement === focusAfterDisable
+      || document.activeElement === button
+    );
+    if (
+      initiatedWithFocus
+      && focusWasNotMoved
+      && root.isConnected
+      && button.isConnected
+      && document.visibilityState === 'visible'
+    ) button.focus();
   }
 }
 

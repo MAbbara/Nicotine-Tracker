@@ -336,9 +336,17 @@ function assertedDimensions(obligation) {
   ));
 }
 
-function createBehaviorRecorder(owner, expectApi) {
-  const expected = CORE_BEHAVIOR_OBLIGATIONS.filter((entry) => entry.owner === owner);
-  const recorded = new Set();
+function evidenceToken(state, action, dimension) {
+  return `${state}\u0000${action}\u0000${dimension}`;
+}
+
+function createBehaviorRecorder(
+  owner,
+  expectApi,
+  obligations = CORE_BEHAVIOR_OBLIGATIONS,
+) {
+  const expected = obligations.filter((entry) => entry.owner === owner);
+  const recordedEvidence = new Set();
   return Object.freeze({
     record(state, action, observedDimensions) {
       const obligation = expected.find((entry) => (
@@ -346,17 +354,25 @@ function createBehaviorRecorder(owner, expectApi) {
       ));
       expectApi(obligation, `${owner} owns ${state} › ${action}`).toBeDefined();
       if (!obligation) return;
-      expectApi(
-        [...observedDimensions].sort(),
-        `${state} › ${action} observed dimensions`,
-      ).toEqual(assertedDimensions(obligation).sort());
-      recorded.add(`${state}\u0000${action}`);
+      const applicable = assertedDimensions(obligation);
+      for (const dimension of observedDimensions) {
+        expectApi(
+          applicable,
+          `${state} › ${action} permits recorded ${dimension} evidence`,
+        ).toContain(dimension);
+        recordedEvidence.add(evidenceToken(state, action, dimension));
+      }
     },
     assertComplete() {
+      const expectedEvidence = expected.flatMap((obligation) => (
+        assertedDimensions(obligation).map((dimension) => evidenceToken(
+          obligation.state, obligation.action, dimension,
+        ))
+      ));
       expectApi(
-        [...recorded].sort(),
-        `${owner} runtime behavior receipts`,
-      ).toEqual(expected.map(({ state, action }) => `${state}\u0000${action}`).sort());
+        [...recordedEvidence].sort(),
+        `${owner} runtime dimension evidence`,
+      ).toEqual(expectedEvidence.sort());
     },
   });
 }

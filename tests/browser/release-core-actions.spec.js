@@ -177,6 +177,28 @@ test('independent behavior contract rejects omissions, remaps, and dimension ove
     },
   };
   expect(() => validateCoverage(EXPECTED_ACTIONS, coverage)).toThrow(/dimension evidence mismatch/);
+
+  const syntheticOwner = 'synthetic owner with an unproved focus claim';
+  const syntheticObligation = Object.freeze({
+    state: 'synthetic-state',
+    action: 'Synthetic action',
+    owner: syntheticOwner,
+    dimensions: Object.freeze({
+      error: { status: 'not-applicable', reason: 'Synthetic synchronous action.' },
+      focus: { status: 'asserted', reason: 'Deliberately overclaimed focus evidence.' },
+      keyboard: { status: 'asserted', reason: 'Keyboard evidence is recorded.' },
+      loading: { status: 'not-applicable', reason: 'Synthetic synchronous action.' },
+      persistence: { status: 'not-applicable', reason: 'Synthetic transient action.' },
+      request: { status: 'not-applicable', reason: 'Synthetic local action.' },
+    }),
+  });
+  const incompleteRecorder = createBehaviorRecorder(
+    syntheticOwner, expect, [syntheticObligation],
+  );
+  expect(() => incompleteRecorder.record(
+    'synthetic-state', 'Synthetic action', ['keyboard'],
+  )).not.toThrow();
+  expect(() => incompleteRecorder.assertComplete()).toThrow(/focus/);
 });
 
 
@@ -864,10 +886,12 @@ test('Insights actions run in every exact representative data state', async ({ p
     const weekly = page.getByRole('button', { name: 'Weekly' });
     await keyboardActivate(page, weekly);
     await expect(weekly).toHaveAttribute('aria-pressed', 'true');
+    await expect(weekly).toBeFocused();
     recorder.record(stateName, 'Weekly', ['focus', 'keyboard']);
     const daily = page.getByRole('button', { name: 'Daily' });
     await keyboardActivate(page, daily);
     await expect(daily).toHaveAttribute('aria-pressed', 'true');
+    await expect(daily).toBeFocused();
     recorder.record(stateName, 'Daily', ['focus', 'keyboard']);
 
     for (const [summaryName, regionName] of disclosurePairs) {
@@ -976,6 +1000,34 @@ test('Insights actions run in every exact representative data state', async ({ p
     destinationGuard.stop();
   }
   recorder.assertComplete();
+});
+
+
+test('pending Insights export preserves an intentional focus move', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await loginAs(page, 'release-analytics-ready@example.com');
+  await page.goto('/insights/');
+
+  let releaseExport;
+  const exportGate = new Promise((resolve) => { releaseExport = resolve; });
+  await page.route('**/insights/api/export?days=30', async (route) => {
+    await exportGate;
+    await route.continue();
+  });
+
+  const exportButton = page.getByRole('button', { name: 'Export CSV' });
+  const weekly = page.getByRole('button', { name: 'Weekly' });
+  const downloadStarted = page.waitForEvent('download');
+  await keyboardActivate(page, exportButton);
+  await expect(exportButton).toBeDisabled();
+  await expect(exportButton).toHaveAttribute('aria-busy', 'true');
+  await weekly.focus();
+  await expect(weekly).toBeFocused();
+  releaseExport();
+  await downloadStarted;
+  await expect(exportButton).toBeEnabled();
+  await expect(exportButton).toHaveAttribute('aria-busy', 'false');
+  await expect(weekly).toBeFocused();
 });
 
 
