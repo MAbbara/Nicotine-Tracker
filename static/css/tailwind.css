@@ -6668,8 +6668,8 @@
   .log-dialog {
     box-sizing: border-box;
     inset-inline: 0;
-    width: 100dvw;
-    max-width: 100dvw;
+    width: auto;
+    max-width: 100%;
     max-height: 100dvh;
   }
 
@@ -6709,6 +6709,11 @@
   .craving-flow select,
   .craving-flow input[type="date"],
   .craving-flow input[type="time"] {
+    padding-inline: max(0.25rem, 8px);
+    font-size: max(0.625rem, 14px);
+  }
+
+  .logbook-filters__search input[type="search"] {
     padding-inline: max(0.25rem, 8px);
     font-size: max(0.625rem, 14px);
   }

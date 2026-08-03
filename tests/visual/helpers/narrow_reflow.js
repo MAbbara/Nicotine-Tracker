@@ -92,8 +92,8 @@ async function collectNarrowReflowFacts(page, { kind, stateName }) {
     )].filter(visible).filter((element) => !element.closest('.primary-nav')).filter((element) => {
       if (hasHorizontalScrollAncestor(element, contentRoot)) return false;
       const rect = element.getBoundingClientRect();
-      const leftEdge = dialogRect ? dialogRect.left : 0;
-      const rightEdge = dialogRect ? dialogRect.right : innerWidth;
+      const leftEdge = dialogRect ? Math.max(dialogRect.left, 0) : 0;
+      const rightEdge = dialogRect ? Math.min(dialogRect.right, root.clientWidth) : root.clientWidth;
       return rect.left < leftEdge - 1
         || rect.right > rightEdge + 1
         || (
@@ -153,14 +153,33 @@ async function collectNarrowReflowFacts(page, { kind, stateName }) {
         requiredWidth,
       };
     }).filter(({ clientWidth, requiredWidth }) => requiredWidth > clientWidth + 1);
+    const visiblePlaceholderFitProblems = [...contentRoot.querySelectorAll(
+      '#logbook-search[type="search"]',
+    )].filter(visible).filter((element) => !element.value && element.placeholder).map((element) => {
+      const style = getComputedStyle(element);
+      const searchAffordanceAllowance = 24;
+      const requiredWidth = measureText(element, element.placeholder)
+        + Number.parseFloat(style.paddingInlineStart)
+        + Number.parseFloat(style.paddingInlineEnd)
+        + Number.parseFloat(style.borderInlineStartWidth)
+        + Number.parseFloat(style.borderInlineEndWidth)
+        + searchAffordanceAllowance;
+      return {
+        id: element.id,
+        placeholder: element.placeholder,
+        clientWidth: element.clientWidth,
+        fontSize: Number.parseFloat(style.fontSize),
+        requiredWidth,
+      };
+    }).filter(({ clientWidth, requiredWidth }) => requiredWidth > clientWidth + 1);
 
     const dialogHorizontalProblems = dialog ? [...dialog.querySelectorAll('*')]
       .filter(visible)
       .filter((element) => !hasHorizontalScrollAncestor(element, dialog))
       .filter((element) => {
         const rect = element.getBoundingClientRect();
-        return rect.left < dialogRect.left - 1
-          || rect.right > dialogRect.right + 1
+        return rect.left < Math.max(dialogRect.left, 0) - 1
+          || rect.right > Math.min(dialogRect.right, root.clientWidth) + 1
           || element.scrollWidth > element.clientWidth + 1;
       }).filter((element) => !element.matches('svg, path, .u-visually-hidden, .sr-only'))
       .map((element) => ({
@@ -230,6 +249,7 @@ async function collectNarrowReflowFacts(page, { kind, stateName }) {
       horizontalControlProblems,
       labelInternalProblems,
       nativeControlFitProblems,
+      visiblePlaceholderFitProblems,
       dialog: dialogRect ? {
         rect: dialogRect,
         horizontalProblems: dialogHorizontalProblems,
@@ -350,6 +370,10 @@ async function expectNarrowSurface(page, result, {
     facts.nativeControlFitProblems,
     `${stateName}: native select/date/time values must fit with padding and browser affordances`,
   ).toEqual([]);
+  expect(
+    facts.visiblePlaceholderFitProblems,
+    `${stateName}: the empty Logbook search must show its complete visible placeholder`,
+  ).toEqual([]);
 
   if (stateName === 'today') {
     expect(facts.todayFacts.length, 'Today plan facts must be present').toBeGreaterThan(0);
@@ -377,7 +401,10 @@ async function expectNarrowSurface(page, result, {
   if (kind === 'dialog') {
     expect(facts.dialog, `${stateName}: expected an open dialog`).not.toBeNull();
     expect(facts.dialog.rect.left).toBeGreaterThanOrEqual(0);
-    expect(facts.dialog.rect.right).toBeLessThanOrEqual(expectedWidth);
+    expect(
+      facts.dialog.rect.right,
+      `${stateName}: dialog must stay inside the document client width`,
+    ).toBeLessThanOrEqual(facts.document.clientWidth);
     expect(facts.dialog.rect.top).toBeGreaterThanOrEqual(0);
     expect(facts.dialog.rect.bottom).toBeLessThanOrEqual(900);
     expect(
