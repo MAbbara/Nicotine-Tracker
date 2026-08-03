@@ -37,7 +37,8 @@ const RELEASE_STATES = [
   },
   {
     name: 'insights', path: '/insights/', status: 200,
-    email: 'today-targeted@example.com', allowAnalytics: true,
+    email: 'release-analytics-ready@example.com', allowAnalytics: true,
+    insightsState: 'ready',
   },
   { name: 'you', path: '/you/', status: 200, email: 'release-settings@example.com' },
   {
@@ -98,7 +99,7 @@ const RELEASE_STATES = [
   },
   {
     name: 'dashboard', path: '/dashboard/', status: 200,
-    email: 'today-targeted@example.com', allowAnalytics: true,
+    email: 'release-analytics-ready@example.com', allowAnalytics: true,
   },
   {
     name: 'not-found', path: '/__release_missing_page__', status: 404,
@@ -119,10 +120,12 @@ const RELEASE_STATES = [
   {
     name: 'insights-empty', path: '/insights/', status: 200,
     email: 'release-analytics-empty@example.com', allowAnalytics: true,
+    insightsState: 'empty',
   },
   {
     name: 'insights-sparse', path: '/insights/', status: 200,
     email: 'release-analytics-sparse@example.com', allowAnalytics: true,
+    insightsState: 'sparse',
   },
   {
     name: 'dashboard-empty', path: '/dashboard/', status: 200,
@@ -135,10 +138,12 @@ const RELEASE_STATES = [
   {
     name: 'data-offline-enabled', path: '/settings/data', status: 200,
     email: 'release-offline-enabled@example.com',
+    offlineQueueEnabled: true,
   },
   {
     name: 'data-offline-disabled', path: '/settings/data', status: 200,
     email: 'release-offline-disabled@example.com',
+    offlineQueueEnabled: false,
   },
   {
     name: 'data-settings-action', path: '/settings/data', status: 200,
@@ -188,12 +193,14 @@ const SETTINGS_ACTIONS = [
   'Account', 'Data & privacy', 'Preferences', 'Profile', 'Reminders', 'Statistics',
 ];
 const INSIGHTS_ACTIONS = [
-  '1 year', '30 days', '7 days', '90 days', 'Daily', 'Export CSV', 'Log today',
+  '1 year', '30 days', '7 days', '90 days', 'Daily', 'Export CSV',
+  'Open hourly detail and supporting measures', 'View consumption trend data',
+  'View product data', 'View time-of-day data', 'View weekly pattern data',
   'Weekly',
 ];
 const DATA_ACTIONS = [
   'Anonymize Data', 'Cleanup', 'Delete Logs', 'Download Data', 'Merge',
-  'Recalculate', 'Review account deletion',
+  'Recalculate', 'Review account deletion', 'Save actions for offline use',
 ];
 
 
@@ -223,11 +230,15 @@ const EXPECTED_ACTIONS = {
   ),
   login: sortedActions(
     ['Nicotine Tracker home', 'Skip to main content'],
-    ['Create one here', 'Forgot password?', 'Sign in'],
+    ['Create one here', 'Forgot password?', 'Remember me', 'Sign in'],
   ),
   register: sortedActions(
     ['Nicotine Tracker home', 'Skip to main content'],
-    ['Create account', 'Sign in here'],
+    [
+      'Create account',
+      'I understand this is a personal tracking tool, not medical advice.',
+      'Sign in here',
+    ],
   ),
   'forgot-password': sortedActions(
     ['Nicotine Tracker home', 'Skip to main content'],
@@ -244,9 +255,16 @@ const EXPECTED_ACTIONS = {
   journey: reviewActions([
     'Archive plan', 'Finish Observe', 'Go to Today’s next useful action',
     'Mark complete', 'Pause plan', 'Review this draft',
+    'Show the complete schedule',
   ]),
-  'journey-onboarding': appActions('browser@example.com', ['Continue']),
-  insights: appActions('today-targeted@example.com', INSIGHTS_ACTIONS),
+  'journey-onboarding': appActions('browser@example.com', [
+    'Continue', 'Quit by a date Build a schedule that ends at zero.',
+    'Reduce steadily Work toward a lower daily pouch ceiling.',
+    'Understand my baseline first Track for seven days without a reduction target.',
+  ]),
+  insights: appActions('release-analytics-ready@example.com', [
+    INSIGHTS_ACTIONS, 'Plan for Afternoon (12PM-6PM)',
+  ]),
   you: appActions('release-settings@example.com', [
     'Dark', 'Data & privacy Export and account controls',
     'Day & timezone Daily reset and display preferences', 'Light',
@@ -258,9 +276,13 @@ const EXPECTED_ACTIONS = {
   account: settingsActions('release-settings@example.com', [
     'Change password', 'Delete account', 'Update email',
   ]),
-  preferences: settingsActions('release-settings@example.com', ['Save preferences']),
+  preferences: settingsActions('release-settings@example.com', [
+    'Save preferences', 'Steady Mint',
+  ]),
   reminders: settingsActions('release-settings@example.com', [
+    'Daily logging reminder', 'Discord', 'Email', 'Goal progress', 'Milestones',
     'Save reminders', 'Send weekly report', 'Test Discord connection',
+    'Weekly progress report',
   ]),
   data: settingsActions('release-settings@example.com', DATA_ACTIONS),
   statistics: settingsActions('release-settings@example.com', [
@@ -268,12 +290,12 @@ const EXPECTED_ACTIONS = {
   ]),
   logbook: appActions('release-inventory@example.com', [
     'Add log', 'Apply filters', 'Bulk add', 'Delete', 'Edit',
-    'Log one Release 27, 3.5 milligrams', 'Log one Steady Mint, 6 milligrams',
+    'Log one Release Fixture, 3.5 milligrams', 'Log one Steady Mint, 6 milligrams',
   ]),
   'log-add': appActions('release-inventory@example.com', [
     'Add entry', 'Add log', 'Apply filters', 'Bulk add', 'Cancel',
     'Close add log dialog', 'Delete', 'Edit',
-    'Log one Release 27, 3.5 milligrams', 'Log one Steady Mint, 6 milligrams',
+    'Log one Release Fixture, 3.5 milligrams', 'Log one Steady Mint, 6 milligrams',
   ]),
   'log-bulk': appActions('release-inventory@example.com', ['Add entries', 'Cancel']),
   catalog: appActions('release-inventory@example.com', [
@@ -283,26 +305,30 @@ const EXPECTED_ACTIONS = {
     '← Your pouches', 'Add pouch', 'Cancel',
   ]),
   cravings: appActions('release-inventory@example.com', [
-    'Get immediate support on Today', 'Record craving',
+    'Difficulty concentrating', 'Get immediate support on Today',
+    'Increased appetite', 'Irritability', 'Record craving', 'Restlessness',
   ]),
   goals: reviewActions([
     'Adjust goal', 'Create a goal', 'Delete goal', 'Pause goal',
   ]),
-  'goal-create': reviewActions(['Back to goals', 'Cancel', 'Create goal']),
-  dashboard: appActions('today-targeted@example.com', [
-    'Go to Today', 'Open Insights', 'Review Journey',
+  'goal-create': reviewActions([
+    'Back to goals', 'Cancel', 'Create goal',
+    'Notify me as I approach this goal',
+  ]),
+  dashboard: appActions('release-analytics-ready@example.com', [
+    'Go to Today', 'Open Insights', 'Review Journey', 'View daily values',
   ]),
   'not-found': appActions('release-inventory@example.com'),
   'today-no-plan': appActions('browser@example.com', [
     'Continue neutral tracking', 'Create a plan',
     'I have a craving Pause and choose what helps next',
-    'Log nicotine use Add the details now', 'Log your first nicotine use',
-    'Reflect on today', 'Take a short check-in',
+    'Log nicotine use', 'Log nicotine use Add the details now',
+    'Log your first nicotine use',
   ]),
   'today-paused': appActions('today-paused@example.com', [
     'I have a craving Pause and choose what helps next',
-    'Log nicotine use Steady Mint · 6.00 mg is ready', 'Reflect on today',
-    'Review or resume in Journey', 'Take a short check-in',
+    'Log nicotine use', 'Log nicotine use Steady Mint · 6.00 mg is ready',
+    'Review or resume in Journey',
   ]),
   'today-exceeded': appActions('today-exceeded@example.com', [
     'I have a craving Pause and choose what helps next', 'Keep logging',
@@ -310,13 +336,17 @@ const EXPECTED_ACTIONS = {
     'Pause or revise in Journey', 'Reflect on today',
     'Review the plan in Journey', 'Take a short check-in',
   ]),
-  'insights-empty': appActions('release-analytics-empty@example.com', INSIGHTS_ACTIONS),
-  'insights-sparse': appActions('release-analytics-sparse@example.com', INSIGHTS_ACTIONS),
+  'insights-empty': appActions('release-analytics-empty@example.com', [
+    INSIGHTS_ACTIONS, 'Log today',
+  ]),
+  'insights-sparse': appActions('release-analytics-sparse@example.com', [
+    INSIGHTS_ACTIONS, 'Log today',
+  ]),
   'dashboard-empty': appActions('release-analytics-empty@example.com', [
     'Go to Today', 'Open Insights', 'Review Journey', 'Start with Today',
   ]),
   'dashboard-sparse': appActions('release-analytics-sparse@example.com', [
-    'Go to Today', 'Open Insights', 'Review Journey', 'Start with Today',
+    'Go to Today', 'Open Insights', 'Review Journey', 'View daily values',
   ]),
   'data-offline-enabled': settingsActions(
     'release-offline-enabled@example.com', DATA_ACTIONS,
@@ -329,7 +359,10 @@ const EXPECTED_ACTIONS = {
     'Change password', 'Delete account', 'Update email',
   ]),
   'goal-progress': reviewActions(['Back to goals']),
-  'goal-edit': reviewActions(['Back to goals', 'Cancel', 'Save changes']),
+  'goal-edit': reviewActions([
+    'Back to goals', 'Cancel', 'Keep this goal active',
+    'Notify me as I approach this goal', 'Save changes',
+  ]),
   'log-edit': appActions('release-inventory@example.com', [
     'Cancel', 'Save changes',
   ]),

@@ -476,6 +476,7 @@ with app.app_context():
         *,
         offline_enabled=True,
         log_quantity=None,
+        log_day_offsets=(),
         owned_data=False,
     ):
         """Build isolated, non-mutating Task 1 release inventory evidence."""
@@ -497,7 +498,7 @@ with app.app_context():
         owned_pouch = None
         if owned_data:
             owned_pouch = Pouch(
-                brand=f'Release {release_user.id}',
+                brand='Release Fixture',
                 nicotine_mg=Decimal('3.50'),
                 is_default=False,
                 created_by=release_user.id,
@@ -519,12 +520,19 @@ with app.app_context():
                 outcome='resisted',
             ))
 
-        if log_quantity is not None:
+        day_offsets = tuple(log_day_offsets)
+        if log_quantity is not None and not day_offsets:
+            day_offsets = (1,)
+        for index, day_offset in enumerate(day_offsets):
+            log_day = date.today() - timedelta(days=day_offset)
             db.session.add(Log(
                 user_id=release_user.id,
                 pouch_id=(owned_pouch or default_pouch).id,
-                log_date=date.today(),
-                log_time=datetime.combine(date.today(), time(12, 0)),
+                log_date=log_day,
+                log_time=datetime.combine(
+                    log_day,
+                    time(9 + (index % 8), 15),
+                ),
                 product_brand_snapshot=(
                     owned_pouch.brand if owned_pouch else default_pouch.brand
                 ),
@@ -532,14 +540,18 @@ with app.app_context():
                     owned_pouch.nicotine_mg
                     if owned_pouch else default_pouch.nicotine_mg
                 ),
-                quantity=log_quantity,
+                quantity=log_quantity or 1,
             ))
         return release_user
 
     seed_release_user('release-analytics-empty@example.com')
     seed_release_user(
         'release-analytics-sparse@example.com',
-        log_quantity=1,
+        log_day_offsets=(1,),
+    )
+    seed_release_user(
+        'release-analytics-ready@example.com',
+        log_day_offsets=(7, 6, 5, 4, 3, 2, 1),
     )
     seed_release_user('release-offline-enabled@example.com')
     seed_release_user(
