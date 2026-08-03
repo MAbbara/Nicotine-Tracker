@@ -183,6 +183,9 @@ test('Reminders persist and async actions expose success and failure feedback', 
   });
 
   await login(page);
+  const principalResponse = await page.request.get('/__test__/account-snapshot');
+  expect(principalResponse.status()).toBe(200);
+  const principalId = (await principalResponse.json()).profile.id;
   const clearOutboundResponse = await page.request.post('/__test__/clear-outbound');
   expect(clearOutboundResponse.status()).toBe(200);
   const sameOrigin = new URL(page.url()).origin;
@@ -312,7 +315,7 @@ test('Reminders persist and async actions expose success and failure feedback', 
   const weeklyBoundary = outbound.notifications.find((entry) => entry.category === 'weekly_report');
   expect(weeklyBoundary).toEqual({
     kind: 'notification-queue',
-    user_id: 27,
+    user_id: principalId,
     category: 'weekly_report',
     subject: 'Your Weekly Progress Report',
     message: '<h3>Week of July 27 - August 02, 2026</h3>\n\n'
