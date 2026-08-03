@@ -1,9 +1,10 @@
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="system" data-saved-theme="system">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#F5F1E7">
+  <script src="{{ url_for('static', filename='js/shell/theme_bootstrap.js') }}"></script>
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <meta name="description" content="A calm, practical companion for reducing nicotine use.">
   <title>{% block title %}Nicotine Tracker{% endblock %}</title>
@@ -29,6 +30,7 @@
   </div>
   <main id="main-content" tabindex="-1">{% block content %}{% endblock %}</main>
   <footer class="marketing-footer"><p>Built for steady progress, without judgment.</p><p>&copy; {{ current_year or 2026 }} Nicotine Tracker</p></footer>
+  <script type="module" src="{{ url_for('static', filename='js/shell/theme.js') }}"></script>
   {% block extra_js %}{% endblock %}
 </body>
 </html>

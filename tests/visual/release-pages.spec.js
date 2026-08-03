@@ -12,6 +12,9 @@ const DARK_STATE_NAMES = [
   'landing', 'login', 'register', 'forgot-password', 'reset-password',
   'today', 'journey', 'insights', 'you', 'profile', 'logbook',
 ];
+const PUBLIC_DARK_STATE_NAMES = new Set([
+  'landing', 'login', 'register', 'forgot-password', 'reset-password',
+]);
 const NARROW_TEXT_STATE_NAMES = ['today', 'insights', 'profile', 'logbook'];
 
 
@@ -52,6 +55,12 @@ test.describe('release page visual captures', () => {
 
       expect(result.bytes, `${stateName} dark PNG bytes`).toBeGreaterThan(1_000);
       expect(result.geometry.theme).toBe('dark');
+      if (PUBLIC_DARK_STATE_NAMES.has(stateName)) {
+        expect(
+          result.geometry.themeAppliedByHarness,
+          `${stateName} must activate dark through the product theme path`,
+        ).toBe(false);
+      }
     });
   }
 

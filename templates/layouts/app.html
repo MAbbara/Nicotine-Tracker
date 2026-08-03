@@ -17,27 +17,7 @@
     <meta name="offline-queue-enabled" content="{{ 'true' if current_user.preferences.offline_queue_enabled else 'false' }}">
     <meta name="offline-queue-id" content="{{ current_user.preferences.offline_queue_id }}">
   {% endif %}
-  <script>
-    (() => {
-      const allowed = new Set(['light', 'dark', 'system']);
-      let saved = document.documentElement.dataset.savedTheme || 'system';
-      try {
-        const local = window.localStorage.getItem('nicotine-tracker-theme');
-        if (allowed.has(local)) saved = local;
-      } catch (_) {}
-      if (!allowed.has(saved)) saved = 'system';
-      const effective = saved === 'system'
-        ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-        : saved;
-      const root = document.documentElement;
-      root.dataset.savedTheme = saved;
-      root.dataset.theme = effective;
-      root.classList.toggle('dark', effective === 'dark');
-      root.style.colorScheme = effective;
-      document.querySelector('meta[name="theme-color"]')
-        ?.setAttribute('content', effective === 'dark' ? '#111915' : '#F5F1E7');
-    })();
-  </script>
+  <script src="{{ url_for('static', filename='js/shell/theme_bootstrap.js') }}"></script>
   <title>{% block title %}Nicotine Tracker{% endblock %}</title>
   <link rel="icon" href="{{ url_for('static', filename='favicon.png') }}">
   <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='icons/pwa/icon-180.png') }}">

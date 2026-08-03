@@ -77,6 +77,31 @@ def test_global_layouts_do_not_load_page_specific_dependencies(app):
         assert forbidden not in combined
 
 
+@pytest.mark.parametrize('layout', ['app', 'auth', 'marketing'])
+def test_all_layouts_load_one_shared_theme_bootstrap_before_css(app, layout):
+    html = _render_layout(app, layout)
+    soup = BeautifulSoup(html, 'html.parser')
+    root = soup.find('html')
+    bootstrap = soup.find(
+        'script',
+        src='/static/js/shell/theme_bootstrap.js',
+    )
+    stylesheet = soup.find(
+        'link',
+        rel='stylesheet',
+        href='/static/css/style.css',
+    )
+    controller = soup.find('script', src='/static/js/shell/theme.js')
+
+    assert root.get('data-saved-theme') in {'light', 'dark', 'system'}
+    assert bootstrap is not None and bootstrap.find_parent('head') is soup.head
+    assert stylesheet is not None and stylesheet.find_parent('head') is soup.head
+    head_elements = soup.head.find_all(recursive=False)
+    assert head_elements.index(bootstrap) < head_elements.index(stylesheet)
+    assert controller is not None, 'every layout starts the shared live theme controller'
+    assert bootstrap.string is None, 'pre-paint behavior stays in the shared static asset'
+
+
 def test_base_is_a_small_compatibility_bridge():
     from pathlib import Path
 

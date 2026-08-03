@@ -1,9 +1,10 @@
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="system" data-saved-theme="system">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#F5F1E7">
+  <script src="{{ url_for('static', filename='js/shell/theme_bootstrap.js') }}"></script>
   <meta name="robots" content="noindex, nofollow">
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{% block title %}Sign in — Nicotine Tracker{% endblock %}</title>
@@ -25,6 +26,7 @@
     {% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<div class="flash-message flash-message--{{ category }}" role="status">{{ message }}</div>{% endfor %}{% endwith %}
   </div>
   <main id="main-content" class="auth-content" tabindex="-1">{% block content %}{% endblock %}</main>
+  <script type="module" src="{{ url_for('static', filename='js/shell/theme.js') }}"></script>
   {% block extra_js %}{% endblock %}
 </body>
 </html>

@@ -9,6 +9,17 @@ test.beforeEach(async ({ page }) => {
   await expect(page).toHaveURL(/\/today\/?$/);
 });
 
+
+async function mountLegacyThemeProbe(page) {
+  await page.locator('main').evaluate((main) => {
+    const probe = document.createElement('div');
+    probe.dataset.legacyThemeProbe = '';
+    probe.className = 'bg-white dark:bg-neutral-800';
+    main.append(probe);
+  });
+  return page.locator('[data-legacy-theme-probe]');
+}
+
 test('authenticated shell exposes four useful destinations with one active item', async ({ page }) => {
   const destinations = [
     ['/today', 'Today'],
@@ -77,8 +88,8 @@ test('explicit Dark activates legacy dark utilities under a light device', async
   await page.getByRole('button', { name: 'Dark' }).click();
   await page.goto('/insights/');
 
-  const legacyCard = page.locator('.bg-white.dark\\:bg-gray-800').first();
-  await expect(legacyCard).toHaveCSS('background-color', 'oklch(0.278 0.033 256.848)');
+  const legacyCard = await mountLegacyThemeProbe(page);
+  await expect(legacyCard).toHaveCSS('background-color', 'oklch(0.269 0 0)');
 });
 
 test('explicit Light suppresses legacy dark utilities under a dark device', async ({ page }) => {
@@ -87,7 +98,7 @@ test('explicit Light suppresses legacy dark utilities under a dark device', asyn
   await page.getByRole('button', { name: 'Light' }).click();
   await page.goto('/insights/');
 
-  const legacyCard = page.locator('.bg-white.dark\\:bg-gray-800').first();
+  const legacyCard = await mountLegacyThemeProbe(page);
   await expect(legacyCard).toHaveCSS('background-color', 'rgb(255, 255, 255)');
 });
 
