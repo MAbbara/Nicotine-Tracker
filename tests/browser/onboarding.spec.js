@@ -27,7 +27,7 @@ function watchForErrors(page, { ignoreConsole = [] } = {}) {
 async function register(page, testInfo) {
   await page.goto('/auth/register');
   await page.getByLabel('Email address').fill(deterministicEmail(testInfo));
-  await page.getByLabel('Password', { exact: true }).fill('browser-password');
+  await page.getByRole('textbox', { name: 'Password', exact: true }).fill('browser-password');
   await page.getByLabel('Confirm Password').fill('browser-password');
   await page.getByLabel(/I understand this is a personal tracking tool/i).check();
   await page.getByRole('button', { name: 'Create Account' }).click();

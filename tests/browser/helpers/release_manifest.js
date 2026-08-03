@@ -384,6 +384,219 @@ const EXPECTED_ACTIONS = {
 };
 
 
+const CORE_ACTION_STATES = [
+  'landing', 'login', 'register', 'forgot-password', 'reset-password',
+  'today', 'today-no-plan', 'today-paused', 'today-exceeded',
+  'journey', 'journey-onboarding',
+  'insights', 'insights-empty', 'insights-sparse', 'you',
+];
+
+const ACTION_OWNERS = {
+  appChrome: 'tests/browser/release-core-actions.spec.js › public and authenticated chrome actions reach focus and navigation targets',
+  authLinks: 'tests/browser/release-core-actions.spec.js › authentication links reach the neighboring recovery or account form',
+  authLogin: 'tests/browser/release-core-actions.spec.js › login validation and Remember me preserve the authenticated session',
+  authForgot: 'tests/browser/release-core-actions.spec.js › forgot form enforces validation and preserves a neutral recovery response',
+  authReset: 'tests/browser/release-core-actions.spec.js › reset form enforces native and matching validation without consuming the token',
+  checkIn: 'tests/browser/today-states.spec.js › optional empty reflection saves once, reconciles one row, and reopens canonical values',
+  cravingEnhanced: 'tests/browser/craving-flow.spec.js › Craving enhancement waits for readiness and opens support without navigation',
+  insightsDisclosures: 'tests/browser/release-core-actions.spec.js › Insights export disclosures and next steps keep data accessible',
+  insightsRanges: 'tests/browser/analytics.spec.js › Insights supports every range and preserves current content when refresh fails',
+  insightsRender: 'tests/browser/analytics.spec.js › Insights range response updates narrative controls export chart and table together',
+  journeyChoices: 'tests/browser/release-core-actions.spec.js › uncovered onboarding choices and Journey handoffs preserve user control',
+  journeyLifecycle: 'tests/browser/journey.spec.js › Journey previews explicitly, mutates future rows only, and carries status history through archive',
+  journeyObserve: 'tests/browser/journey.spec.js › Observe recovery and migrated Goal review remain visibly separate and non-activating',
+  landing: 'tests/browser/landing.spec.js › public landing exposes one promise and working account actions',
+  onboarding: 'tests/browser/onboarding.spec.js › registration previews transparently and activates only after final confirmation',
+  quickLogEnhanced: 'tests/browser/quick-log.spec.js › Quick Log enhanced control waits for controller-ready and opens the dialog without navigation',
+  quickLogFallback: 'tests/browser/quick-log.spec.js › Quick Log fallback remains usable while enhancement is delayed',
+  quickLogNoDefault: 'tests/browser/quick-log.spec.js › Today without a smart default keeps the detailed logging link fallback',
+  signOut: 'tests/browser/offline-replay.spec.js › logout clears queued storage before another account can replay it',
+  theme: 'tests/browser/shell.spec.js › theme choice publishes one effective contract and System alone follows the device',
+  todayLinks: 'tests/browser/release-core-actions.spec.js › Today fallback and recovery links reach their intended next action',
+  youLinks: 'tests/browser/release-core-actions.spec.js › You links reach every settings and catalog destination',
+};
+
+
+function ownedBy(owner, names) {
+  return { owner, names: names.flat(Infinity) };
+}
+
+
+function appChromeActions(stateName) {
+  return EXPECTED_ACTIONS[stateName].filter((action) => (
+    APP_SHELL_ACTIONS.includes(action) || action.startsWith('Open your space for ')
+  ));
+}
+
+
+function attachActionCoverage(stateName, ...groups) {
+  const actions = EXPECTED_ACTIONS[stateName];
+  const coveredBy = {};
+  for (const { owner, names } of groups) {
+    for (const name of names) {
+      if (!actions.includes(name)) {
+        throw new Error(`${stateName} coverage names unknown action: ${name}`);
+      }
+      if (coveredBy[name]) {
+        throw new Error(`${stateName} action has two owners: ${name}`);
+      }
+      coveredBy[name] = owner;
+    }
+  }
+  const missing = actions.filter((action) => !coveredBy[action]);
+  if (missing.length) {
+    throw new Error(`${stateName} actions need owners: ${missing.join(', ')}`);
+  }
+  Object.defineProperty(actions, 'coveredBy', {
+    value: Object.freeze(coveredBy),
+    enumerable: false,
+  });
+}
+
+
+for (const stateName of ['landing', 'login', 'register', 'forgot-password', 'reset-password']) {
+  const actionOwners = [ownedBy(ACTION_OWNERS.appChrome, [
+    'Nicotine Tracker home', 'Skip to main content',
+  ])];
+  if (stateName === 'landing') {
+    actionOwners.push(ownedBy(ACTION_OWNERS.landing, ['Create account', 'Sign in']));
+  } else if (stateName === 'register') {
+    actionOwners.push(
+      ownedBy(ACTION_OWNERS.onboarding, [
+        'Create account',
+        'I understand this is a personal tracking tool, not medical advice.',
+      ]),
+      ownedBy(ACTION_OWNERS.authLinks, ['Sign in here']),
+    );
+  } else if (stateName === 'login') {
+    actionOwners.push(
+      ownedBy(ACTION_OWNERS.authLinks, ['Create one here', 'Forgot password?']),
+      ownedBy(ACTION_OWNERS.authLogin, ['Remember me', 'Sign in']),
+    );
+  } else {
+    actionOwners.push(
+      ownedBy(ACTION_OWNERS.authLinks, ['Sign in here']),
+      ownedBy(
+        stateName === 'forgot-password' ? ACTION_OWNERS.authForgot : ACTION_OWNERS.authReset,
+        [stateName === 'forgot-password' ? 'Send reset link' : 'Reset password'],
+      ),
+    );
+  }
+  attachActionCoverage(stateName, ...actionOwners);
+}
+
+attachActionCoverage(
+  'today',
+  ownedBy(ACTION_OWNERS.appChrome, appChromeActions('today')),
+  ownedBy(ACTION_OWNERS.checkIn, ['Edit reflection']),
+  ownedBy(ACTION_OWNERS.cravingEnhanced, [
+    'I have a craving Pause and choose what helps next',
+  ]),
+  ownedBy(ACTION_OWNERS.quickLogFallback, ['Log nicotine use']),
+  ownedBy(ACTION_OWNERS.quickLogEnhanced, [
+    'Log nicotine use Steady Mint · 6.00 mg is ready',
+  ]),
+);
+
+attachActionCoverage(
+  'today-no-plan',
+  ownedBy(ACTION_OWNERS.appChrome, appChromeActions('today-no-plan')),
+  ownedBy(ACTION_OWNERS.todayLinks, [
+    'Continue neutral tracking', 'Create a plan', 'Log your first nicotine use',
+  ]),
+  ownedBy(ACTION_OWNERS.cravingEnhanced, [
+    'I have a craving Pause and choose what helps next',
+  ]),
+  ownedBy(ACTION_OWNERS.quickLogNoDefault, [
+    'Log nicotine use', 'Log nicotine use Add the details now',
+  ]),
+);
+
+attachActionCoverage(
+  'today-paused',
+  ownedBy(ACTION_OWNERS.appChrome, appChromeActions('today-paused')),
+  ownedBy(ACTION_OWNERS.todayLinks, ['Review or resume in Journey']),
+  ownedBy(ACTION_OWNERS.cravingEnhanced, [
+    'I have a craving Pause and choose what helps next',
+  ]),
+  ownedBy(ACTION_OWNERS.quickLogFallback, ['Log nicotine use']),
+  ownedBy(ACTION_OWNERS.quickLogEnhanced, [
+    'Log nicotine use Steady Mint · 6.00 mg is ready',
+  ]),
+);
+
+attachActionCoverage(
+  'today-exceeded',
+  ownedBy(ACTION_OWNERS.appChrome, appChromeActions('today-exceeded')),
+  ownedBy(ACTION_OWNERS.todayLinks, [
+    'Keep logging', 'Pause or revise in Journey', 'Reflect on today',
+    'Review the plan in Journey',
+  ]),
+  ownedBy(ACTION_OWNERS.checkIn, ['Take a short check-in']),
+  ownedBy(ACTION_OWNERS.cravingEnhanced, [
+    'I have a craving Pause and choose what helps next',
+  ]),
+  ownedBy(ACTION_OWNERS.quickLogEnhanced, [
+    'Log nicotine use Steady Mint · 6.00 mg is ready',
+  ]),
+);
+
+attachActionCoverage(
+  'journey',
+  ownedBy(ACTION_OWNERS.appChrome, appChromeActions('journey')),
+  ownedBy(ACTION_OWNERS.journeyLifecycle, [
+    'Archive plan', 'Mark complete', 'Pause plan', 'Show the complete schedule',
+  ]),
+  ownedBy(ACTION_OWNERS.journeyObserve, ['Finish Observe']),
+  ownedBy(ACTION_OWNERS.journeyChoices, [
+    'Go to Today’s next useful action', 'Review this draft',
+  ]),
+);
+
+attachActionCoverage(
+  'journey-onboarding',
+  ownedBy(ACTION_OWNERS.appChrome, appChromeActions('journey-onboarding')),
+  ownedBy(ACTION_OWNERS.onboarding, [
+    'Continue',
+    'Reduce steadily Work toward a lower daily pouch ceiling.',
+  ]),
+  ownedBy(ACTION_OWNERS.journeyChoices, [
+    'Quit by a date Build a schedule that ends at zero.',
+    'Understand my baseline first Track for seven days without a reduction target.',
+  ]),
+);
+
+for (const stateName of ['insights', 'insights-empty', 'insights-sparse']) {
+  attachActionCoverage(
+    stateName,
+    ownedBy(ACTION_OWNERS.appChrome, appChromeActions(stateName)),
+    ownedBy(ACTION_OWNERS.insightsRanges, ['1 year', '30 days', '7 days', '90 days']),
+    ownedBy(ACTION_OWNERS.insightsRender, [
+      'Open hourly detail and supporting measures', 'Weekly',
+    ]),
+    ownedBy(ACTION_OWNERS.insightsDisclosures, [
+      'Daily', 'Export CSV', 'View consumption trend data', 'View product data',
+      'View time-of-day data', 'View weekly pattern data',
+      stateName === 'insights' ? 'Plan for Afternoon (12PM-6PM)' : 'Log today',
+    ]),
+  );
+}
+
+attachActionCoverage(
+  'you',
+  ownedBy(ACTION_OWNERS.appChrome, appChromeActions('you')),
+  ownedBy(ACTION_OWNERS.theme, ['Dark', 'Light', 'System']),
+  ownedBy(ACTION_OWNERS.signOut, ['Sign out']),
+  ownedBy(ACTION_OWNERS.youLinks, [
+    'Data & privacy Export and account controls',
+    'Day & timezone Daily reset and display preferences',
+    'Profile Personal details kept private',
+    'Reminders Channels, timing, and quiet hours',
+    'Your pouches Catalog and quick-log choices',
+  ]),
+);
+
+
 function resolveReleaseState(state, projectName) {
   const device = projectName.includes('mobile') ? 'mobile' : 'desktop';
   return {
@@ -404,6 +617,7 @@ async function loginAs(page, email) {
 
 
 module.exports = {
+  CORE_ACTION_STATES,
   EXPECTED_ACTIONS,
   RELEASE_PAGES,
   RELEASE_STATES,

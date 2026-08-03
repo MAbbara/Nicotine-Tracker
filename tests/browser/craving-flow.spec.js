@@ -110,6 +110,7 @@ test('initial check-in creates one canonical unresolved craving row', async ({ p
     await route.continue();
   });
   await login(page);
+  await page.waitForLoadState('load');
   const initialCravingCount = await page.locator('[data-timeline-type="craving"]').count();
   const trigger = page.locator('#today-craving-action');
   await trigger.click();
@@ -405,6 +406,7 @@ test('used nicotine creates one linked Quick Log and Undo clears only that link'
     await route.continue();
   });
   await login(page);
+  await page.waitForLoadState('load');
   const initialLogCount = await page.locator('[data-timeline-type="log"]').count();
   const initialCravingCount = await page.locator('[data-timeline-type="craving"]').count();
   const cravingDialog = await openAndRecordCraving(page, { intensity: 9 });
@@ -549,6 +551,7 @@ test('linked Quick Log retry and offline replay preserve both identities and one
     return route.continue();
   });
   await login(page);
+  await page.waitForLoadState('load');
   const initialLogCount = await page.locator('[data-timeline-type="log"]').count();
   const initialCravingCount = await page.locator('[data-timeline-type="craving"]').count();
   const cravingDialog = await openAndRecordCraving(page, { intensity: 8 });

@@ -88,6 +88,7 @@ test.afterEach(async ({ page }) => {
 
 test('targeted Today logs the smart default in the ordinary two taps', async ({ page }) => {
   await login(page, 'today-targeted@example.com');
+  await page.waitForLoadState('load');
   const existingLogs = page.locator('[data-timeline-type="log"]');
   const initialLogCount = await existingLogs.count();
   expect(initialLogCount).toBeGreaterThan(0);
@@ -193,6 +194,7 @@ test('an optimistic Syncing row becomes one canonical timeline entry', async ({ 
     await route.continue();
   });
   await login(page, 'today-targeted@example.com');
+  await page.waitForLoadState('load');
   const initialLogCount = await page.locator('[data-timeline-type="log"]').count();
   await quickLogTrigger(page).click();
 
@@ -367,6 +369,7 @@ test('a cleared local time shows field recovery and one safely rendered failed r
 
 test('Undo removes the canonical entry without a confirmation dialog', async ({ page }) => {
   await login(page, 'today-targeted@example.com');
+  await page.waitForLoadState('load');
   const logs = page.locator('[data-timeline-type="log"]');
   const initialLogCount = await logs.count();
   await quickLogTrigger(page).click();
@@ -400,6 +403,7 @@ test('failed DELETE restores the confirmed entry after optimistic removal', asyn
     });
   });
   await login(page, 'today-targeted@example.com');
+  await page.waitForLoadState('load');
   const logs = page.locator('[data-timeline-type="log"]');
   const initialLogCount = await logs.count();
   await quickLogTrigger(page).click();
