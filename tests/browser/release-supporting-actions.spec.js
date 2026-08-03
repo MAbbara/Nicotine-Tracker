@@ -2,10 +2,14 @@ const { test, expect } = require('@playwright/test');
 const {
   EXPECTED_ACTIONS,
   RELEASE_STATES,
+  SUPPORTING_ACTION_RECEIPTS,
   SUPPORTING_ACTION_STATES,
   loginAs,
   resolveReleaseState,
 } = require('./helpers/release_manifest');
+const {
+  SUPPORTING_ACTION_POLICY,
+} = require('./helpers/supporting_action_policy');
 const {
   SUPPORTING_BEHAVIOR_OBLIGATIONS,
   SUPPORTING_OWNER_TITLES,
@@ -19,19 +23,6 @@ async function keyboardActivate(page, locator) {
   await locator.focus();
   await expect(locator).toBeFocused();
   await page.keyboard.press('Enter');
-}
-
-
-async function typedActivation(page, locator, recorder, state, action, outcome, key = 'Enter') {
-  const evidence = recorder.forAction(state, action, { page, control: locator });
-  const token = await evidence.keyboard({ key, outcome });
-  recorder.accept(token);
-  return { evidence, token };
-}
-
-
-async function accept(recorder, tokenPromise) {
-  recorder.accept(await tokenPromise);
 }
 
 
@@ -96,45 +87,18 @@ async function handoffProductGuard(page, sourceGuard, stateName, options = {}) {
 async function expectKeyboardNavigation(
   page, locator, expectedPath, expectedStatus = 200, evidence = null,
 ) {
-  const responsePending = page.waitForResponse((response) => (
-    response.request().isNavigationRequest()
-    && new URL(response.url()).pathname === expectedPath
-  ), { timeout: 15_000 });
-  let actionEvidence;
   if (evidence) {
-    actionEvidence = await typedActivation(
-      page, locator, evidence.recorder, evidence.state, evidence.action,
-      {
-        kind: 'response', pending: responsePending, method: 'GET',
-        path: exactPath(expectedPath), status: expectedStatus,
-      },
+    const actionEvidence = evidence.recorder.forAction(
+      evidence.state, evidence.action, { page, control: locator },
     );
+    evidence.recorder.accept(await actionEvidence.run({
+      activation: { kind: 'keyboard', key: 'Enter' },
+      request: { method: 'GET', path: exactPath(expectedPath), status: expectedStatus },
+    }));
   } else {
     await keyboardActivate(page, locator);
+    await expect.poll(() => new URL(page.url()).pathname).toBe(expectedPath);
   }
-  let response;
-  try {
-    response = await responsePending;
-  } catch (error) {
-    const label = evidence ? `${evidence.state} › ${evidence.action}` : 'unowned navigation';
-    throw new Error(
-      `${label} did not issue GET ${expectedPath}; current URL is ${page.url()}`,
-      { cause: error },
-    );
-  }
-  expect(response.request().method()).toBe('GET');
-  expect(response.request().postData()).toBeNull();
-  expect(response.status()).toBe(expectedStatus);
-  await response.finished();
-  await page.waitForLoadState('load');
-  await expect.poll(() => new URL(page.url()).pathname).toBe(expectedPath);
-  if (evidence) {
-    await accept(evidence.recorder, actionEvidence.evidence.request({
-      activation: actionEvidence.token, method: 'GET',
-      path: exactPath(expectedPath), status: expectedStatus,
-    }));
-  }
-  return response;
 }
 
 
@@ -196,7 +160,7 @@ async function addDetailedLog(page, {
 
 async function runConfirmedDataAction({
   page, recorder, state, action, fieldName, confirmation, requestPayload,
-  rejectedFeedback, successFeedback, verifyPersistence,
+  rejectedFeedback, successFeedback, persistence,
 }) {
   const field = page.getByLabel(fieldName);
   let posts = 0;
@@ -208,50 +172,38 @@ async function runConfirmedDataAction({
   page.on('request', countPost);
   await field.fill('WRONG');
   const control = page.getByRole('button', { name: action });
-  const actionEvidence = await typedActivation(
-    page, control, recorder, state, action,
-    { kind: 'focused', locator: field },
-  );
+  const actionEvidence = recorder.forAction(state, action, { page, control });
+  recorder.accept(await actionEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    focus: { mode: 'moved', locator: field },
+    error: { locator: field, validationMessage: rejectedFeedback },
+    feedback: { locator: field, validationMessage: rejectedFeedback },
+  }));
   expect(posts).toBe(0);
-  await accept(recorder, actionEvidence.evidence.focus({ locator: field }));
-  await accept(recorder, actionEvidence.evidence.error({
-    locator: field, validationMessage: rejectedFeedback,
-  }));
-  await accept(recorder, actionEvidence.evidence.feedback({
-    locator: field, validationMessage: rejectedFeedback,
-  }));
 
   await field.fill(confirmation);
-  const responsePending = page.waitForResponse((response) => (
-    response.request().method() === 'POST'
-    && new URL(response.url()).pathname === '/settings/data'
-  ));
-  const validToken = await actionEvidence.evidence.keyboard({
-    key: 'Enter', outcome: {
-      kind: 'response', pending: responsePending, method: 'POST',
-      path: /^\/settings\/data$/, status: 302,
+  recorder.accept(await actionEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    request: {
+      method: 'POST', path: /^\/settings\/data$/, status: 302,
+      payload: { kind: 'form', exact: requestPayload },
+      dynamicFields: { csrf_token: 'non-empty' },
     },
-  });
-  recorder.accept(validToken);
-  await responsePending;
-  await accept(recorder, actionEvidence.evidence.request({
-    activation: validToken, method: 'POST', path: /^\/settings\/data$/, status: 302,
-    payload: { kind: 'form', exact: requestPayload },
-    dynamicFields: { csrf_token: 'non-empty' },
+    feedback: { locator: page.getByRole('status'), text: successFeedback },
+    persistence,
   }));
   expect(posts).toBe(1);
   page.off('request', countPost);
-  await accept(recorder, actionEvidence.evidence.feedback({
-    locator: page.getByRole('status'), text: successFeedback,
-  }));
-  await accept(recorder, actionEvidence.evidence.persistence({
-    snapshot: await verifyPersistence(),
-  }));
 }
 
 
-test('every supporting action has an independent exact behavior obligation', async () => {
-  expect(SUPPORTING_BEHAVIOR_OBLIGATIONS).toHaveLength(376);
+test('every supporting action has three independent exact coverage authorities', async () => {
+  expect(SUPPORTING_BEHAVIOR_OBLIGATIONS).toHaveLength(388);
+  for (const state of ['dashboard', 'dashboard-empty', 'dashboard-sparse']) {
+    for (const action of ['7 days', '30 days', '90 days', '1 year']) {
+      expect(EXPECTED_ACTIONS[state]).toContain(action);
+    }
+  }
   for (const obligation of SUPPORTING_BEHAVIOR_OBLIGATIONS) {
     expect(Object.keys(obligation.dimensions).sort()).toEqual([
       'error', 'feedback', 'focus', 'keyboard', 'loading', 'persistence', 'request',
@@ -264,26 +216,47 @@ test('every supporting action has an independent exact behavior obligation', asy
   }
   expect(validateSupportingCoverage(
     EXPECTED_ACTIONS,
-    Object.fromEntries(SUPPORTING_ACTION_STATES.map((state) => [
-      state,
-      EXPECTED_ACTIONS[state].coveredBy,
-    ])),
+    SUPPORTING_ACTION_RECEIPTS,
+    SUPPORTING_ACTION_POLICY,
+    SUPPORTING_BEHAVIOR_OBLIGATIONS,
   )).toBe(true);
 
-  const coverage = Object.fromEntries(SUPPORTING_ACTION_STATES.map((state) => [
-    state,
-    { ...EXPECTED_ACTIONS[state].coveredBy },
-  ]));
-  delete coverage.profile['Save profile'];
-  expect(() => validateSupportingCoverage(EXPECTED_ACTIONS, coverage))
-    .toThrow(/missing supporting receipt/);
-  coverage.profile['Save profile'] = EXPECTED_ACTIONS.profile.coveredBy['Save profile'];
-  coverage.profile['Save profile'] = {
-    ...coverage.profile['Save profile'],
-    test: SUPPORTING_OWNER_TITLES.settingsPreferences,
-  };
-  expect(() => validateSupportingCoverage(EXPECTED_ACTIONS, coverage))
-    .toThrow(/supporting owner mismatch/);
+  const clone = (value) => structuredClone(value);
+  const receiptOwnerMutation = clone(SUPPORTING_ACTION_RECEIPTS);
+  receiptOwnerMutation.find((entry) => (
+    entry.state === 'profile' && entry.action === 'Save profile'
+  )).owner = SUPPORTING_OWNER_TITLES.settingsPreferences;
+  expect(() => validateSupportingCoverage(
+    EXPECTED_ACTIONS, receiptOwnerMutation,
+    SUPPORTING_ACTION_POLICY, SUPPORTING_BEHAVIOR_OBLIGATIONS,
+  )).toThrow(/receipt owner differs/);
+
+  const policyApplicabilityMutation = clone(SUPPORTING_ACTION_POLICY);
+  policyApplicabilityMutation.find((entry) => (
+    entry.state === 'account' && entry.action === 'Update email'
+  )).dimensions.focus.status = 'not-applicable';
+  expect(() => validateSupportingCoverage(
+    EXPECTED_ACTIONS, SUPPORTING_ACTION_RECEIPTS,
+    policyApplicabilityMutation, SUPPORTING_BEHAVIOR_OBLIGATIONS,
+  )).toThrow(/focus applicability differs/);
+
+  const policyReasonMutation = clone(SUPPORTING_ACTION_POLICY);
+  policyReasonMutation.find((entry) => (
+    entry.state === 'profile' && entry.action === 'Save profile'
+  )).dimensions.loading.reason = 'mutated policy reason';
+  expect(() => validateSupportingCoverage(
+    EXPECTED_ACTIONS, SUPPORTING_ACTION_RECEIPTS,
+    policyReasonMutation, SUPPORTING_BEHAVIOR_OBLIGATIONS,
+  )).toThrow(/loading reason differs/);
+
+  const behaviorReasonMutation = clone(SUPPORTING_BEHAVIOR_OBLIGATIONS);
+  behaviorReasonMutation.find((entry) => (
+    entry.state === 'profile' && entry.action === 'Save profile'
+  )).dimensions.loading.reason = 'mutated behavior reason';
+  expect(() => validateSupportingCoverage(
+    EXPECTED_ACTIONS, SUPPORTING_ACTION_RECEIPTS,
+    SUPPORTING_ACTION_POLICY, behaviorReasonMutation,
+  )).toThrow(/loading reason differs/);
 
   const emptyProfileRecorder = createSupportingBehaviorRecorder(
     SUPPORTING_OWNER_TITLES.settingsProfile, expect,
@@ -295,42 +268,98 @@ test('every supporting action has an independent exact behavior obligation', asy
 });
 
 
-test('typed supporting evidence rejects self-authorized and mismatched artifacts', async ({ page }) => {
+test('causal supporting transactions reject unrelated, pre-existing, and reusable evidence', async ({ page, context }) => {
   await loginAs(page, 'release-settings@example.com');
   await page.goto('/settings/profile');
-  const recorder = createSupportingBehaviorRecorder(
+
+  const chromeRecorder = createSupportingBehaviorRecorder(
+    SUPPORTING_OWNER_TITLES.chrome, expect,
+  );
+  const skip = page.getByRole('link', { name: 'Skip to main content' });
+  const main = page.locator('#main-content');
+  const skipAction = chromeRecorder.forAction(
+    'profile', 'Skip to main content', { page, control: skip },
+  );
+  const validReceipt = await skipAction.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    focus: { mode: 'moved', locator: main },
+  });
+  chromeRecorder.accept(validReceipt);
+  expect(() => chromeRecorder.accept(validReceipt)).toThrow(/already consumed/);
+
+  await page.goto('/settings/profile');
+  const secondSkipReceipt = await skipAction.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    focus: { mode: 'moved', locator: main },
+  });
+  const wrongRecorder = createSupportingBehaviorRecorder(
+    SUPPORTING_OWNER_TITLES.settingsProfile, expect,
+  );
+  expect(() => wrongRecorder.accept(secondSkipReceipt)).toThrow(/different recorder/);
+  expect(() => chromeRecorder.accept(Object.freeze({}))).toThrow(/forged/);
+
+  await main.focus();
+  const repeatedSkip = await skipAction.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    focus: { mode: 'moved', locator: main },
+  });
+  chromeRecorder.accept(repeatedSkip);
+
+  const profileRecorder = createSupportingBehaviorRecorder(
     SUPPORTING_OWNER_TITLES.settingsProfile, expect,
   );
   const save = page.getByRole('button', { name: 'Save profile' });
-  const action = recorder.forAction('profile', 'Save profile', { page, control: save });
-
-  await expect(action.keyboard({ key: 'Enter', outcome: true }))
-    .rejects.toThrow(/typed keyboard outcome/);
-  await expect(action.keyboard({ key: 'Enter', outcome: Promise.resolve() }))
-    .rejects.toThrow(/typed keyboard outcome/);
-  await expect(action.feedback({
-    locator: page.getByRole('heading', { name: 'Profile' }),
-    text: 'Profile',
-  })).rejects.toThrow(/status, alert, or native validation/);
-  await expect(action.focus()).rejects.toThrow(/focus locator/);
-  await expect(action.loading({ locator: save, disabled: true }))
-    .rejects.toThrow(/not asserted/);
-
-  const wrongRecorder = createSupportingBehaviorRecorder(
-    SUPPORTING_OWNER_TITLES.settingsPreferences, expect,
-  );
-  await page.goto('/settings/preferences');
-  const wrongAction = wrongRecorder.forAction(
-    'preferences', 'Steady Mint',
-    { page, control: page.getByRole('checkbox', { name: 'Steady Mint' }) },
-  );
-  await page.getByRole('checkbox', { name: 'Steady Mint' }).focus();
-  const wrongToken = await wrongAction.focus({
-    locator: page.getByRole('checkbox', { name: 'Steady Mint' }),
+  const saveAction = profileRecorder.forAction('profile', 'Save profile', {
+    page, control: save,
   });
-  expect(() => recorder.accept(wrongToken)).toThrow(/different recorder/);
-  expect(() => recorder.accept(Object.freeze({}))).toThrow(/forged evidence token/);
-  expect(() => recorder.assertComplete()).toThrow(/supporting runtime dimension evidence/);
+  await expect(saveAction.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    persistence: { kind: 'constant', actual: { saved: true }, expectedAfter: { saved: true } },
+  })).rejects.toThrow(/typed persistence descriptor/);
+
+  await page.evaluate(() => {
+    const status = document.createElement('p');
+    status.setAttribute('role', 'status');
+    status.textContent = 'Profile updated successfully!';
+    document.body.prepend(status);
+  });
+  await expect(saveAction.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    request: { method: 'POST', path: /^\/settings\/profile$/, status: 302 },
+    feedback: {
+      locator: page.getByRole('status'), text: 'Profile updated successfully!',
+    },
+  })).rejects.toThrow(/feedback already existed before activation/);
+
+  await page.goto('/settings/profile');
+  const age = page.getByLabel('Age');
+  await age.focus();
+  const currentSave = page.getByRole('button', { name: 'Save profile' });
+  const currentSaveAction = profileRecorder.forAction('profile', 'Save profile', {
+    page, control: currentSave,
+  });
+  await expect(currentSaveAction.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    focus: { mode: 'moved', locator: age },
+  })).rejects.toThrow(/toBeFocused/);
+
+  const otherPage = await context.newPage();
+  await otherPage.goto('/settings/profile');
+  const otherSave = otherPage.getByRole('button', { name: 'Save profile' });
+  const crossPageAction = profileRecorder.forAction('profile', 'Save profile', {
+    page, control: otherSave,
+  });
+  await expect(crossPageAction.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+  })).rejects.toThrow(/control belongs to a different page/);
+  await otherPage.close();
+
+  const wrongControlAction = profileRecorder.forAction('profile', 'Save profile', {
+    page, control: page.getByRole('heading', { name: 'Profile' }),
+  });
+  await expect(wrongControlAction.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+  })).rejects.toThrow(/toHaveAccessibleName/);
 });
 
 
@@ -350,11 +379,13 @@ test('every supporting chrome action runs in its exact representative state', as
     let sourceGuard = watchForProductProblems(page);
     await visitState(page, state);
     const skip = page.getByRole('link', { name: 'Skip to main content' });
-    const skipEvidence = await typedActivation(
-      page, skip, recorder, state.name, 'Skip to main content',
-      { kind: 'focused', locator: page.locator('#main-content') },
+    const skipEvidence = recorder.forAction(
+      state.name, 'Skip to main content', { page, control: skip },
     );
-    await accept(recorder, skipEvidence.evidence.focus({ locator: page.locator('#main-content') }));
+    recorder.accept(await skipEvidence.run({
+      activation: { kind: 'keyboard', key: 'Enter' },
+      focus: { mode: 'moved', locator: page.locator('#main-content') },
+    }));
     await expectGuardClean(sourceGuard, page, `${state.name} skip`, {
       allowAnalytics: state.allowAnalytics,
       expectedStatus: state.status,
@@ -548,6 +579,7 @@ test('data actions use isolated disposable records in every exact state', async 
     await page.goto('/settings/data');
     await expect(page.getByText('1 potential group found.')).toBeVisible();
     await expect(page.getByText('1 similar entry found.')).toBeVisible();
+    const cleanupLogsBefore = (await accountSnapshot(page)).logs.length;
     await runConfirmedDataAction({
       page, recorder, state, action: 'Cleanup',
       fieldName: 'Type CLEANUP to confirm', confirmation: 'CLEANUP',
@@ -556,14 +588,12 @@ test('data actions use isolated disposable records in every exact state', async 
       },
       rejectedFeedback: 'Please match the requested format.',
       successFeedback: 'Removed 1 duplicate log entries.',
-      verifyPersistence: async () => {
-        const afterCleanup = await accountSnapshot(page);
-        return {
-          actual: [afterCleanup.logs.filter((entry) => entry.notes === `duplicate ${state}`).length],
-          expected: [1],
-        };
+      persistence: {
+        kind: 'json', url: '/__test__/account-snapshot', path: 'logs.length',
+        expectedBefore: cleanupLogsBefore, expectedAfter: cleanupLogsBefore - 1,
       },
     });
+    const mergePouchesBefore = (await accountSnapshot(page)).pouches.length;
     await runConfirmedDataAction({
       page, recorder, state, action: 'Merge',
       fieldName: 'Type MERGE to confirm', confirmation: 'MERGE',
@@ -572,77 +602,46 @@ test('data actions use isolated disposable records in every exact state', async 
       },
       rejectedFeedback: 'Please match the requested format.',
       successFeedback: 'Merged 1 similar pouch entries.',
-      verifyPersistence: async () => {
-        const afterMerge = await accountSnapshot(page);
-        const retained = afterMerge.pouches.filter(
-          (entry) => entry.brand.toLowerCase() === mergeBrand.toLowerCase(),
-        );
-        return {
-          actual: {
-            retained: retained.length,
-            linkedPouch: afterMerge.logs.find(
-              (entry) => entry.notes === `merge-linked ${state}`,
-            ).pouch_id,
-          },
-          expected: { retained: 1, linkedPouch: retained[0].id },
-        };
+      persistence: {
+        kind: 'json', url: '/__test__/account-snapshot', path: 'pouches.length',
+        expectedBefore: mergePouchesBefore, expectedAfter: mergePouchesBefore - 1,
       },
     });
 
-    const recalculateResponsePending = page.waitForResponse((response) => (
-      response.request().method() === 'POST'
-      && new URL(response.url()).pathname === '/settings/data'
-    ));
-    const recalculateEvidence = await typedActivation(
-      page, page.getByRole('button', { name: 'Recalculate' }), recorder, state, 'Recalculate',
-      {
-        kind: 'response', pending: recalculateResponsePending, method: 'POST',
-        path: /^\/settings\/data$/, status: 302,
-      },
+    const recalculateEvidence = recorder.forAction(
+      state, 'Recalculate', { page, control: page.getByRole('button', { name: 'Recalculate' }) },
     );
-    await accept(recorder, recalculateEvidence.evidence.request({
-      activation: recalculateEvidence.token, method: 'POST',
-      path: /^\/settings\/data$/, status: 302,
-      payload: { kind: 'form', exact: { action: 'recalculate_goals' } },
-      dynamicFields: { csrf_token: 'non-empty' },
+    recorder.accept(await recalculateEvidence.run({
+      activation: { kind: 'keyboard', key: 'Enter' },
+      request: {
+        method: 'POST', path: /^\/settings\/data$/, status: 302,
+        payload: { kind: 'form', exact: { action: 'recalculate_goals' } },
+        dynamicFields: { csrf_token: 'non-empty' },
+      },
+      feedback: {
+        locator: page.getByRole('status'), text: 'Recalculated streaks for 1 goals.',
+      },
+      persistence: {
+        kind: 'json', url: '/__test__/account-snapshot', path: 'goals.0.current_streak',
+        expectedBefore: 9, expectedAfter: 0,
+      },
     }));
-    await accept(recorder, recalculateEvidence.evidence.feedback({
-      locator: page.getByRole('status'), text: 'Recalculated streaks for 1 goals.',
-    }));
-    const afterRecalculation = await accountSnapshot(page);
-    await accept(recorder, recalculateEvidence.evidence.persistence({ snapshot: {
-      actual: afterRecalculation.goals.map(({ current_streak, best_streak }) => ({
-        current_streak, best_streak,
-      })),
-      expected: [{ current_streak: 0, best_streak: 1 }],
-    } }));
 
+    const anonymizeAgeBefore = (await accountSnapshot(page)).profile.age;
     await runConfirmedDataAction({
       page, recorder, state, action: 'Anonymize Data',
       fieldName: 'Type ANONYMIZE to confirm', confirmation: 'ANONYMIZE',
       requestPayload: { action: 'anonymize_data', confirm_anonymize: 'ANONYMIZE' },
       rejectedFeedback: 'Please match the requested format.',
       successFeedback: 'Your personal data has been anonymized successfully.',
-      verifyPersistence: async () => {
-        const afterAnonymize = await accountSnapshot(page);
-        return {
-          actual: {
-            age: afterAnonymize.profile.age,
-            gender: afterAnonymize.profile.gender,
-            weight: afterAnonymize.profile.weight,
-            units: afterAnonymize.preferences.units_preference,
-            brands: afterAnonymize.preferences.preferred_brands,
-            notesCleared: afterAnonymize.logs.every((entry) => entry.notes === null),
-          },
-          expected: {
-            age: null, gender: null, weight: null, units: 'mg', brands: null,
-            notesCleared: true,
-          },
-        };
+      persistence: {
+        kind: 'json', url: '/__test__/account-snapshot', path: 'profile.age',
+        expectedBefore: anonymizeAgeBefore, expectedAfter: null,
       },
     });
 
     await page.getByLabel('Days to keep').fill('30');
+    const deleteLogsBefore = (await accountSnapshot(page)).logs.length;
     await runConfirmedDataAction({
       page, recorder, state, action: 'Delete Logs',
       fieldName: 'Type DELETE LOGS to confirm', confirmation: 'DELETE LOGS',
@@ -651,62 +650,48 @@ test('data actions use isolated disposable records in every exact state', async 
       },
       rejectedFeedback: 'Please match the requested format.',
       successFeedback: 'Successfully deleted 2 old log entries.',
-      verifyPersistence: async () => {
-        const afterDelete = await accountSnapshot(page);
-        return { actual: afterDelete.logs, expected: [] };
+      persistence: {
+        kind: 'json', url: '/__test__/account-snapshot', path: 'logs.length',
+        expectedBefore: deleteLogsBefore, expectedAfter: 0,
       },
     });
 
     if (state !== 'data') {
       const downloadPending = page.waitForEvent('download');
-      const exportResponsePending = page.waitForResponse((response) => (
-        response.request().method() === 'POST'
-        && new URL(response.url()).pathname === '/settings/data'
-      ));
       const exportButton = page.getByRole('button', { name: 'Download Data' });
-      const exportEvidence = await typedActivation(
-        page, exportButton, recorder, state, 'Download Data',
-        {
-          kind: 'response', pending: exportResponsePending, method: 'POST',
-          path: /^\/settings\/data$/, status: 200, settleNavigation: false,
-        },
+      const exportEvidence = recorder.forAction(
+        state, 'Download Data', { page, control: exportButton },
       );
-      const [download, exportResponse] = await Promise.all([downloadPending, exportResponsePending]);
-      await accept(recorder, exportEvidence.evidence.request({
-        activation: exportEvidence.token, method: 'POST', path: /^\/settings\/data$/, status: 200,
-        payload: { kind: 'form', exact: { action: 'export_data' } },
-        dynamicFields: { csrf_token: 'non-empty' },
+      recorder.accept(await exportEvidence.run({
+        activation: { kind: 'keyboard', key: 'Enter' },
+        request: {
+          method: 'POST', path: /^\/settings\/data$/, status: 200,
+          payload: { kind: 'form', exact: { action: 'export_data' } },
+          dynamicFields: { csrf_token: 'non-empty' }, settleNavigation: false,
+        },
       }));
+      const download = await downloadPending;
       expect(download.suggestedFilename()).toMatch(/^nicotine_tracker_data_/);
       const offline = page.getByRole('checkbox', { name: 'Save actions for offline use' });
       const requested = !(await offline.isChecked());
-      const successPending = page.waitForResponse((response) => (
-        response.request().method() === 'PATCH'
-        && new URL(response.url()).pathname === '/settings/privacy/offline-queue'
-      ));
-      const offlineEvidence = await typedActivation(
-        page, offline, recorder, state, 'Save actions for offline use',
-        {
-          kind: 'response', pending: successPending, method: 'PATCH',
-          path: /^\/settings\/privacy\/offline-queue$/, status: 200,
-        }, 'Space',
-      );
-      const success = await successPending;
-      await accept(recorder, offlineEvidence.evidence.request({
-        activation: offlineEvidence.token, method: 'PATCH',
-        path: /^\/settings\/privacy\/offline-queue$/, status: 200,
-        payload: { kind: 'json', exact: { enabled: requested } },
-      }));
       const offlineStatus = page.locator('#offline-queue-status');
-      await accept(recorder, offlineEvidence.evidence.feedback({
-        locator: offlineStatus,
-        text: requested ? 'Offline saving is on.' : 'Offline saving is off.',
-      }));
-      await expect(offlineStatus).toHaveAttribute('data-state', 'success');
-      await page.reload();
-      await accept(recorder, offlineEvidence.evidence.persistence({
-        locator: page.getByRole('checkbox', { name: 'Save actions for offline use' }),
-        checked: requested,
+      const offlineEvidence = recorder.forAction(
+        state, 'Save actions for offline use', { page, control: offline },
+      );
+      recorder.accept(await offlineEvidence.run({
+        activation: { kind: 'keyboard', key: 'Space' },
+        request: {
+          method: 'PATCH', path: /^\/settings\/privacy\/offline-queue$/, status: 200,
+          payload: { kind: 'json', exact: { enabled: requested } },
+        },
+        feedback: {
+          locator: offlineStatus,
+          text: requested ? 'Offline saving is on.' : 'Offline saving is off.', state: 'success',
+        },
+        persistence: {
+          kind: 'locator', locator: offline, property: 'checked',
+          expectedBefore: !requested, expectedAfter: requested, reload: true,
+        },
       }));
 
       let releaseFailure;
@@ -723,21 +708,27 @@ test('data actions use isolated disposable records in every exact state', async 
       const retryEvidence = recorder.forAction(
         state, 'Save actions for offline use', { page, control: retryToggle },
       );
-      recorder.accept(await retryEvidence.keyboard({
-        key: 'Space', outcome: { kind: 'disabled', locator: retryToggle, disabled: true },
-      }));
-      await accept(recorder, retryEvidence.loading({
-        disabled: true,
-        status: { locator: page.locator('#offline-queue-status'), text: 'Saving offline preference…' },
-      }));
+      const retryRun = retryEvidence.run({
+        activation: { kind: 'keyboard', key: 'Space' },
+        request: {
+          method: 'PATCH', path: /^\/settings\/privacy\/offline-queue$/, status: 503,
+          payload: { kind: 'json', exact: { enabled: !requested } },
+        },
+        loading: {
+          disabled: true,
+          status: { locator: page.locator('#offline-queue-status'), text: 'Saving offline preference…' },
+        },
+        error: {
+          locator: page.locator('#offline-queue-status'),
+          text: 'Offline preference could not be saved. Please try again.', state: 'error',
+        },
+        focus: { mode: 'retained' },
+      });
+      await expect(retryToggle).toBeDisabled();
       await retryToggle.evaluate((element) => element.dispatchEvent(new Event('change', { bubbles: true })));
       expect(failures).toBe(1);
       releaseFailure();
-      await accept(recorder, retryEvidence.error({
-        locator: page.locator('#offline-queue-status'),
-        text: 'Offline preference could not be saved. Please try again.', state: 'error',
-      }));
-      await accept(recorder, retryEvidence.focus({ locator: retryToggle }));
+      recorder.accept(await retryRun);
       await page.unroute('**/settings/privacy/offline-queue');
 
       await expectKeyboardNavigation(
@@ -790,55 +781,62 @@ test('remaining logging actions preserve exact navigation and isolated records',
   await page.goto('/log/view');
   const logbookAdd = page.getByRole('button', { name: 'Add log', exact: true });
   let dialog = page.getByRole('dialog', { name: 'Add a log' });
-  const logbookAddEvidence = await typedActivation(
-    page, logbookAdd, recorder, 'logbook', 'Add log',
-    { kind: 'focused', locator: dialog.getByLabel('Date') },
+  const dialogDate = page.locator('#addLogModal [name="log_date"]');
+  const logbookAddEvidence = recorder.forAction(
+    'logbook', 'Add log', { page, control: logbookAdd },
   );
-  await expect(dialog).toBeVisible();
-  await accept(recorder, logbookAddEvidence.evidence.focus({ locator: dialog.getByLabel('Date') }));
+  recorder.accept(await logbookAddEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    outcome: { kind: 'visible', locator: dialog },
+    focus: { mode: 'moved', locator: dialogDate },
+  }));
   await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
 
   await page.goto('/log/add');
   dialog = page.getByRole('dialog', { name: 'Add a log' });
   await expect(dialog).toBeVisible();
   const closeDialog = dialog.getByRole('button', { name: 'Close add log dialog' });
-  const closeEvidence = await typedActivation(
-    page, closeDialog, recorder, 'log-add', 'Close add log dialog',
-    { kind: 'focused', locator: page.getByRole('button', { name: 'Add log', exact: true }) },
+  const closeEvidence = recorder.forAction(
+    'log-add', 'Close add log dialog', { page, control: closeDialog },
   );
-  await expect(dialog).not.toBeVisible();
-  await accept(recorder, closeEvidence.evidence.focus({
-    locator: page.getByRole('button', { name: 'Add log', exact: true }),
+  recorder.accept(await closeEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    outcome: { kind: 'hidden', locator: dialog },
+    focus: {
+      mode: 'moved', locator: page.getByRole('button', { name: 'Add log', exact: true }),
+    },
   }));
 
   const logAddTrigger = page.getByRole('button', { name: 'Add log', exact: true });
-  const logAddEvidence = await typedActivation(
-    page, logAddTrigger, recorder, 'log-add', 'Add log',
-    { kind: 'focused', locator: dialog.getByLabel('Date') },
+  const logAddEvidence = recorder.forAction(
+    'log-add', 'Add log', { page, control: logAddTrigger },
   );
-  await expect(dialog).toBeVisible();
-  await accept(recorder, logAddEvidence.evidence.focus({ locator: dialog.getByLabel('Date') }));
+  recorder.accept(await logAddEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    outcome: { kind: 'visible', locator: dialog },
+    focus: { mode: 'moved', locator: dialogDate },
+  }));
   const cancelDialog = dialog.getByRole('button', { name: 'Cancel' });
-  const cancelEvidence = await typedActivation(
-    page, cancelDialog, recorder, 'log-add', 'Cancel',
-    { kind: 'focused', locator: logAddTrigger },
+  const cancelEvidence = recorder.forAction(
+    'log-add', 'Cancel', { page, control: cancelDialog },
   );
-  await expect(dialog).not.toBeVisible();
-  await accept(recorder, cancelEvidence.evidence.focus({ locator: logAddTrigger }));
+  recorder.accept(await cancelEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    outcome: { kind: 'hidden', locator: dialog },
+    focus: { mode: 'moved', locator: logAddTrigger },
+  }));
 
   await logAddTrigger.click();
   const addEntry = dialog.getByRole('button', { name: 'Add entry' });
   const product = dialog.getByLabel('Product');
-  const addEntryEvidence = await typedActivation(
-    page, addEntry, recorder, 'log-add', 'Add entry',
-    { kind: 'focused', locator: product },
+  const addEntryEvidence = recorder.forAction(
+    'log-add', 'Add entry', { page, control: addEntry },
   );
-  await accept(recorder, addEntryEvidence.evidence.focus({ locator: product }));
-  await accept(recorder, addEntryEvidence.evidence.error({
-    locator: product, validationMessage: 'Please select an item in the list.',
-  }));
-  await accept(recorder, addEntryEvidence.evidence.feedback({
-    locator: product, validationMessage: 'Please select an item in the list.',
+  recorder.accept(await addEntryEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    focus: { mode: 'moved', locator: product },
+    error: { locator: product, validationMessage: 'Please select an item in the list.' },
+    feedback: { locator: product, validationMessage: 'Please select an item in the list.' },
   }));
   await dialog.getByLabel('Date').fill('2026-01-11');
   await dialog.getByLabel('Time').fill('09:15');
@@ -846,31 +844,22 @@ test('remaining logging actions preserve exact navigation and isolated records',
   const selectedProductId = await product.inputValue();
   await dialog.getByLabel('Quantity').fill('2');
   await dialog.getByLabel('Notes').fill('supporting add entry');
-  const addEntryResponsePending = page.waitForResponse((response) => (
-    response.request().method() === 'POST'
-    && new URL(response.url()).pathname === '/log/add'
-  ));
-  const validAddEntry = await addEntryEvidence.evidence.keyboard({
-    key: 'Enter', outcome: {
-      kind: 'response', pending: addEntryResponsePending, method: 'POST',
-      path: /^\/log\/add$/, status: 302,
+  const addedRow = page.locator('.logbook-row', { hasText: 'supporting add entry' });
+  recorder.accept(await addEntryEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    request: {
+      method: 'POST', path: /^\/log\/add$/, status: 302,
+      payload: { kind: 'form', exact: {
+        user_timezone: 'UTC', log_date: '2026-01-11', log_time: '09:15',
+        pouch_id: selectedProductId, quantity: '2', notes: 'supporting add entry',
+        custom_brand: '', custom_nicotine_mg: '',
+      } }, dynamicFields: { csrf_token: 'non-empty' },
     },
-  });
-  recorder.accept(validAddEntry);
-  const addEntryResponse = await addEntryResponsePending;
-  await accept(recorder, addEntryEvidence.evidence.request({
-    activation: validAddEntry, method: 'POST', path: /^\/log\/add$/, status: 302,
-    payload: { kind: 'form', exact: {
-      user_timezone: 'UTC', log_date: '2026-01-11', log_time: '09:15',
-      pouch_id: selectedProductId, quantity: '2', notes: 'supporting add entry',
-      custom_brand: '', custom_nicotine_mg: '',
-    } }, dynamicFields: { csrf_token: 'non-empty' },
-  }));
-  await accept(recorder, addEntryEvidence.evidence.feedback({
-    locator: page.getByRole('status'), text: 'Log entry added successfully!',
-  }));
-  await accept(recorder, addEntryEvidence.evidence.persistence({
-    locator: page.locator('.logbook-row', { hasText: 'supporting add entry' }), count: 1,
+    feedback: { locator: page.getByRole('status'), text: 'Log entry added successfully!' },
+    persistence: {
+      kind: 'locator', locator: addedRow, property: 'count',
+      expectedBefore: 0, expectedAfter: 1,
+    },
   }));
 
   for (const [state, path] of [['logbook', '/log/view'], ['log-add', '/log/add']]) {
@@ -885,24 +874,16 @@ test('remaining logging actions preserve exact navigation and isolated records',
       await expect(dialog).not.toBeVisible();
     }
     await page.getByLabel('Search logs').fill('supporting add entry');
-    const filterNavigationPending = page.waitForNavigation({ waitUntil: 'load' });
-    const filterResponsePending = page.waitForResponse((response) => (
-      response.request().method() === 'GET'
-      && new URL(response.url()).pathname === '/log/view'
-    ));
-    const filterEvidence = await typedActivation(
-      page, page.getByRole('button', { name: 'Apply filters' }), recorder, state, 'Apply filters',
-      {
-        kind: 'response', pending: filterResponsePending, method: 'GET', path: /^\/log\/view$/,
+    const filterControl = page.getByRole('button', { name: 'Apply filters' });
+    const filterEvidence = recorder.forAction(
+      state, 'Apply filters', { page, control: filterControl },
+    );
+    recorder.accept(await filterEvidence.run({
+      activation: { kind: 'keyboard', key: 'Enter' },
+      request: {
+        method: 'GET', path: /^\/log\/view$/,
         search: '?q=supporting+add+entry&from_date=&to_date=', status: 200,
       },
-    );
-    const [filterResponse] = await Promise.all([
-      filterResponsePending, filterNavigationPending,
-    ]);
-    await accept(recorder, filterEvidence.evidence.request({
-      activation: filterEvidence.token, method: 'GET', path: /^\/log\/view$/,
-      search: '?q=supporting+add+entry&from_date=&to_date=', status: 200,
     }));
 
     await page.goto(path);
@@ -941,41 +922,31 @@ test('remaining logging actions preserve exact navigation and isolated records',
   await page.goto('/log/bulk');
   const addEntries = page.getByRole('button', { name: 'Add entries' });
   const entries = page.getByLabel('Entries', { exact: true });
-  const bulkEvidence = await typedActivation(
-    page, addEntries, recorder, 'log-bulk', 'Add entries',
-    { kind: 'focused', locator: entries },
+  const bulkEvidence = recorder.forAction(
+    'log-bulk', 'Add entries', { page, control: addEntries },
   );
-  await accept(recorder, bulkEvidence.evidence.focus({ locator: entries }));
-  await accept(recorder, bulkEvidence.evidence.error({
-    locator: entries, validationMessage: 'Please fill out this field.',
-  }));
-  await accept(recorder, bulkEvidence.evidence.feedback({
-    locator: entries, validationMessage: 'Please fill out this field.',
+  recorder.accept(await bulkEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    focus: { mode: 'moved', locator: entries },
+    error: { locator: entries, validationMessage: 'Please fill out this field.' },
+    feedback: { locator: entries, validationMessage: 'Please fill out this field.' },
   }));
   await page.getByLabel('Date for these entries').fill('2026-01-12');
   await entries.fill('1 Bulk Evidence 4mg at 13:00');
-  const bulkResponsePending = page.waitForResponse((response) => (
-    response.request().method() === 'POST'
-    && new URL(response.url()).pathname === '/log/bulk'
-  ));
-  const validBulk = await bulkEvidence.evidence.keyboard({
-    key: 'Enter', outcome: {
-      kind: 'response', pending: bulkResponsePending, method: 'POST',
-      path: /^\/log\/bulk$/, status: 302,
+  const bulkRow = page.locator('.logbook-row', { hasText: 'Bulk Evidence' });
+  recorder.accept(await bulkEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    request: {
+      method: 'POST', path: /^\/log\/bulk$/, status: 302,
+      payload: { kind: 'form', exact: {
+        log_date: '2026-01-12', bulk_text: '1 Bulk Evidence 4mg at 13:00',
+      } }, dynamicFields: { csrf_token: 'non-empty' },
     },
-  });
-  recorder.accept(validBulk);
-  await accept(recorder, bulkEvidence.evidence.request({
-    activation: validBulk, method: 'POST', path: /^\/log\/bulk$/, status: 302,
-    payload: { kind: 'form', exact: {
-      log_date: '2026-01-12', bulk_text: '1 Bulk Evidence 4mg at 13:00',
-    } }, dynamicFields: { csrf_token: 'non-empty' },
-  }));
-  await accept(recorder, bulkEvidence.evidence.feedback({
-    locator: page.getByRole('status'), text: 'Successfully added 1 log entries!',
-  }));
-  await accept(recorder, bulkEvidence.evidence.persistence({
-    locator: page.locator('.logbook-row', { hasText: 'Bulk Evidence' }), count: 1,
+    feedback: { locator: page.getByRole('status'), text: 'Successfully added 1 log entries!' },
+    persistence: {
+      kind: 'locator', locator: bulkRow, property: 'count',
+      expectedBefore: 0, expectedAfter: 1,
+    },
   }));
 
   const supportingRow = page.locator('.logbook-row', { hasText: 'supporting add entry' });
@@ -983,16 +954,14 @@ test('remaining logging actions preserve exact navigation and isolated records',
   const saveChanges = page.getByRole('button', { name: 'Save changes' });
   await page.getByLabel('Quantity').fill('');
   const editQuantity = page.getByLabel('Quantity');
-  const editEvidence = await typedActivation(
-    page, saveChanges, recorder, 'log-edit', 'Save changes',
-    { kind: 'focused', locator: editQuantity },
+  const editEvidence = recorder.forAction(
+    'log-edit', 'Save changes', { page, control: saveChanges },
   );
-  await accept(recorder, editEvidence.evidence.focus({ locator: editQuantity }));
-  await accept(recorder, editEvidence.evidence.error({
-    locator: editQuantity, validationMessage: 'Please fill out this field.',
-  }));
-  await accept(recorder, editEvidence.evidence.feedback({
-    locator: editQuantity, validationMessage: 'Please fill out this field.',
+  recorder.accept(await editEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    focus: { mode: 'moved', locator: editQuantity },
+    error: { locator: editQuantity, validationMessage: 'Please fill out this field.' },
+    feedback: { locator: editQuantity, validationMessage: 'Please fill out this field.' },
   }));
   await editQuantity.fill('3');
   await page.getByLabel('Notes').fill('supporting edit saved');
@@ -1001,28 +970,19 @@ test('remaining logging actions preserve exact navigation and isolated records',
     log_time: await page.getByLabel('Time').inputValue(),
     quantity: '3', notes: 'supporting edit saved',
   };
-  const editSaveResponsePending = page.waitForResponse((response) => (
-    response.request().method() === 'POST'
-    && /\/log\/edit\/\d+$/.test(new URL(response.url()).pathname)
-  ));
-  const validEdit = await editEvidence.evidence.keyboard({
-    key: 'Enter', outcome: {
-      kind: 'response', pending: editSaveResponsePending, method: 'POST',
-      path: /^\/log\/edit\/\d+$/, status: 302,
+  const editedRow = page.locator('.logbook-row', { hasText: 'supporting edit saved' });
+  recorder.accept(await editEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    request: {
+      method: 'POST', path: /^\/log\/edit\/\d+$/, status: 302,
+      payload: { kind: 'form', exact: exactEditPayload },
+      dynamicFields: { csrf_token: 'non-empty' },
     },
-  });
-  recorder.accept(validEdit);
-  await accept(recorder, editEvidence.evidence.request({
-    activation: validEdit, method: 'POST', path: /^\/log\/edit\/\d+$/, status: 302,
-    payload: { kind: 'form', exact: exactEditPayload },
-    dynamicFields: { csrf_token: 'non-empty' },
-  }));
-  await accept(recorder, editEvidence.evidence.feedback({
-    locator: page.getByRole('status'), text: 'Log entry updated successfully!',
-  }));
-  await accept(recorder, editEvidence.evidence.persistence({
-    locator: page.locator('.logbook-row', { hasText: 'supporting edit saved' }),
-    text: /3 pouches/,
+    feedback: { locator: page.getByRole('status'), text: 'Log entry updated successfully!' },
+    persistence: {
+      kind: 'locator', locator: editedRow, property: 'count',
+      expectedBefore: 0, expectedAfter: 1,
+    },
   }));
 
   for (const [state, path, note, time] of [
@@ -1042,34 +1002,25 @@ test('remaining logging actions preserve exact navigation and isolated records',
     }
     const deleteRow = page.locator('.logbook-row', { hasText: note });
     const deleteButton = deleteRow.getByRole('button', { name: 'Delete' });
-    page.once('dialog', (confirmation) => confirmation.dismiss());
-    const deleteEvidence = await typedActivation(
-      page, deleteButton, recorder, state, 'Delete',
-      { kind: 'visible', locator: deleteRow },
-    );
-    await accept(recorder, deleteEvidence.evidence.error({ locator: deleteRow, count: 1 }));
-
-    const deleteResponsePending = page.waitForResponse((response) => (
-      response.request().method() === 'POST'
-      && /\/log\/delete\/\d+$/.test(new URL(response.url()).pathname)
-    ));
-    page.once('dialog', (confirmation) => confirmation.accept());
-    const validDelete = await deleteEvidence.evidence.keyboard({
-      key: 'Enter', outcome: {
-        kind: 'response', pending: deleteResponsePending, method: 'POST',
-        path: /^\/log\/delete\/\d+$/, status: 302,
+    const deleteEvidence = recorder.forAction(state, 'Delete', { page, control: deleteButton });
+    recorder.accept(await deleteEvidence.run({
+      activation: { kind: 'keyboard', key: 'Enter' },
+      dialog: 'dismiss',
+      outcome: { kind: 'visible', locator: deleteRow },
+      error: { kind: 'dismissed-dialog', locator: deleteRow, count: 1 },
+    }));
+    recorder.accept(await deleteEvidence.run({
+      activation: { kind: 'keyboard', key: 'Enter' },
+      dialog: 'accept',
+      request: {
+        method: 'POST', path: /^\/log\/delete\/\d+$/, status: 302,
+        payload: { kind: 'form', exact: {} }, dynamicFields: { csrf_token: 'non-empty' },
       },
-    });
-    recorder.accept(validDelete);
-    await accept(recorder, deleteEvidence.evidence.request({
-      activation: validDelete, method: 'POST', path: /^\/log\/delete\/\d+$/, status: 302,
-      payload: { kind: 'form', exact: {} }, dynamicFields: { csrf_token: 'non-empty' },
-    }));
-    await accept(recorder, deleteEvidence.evidence.feedback({
-      locator: page.getByRole('status'), text: 'Log entry deleted successfully!',
-    }));
-    await accept(recorder, deleteEvidence.evidence.persistence({
-      locator: page.locator('.logbook-row', { hasText: note }), count: 0,
+      feedback: { locator: page.getByRole('status'), text: 'Log entry deleted successfully!' },
+      persistence: {
+        kind: 'locator', locator: deleteRow, property: 'count',
+        expectedBefore: 1, expectedAfter: 0,
+      },
     }));
   }
 
@@ -1102,71 +1053,51 @@ test('remaining logging actions preserve exact navigation and isolated records',
         await route.continue();
       });
       const button = page.getByRole('button', { name: action });
-      const failedResponsePending = page.waitForResponse((response) => (
-        response.request().method() === 'POST'
-        && new URL(response.url()).pathname === '/log/api/quick_add'
-        && response.status() === 503
-      ));
-      const actionEvidence = await typedActivation(
-        page, button, recorder, state, action,
-        { kind: 'disabled', locator: button, disabled: true },
-      );
-      await accept(recorder, actionEvidence.evidence.loading({
-        disabled: true, text: 'Adding...',
-      }));
+      const actionEvidence = recorder.forAction(state, action, { page, control: button });
+      const failedRun = actionEvidence.run({
+        activation: { kind: 'keyboard', key: 'Enter' },
+        request: {
+          method: 'POST', path: /^\/log\/api\/quick_add$/, status: 503,
+          payload: {
+            kind: 'json', exact: {
+              pouch_id: await button.getAttribute('data-pouch-id'), quantity: 1,
+            },
+          },
+        },
+        loading: { disabled: true, text: 'Adding...' },
+        error: {
+          locator: page.getByRole('alert'), text: 'Quick add is temporarily unavailable.',
+        },
+        feedback: {
+          locator: page.getByRole('alert'), text: 'Quick add is temporarily unavailable.',
+        },
+        focus: { mode: 'retained' },
+      });
+      await expect(button).toBeDisabled();
       await button.evaluate((element) => {
         element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       });
       expect(requests).toBe(1);
       releaseFailure();
-      const failedResponse = await failedResponsePending;
-      expect(failedResponse.status()).toBe(503);
-      await expect(button).toBeEnabled();
-      await accept(recorder, actionEvidence.evidence.error({
-        locator: page.getByRole('alert'), text: 'Quick add is temporarily unavailable.',
-      }));
-      await accept(recorder, actionEvidence.evidence.feedback({
-        locator: page.getByRole('alert'), text: 'Quick add is temporarily unavailable.',
-      }));
-      await accept(recorder, actionEvidence.evidence.focus({ locator: button }));
+      recorder.accept(await failedRun);
 
-      const successPending = page.waitForResponse((response) => (
-        response.request().method() === 'POST'
-        && new URL(response.url()).pathname === '/log/api/quick_add'
-        && response.status() === 200
-      ));
       const pouchId = Number(await button.getAttribute('data-pouch-id'));
       const brand = await button.getAttribute('data-pouch-brand');
       const strength = await button.getAttribute('data-pouch-strength');
       const expectedSuccess = `Added 1 ${brand} (${strength}mg)`;
-      const logsBeforeSuccess = (await accountSnapshot(page)).logs;
-      const successToken = await actionEvidence.evidence.keyboard({
-        key: 'Enter', outcome: {
-          kind: 'response', pending: successPending, method: 'POST',
-          path: /^\/log\/api\/quick_add$/, status: 200,
+      const logsBeforeSuccess = (await accountSnapshot(page)).logs.length;
+      recorder.accept(await actionEvidence.run({
+        activation: { kind: 'keyboard', key: 'Enter' },
+        request: {
+          method: 'POST', path: /^\/log\/api\/quick_add$/, status: 200,
+          payload: { kind: 'json', exact: { pouch_id: String(pouchId), quantity: 1 } },
         },
-      });
-      recorder.accept(successToken);
-      const success = await successPending;
-      await accept(recorder, actionEvidence.evidence.request({
-        activation: successToken, method: 'POST', path: /^\/log\/api\/quick_add$/, status: 200,
-        payload: { kind: 'json', exact: { pouch_id: String(pouchId), quantity: 1 } },
+        feedback: { locator: page.getByRole('status'), text: expectedSuccess },
+        persistence: {
+          kind: 'json', url: '/__test__/account-snapshot', path: 'logs.length',
+          expectedBefore: logsBeforeSuccess, expectedAfter: logsBeforeSuccess + 1,
+        },
       }));
-      expect(failedResponse.request().postDataJSON()).toEqual({
-        pouch_id: String(pouchId), quantity: 1,
-      });
-      await page.waitForLoadState('load');
-      await accept(recorder, actionEvidence.evidence.feedback({
-        locator: page.getByRole('status'), text: expectedSuccess,
-      }));
-      const logsAfterSuccess = (await accountSnapshot(page)).logs;
-      const priorIds = new Set(logsBeforeSuccess.map(({ id }) => id));
-      const newLogs = logsAfterSuccess.filter(({ id }) => !priorIds.has(id));
-      expect(newLogs).toEqual([expect.objectContaining({ pouch_id: pouchId, quantity: 1 })]);
-      const exactRow = page.locator(`.logbook-row[data-log-id="${newLogs[0].id}"]`);
-      await expect(exactRow).toContainText(brand);
-      await expect(exactRow).toContainText('1 pouch');
-      await accept(recorder, actionEvidence.evidence.persistence({ locator: exactRow, count: 1 }));
       await page.unroute('**/log/api/quick_add');
     }
   }

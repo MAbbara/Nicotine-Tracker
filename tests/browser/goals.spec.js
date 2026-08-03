@@ -50,14 +50,10 @@ async function expectNoWcagViolations(page) {
 
 async function typedKeyboard(recorder, state, action, page, control, outcome, key = 'Enter') {
   const evidence = recorder.forAction(state, action, { page, control });
-  const token = await evidence.keyboard({ key, outcome });
-  recorder.accept(token);
-  return { evidence, token };
-}
-
-
-async function accept(recorder, tokenPromise) {
-  recorder.accept(await tokenPromise);
+  recorder.accept(await evidence.run({
+    activation: { kind: 'keyboard', key },
+    ...outcome,
+  }));
 }
 
 
@@ -108,17 +104,10 @@ test('Goals preserve create, edit, toggle, and delete behavior', async ({ page }
   await expect(page.getByRole('heading', { level: 1, name: 'Goals' })).toBeVisible();
   await expect(page.getByText(/support your Journey plan/i)).toBeVisible();
   const createLink = page.getByRole('link', { name: 'Create a goal' });
-  const createNavigation = page.waitForResponse((response) => (
-    response.request().method() === 'GET'
-    && new URL(response.url()).pathname === '/goals/create'
-  ));
-  const createLinkEvidence = await typedKeyboard(
+  await typedKeyboard(
     recorder, 'goals', 'Create a goal', page, createLink,
-    { kind: 'response', pending: createNavigation, method: 'GET', path: /^\/goals\/create$/, status: 200 },
+    { request: { method: 'GET', path: /^\/goals\/create$/, status: 200 } },
   );
-  await accept(recorder, createLinkEvidence.evidence.request({
-    activation: createLinkEvidence.token, method: 'GET', path: /^\/goals\/create$/, status: 200,
-  }));
 
   const createButton = page.getByRole('button', { name: 'Create goal' });
   let createPosts = 0;
@@ -128,185 +117,160 @@ test('Goals preserve create, edit, toggle, and delete behavior', async ({ page }
     }
   });
   const goalType = page.getByLabel('Goal type');
-  const createEvidence = await typedKeyboard(
-    recorder, 'goal-create', 'Create goal', page, createButton,
-    { kind: 'focused', locator: goalType },
+  const createEvidence = recorder.forAction(
+    'goal-create', 'Create goal', { page, control: createButton },
   );
+  recorder.accept(await createEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    focus: { mode: 'moved', locator: goalType },
+    error: { locator: goalType, validationMessage: 'Please select an item in the list.' },
+    feedback: { locator: goalType, validationMessage: 'Please select an item in the list.' },
+  }));
   expect(createPosts).toBe(0);
-  await accept(recorder, createEvidence.evidence.focus({ locator: goalType }));
-  await accept(recorder, createEvidence.evidence.error({
-    locator: goalType, validationMessage: 'Please select an item in the list.',
-  }));
-  await accept(recorder, createEvidence.evidence.feedback({
-    locator: goalType, validationMessage: 'Please select an item in the list.',
-  }));
 
   const createNotifications = page.getByLabel('Notify me as I approach this goal');
-  const notificationEvidence = await typedKeyboard(
+  await typedKeyboard(
     recorder, 'goal-create', 'Notify me as I approach this goal', page, createNotifications,
-    { kind: 'checked', locator: createNotifications, checked: false }, 'Space',
+    {
+      focus: { mode: 'retained' },
+      outcome: { kind: 'checked', locator: createNotifications, checked: false },
+    }, 'Space',
   );
-  await accept(recorder, notificationEvidence.evidence.focus({ locator: createNotifications }));
   await page.getByLabel('Goal type').selectOption('daily_pouches');
   await page.getByLabel('Target value').fill('7');
   await page.getByLabel('Notification threshold').fill('75');
-  const createResponsePending = page.waitForResponse((response) => (
-    response.request().method() === 'POST'
-    && new URL(response.url()).pathname === '/goals/create'
-  ));
-  const validCreate = await createEvidence.evidence.keyboard({
-    key: 'Enter',
-    outcome: { kind: 'response', pending: createResponsePending, method: 'POST', path: /^\/goals\/create$/, status: 302 },
-  });
-  recorder.accept(validCreate);
-  await accept(recorder, createEvidence.evidence.request({
-    activation: validCreate, method: 'POST', path: /^\/goals\/create$/, status: 302,
-    payload: { kind: 'form', exact: {
-      goal_type: 'daily_pouches', target_value: '7', end_date: '', notification_threshold: '75',
-    } },
-    dynamicFields: { csrf_token: 'non-empty' },
-  }));
-
   const active = page.locator('article.goal-row[data-goal-state="active"]', { hasText: 'Daily pouch ceiling' });
+  recorder.accept(await createEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    request: {
+      method: 'POST', path: /^\/goals\/create$/, status: 302,
+      payload: { kind: 'form', exact: {
+        goal_type: 'daily_pouches', target_value: '7', end_date: '', notification_threshold: '75',
+      } },
+      dynamicFields: { csrf_token: 'non-empty' },
+    },
+    feedback: {
+      locator: page.getByRole('status'),
+      text: 'Goal created successfully! Target: 7 daily pouches',
+    },
+    persistence: {
+      kind: 'locator', locator: active, property: 'count', expectedBefore: 0, expectedAfter: 1,
+    },
+  }));
   await expect(active).toContainText('7 pouches');
-  await accept(recorder, createEvidence.evidence.feedback({
-    locator: page.getByRole('status'),
-    text: 'Goal created successfully! Target: 7 daily pouches',
-  }));
-  await accept(recorder, createEvidence.evidence.persistence({ locator: active, text: /7 pouches/ }));
   const adjustLink = active.getByRole('link', { name: 'Adjust goal' });
-  const adjustResponsePending = page.waitForResponse((response) => (
-    response.request().method() === 'GET'
-    && /\/goals\/edit\/\d+$/.test(new URL(response.url()).pathname)
-  ));
-  const adjustEvidence = await typedKeyboard(
+  await typedKeyboard(
     recorder, 'goals', 'Adjust goal', page, adjustLink,
-    { kind: 'response', pending: adjustResponsePending, method: 'GET', path: /^\/goals\/edit\/\d+$/, status: 200 },
+    { request: { method: 'GET', path: /^\/goals\/edit\/\d+$/, status: 200 } },
   );
-  await accept(recorder, adjustEvidence.evidence.request({
-    activation: adjustEvidence.token, method: 'GET', path: /^\/goals\/edit\/\d+$/, status: 200,
-  }));
   const activeCheckbox = page.getByLabel('Keep this goal active');
   await expect(activeCheckbox).toBeChecked();
   const editNotifications = page.getByLabel('Notify me as I approach this goal');
-  await accept(recorder, notificationEvidence.evidence.persistence({ locator: editNotifications, checked: false }));
+  await expect(editNotifications).not.toBeChecked();
 
   const saveButton = page.getByRole('button', { name: 'Save changes' });
   await page.getByLabel('Target value').fill('');
   const targetValue = page.getByLabel('Target value');
-  const saveEvidence = await typedKeyboard(
-    recorder, 'goal-edit', 'Save changes', page, saveButton,
-    { kind: 'focused', locator: targetValue },
+  const saveEvidence = recorder.forAction(
+    'goal-edit', 'Save changes', { page, control: saveButton },
   );
-  await accept(recorder, saveEvidence.evidence.focus({ locator: targetValue }));
-  await accept(recorder, saveEvidence.evidence.error({
-    locator: targetValue, validationMessage: 'Please fill out this field.',
-  }));
-  await accept(recorder, saveEvidence.evidence.feedback({
-    locator: targetValue, validationMessage: 'Please fill out this field.',
+  recorder.accept(await saveEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    focus: { mode: 'moved', locator: targetValue },
+    error: { locator: targetValue, validationMessage: 'Please fill out this field.' },
+    feedback: { locator: targetValue, validationMessage: 'Please fill out this field.' },
   }));
 
-  const activeEvidence = await typedKeyboard(
+  await typedKeyboard(
     recorder, 'goal-edit', 'Keep this goal active', page, activeCheckbox,
-    { kind: 'checked', locator: activeCheckbox, checked: false }, 'Space',
+    {
+      focus: { mode: 'retained' },
+      outcome: { kind: 'checked', locator: activeCheckbox, checked: false },
+    }, 'Space',
   );
   await activeCheckbox.press('Space');
   await expect(activeCheckbox).toBeChecked();
-  await accept(recorder, activeEvidence.evidence.focus({ locator: activeCheckbox }));
-  const editNotificationEvidence = await typedKeyboard(
+  await typedKeyboard(
     recorder, 'goal-edit', 'Notify me as I approach this goal', page, editNotifications,
-    { kind: 'checked', locator: editNotifications, checked: true }, 'Space',
+    {
+      focus: { mode: 'retained' },
+      outcome: { kind: 'checked', locator: editNotifications, checked: true },
+    }, 'Space',
   );
-  await accept(recorder, editNotificationEvidence.evidence.focus({ locator: editNotifications }));
   await page.getByLabel('Target value').fill('6');
-  const saveResponsePending = page.waitForResponse((response) => (
-    response.request().method() === 'POST'
-    && /\/goals\/edit\/\d+$/.test(new URL(response.url()).pathname)
-  ));
-  const validSave = await saveEvidence.evidence.keyboard({
-    key: 'Enter',
-    outcome: { kind: 'response', pending: saveResponsePending, method: 'POST', path: /^\/goals\/edit\/\d+$/, status: 302 },
-  });
-  recorder.accept(validSave);
-  await accept(recorder, saveEvidence.evidence.request({
-    activation: validSave, method: 'POST', path: /^\/goals\/edit\/\d+$/, status: 302,
-    payload: { kind: 'form', exact: {
-      target_value: '6', end_date: '', enable_notifications: 'on',
-      notification_threshold: '75', is_active: 'on',
-    } },
-    dynamicFields: { csrf_token: 'non-empty' },
+  const updatedActive = page.locator('article.goal-row[data-goal-state="active"]');
+  recorder.accept(await saveEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    request: {
+      method: 'POST', path: /^\/goals\/edit\/\d+$/, status: 302,
+      payload: { kind: 'form', exact: {
+        target_value: '6', end_date: '', enable_notifications: 'on',
+        notification_threshold: '75', is_active: 'on',
+      } },
+      dynamicFields: { csrf_token: 'non-empty' },
+    },
+    feedback: { locator: page.getByRole('status'), text: 'Goal updated successfully!' },
+    persistence: {
+      kind: 'locator', locator: updatedActive, property: 'count',
+      expectedBefore: 0, expectedAfter: 1,
+    },
   }));
-  await expect(page.locator('article.goal-row[data-goal-state="active"]')).toContainText('6 pouches');
-  await accept(recorder, saveEvidence.evidence.feedback({
-    locator: page.getByRole('status'), text: 'Goal updated successfully!',
-  }));
-  await accept(recorder, saveEvidence.evidence.persistence({
-    locator: page.locator('article.goal-row[data-goal-state="active"]'), text: /6 pouches/,
-  }));
+  await expect(updatedActive).toContainText('6 pouches');
 
   await page.locator('article.goal-row[data-goal-state="active"]')
     .getByRole('link', { name: 'Adjust goal' }).click();
-  await accept(recorder, activeEvidence.evidence.persistence({
-    locator: page.getByLabel('Keep this goal active'), checked: true,
-  }));
-  await accept(recorder, editNotificationEvidence.evidence.persistence({
-    locator: page.getByLabel('Notify me as I approach this goal'), checked: true,
-  }));
+  await expect(page.getByLabel('Keep this goal active')).toBeChecked();
+  await expect(page.getByLabel('Notify me as I approach this goal')).toBeChecked();
   await page.getByRole('link', { name: 'Back to goals' }).click();
 
   const pauseButton = page.locator('article.goal-row[data-goal-state="active"]')
     .getByRole('button', { name: 'Pause goal' });
   await expect(pauseButton).toBeVisible();
-  const pauseResponsePending = page.waitForResponse((response) => (
-    response.request().method() === 'POST'
-    && /\/goals\/toggle\/\d+$/.test(new URL(response.url()).pathname)
-  ));
-  const pauseEvidence = await typedKeyboard(
-    recorder, 'goals', 'Pause goal', page, pauseButton,
-    { kind: 'response', pending: pauseResponsePending, method: 'POST', path: /^\/goals\/toggle\/\d+$/, status: 302 },
-  );
-  await accept(recorder, pauseEvidence.evidence.request({
-    activation: pauseEvidence.token, method: 'POST', path: /^\/goals\/toggle\/\d+$/, status: 302,
-    payload: { kind: 'form', exact: {} }, dynamicFields: { csrf_token: 'non-empty' },
-  }));
   const inactive = page.locator('article.goal-row[data-goal-state="inactive"]', { hasText: 'Daily pouch ceiling' });
+  await typedKeyboard(
+    recorder, 'goals', 'Pause goal', page, pauseButton,
+    {
+      request: {
+        method: 'POST', path: /^\/goals\/toggle\/\d+$/, status: 302,
+        payload: { kind: 'form', exact: {} }, dynamicFields: { csrf_token: 'non-empty' },
+      },
+      feedback: {
+        locator: page.getByRole('status'), text: 'Goal deactivated successfully.',
+      },
+      persistence: {
+        kind: 'locator', locator: inactive, property: 'count', expectedBefore: 0, expectedAfter: 1,
+      },
+    },
+  );
   await expect(inactive).toBeVisible();
-  await accept(recorder, pauseEvidence.evidence.feedback({
-    locator: page.getByRole('status'), text: 'Goal deactivated successfully.',
-  }));
-  await accept(recorder, pauseEvidence.evidence.persistence({ locator: inactive, count: 1 }));
   await expect(inactive.getByRole('button', { name: 'Resume goal' })).toHaveCount(0);
   await expect(inactive.locator('form[action*="/goals/toggle/"]')).toHaveCount(0);
 
-  page.once('dialog', (dialog) => dialog.dismiss());
   const deleteButton = inactive.getByRole('button', { name: 'Delete goal' });
-  const deleteEvidence = await typedKeyboard(
-    recorder, 'goals', 'Delete goal', page, deleteButton,
-    { kind: 'visible', locator: inactive },
+  const deleteEvidence = recorder.forAction(
+    'goals', 'Delete goal', { page, control: deleteButton },
   );
-  await accept(recorder, deleteEvidence.evidence.error({ locator: inactive, count: 1 }));
+  recorder.accept(await deleteEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    dialog: 'dismiss',
+    outcome: { kind: 'visible', locator: inactive },
+    error: { kind: 'dismissed-dialog', locator: inactive, count: 1 },
+  }));
 
-  const deleteResponsePending = page.waitForResponse((response) => (
-    response.request().method() === 'POST'
-    && /\/goals\/delete\/\d+$/.test(new URL(response.url()).pathname)
-  ));
-  page.once('dialog', (dialog) => dialog.accept());
-  const validDelete = await deleteEvidence.evidence.keyboard({
-    key: 'Enter',
-    outcome: { kind: 'response', pending: deleteResponsePending, method: 'POST', path: /^\/goals\/delete\/\d+$/, status: 302 },
-  });
-  recorder.accept(validDelete);
-  await accept(recorder, deleteEvidence.evidence.request({
-    activation: validDelete, method: 'POST', path: /^\/goals\/delete\/\d+$/, status: 302,
-    payload: { kind: 'form', exact: {} }, dynamicFields: { csrf_token: 'non-empty' },
+  const deletedGoal = page.locator('article.goal-row', { hasText: 'Daily pouch ceiling' });
+  recorder.accept(await deleteEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    dialog: 'accept',
+    request: {
+      method: 'POST', path: /^\/goals\/delete\/\d+$/, status: 302,
+      payload: { kind: 'form', exact: {} }, dynamicFields: { csrf_token: 'non-empty' },
+    },
+    feedback: { locator: page.getByRole('status'), text: 'Goal deleted successfully.' },
+    persistence: {
+      kind: 'locator', locator: deletedGoal, property: 'count', expectedBefore: 1, expectedAfter: 0,
+    },
   }));
-  await expect(page.locator('article.goal-row', { hasText: 'Daily pouch ceiling' })).toHaveCount(0);
-  await accept(recorder, deleteEvidence.evidence.feedback({
-    locator: page.getByRole('status'), text: 'Goal deleted successfully.',
-  }));
-  await accept(recorder, deleteEvidence.evidence.persistence({
-    locator: page.locator('article.goal-row', { hasText: 'Daily pouch ceiling' }), count: 0,
-  }));
+  await expect(deletedGoal).toHaveCount(0);
   recorder.assertComplete();
   guard.assertClean(expect, { stateName: 'goals supporting owner' });
   guard.stop();

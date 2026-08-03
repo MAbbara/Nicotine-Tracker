@@ -92,14 +92,33 @@ def test_password_and_deletion_errors_are_field_adjacent(logged_in_client):
 def test_account_deletion_removes_exact_owned_rows_without_orphaned_pouch(
         logged_in_client, db_session, test_user, test_pouch, test_log,
         test_goal):
+    unrelated = User(email='unrelated-craving@example.com')
+    unrelated.set_password('unrelated-password')
+    db_session.add(unrelated)
+    db_session.flush()
+    unrelated_craving = Craving(
+        user_id=unrelated.id,
+        craving_time=datetime(2026, 8, 3, 9, 15),
+        intensity=4,
+        trigger='unrelated fixture trigger',
+        notes='unrelated fixture craving must survive',
+    )
     craving = Craving(
         user_id=test_user.id,
         craving_time=datetime.utcnow(),
         intensity=6,
         notes='account deletion ownership proof',
     )
-    db_session.add(craving)
+    db_session.add_all([craving, unrelated_craving])
     db_session.commit()
+    unrelated_before = {
+        'id': unrelated_craving.id,
+        'user_id': unrelated_craving.user_id,
+        'craving_time': unrelated_craving.craving_time,
+        'intensity': unrelated_craving.intensity,
+        'trigger': unrelated_craving.trigger,
+        'notes': unrelated_craving.notes,
+    }
     owned_ids = {
         'user': test_user.id,
         'pouch': test_pouch.id,
@@ -115,6 +134,10 @@ def test_account_deletion_removes_exact_owned_rows_without_orphaned_pouch(
     }, follow_redirects=False)
 
     assert response.status_code == 302
+    assert response.headers['Location'].endswith('/?account_deleted=1')
+    landing = logged_in_client.get(response.headers['Location'])
+    assert landing.status_code == 200
+    assert landing.get_data(as_text=True).count('Your account has been deleted.') == 1
     assert User.query.filter_by(id=owned_ids['user']).count() == 0
     assert Log.query.filter_by(id=owned_ids['log']).count() == 0
     assert Goal.query.filter_by(id=owned_ids['goal']).count() == 0
@@ -123,6 +146,15 @@ def test_account_deletion_removes_exact_owned_rows_without_orphaned_pouch(
     assert Pouch.query.filter(
         Pouch.id == owned_ids['pouch'], Pouch.created_by.is_(None)
     ).count() == 0
+    surviving_unrelated = Craving.query.filter_by(id=unrelated_before['id']).one()
+    assert {
+        'id': surviving_unrelated.id,
+        'user_id': surviving_unrelated.user_id,
+        'craving_time': surviving_unrelated.craving_time,
+        'intensity': surviving_unrelated.intensity,
+        'trigger': surviving_unrelated.trigger,
+        'notes': surviving_unrelated.notes,
+    } == unrelated_before
 
 
 def test_account_template_retires_legacy_cards_and_palette():

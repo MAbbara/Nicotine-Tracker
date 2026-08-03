@@ -33,15 +33,15 @@
       <a class="c-button c-button--quiet" href="{{ url_for('journey.index') }}">Review Journey</a>
     </nav>
 
-    <form class="dashboard-range" method="get" action="{{ url_for('dashboard.index') }}" data-dashboard-range-form>
-      <label class="c-field__label" for="dashboard-range-days">Review range</label>
-      <select class="c-field__select" id="dashboard-range-days" name="days" data-dashboard-range-select>
-        {% for days in range_presets|default((7, 30, 90, 365)) %}
-          <option value="{{ days }}"{% if days == range_days|default(30) %} selected{% endif %}>{{ '1 year' if days == 365 else days ~ ' days' }}</option>
-        {% endfor %}
-      </select>
-      <noscript><button class="c-button c-button--secondary" type="submit">Apply range</button></noscript>
-    </form>
+    <nav class="dashboard-range" aria-label="Review range" data-dashboard-range-nav>
+      {% for days in range_presets|default((7, 30, 90, 365)) %}
+        <a
+          class="c-button{% if days == range_days|default(30) %} c-button--primary{% else %} c-button--quiet{% endif %}"
+          href="{{ url_for('dashboard.index', days=days) }}"
+          {% if days == range_days|default(30) %}aria-current="page"{% endif %}
+        >{{ '1 year' if days == 365 else days ~ ' days' }}</a>
+      {% endfor %}
+    </nav>
   </header>
 
   <section class="dashboard-today" aria-labelledby="dashboard-today-title" data-dashboard-today>
@@ -125,7 +125,6 @@
 {% endblock %}
 
 {% block analytics_js %}
-<script type="module" src="{{ url_for('static', filename='js/dashboard-range.js') }}"></script>
 {% if dashboard_trend_state.has_data %}
 <script src="{{ url_for('static', filename='js/apexcharts.min.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='js/dashboard-charts.js') }}"></script>

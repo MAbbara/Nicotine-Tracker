@@ -690,8 +690,7 @@ def account():
                 session.clear()
                 
                 current_app.logger.info(f'Account deleted for user {user_email}')
-                flash('Your account has been deleted successfully.', 'info')
-                response = redirect(url_for('index'))
+                response = redirect(url_for('index', account_deleted='1'))
                 response.headers['Clear-Site-Data'] = '"cache", "cookies", "storage"'
                 return response
                 

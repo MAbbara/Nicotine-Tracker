@@ -27,6 +27,7 @@
   </header>
   <div id="flash-messages" class="flash-region" aria-live="polite" aria-atomic="true">
     {% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<div class="flash-message flash-message--{{ category }}" role="status">{{ message }}</div>{% endfor %}{% endwith %}
+    {% if request.args.get('account_deleted') == '1' %}<div class="flash-message flash-message--info" role="status">Your account has been deleted.</div>{% endif %}
   </div>
   <main id="main-content" tabindex="-1">{% block content %}{% endblock %}</main>
   <footer class="marketing-footer"><p>Built for steady progress, without judgment.</p><p>&copy; {{ current_year or 2026 }} Nicotine Tracker</p></footer>

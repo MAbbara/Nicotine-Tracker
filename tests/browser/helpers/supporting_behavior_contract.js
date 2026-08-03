@@ -1,8 +1,4 @@
 const { DIMENSIONS: CORE_DIMENSIONS } = require('./core_behavior_contract');
-const {
-  SUPPORTING_ACTION_POLICY,
-  supportingPolicyFor,
-} = require('./supporting_action_policy');
 
 
 const DIMENSIONS = Object.freeze([...CORE_DIMENSIONS, 'feedback']);
@@ -66,7 +62,7 @@ const PROFILE_EVIDENCE = Object.freeze({
     focus: ['asserted', 'the exact control retains focus after keyboard activation'],
     keyboard: ['asserted', 'the exact checkbox is toggled with Space'],
     loading: ['not-applicable', 'the local draft change is synchronous'],
-    persistence: ['asserted', 'the saved draft value is asserted after reload'],
+    persistence: ['not-applicable', 'the draft control is persisted only by a separate Save action'],
     request: ['not-applicable', 'the checkbox itself sends no request'],
   },
   localControl: {
@@ -99,7 +95,7 @@ const PROFILE_EVIDENCE = Object.freeze({
   validationOnly: {
     error: ['asserted', 'the exact invalid credential or confirmation result is asserted'],
     feedback: ['asserted', 'the exact rejected mutation message is visible'],
-    focus: ['not-applicable', 'the full-page server validation result makes no managed focus promise'],
+    focus: ['asserted', 'the exact invalid server-rendered field receives focus'],
     keyboard: ['asserted', 'the exact submit control is activated with Enter'],
     loading: ['not-applicable', 'the full-document validation response owns completion'],
     persistence: ['not-applicable', 'the rejected mutation intentionally changes no durable state'],
@@ -177,6 +173,15 @@ const PROFILE_EVIDENCE = Object.freeze({
     persistence: ['not-applicable', 'the disclosure state is page-local'],
     request: ['not-applicable', 'the disclosure sends no request'],
   },
+  rangeNavigation: {
+    error: ['not-applicable', 'the validated preset has no managed error branch'],
+    feedback: ['not-applicable', 'the exact selected range document is the direct outcome'],
+    focus: ['not-applicable', 'full-page range navigation has no managed focus promise'],
+    keyboard: ['asserted', 'the exact visible range link is activated with Enter'],
+    loading: ['not-applicable', 'the browser owns full-document loading'],
+    persistence: ['asserted', 'the resulting document exposes the exact selected day count'],
+    request: ['asserted', 'the transaction captures the exact preset GET and empty body'],
+  },
 });
 
 
@@ -184,10 +189,10 @@ function materializeDimensions(profileName, state, action) {
   const profile = PROFILE_EVIDENCE[profileName];
   if (!profile) throw new Error(`Unknown supporting evidence profile: ${profileName}`);
   return Object.freeze(Object.fromEntries(DIMENSIONS.map((dimension) => {
-    const [status, reason] = profile[dimension];
+    const [status] = profile[dimension];
     return [dimension, Object.freeze({
       status,
-      reason: `${state} › ${action}: ${reason}.`,
+      reason: `${state} › ${action}: ${profileName} marks ${dimension} ${status}.`,
     })];
   })));
 }
@@ -384,6 +389,10 @@ group(SUPPORTING_OWNER_TITLES.goalsGaps, [
 
 group(SUPPORTING_OWNER_TITLES.dashboard, [
   ...['dashboard', 'dashboard-empty', 'dashboard-sparse'].flatMap((state) => [
+    [state, '7 days', 'rangeNavigation'],
+    [state, '30 days', 'rangeNavigation'],
+    [state, '90 days', 'rangeNavigation'],
+    [state, '1 year', 'rangeNavigation'],
     [state, 'Go to Today', 'primaryNavigation'],
     [state, 'Open Insights', 'primaryNavigation'],
     [state, 'Review Journey', 'primaryNavigation'],
@@ -442,7 +451,8 @@ function evidenceToken(state, action, dimension) {
 }
 
 
-const supportingEvidenceTokens = new WeakMap();
+const supportingTransactionReceipts = new WeakMap();
+let supportingPageMarkerSequence = 0;
 
 
 const STATE_PATHS = Object.freeze({
@@ -534,7 +544,7 @@ function assertExactPayload(expectApi, actual, expected, dynamicFields = {}) {
 
 
 function createSupportingBehaviorRecorder(owner, expectApi) {
-  const expected = SUPPORTING_ACTION_POLICY.filter((entry) => entry.owner === owner);
+  const expected = SUPPORTING_BEHAVIOR_OBLIGATIONS.filter((entry) => entry.owner === owner);
   const recordedEvidence = new Set();
   const recorderIdentity = Object.freeze({ owner });
 
@@ -555,26 +565,19 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
     }
   }
 
-  function issueToken(obligation, dimension, artifact = null) {
-    requireApplicable(obligation, dimension);
-    const token = Object.freeze({});
-    supportingEvidenceTokens.set(token, {
+  function issueTransactionReceipt(obligation, transactionIdentity, page, control, dimensions) {
+    const receipt = Object.freeze({});
+    supportingTransactionReceipts.set(receipt, {
       recorderIdentity,
+      transactionIdentity,
+      page,
+      control,
       state: obligation.state,
       action: obligation.action,
-      dimension,
-      artifact,
+      dimensions: Object.freeze([...dimensions]),
+      consumed: false,
     });
-    return token;
-  }
-
-  function metadataFor(token) {
-    const metadata = supportingEvidenceTokens.get(token);
-    if (!metadata) throw new Error('forged evidence token');
-    if (metadata.recorderIdentity !== recorderIdentity) {
-      throw new Error('evidence token belongs to a different recorder');
-    }
-    return metadata;
+    return receipt;
   }
 
   async function assertBoundControl(obligation, page, control) {
@@ -591,87 +594,212 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
     }
     await expectApi(control).toHaveCount(1);
     await expectApi(control).toHaveAccessibleName(actionNamePattern(obligation.action));
+    const pageMarker = `supporting-evidence-page-${++supportingPageMarkerSequence}`;
+    await page.evaluate((marker) => {
+      document.documentElement.dataset.supportingEvidencePage = marker;
+    }, pageMarker);
+    const controlPageMarker = await control.evaluate((element) => (
+      element.ownerDocument.documentElement.dataset.supportingEvidencePage || null
+    ));
+    if (controlPageMarker !== pageMarker) {
+      throw new Error('typed evidence control belongs to a different page');
+    }
   }
 
-  async function assertTypedOutcome(outcome, page) {
-    if (!outcome || typeof outcome !== 'object' || typeof outcome.then === 'function') {
-      throw new TypeError('keyboard evidence requires a typed keyboard outcome');
+  function validateActivation(activation) {
+    if (!activation || typeof activation !== 'object') {
+      throw new TypeError('transaction requires a typed activation');
     }
-    if (outcome.kind === 'response') {
-      if (!outcome.pending || typeof outcome.pending.then !== 'function') {
-        throw new TypeError('typed response outcome requires a pending Playwright response');
+    if (activation.kind === 'keyboard') {
+      if (typeof activation.key !== 'string' || !activation.key) {
+        throw new TypeError('keyboard transaction requires an exact key');
       }
-      const response = await outcome.pending;
-      if (!response || typeof response.request !== 'function' || typeof response.status !== 'function') {
-        throw new TypeError('typed response outcome did not resolve to a Playwright response');
-      }
-      expectApi(response.request().method()).toBe(outcome.method);
-      expectApi(new URL(response.url()).pathname).toMatch(outcome.path);
-      if (outcome.search !== undefined) {
-        expectApi(new URL(response.url()).search).toBe(outcome.search);
-      }
-      if (outcome.status !== undefined) expectApi(response.status()).toBe(outcome.status);
-      if (response.request().isNavigationRequest() && outcome.settleNavigation !== false) {
-        await response.finished();
-        await page.waitForLoadState('load');
-      }
-      return response;
+      return;
     }
-    if (outcome.kind === 'url') {
-      if (!(outcome.path instanceof RegExp)) throw new TypeError('typed URL outcome requires a path RegExp');
-      await expectApi.poll(() => new URL(page.url()).pathname).toMatch(outcome.path);
-      return null;
+    if (activation.kind === 'click') return;
+    throw new TypeError(`unknown transaction activation: ${activation.kind}`);
+  }
+
+  function validateRequestDescriptor(request) {
+    if (!request) return;
+    if (typeof request.method !== 'string' || !(request.path instanceof RegExp)) {
+      throw new TypeError('transaction request requires exact method and path');
     }
+    if (request.status !== undefined && !Number.isInteger(request.status)) {
+      throw new TypeError('transaction request status must be an integer');
+    }
+  }
+
+  function validatePersistenceDescriptor(persistence) {
+    if (!persistence) return;
+    if (!['locator', 'json'].includes(persistence.kind)) {
+      throw new TypeError('transaction requires a typed persistence descriptor');
+    }
+    if (persistence.kind === 'locator') {
+      if (!isLocator(persistence.locator)
+        || !['count', 'text', 'value', 'checked', 'attribute'].includes(persistence.property)
+        || persistence.expectedAfter === undefined) {
+        throw new TypeError('typed persistence locator requires property and expectedAfter');
+      }
+      if (persistence.property === 'attribute' && typeof persistence.name !== 'string') {
+        throw new TypeError('typed persistence attribute requires a name');
+      }
+    } else if (typeof persistence.url !== 'string' || persistence.expectedAfter === undefined) {
+      throw new TypeError('typed persistence JSON requires URL and expectedAfter');
+    }
+  }
+
+  async function captureFeedbackState(locator) {
+    if (!isLocator(locator)) throw new TypeError('causal feedback/error requires a locator');
+    const count = await locator.count();
+    if (count === 0) return { count: 0, values: [] };
+    const values = await locator.evaluateAll((elements) => elements.map((element) => ({
+      text: element.textContent,
+      role: element.getAttribute('role'),
+      live: element.getAttribute('aria-live'),
+      invalid: element.getAttribute('aria-invalid'),
+      state: element.getAttribute('data-state'),
+      validationMessage: element.validationMessage || '',
+      userInvalid: element.matches(':user-invalid'),
+    })));
+    return { count, values };
+  }
+
+  function feedbackStateAlreadyMatches(before, descriptor) {
+    return before.values.some((value) => (
+      (descriptor.text === undefined || value.text === descriptor.text)
+      && (descriptor.validationMessage === undefined
+        || (value.validationMessage === descriptor.validationMessage && value.userInvalid))
+      && (descriptor.state === undefined || value.state === descriptor.state)
+    ));
+  }
+
+  async function assertCausalFeedback(kind, descriptor, before) {
+    if (!descriptor || !isLocator(descriptor.locator)) {
+      throw new TypeError(`causal ${kind} requires a typed locator descriptor`);
+    }
+    if (descriptor.text === undefined && descriptor.validationMessage === undefined
+      && descriptor.count === undefined) {
+      throw new TypeError(`causal ${kind} requires exact text, validation, or count`);
+    }
+    if (feedbackStateAlreadyMatches(before, descriptor)) {
+      throw new Error(`${kind} already existed before activation`);
+    }
+    if (descriptor.count !== undefined) {
+      await expectApi(descriptor.locator).toHaveCount(descriptor.count);
+      return;
+    }
+    await expectApi(descriptor.locator).toHaveCount(1);
+    const semantics = await descriptor.locator.evaluate((element) => ({
+      role: element.getAttribute('role'),
+      live: element.getAttribute('aria-live'),
+      invalid: element.getAttribute('aria-invalid'),
+    }));
+    if (kind === 'feedback'
+      && !['status', 'alert'].includes(semantics.role) && !semantics.live
+      && descriptor.validationMessage === undefined) {
+      throw new Error('feedback locator must be a status, alert, or native validation control');
+    }
+    if (kind === 'error'
+      && !['status', 'alert'].includes(semantics.role) && !semantics.live
+      && semantics.invalid !== 'true' && descriptor.validationMessage === undefined) {
+      throw new Error('error locator must expose an alert, status, invalid state, or validation');
+    }
+    if (descriptor.text !== undefined) await expectApi(descriptor.locator).toHaveText(descriptor.text);
+    if (descriptor.validationMessage !== undefined) {
+      await expectApi(descriptor.locator).toHaveJSProperty(
+        'validationMessage', descriptor.validationMessage,
+      );
+      expectApi(await descriptor.locator.evaluate((element) => (
+        element.matches(':user-invalid')
+      ))).toBe(true);
+    }
+    if (descriptor.state !== undefined) {
+      await expectApi(descriptor.locator).toHaveAttribute('data-state', descriptor.state);
+    }
+  }
+
+  async function assertDismissedDialogError(descriptor, beforeCount) {
+    if (!isLocator(descriptor.locator) || !Number.isInteger(descriptor.count)) {
+      throw new TypeError('dismissed-dialog error requires an exact locator count');
+    }
+    expectApi(beforeCount).toBe(descriptor.count);
+    await expectApi(descriptor.locator).toHaveCount(descriptor.count);
+  }
+
+  async function captureLocatorPersistence(descriptor) {
+    if (descriptor.property === 'count') return descriptor.locator.count();
+    if (descriptor.property === 'text') return descriptor.locator.allTextContents();
+    if (descriptor.property === 'value') return descriptor.locator.inputValue();
+    if (descriptor.property === 'checked') return descriptor.locator.isChecked();
+    return descriptor.locator.getAttribute(descriptor.name);
+  }
+
+  function selectJsonPath(value, path) {
+    if (path === undefined) return value;
+    const segments = Array.isArray(path) ? path : String(path).split('.');
+    return segments.reduce((current, segment) => current?.[segment], value);
+  }
+
+  async function capturePersistence(page, descriptor) {
+    if (descriptor.kind === 'locator') return captureLocatorPersistence(descriptor);
+    const response = await page.request.get(descriptor.url);
+    expectApi(response.status()).toBe(descriptor.status || 200);
+    return selectJsonPath(await response.json(), descriptor.path);
+  }
+
+  async function waitForPersistenceAfter(descriptor) {
+    if (descriptor.kind !== 'locator') return;
+    if (descriptor.property === 'count') {
+      await expectApi(descriptor.locator).toHaveCount(descriptor.expectedAfter);
+    } else if (descriptor.property === 'text') {
+      await expectApi(descriptor.locator).toHaveText(descriptor.expectedAfter);
+    } else if (descriptor.property === 'value') {
+      await expectApi(descriptor.locator).toHaveValue(descriptor.expectedAfter);
+    } else if (descriptor.property === 'checked') {
+      if (descriptor.expectedAfter) await expectApi(descriptor.locator).toBeChecked();
+      else await expectApi(descriptor.locator).not.toBeChecked();
+    } else if (descriptor.expectedAfter === null) {
+      await expectApi(descriptor.locator).not.toHaveAttribute(descriptor.name);
+    } else {
+      await expectApi(descriptor.locator).toHaveAttribute(
+        descriptor.name, descriptor.expectedAfter,
+      );
+    }
+  }
+
+  async function assertTransactionRequest(response, descriptor) {
+    const request = response.request();
+    expectApi(request.method()).toBe(descriptor.method);
+    expectApi(new URL(response.url()).pathname).toMatch(descriptor.path);
+    if (descriptor.search !== undefined) expectApi(new URL(response.url()).search).toBe(descriptor.search);
+    if (descriptor.status !== undefined) expectApi(response.status()).toBe(descriptor.status);
+    if (descriptor.method === 'GET') expectApi(request.postData()).toBeNull();
+    else if (descriptor.payload) {
+      assertExactPayload(
+        expectApi,
+        exactRequestPayload(request, descriptor.payload.kind),
+        descriptor.payload.exact,
+        descriptor.dynamicFields || {},
+      );
+    }
+  }
+
+  async function assertTransactionOutcome(outcome) {
+    if (!outcome) return;
     if (!isLocator(outcome.locator)) {
-      throw new TypeError('typed locator outcome requires a Playwright locator');
+      throw new TypeError('transaction outcome requires a typed locator');
     }
-    if (outcome.kind === 'focused') await expectApi(outcome.locator).toBeFocused();
-    else if (outcome.kind === 'visible') await expectApi(outcome.locator).toBeVisible();
+    if (outcome.kind === 'visible') await expectApi(outcome.locator).toBeVisible();
     else if (outcome.kind === 'hidden') await expectApi(outcome.locator).toBeHidden();
+    else if (outcome.kind === 'count') await expectApi(outcome.locator).toHaveCount(outcome.count);
     else if (outcome.kind === 'checked') {
       if (outcome.checked) await expectApi(outcome.locator).toBeChecked();
       else await expectApi(outcome.locator).not.toBeChecked();
-    } else if (outcome.kind === 'disabled') {
-      if (outcome.disabled) await expectApi(outcome.locator).toBeDisabled();
-      else await expectApi(outcome.locator).toBeEnabled();
     } else if (outcome.kind === 'attribute') {
-      if (typeof outcome.name !== 'string') {
-        throw new TypeError('typed attribute outcome requires an attribute name');
-      }
-      if (outcome.value === null) {
-        await expectApi(outcome.locator).not.toHaveAttribute(outcome.name);
-      } else {
-        await expectApi(outcome.locator).toHaveAttribute(outcome.name, outcome.value);
-      }
-    } else throw new TypeError(`Unknown typed keyboard outcome: ${outcome.kind}`);
-    return null;
-  }
-
-  function validateTypedOutcomeShape(outcome) {
-    if (!outcome || typeof outcome !== 'object' || typeof outcome.then === 'function') {
-      throw new TypeError('keyboard evidence requires a typed keyboard outcome');
-    }
-    if (outcome.kind === 'response') {
-      if (!outcome.pending || typeof outcome.pending.then !== 'function'
-        || typeof outcome.method !== 'string' || !(outcome.path instanceof RegExp)) {
-        throw new TypeError('typed response outcome requires pending response, method, and path');
-      }
-      if (outcome.settleNavigation !== undefined
-        && typeof outcome.settleNavigation !== 'boolean') {
-        throw new TypeError('typed response settleNavigation must be boolean');
-      }
-      return;
-    }
-    if (outcome.kind === 'url') {
-      if (!(outcome.path instanceof RegExp)) {
-        throw new TypeError('typed URL outcome requires a path RegExp');
-      }
-      return;
-    }
-    if (!['focused', 'visible', 'hidden', 'checked', 'disabled', 'attribute'].includes(outcome.kind)
-      || !isLocator(outcome.locator)) {
-      throw new TypeError('typed locator outcome requires a Playwright locator');
-    }
+      if (outcome.value === null) await expectApi(outcome.locator).not.toHaveAttribute(outcome.name);
+      else await expectApi(outcome.locator).toHaveAttribute(outcome.name, outcome.value);
+    } else throw new TypeError(`unknown transaction outcome: ${outcome.kind}`);
   }
 
   function forAction(state, action, { page, control } = {}) {
@@ -683,159 +811,166 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
       controlBound = true;
     }
     return Object.freeze({
-      async keyboard({ key, outcome } = {}) {
-        requireApplicable(obligation, 'keyboard');
-        if (typeof key !== 'string' || !key) {
-          throw new TypeError('keyboard evidence requires an exact key');
+      async run({
+        activation, request, loading, feedback, error, focus, persistence, outcome, dialog,
+      } = {}) {
+        validateActivation(activation);
+        validateRequestDescriptor(request);
+        validatePersistenceDescriptor(persistence);
+        if (activation.kind !== 'keyboard') {
+          throw new TypeError('supporting keyboard evidence requires transaction-owned keyboard activation');
         }
-        validateTypedOutcomeShape(outcome);
+        requireApplicable(obligation, 'keyboard');
+        for (const [dimension, descriptor] of Object.entries({
+          request, loading, feedback, error, focus, persistence,
+        })) {
+          if (descriptor) requireApplicable(obligation, dimension);
+        }
+        if (focus && !['retained', 'moved'].includes(focus.mode)) {
+          throw new TypeError('causal focus requires retained or moved mode');
+        }
+        if (focus?.mode === 'moved' && !isLocator(focus.locator)) {
+          throw new TypeError('moved focus requires an exact target locator');
+        }
+        if (focus?.mode === 'retained' && focus.locator) {
+          throw new TypeError('retained focus is bound to the initiating control');
+        }
+        if (dialog && !['accept', 'dismiss'].includes(dialog)) {
+          throw new TypeError('transaction dialog must be accept or dismiss');
+        }
+
         await ensureControlBound();
+        const transactionIdentity = Object.freeze({ state, action });
+        const beforeFeedback = feedback ? await captureFeedbackState(feedback.locator) : null;
+        const beforeError = error?.kind === 'dismissed-dialog'
+          ? await error.locator.count()
+          : (error ? await captureFeedbackState(error.locator) : null);
+        const beforeLoadingStatus = loading?.status
+          ? await captureFeedbackState(loading.status.locator) : null;
+        if (feedback && feedbackStateAlreadyMatches(beforeFeedback, feedback)) {
+          throw new Error('feedback already existed before activation');
+        }
+        if (error && error.kind !== 'dismissed-dialog'
+          && feedbackStateAlreadyMatches(beforeError, error)) {
+          throw new Error('error already existed before activation');
+        }
+        const focusTarget = focus?.mode === 'retained' ? control : focus?.locator;
+        const beforePersistence = persistence
+          ? await capturePersistence(page, persistence) : undefined;
+        if (persistence?.expectedBefore !== undefined) {
+          expectApi(beforePersistence).toEqual(persistence.expectedBefore);
+        }
+
+        let responseSettled = false;
+        const responsePending = request ? page.waitForResponse((response) => {
+          const url = new URL(response.url());
+          return response.request().method() === request.method
+            && request.path.test(url.pathname)
+            && (request.search === undefined || url.search === request.search);
+        }).then((response) => {
+          responseSettled = true;
+          return response;
+        }) : null;
+        if (dialog) {
+          page.once('dialog', async (nativeDialog) => {
+            if (dialog === 'accept') await nativeDialog.accept();
+            else await nativeDialog.dismiss();
+          });
+        }
+
         await control.focus();
         await expectApi(control).toBeFocused();
-        await page.keyboard.press(key);
-        const artifact = await assertTypedOutcome(outcome, page);
-        return issueToken(obligation, 'keyboard', artifact);
-      },
-      async focus({ locator } = {}) {
-        requireApplicable(obligation, 'focus');
-        if (!isLocator(locator)) throw new TypeError('focus evidence requires a focus locator');
-        await expectApi(locator).toHaveCount(1);
-        await expectApi(locator).toBeFocused();
-        const focusable = await locator.evaluate((element) => (
-          element === element.ownerDocument.activeElement
-          && (element.tabIndex >= -1 || /^(A|BUTTON|INPUT|SELECT|TEXTAREA)$/.test(element.tagName))
-        ));
-        expectApi(focusable).toBe(true);
-        return issueToken(obligation, 'focus');
-      },
-      async loading({ disabled, text, status } = {}) {
-        requireApplicable(obligation, 'loading');
-        if (typeof disabled !== 'boolean') {
-          throw new TypeError('loading evidence requires an exact disabled state');
-        }
-        await ensureControlBound();
-        if (disabled) await expectApi(control).toBeDisabled();
-        else await expectApi(control).toBeEnabled();
-        if (text !== undefined) await expectApi(control).toHaveText(text);
-        if (status) {
-          if (!isLocator(status.locator) || typeof status.text !== 'string') {
-            throw new TypeError('loading status requires a locator and exact text');
-          }
-          expectApi(await status.locator.getAttribute('role')).toBe('status');
-          await expectApi(status.locator).toHaveText(status.text);
-        }
-        return issueToken(obligation, 'loading');
-      },
-      async feedback({ locator, text, validationMessage } = {}) {
-        requireApplicable(obligation, 'feedback');
-        if (!isLocator(locator)) throw new TypeError('feedback evidence requires a locator');
-        if (typeof text !== 'string' && typeof validationMessage !== 'string') {
-          throw new TypeError('feedback evidence requires exact text or native validation');
-        }
-        const semantics = await locator.evaluate((element) => ({
-          role: element.getAttribute('role'),
-          live: element.getAttribute('aria-live'),
-          validationMessage: element.validationMessage,
-        }));
-        if (!['status', 'alert'].includes(semantics.role) && !semantics.live && !validationMessage) {
-          throw new Error('feedback locator must be a status, alert, or native validation control');
-        }
-        if (text !== undefined) await expectApi(locator).toHaveText(text);
-        if (validationMessage !== undefined) {
-          await expectApi(locator).toHaveJSProperty('validationMessage', validationMessage);
-        }
-        return issueToken(obligation, 'feedback');
-      },
-      async error({ locator, text, validationMessage, state, count } = {}) {
-        requireApplicable(obligation, 'error');
-        if (!isLocator(locator)) throw new TypeError('error evidence requires a locator');
-        if (Number.isInteger(count)) {
-          await expectApi(locator).toHaveCount(count);
-          return issueToken(obligation, 'error');
-        }
-        if (typeof text !== 'string' && typeof validationMessage !== 'string') {
-          throw new TypeError('error evidence requires exact text or native validation');
-        }
-        const semantics = await locator.evaluate((element) => ({
-          role: element.getAttribute('role'),
-          live: element.getAttribute('aria-live'),
-          invalid: element.getAttribute('aria-invalid'),
-          validationMessage: element.validationMessage,
-        }));
-        if (!['status', 'alert'].includes(semantics.role) && !semantics.live
-          && semantics.invalid !== 'true' && !validationMessage) {
-          throw new Error('error locator must expose an alert, status, invalid state, or validation');
-        }
-        if (text !== undefined) await expectApi(locator).toHaveText(text);
-        if (validationMessage !== undefined) {
-          await expectApi(locator).toHaveJSProperty('validationMessage', validationMessage);
-        }
-        if (state) await expectApi(locator).toHaveAttribute('data-state', state);
-        return issueToken(obligation, 'error');
-      },
-      async request({
-        activation, method, path, search, status, payload, dynamicFields = {},
-      } = {}) {
-        requireApplicable(obligation, 'request');
-        const activationMetadata = metadataFor(activation);
-        if (activationMetadata.state !== state || activationMetadata.action !== action
-          || activationMetadata.dimension !== 'keyboard') {
-          throw new Error('request evidence received a wrong state/action activation artifact');
-        }
-        const response = activationMetadata.artifact;
-        if (!response || typeof response.request !== 'function') {
-          throw new Error('request evidence requires a keyboard-bound Playwright response');
-        }
-        const request = response.request();
-        expectApi(request.method()).toBe(method);
-        expectApi(new URL(response.url()).pathname).toMatch(path);
-        if (search !== undefined) expectApi(new URL(response.url()).search).toBe(search);
-        expectApi(response.status()).toBe(status);
-        if (method === 'GET') expectApi(request.postData()).toBeNull();
-        else {
-          if (!payload?.kind) throw new TypeError('mutating request evidence requires exact payload');
-          assertExactPayload(
-            expectApi,
-            exactRequestPayload(request, payload.kind),
-            payload.exact,
-            dynamicFields,
-          );
-        }
-        return issueToken(obligation, 'request');
-      },
-      async persistence({ locator, count, text, value, checked, snapshot } = {}) {
-        requireApplicable(obligation, 'persistence');
-        if (snapshot) {
-          if (!snapshot.actual || !snapshot.expected
-            || typeof snapshot.actual !== 'object' || typeof snapshot.expected !== 'object') {
-            throw new TypeError('persistence snapshot requires exact object/array actual and expected');
-          }
-          expectApi(snapshot.actual).toEqual(snapshot.expected);
-        } else {
-          if (!isLocator(locator)) throw new TypeError('persistence evidence requires a locator');
-          const assertions = [count, text, value, checked].filter((item) => item !== undefined);
-          if (assertions.length !== 1) {
-            throw new TypeError('persistence locator requires exactly one typed expected state');
-          }
-          if (count !== undefined) await expectApi(locator).toHaveCount(count);
-          if (text !== undefined) await expectApi(locator).toHaveText(text);
-          if (value !== undefined) await expectApi(locator).toHaveValue(value);
-          if (checked !== undefined) {
-            if (checked) await expectApi(locator).toBeChecked();
-            else await expectApi(locator).not.toBeChecked();
+        if (focus?.mode === 'moved') {
+          const targetActiveBeforeActivation = await focusTarget.evaluate((element) => (
+            element.ownerDocument.activeElement === element
+          ));
+          if (targetActiveBeforeActivation) {
+            throw new Error('focus target was already active after binding the initiating control');
           }
         }
-        return issueToken(obligation, 'persistence');
+        await page.keyboard.press(activation.key);
+
+        const dimensions = ['keyboard'];
+        if (loading) {
+          if (!responsePending || responseSettled) {
+            throw new Error('loading must be observed while this transaction request is pending');
+          }
+          if (typeof loading.disabled !== 'boolean') {
+            throw new TypeError('causal loading requires an exact disabled state');
+          }
+          if (loading.disabled) await expectApi(control).toBeDisabled();
+          else await expectApi(control).toBeEnabled();
+          if (loading.text !== undefined) await expectApi(control).toHaveText(loading.text);
+          if (loading.status) {
+            if (feedbackStateAlreadyMatches(beforeLoadingStatus, loading.status)) {
+              throw new Error('loading status existed before transaction observation');
+            }
+            await expectApi(loading.status.locator).toHaveText(loading.status.text);
+          }
+          dimensions.push('loading');
+        }
+
+        let response = null;
+        if (request) {
+          response = await responsePending;
+          await assertTransactionRequest(response, request);
+          dimensions.push('request');
+          if (response.request().isNavigationRequest() && request.settleNavigation !== false) {
+            await response.finished();
+            await page.waitForLoadState('load');
+          }
+        }
+        await assertTransactionOutcome(outcome);
+        if (feedback) {
+          await assertCausalFeedback('feedback', feedback, beforeFeedback);
+          dimensions.push('feedback');
+        }
+        if (error) {
+          if (error.kind === 'dismissed-dialog') {
+            if (dialog !== 'dismiss') {
+              throw new Error('dismissed-dialog error requires transaction-owned dismissal');
+            }
+            await assertDismissedDialogError(error, beforeError);
+          } else {
+            await assertCausalFeedback('error', error, beforeError);
+          }
+          dimensions.push('error');
+        }
+        if (focus) {
+          await expectApi(focusTarget).toBeFocused();
+          dimensions.push('focus');
+        }
+        if (persistence) {
+          if (persistence.reload) await page.reload();
+          await waitForPersistenceAfter(persistence);
+          const afterPersistence = await capturePersistence(page, persistence);
+          expectApi(afterPersistence).toEqual(persistence.expectedAfter);
+          dimensions.push('persistence');
+        }
+        return issueTransactionReceipt(
+          obligation, transactionIdentity, page, control, dimensions,
+        );
       },
     });
   }
 
   return Object.freeze({
     accept(token) {
-      const metadata = metadataFor(token);
-      recordedEvidence.add(evidenceToken(
-        metadata.state, metadata.action, metadata.dimension,
-      ));
+      const transaction = supportingTransactionReceipts.get(token);
+      if (transaction) {
+        if (transaction.recorderIdentity !== recorderIdentity) {
+          throw new Error('transaction receipt belongs to a different recorder');
+        }
+        if (transaction.consumed) throw new Error('transaction receipt was already consumed');
+        transaction.consumed = true;
+        for (const dimension of transaction.dimensions) {
+          recordedEvidence.add(evidenceToken(
+            transaction.state, transaction.action, dimension,
+          ));
+        }
+        return;
+      }
+      throw new Error('forged transaction receipt');
     },
     forAction,
     assertComplete() {
@@ -853,37 +988,68 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
 }
 
 
-function validateSupportingCoverage(expectedActions, coveredBy) {
+function indexedCoverage(entries, sourceName) {
+  if (!Array.isArray(entries)) {
+    throw new TypeError(`${sourceName} must be an independent static array`);
+  }
+  const indexed = new Map();
+  for (const entry of entries) {
+    const key = `${entry.state}\u0000${entry.action}`;
+    if (indexed.has(key)) throw new Error(`${sourceName} duplicates ${entry.state} › ${entry.action}`);
+    indexed.set(key, entry);
+  }
+  return indexed;
+}
+
+
+function validateSupportingCoverage(expectedActions, receipts, policies, obligations) {
+  const receiptIndex = indexedCoverage(receipts, 'supporting receipts');
+  const policyIndex = indexedCoverage(policies, 'supporting policy');
+  const obligationIndex = indexedCoverage(obligations, 'supporting behavior obligations');
   for (const state of SUPPORTING_ACTION_STATES) {
     const actions = expectedActions[state];
     if (!actions) throw new Error(`${state} supporting action inventory is missing`);
-    const policies = SUPPORTING_ACTION_POLICY.filter((entry) => entry.state === state);
-    const obligationActions = policies.map(({ action }) => action).sort();
-    if (JSON.stringify(obligationActions) !== JSON.stringify([...actions].sort())) {
-      throw new Error(`${state} independent supporting obligations differ from action inventory`);
+    for (const [sourceName, source] of [
+      ['receipt', receipts], ['policy', policies], ['behavior obligation', obligations],
+    ]) {
+      const actual = source.filter((entry) => entry.state === state)
+        .map(({ action }) => action).sort();
+      if (JSON.stringify(actual) !== JSON.stringify([...actions].sort())) {
+        throw new Error(`${state} independent ${sourceName} actions differ from action inventory`);
+      }
     }
-    const stateCoverage = coveredBy[state] || {};
-    for (const policy of policies) {
-      const obligation = supportingObligationFor(state, policy.action);
-      if (!obligation) throw new Error(`${state} › ${policy.action} missing runtime obligation`);
-      if (obligation.owner !== policy.owner || obligation.profile !== policy.profile) {
-        throw new Error(`${state} › ${policy.action} contract differs from independent policy`);
+    for (const action of actions) {
+      const key = `${state}\u0000${action}`;
+      const receipt = receiptIndex.get(key);
+      const policy = policyIndex.get(key);
+      const obligation = obligationIndex.get(key);
+      if (!receipt) throw new Error(`${state} › ${action} missing supporting receipt`);
+      if (!policy) throw new Error(`${state} › ${action} missing supporting policy`);
+      if (!obligation) throw new Error(`${state} › ${action} missing runtime obligation`);
+      if (receipt.owner !== policy.owner || receipt.owner !== obligation.owner) {
+        throw new Error(`${state} › ${action} receipt owner differs from policy or behavior`);
+      }
+      if (receipt.profile !== policy.profile || receipt.profile !== obligation.profile) {
+        throw new Error(`${state} › ${action} receipt profile differs from policy or behavior`);
       }
       for (const dimension of DIMENSIONS) {
-        if (obligation.dimensions[dimension].status !== policy.dimensions[dimension].status) {
+        const statuses = [
+          receipt.dimensions[dimension]?.status,
+          policy.dimensions[dimension]?.status,
+          obligation.dimensions[dimension]?.status,
+        ];
+        if (new Set(statuses).size !== 1) {
           throw new Error(
-            `${state} › ${policy.action} ${dimension} applicability differs from independent policy`,
+            `${state} › ${action} ${dimension} applicability differs across independent sources`,
           );
         }
-      }
-      const receipt = stateCoverage[policy.action];
-      if (!receipt) throw new Error(`${state} › ${policy.action} missing supporting receipt`);
-      if (receipt.test !== policy.owner) {
-        throw new Error(`${state} › ${policy.action} supporting owner mismatch`);
-      }
-      for (const dimension of DIMENSIONS) {
-        if (receipt.dimensions[dimension].status !== policy.dimensions[dimension].status) {
-          throw new Error(`${state} › ${policy.action} supporting dimension evidence mismatch`);
+        const reasons = [
+          receipt.dimensions[dimension]?.reason,
+          policy.dimensions[dimension]?.reason,
+          obligation.dimensions[dimension]?.reason,
+        ];
+        if (new Set(reasons).size !== 1 || reasons.some((reason) => !reason?.trim())) {
+          throw new Error(`${state} › ${action} ${dimension} reason differs across independent sources`);
         }
       }
     }
@@ -894,7 +1060,6 @@ function validateSupportingCoverage(expectedActions, coveredBy) {
 
 module.exports = {
   SUPPORTING_ACTION_STATES,
-  SUPPORTING_ACTION_POLICY,
   SUPPORTING_BEHAVIOR_OBLIGATIONS,
   SUPPORTING_OWNER_TITLES,
   assertedDimensions,

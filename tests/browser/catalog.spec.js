@@ -40,30 +40,13 @@ function exactPath(path) {
 
 
 async function typedNavigation(recorder, state, action, page, control, path, search = undefined) {
-  const responsePending = page.waitForResponse((response) => (
-    response.request().isNavigationRequest()
-    && response.request().method() === 'GET'
-    && new URL(response.url()).pathname === path
-    && (search === undefined || new URL(response.url()).search === search)
-  ));
   const evidence = recorder.forAction(state, action, { page, control });
-  const keyboardToken = await evidence.keyboard({
-    key: 'Enter',
-    outcome: {
-      kind: 'response', pending: responsePending,
+  recorder.accept(await evidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    request: {
       method: 'GET', path: exactPath(path), search, status: 200,
     },
-  });
-  recorder.accept(keyboardToken);
-  recorder.accept(await evidence.request({
-    activation: keyboardToken,
-    method: 'GET', path: exactPath(path), search, status: 200,
   }));
-}
-
-
-async function acceptToken(recorder, tokenPromise) {
-  recorder.accept(await tokenPromise);
 }
 
 
@@ -94,45 +77,34 @@ test('Catalog supports create, Quick Log availability, edit, search, and confirm
       addPosts += 1;
     }
   });
-  recorder.accept(await addEvidence.keyboard({
-    key: 'Enter', outcome: { kind: 'focused', locator: brand },
+  recorder.accept(await addEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    focus: { mode: 'moved', locator: brand },
+    error: { locator: brand, validationMessage: 'Please fill out this field.' },
+    feedback: { locator: brand, validationMessage: 'Please fill out this field.' },
   }));
   expect(addPosts).toBe(0);
-  await acceptToken(recorder, addEvidence.focus({ locator: brand }));
-  await acceptToken(recorder, addEvidence.error({
-    locator: brand, validationMessage: 'Please fill out this field.',
-  }));
-  await acceptToken(recorder, addEvidence.feedback({
-    locator: brand, validationMessage: 'Please fill out this field.',
-  }));
 
   await brand.fill('Calm Orchard');
   await page.getByLabel('Nicotine strength').fill('2.75');
-  const addResponsePending = page.waitForResponse((response) => (
-    response.request().method() === 'POST'
-    && new URL(response.url()).pathname === '/catalog/add'
-  ));
-  const validAddKeyboard = await addEvidence.keyboard({
-    key: 'Enter',
-    outcome: {
-      kind: 'response', pending: addResponsePending,
-      method: 'POST', path: /^\/catalog\/add$/, status: 302,
-    },
-  });
-  recorder.accept(validAddKeyboard);
-  await acceptToken(recorder, addEvidence.request({
-    activation: validAddKeyboard,
-    method: 'POST', path: /^\/catalog\/add$/, status: 302,
-    payload: { kind: 'form', exact: { brand: 'Calm Orchard', nicotine_mg: '2.75' } },
-    dynamicFields: { csrf_token: 'non-empty' },
-  }));
   const createdRow = page.locator('.catalog-row', { hasText: 'Calm Orchard' });
-  await expect(createdRow).toContainText('2.75 mg');
-  await acceptToken(recorder, addEvidence.persistence({ locator: createdRow, count: 1 }));
-  await acceptToken(recorder, addEvidence.feedback({
-    locator: page.getByRole('status'),
-    text: 'Successfully added Calm Orchard (2.75mg) to your catalog!',
+  recorder.accept(await addEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    request: {
+      method: 'POST', path: /^\/catalog\/add$/, status: 302,
+      payload: { kind: 'form', exact: { brand: 'Calm Orchard', nicotine_mg: '2.75' } },
+      dynamicFields: { csrf_token: 'non-empty' },
+    },
+    feedback: {
+      locator: page.getByRole('status'),
+      text: 'Successfully added Calm Orchard (2.75mg) to your catalog!',
+    },
+    persistence: {
+      kind: 'locator', locator: createdRow, property: 'count',
+      expectedBefore: 0, expectedAfter: 1,
+    },
   }));
+  await expect(createdRow).toContainText('2.75 mg');
 
   await page.goto('/log/view');
   await page.getByRole('button', { name: 'Add log', exact: true }).click();
@@ -153,42 +125,31 @@ test('Catalog supports create, Quick Log availability, edit, search, and confirm
     'catalog-edit', 'Save changes', { page, control: editButton },
   );
   await strength.fill('');
-  recorder.accept(await editEvidence.keyboard({
-    key: 'Enter', outcome: { kind: 'focused', locator: strength },
-  }));
-  await acceptToken(recorder, editEvidence.focus({ locator: strength }));
-  await acceptToken(recorder, editEvidence.error({
-    locator: strength, validationMessage: 'Please fill out this field.',
-  }));
-  await acceptToken(recorder, editEvidence.feedback({
-    locator: strength, validationMessage: 'Please fill out this field.',
+  recorder.accept(await editEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    focus: { mode: 'moved', locator: strength },
+    error: { locator: strength, validationMessage: 'Please fill out this field.' },
+    feedback: { locator: strength, validationMessage: 'Please fill out this field.' },
   }));
 
   await page.getByLabel('Brand').fill('Calm Cedar');
   await strength.fill('3.25');
-  const editResponsePending = page.waitForResponse((response) => (
-    response.request().method() === 'POST'
-    && /\/catalog\/edit\/\d+$/.test(new URL(response.url()).pathname)
-  ));
-  const validEditKeyboard = await editEvidence.keyboard({
-    key: 'Enter',
-    outcome: {
-      kind: 'response', pending: editResponsePending,
-      method: 'POST', path: /^\/catalog\/edit\/\d+$/, status: 302,
-    },
-  });
-  recorder.accept(validEditKeyboard);
-  await acceptToken(recorder, editEvidence.request({
-    activation: validEditKeyboard,
-    method: 'POST', path: /^\/catalog\/edit\/\d+$/, status: 302,
-    payload: { kind: 'form', exact: { brand: 'Calm Cedar', nicotine_mg: '3.25' } },
-    dynamicFields: { csrf_token: 'non-empty' },
-  }));
   const editedRow = page.locator('.catalog-row', { hasText: 'Calm Cedar' });
-  await acceptToken(recorder, editEvidence.feedback({
-    locator: page.getByRole('status'), text: 'Successfully updated Calm Cedar (3.25mg)!',
+  recorder.accept(await editEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    request: {
+      method: 'POST', path: /^\/catalog\/edit\/\d+$/, status: 302,
+      payload: { kind: 'form', exact: { brand: 'Calm Cedar', nicotine_mg: '3.25' } },
+      dynamicFields: { csrf_token: 'non-empty' },
+    },
+    feedback: {
+      locator: page.getByRole('status'), text: 'Successfully updated Calm Cedar (3.25mg)!',
+    },
+    persistence: {
+      kind: 'locator', locator: editedRow, property: 'count',
+      expectedBefore: 0, expectedAfter: 1,
+    },
   }));
-  await acceptToken(recorder, editEvidence.persistence({ locator: editedRow, count: 1 }));
 
   await page.getByLabel('Search pouches').fill('Calm Cedar');
   await typedNavigation(
@@ -218,36 +179,28 @@ test('Catalog supports create, Quick Log availability, edit, search, and confirm
   const searchDeleteEvidence = recorder.forAction(
     'catalog-search', 'Delete', { page, control: searchDelete },
   );
-  page.once('dialog', (dialogEvent) => dialogEvent.dismiss());
-  recorder.accept(await searchDeleteEvidence.keyboard({
-    key: 'Enter', outcome: { kind: 'visible', locator: searchDeleteRow },
+  recorder.accept(await searchDeleteEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    dialog: 'dismiss',
+    outcome: { kind: 'visible', locator: searchDeleteRow },
+    error: { kind: 'dismissed-dialog', locator: searchDeleteRow, count: 1 },
   }));
-  await acceptToken(recorder, searchDeleteEvidence.error({ locator: searchDeleteRow, count: 1 }));
 
-  const searchDeleteResponse = page.waitForResponse((response) => (
-    response.request().method() === 'POST'
-    && /\/catalog\/delete\/\d+$/.test(new URL(response.url()).pathname)
-  ));
-  page.once('dialog', (dialogEvent) => dialogEvent.accept());
-  const acceptedSearchDelete = await searchDeleteEvidence.keyboard({
-    key: 'Enter',
-    outcome: {
-      kind: 'response', pending: searchDeleteResponse,
+  recorder.accept(await searchDeleteEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    dialog: 'accept',
+    request: {
       method: 'POST', path: /^\/catalog\/delete\/\d+$/, status: 302,
+      payload: { kind: 'form', exact: {} }, dynamicFields: { csrf_token: 'non-empty' },
     },
-  });
-  recorder.accept(acceptedSearchDelete);
-  await acceptToken(recorder, searchDeleteEvidence.request({
-    activation: acceptedSearchDelete,
-    method: 'POST', path: /^\/catalog\/delete\/\d+$/, status: 302,
-    payload: { kind: 'form', exact: {} }, dynamicFields: { csrf_token: 'non-empty' },
-  }));
-  await acceptToken(recorder, searchDeleteEvidence.feedback({
-    locator: page.getByRole('status'),
-    text: 'Successfully deleted Calm Cedar (3.25mg) from your catalog.',
-  }));
-  await acceptToken(recorder, searchDeleteEvidence.persistence({
-    locator: page.locator('.catalog-row', { hasText: 'Calm Cedar' }), count: 0,
+    feedback: {
+      locator: page.getByRole('status'),
+      text: 'Successfully deleted Calm Cedar (3.25mg) from your catalog.',
+    },
+    persistence: {
+      kind: 'locator', locator: page.locator('.catalog-row', { hasText: 'Calm Cedar' }),
+      property: 'count', expectedBefore: 1, expectedAfter: 0,
+    },
   }));
 
   await page.goto('/catalog/add');
@@ -259,35 +212,28 @@ test('Catalog supports create, Quick Log availability, edit, search, and confirm
   const catalogDeleteEvidence = recorder.forAction(
     'catalog', 'Delete', { page, control: catalogDelete },
   );
-  page.once('dialog', (dialogEvent) => dialogEvent.dismiss());
-  recorder.accept(await catalogDeleteEvidence.keyboard({
-    key: 'Enter', outcome: { kind: 'visible', locator: catalogDeleteRow },
+  recorder.accept(await catalogDeleteEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    dialog: 'dismiss',
+    outcome: { kind: 'visible', locator: catalogDeleteRow },
+    error: { kind: 'dismissed-dialog', locator: catalogDeleteRow, count: 1 },
   }));
-  await acceptToken(recorder, catalogDeleteEvidence.error({ locator: catalogDeleteRow, count: 1 }));
-  const catalogDeleteResponse = page.waitForResponse((response) => (
-    response.request().method() === 'POST'
-    && /\/catalog\/delete\/\d+$/.test(new URL(response.url()).pathname)
-  ));
-  page.once('dialog', (dialogEvent) => dialogEvent.accept());
-  const acceptedCatalogDelete = await catalogDeleteEvidence.keyboard({
-    key: 'Enter',
-    outcome: {
-      kind: 'response', pending: catalogDeleteResponse,
+  recorder.accept(await catalogDeleteEvidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    dialog: 'accept',
+    request: {
       method: 'POST', path: /^\/catalog\/delete\/\d+$/, status: 302,
+      payload: { kind: 'form', exact: {} }, dynamicFields: { csrf_token: 'non-empty' },
     },
-  });
-  recorder.accept(acceptedCatalogDelete);
-  await acceptToken(recorder, catalogDeleteEvidence.request({
-    activation: acceptedCatalogDelete,
-    method: 'POST', path: /^\/catalog\/delete\/\d+$/, status: 302,
-    payload: { kind: 'form', exact: {} }, dynamicFields: { csrf_token: 'non-empty' },
-  }));
-  await acceptToken(recorder, catalogDeleteEvidence.feedback({
-    locator: page.getByRole('status'),
-    text: 'Successfully deleted Catalog Delete Fixture (1.50mg) from your catalog.',
-  }));
-  await acceptToken(recorder, catalogDeleteEvidence.persistence({
-    locator: page.locator('.catalog-row', { hasText: 'Catalog Delete Fixture' }), count: 0,
+    feedback: {
+      locator: page.getByRole('status'),
+      text: 'Successfully deleted Catalog Delete Fixture (1.50mg) from your catalog.',
+    },
+    persistence: {
+      kind: 'locator',
+      locator: page.locator('.catalog-row', { hasText: 'Catalog Delete Fixture' }),
+      property: 'count', expectedBefore: 1, expectedAfter: 0,
+    },
   }));
 
   recorder.assertComplete();

@@ -602,6 +602,16 @@ def test_dashboard_compatibility_context_omits_retired_recent_list(
     assert captured['range_presets'] == (7, 30, 90, 365)
 
 
+def test_dashboard_invalid_and_unsupported_days_fall_back_to_thirty(
+        logged_in_client):
+    for search in ('days=abc', 'days=14', 'days=-1', 'days='):
+        captured = _rendered_context(
+            dashboard_routes, logged_in_client, f'/dashboard/?{search}'
+        )
+        assert captured['range_days'] == 30
+        assert len(captured['analytics_trend']) == 30
+
+
 def test_dashboard_totals_follow_snapshots_and_count_unknown_strength(
         logged_in_client, db_session, test_user):
     # Dashboard intake totals must be snapshot-based: pouch edits and

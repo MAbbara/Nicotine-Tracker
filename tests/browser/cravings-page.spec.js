@@ -64,10 +64,11 @@ test('Craving history records complete and minimal entries in chronological orde
   for (const [action] of symptomControls) {
     const control = form.getByLabel(action);
     const evidence = recorder.forAction('cravings', action, { page, control });
-    recorder.accept(await evidence.keyboard({
-      key: 'Space', outcome: { kind: 'checked', locator: control, checked: true },
+    recorder.accept(await evidence.run({
+      activation: { kind: 'keyboard', key: 'Space' },
+      outcome: { kind: 'checked', locator: control, checked: true },
+      focus: { mode: 'retained' },
     }));
-    recorder.accept(await evidence.focus({ locator: control }));
   }
   await form.getByLabel('Situation context').fill('After a difficult meeting');
   await form.getByLabel('Outcome').selectOption('used_alternative');
@@ -88,15 +89,6 @@ test('Craving history records complete and minimal entries in chronological orde
   expect(savedSymptoms).toEqual([
     'restlessness', 'irritability', 'difficulty_concentrating', 'increased_appetite',
   ]);
-  for (const [action, value] of symptomControls) {
-    const evidence = recorder.forAction('cravings', action, {
-      page, control: form.getByLabel(action),
-    });
-    recorder.accept(await evidence.persistence({
-      snapshot: { actual: [savedSymptoms.includes(value)], expected: [true] },
-    }));
-  }
-
   await form.getByLabel('Intensity').fill('3');
   await form.getByRole('button', { name: 'Record craving' }).click();
   await expect(page.locator('.craving-row')).toHaveCount(2);
@@ -125,17 +117,13 @@ test('Craving history exposes native validation and recoverable server feedback'
   });
 
   const evidence = recorder.forAction('cravings', 'Record craving', { page, control: submit });
-  recorder.accept(await evidence.keyboard({
-    key: 'Enter', outcome: { kind: 'focused', locator: intensity },
+  recorder.accept(await evidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    focus: { mode: 'moved', locator: intensity },
+    error: { locator: intensity, validationMessage: 'Please fill out this field.' },
+    feedback: { locator: intensity, validationMessage: 'Please fill out this field.' },
   }));
   expect(posts).toBe(0);
-  recorder.accept(await evidence.focus({ locator: intensity }));
-  recorder.accept(await evidence.error({
-    locator: intensity, validationMessage: 'Please fill out this field.',
-  }));
-  recorder.accept(await evidence.feedback({
-    locator: intensity, validationMessage: 'Please fill out this field.',
-  }));
 
   let releaseFailure;
   const heldFailure = new Promise((resolve) => { releaseFailure = resolve; });
@@ -148,63 +136,49 @@ test('Craving history exposes native validation and recoverable server feedback'
     await route.continue();
   });
   await intensity.fill('6');
-  const failedResponsePending = page.waitForResponse((response) => (
-    response.request().method() === 'POST'
-    && new URL(response.url()).pathname === '/cravings/api/cravings'
-    && response.status() === 503
-  ));
-  recorder.accept(await evidence.keyboard({
-    key: 'Enter', outcome: { kind: 'disabled', locator: submit, disabled: true },
-  }));
-  recorder.accept(await evidence.loading({
-    disabled: true,
-    status: { locator: form.locator('[data-craving-form-status]'), text: 'Saving your craving…' },
-  }));
+  const status = form.locator('[data-craving-form-status]');
+  const failedTransaction = evidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    request: {
+      method: 'POST', path: /^\/cravings\/api\/cravings$/, status: 503,
+      payload: { kind: 'json', exact: { intensity: 6 } },
+    },
+    loading: {
+      disabled: true,
+      status: { locator: status, text: 'Saving your craving…' },
+    },
+    error: { locator: status, text: 'Temporary test failure.', state: 'error' },
+    feedback: { locator: status, text: 'Temporary test failure.' },
+    focus: { mode: 'retained' },
+  });
+  await expect(status).toHaveText('Saving your craving…');
   await expect(submit).toHaveAttribute('aria-disabled', 'true');
   await submit.evaluate((element) => {
     element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });
   expect(posts).toBe(1);
   releaseFailure();
-  const failedResponse = await failedResponsePending;
-  expect(failedResponse.status()).toBe(503);
-  const status = form.locator('[data-craving-form-status]');
-  recorder.accept(await evidence.error({
-    locator: status, text: 'Temporary test failure.', state: 'error',
-  }));
-  recorder.accept(await evidence.feedback({ locator: status, text: 'Temporary test failure.' }));
+  recorder.accept(await failedTransaction);
   await expect(submit).toBeEnabled();
-  recorder.accept(await evidence.focus({ locator: submit }));
   await expect(intensity).toHaveValue('6');
   await page.unroute('**/cravings/api/cravings');
-  const successResponsePending = page.waitForResponse((response) => (
-    response.request().method() === 'POST'
-    && new URL(response.url()).pathname === '/cravings/api/cravings'
-    && response.status() === 201
-  ));
-  const successKeyboard = await evidence.keyboard({
-    key: 'Enter',
-    outcome: {
-      kind: 'response', pending: successResponsePending,
+  recorder.accept(await evidence.run({
+    activation: { kind: 'keyboard', key: 'Enter' },
+    request: {
       method: 'POST', path: /^\/cravings\/api\/cravings$/, status: 201,
+      payload: { kind: 'json', exact: { intensity: 6 } },
     },
-  });
-  recorder.accept(successKeyboard);
-  recorder.accept(await evidence.request({
-    activation: successKeyboard, method: 'POST',
-    path: /^\/cravings\/api\/cravings$/, status: 201,
-    payload: { kind: 'json', exact: { intensity: 6 } },
+    feedback: {
+      locator: status, text: 'Craving recorded. Thank you for noticing the moment.',
+    },
+    persistence: {
+      kind: 'locator', locator: page.locator('.craving-row'), property: 'count',
+      expectedBefore: 0, expectedAfter: 1,
+    },
   }));
-  expect(failedResponse.request().postDataJSON()).toEqual({ intensity: 6 });
   expect(posts).toBe(2);
-  recorder.accept(await evidence.feedback({
-    locator: status, text: 'Craving recorded. Thank you for noticing the moment.',
-  }));
   await expect(status).toHaveAttribute('data-state', 'success');
-  await page.reload();
-  recorder.accept(await evidence.persistence({
-    locator: page.locator('.craving-row').first(), text: /Intensity 6 of 10/,
-  }));
+  await expect(page.locator('.craving-row').first()).toContainText('Intensity 6 of 10');
   recorder.assertComplete();
   guard.assertClean(expect, {
     stateName: 'cravings record supporting owner',

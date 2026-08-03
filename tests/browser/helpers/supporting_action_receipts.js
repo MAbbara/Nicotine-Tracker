@@ -1,12 +1,12 @@
-const POLICY_DIMENSIONS = Object.freeze([
+const RECEIPT_DIMENSIONS = Object.freeze([
   'error', 'feedback', 'focus', 'keyboard', 'loading', 'persistence', 'request',
 ]);
 
 
-// Independent literal policy. This module deliberately imports neither the
-// runtime contract nor the release manifest, so changing either cannot rewrite
-// the policy that coverage is checked against.
-const POLICY_SOURCE = {
+// Independent literal release receipts. This module deliberately imports neither
+// the applicability policy nor the runtime behavior contract, so changing either
+// cannot rewrite manifest ownership or dimension declarations.
+const RECEIPT_SOURCE = {
   "owners": {
     "chrome": "tests/browser/release-supporting-actions.spec.js › every supporting chrome action runs in its exact representative state",
     "settingsNavigation": "tests/browser/release-supporting-actions.spec.js › every settings navigation action runs in its exact representative state",
@@ -2525,40 +2525,40 @@ function deepFreeze(value) {
 }
 
 
-const POLICY_OWNER_TITLES = deepFreeze({ ...POLICY_SOURCE.owners });
-const POLICY_PROFILE_DIMENSIONS = deepFreeze({ ...POLICY_SOURCE.profiles });
-const SUPPORTING_ACTION_POLICY = deepFreeze(POLICY_SOURCE.entries.map(
+const RECEIPT_OWNER_TITLES = deepFreeze({ ...RECEIPT_SOURCE.owners });
+const RECEIPT_PROFILE_DIMENSIONS = deepFreeze({ ...RECEIPT_SOURCE.profiles });
+const SUPPORTING_ACTION_RECEIPTS = deepFreeze(RECEIPT_SOURCE.entries.map(
   ([state, action, ownerKey, profile]) => ({
     state,
     action,
-    owner: POLICY_OWNER_TITLES[ownerKey],
+    owner: RECEIPT_OWNER_TITLES[ownerKey],
     profile,
-    dimensions: Object.fromEntries(POLICY_DIMENSIONS.map((dimension) => [
+    dimensions: Object.fromEntries(RECEIPT_DIMENSIONS.map((dimension) => [
       dimension,
       {
-        status: POLICY_PROFILE_DIMENSIONS[profile][dimension],
+        status: RECEIPT_PROFILE_DIMENSIONS[profile][dimension],
         reason: state + ' › ' + action + ': ' + profile + ' marks '
-          + dimension + ' ' + POLICY_PROFILE_DIMENSIONS[profile][dimension] + '.',
+          + dimension + ' ' + RECEIPT_PROFILE_DIMENSIONS[profile][dimension] + '.',
       },
     ])),
   }),
 ));
-const SUPPORTING_ACTION_STATES = deepFreeze([
-  ...new Set(SUPPORTING_ACTION_POLICY.map(({ state }) => state)),
+const SUPPORTING_RECEIPT_STATES = deepFreeze([
+  ...new Set(SUPPORTING_ACTION_RECEIPTS.map(({ state }) => state)),
 ]);
 
 
-function supportingPolicyFor(state, action) {
-  return SUPPORTING_ACTION_POLICY.find((entry) => (
+function supportingReceiptFor(state, action) {
+  return SUPPORTING_ACTION_RECEIPTS.find((entry) => (
     entry.state === state && entry.action === action
   ));
 }
 
 
 module.exports = {
-  POLICY_DIMENSIONS,
-  POLICY_OWNER_TITLES,
-  SUPPORTING_ACTION_STATES,
-  SUPPORTING_ACTION_POLICY,
-  supportingPolicyFor,
+  RECEIPT_DIMENSIONS,
+  RECEIPT_OWNER_TITLES,
+  SUPPORTING_RECEIPT_STATES,
+  SUPPORTING_ACTION_RECEIPTS,
+  supportingReceiptFor,
 };

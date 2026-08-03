@@ -780,6 +780,10 @@ def account_snapshot():
             'offline_queue_enabled': (
                 preferences.offline_queue_enabled if preferences else None
             ),
+            'weekly_reports': preferences.weekly_reports if preferences else None,
+            'notification_frequency': (
+                preferences.notification_frequency if preferences else None
+            ),
         },
         'logs': [{
             'id': item.id,
@@ -802,6 +806,16 @@ def account_snapshot():
             'best_streak': item.best_streak,
             'is_active': item.is_active,
         } for item in current_user.goals.order_by(Goal.id).all()],
+        'cravings': [{
+            'id': item.id,
+            'craving_time': item.craving_time.isoformat(),
+            'intensity': item.intensity,
+            'trigger': item.trigger,
+            'notes': item.notes,
+            'outcome': item.outcome,
+        } for item in Craving.query.filter_by(
+            user_id=current_user.id
+        ).order_by(Craving.id).all()],
     }
 
 
@@ -824,6 +838,16 @@ def owned_artifact_snapshot():
             Pouch.created_by.is_(None),
         ).count(),
     }
+
+
+@app.get('/__test__/password-match')
+@login_required
+def password_match():
+    """Expose only whether the authenticated disposable user matches a test password."""
+    password = request.args.get('password', type=str)
+    if not password:
+        abort(400)
+    return {'matches': get_current_user().check_password(password)}
 
 
 @app.post('/__test__/age-goals-for-recalculation')

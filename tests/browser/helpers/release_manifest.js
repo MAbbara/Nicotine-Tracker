@@ -4,10 +4,10 @@ const {
   obligationFor,
 } = require('./core_behavior_contract');
 const {
-  SUPPORTING_ACTION_POLICY,
-  SUPPORTING_ACTION_STATES,
-  supportingPolicyFor,
-} = require('./supporting_action_policy');
+  SUPPORTING_ACTION_RECEIPTS,
+  SUPPORTING_RECEIPT_STATES,
+  supportingReceiptFor,
+} = require('./supporting_action_receipts');
 
 
 const RELEASE_PAGES = [
@@ -328,6 +328,7 @@ const EXPECTED_ACTIONS = {
     'Notify me as I approach this goal',
   ]),
   dashboard: appActions('release-analytics-ready@example.com', [
+    '1 year', '30 days', '7 days', '90 days',
     'Go to Today', 'Open Insights', 'Review Journey', 'View daily values',
   ]),
   'not-found': appActions('release-inventory@example.com'),
@@ -355,9 +356,11 @@ const EXPECTED_ACTIONS = {
     INSIGHTS_ACTIONS, 'Log today',
   ]),
   'dashboard-empty': appActions('release-analytics-empty@example.com', [
+    '1 year', '30 days', '7 days', '90 days',
     'Go to Today', 'Open Insights', 'Review Journey', 'Start with Today',
   ]),
   'dashboard-sparse': appActions('release-analytics-sparse@example.com', [
+    '1 year', '30 days', '7 days', '90 days',
     'Go to Today', 'Open Insights', 'Review Journey', 'View daily values',
   ]),
   'data-offline-enabled': settingsActions(
@@ -610,19 +613,19 @@ attachActionCoverage(
 );
 
 
-for (const stateName of SUPPORTING_ACTION_STATES) {
+for (const stateName of SUPPORTING_RECEIPT_STATES) {
   const actions = EXPECTED_ACTIONS[stateName];
   const coveredBy = {};
   for (const action of actions) {
-    const policy = supportingPolicyFor(stateName, action);
-    if (!policy) {
-      throw new Error(`${stateName} › ${action} has no independent supporting policy`);
+    const receipt = supportingReceiptFor(stateName, action);
+    if (!receipt) {
+      throw new Error(`${stateName} › ${action} has no independent supporting receipt`);
     }
     coveredBy[action] = Object.freeze({
       action,
       state: stateName,
-      test: policy.owner,
-      dimensions: policy.dimensions,
+      test: receipt.owner,
+      dimensions: receipt.dimensions,
     });
   }
   Object.defineProperty(actions, 'coveredBy', {
@@ -657,8 +660,8 @@ module.exports = {
   EXPECTED_ACTIONS,
   RELEASE_PAGES,
   RELEASE_STATES,
-  SUPPORTING_ACTION_STATES,
-  SUPPORTING_ACTION_POLICY,
+  SUPPORTING_ACTION_RECEIPTS,
+  SUPPORTING_ACTION_STATES: SUPPORTING_RECEIPT_STATES,
   loginAs,
   resolveReleaseState,
 };

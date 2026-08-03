@@ -124,8 +124,9 @@ test('Dashboard range control requests every exact preset from the keyboard', as
 
   for (const item of cases) {
     await page.goto(`/dashboard/?days=${item.from}`);
-    const range = page.getByLabel('Review range');
-    await expect(range).toHaveValue(String(item.from));
+    const range = page.getByRole('link', {
+      name: item.to === 365 ? '1 year' : `${item.to} days`, exact: true,
+    });
     const responsePending = page.waitForResponse((response) => (
       response.request().isNavigationRequest()
       && response.request().method() === 'GET'
@@ -134,12 +135,14 @@ test('Dashboard range control requests every exact preset from the keyboard', as
     ));
     await range.focus();
     await expect(range).toBeFocused();
-    await page.keyboard.press(item.key);
+    await page.keyboard.press('Enter');
     const response = await responsePending;
     expect(response.status()).toBe(200);
     expect(response.request().postData()).toBeNull();
     await expect(page).toHaveURL(new RegExp(`/dashboard/\\?days=${item.to}$`));
-    await expect(page.getByLabel('Review range')).toHaveValue(String(item.to));
+    await expect(page.getByRole('link', {
+      name: item.to === 365 ? '1 year' : `${item.to} days`, exact: true,
+    })).toHaveAttribute('aria-current', 'page');
     await expect(page.locator('[data-dashboard-range-days]')).toHaveAttribute(
       'data-dashboard-range-days', String(item.to),
     );
@@ -147,6 +150,21 @@ test('Dashboard range control requests every exact preset from the keyboard', as
       .locator('tbody tr')).toHaveCount(item.to);
   }
   expect(errors).toEqual([]);
+});
+
+
+test('Dashboard rejects invalid and unsupported ranges with the exact 30-day fallback', async ({ page }) => {
+  await login(page, 'release-analytics-ready@example.com');
+  for (const search of ['?days=abc', '?days=14', '?days=-1', '?days=']) {
+    await page.goto(`/dashboard/${search}`);
+    await expect(page.locator('[data-dashboard-range-days]')).toHaveAttribute(
+      'data-dashboard-range-days', '30',
+    );
+    await expect(page.getByRole('link', { name: '30 days', exact: true }))
+      .toHaveAttribute('aria-current', 'page');
+    await expect(page.getByRole('table', { name: 'Recent daily intake data' })
+      .locator('tbody tr')).toHaveCount(30);
+  }
 });
 
 
@@ -158,7 +176,8 @@ for (const [state, email] of [
     const errors = collectUnexpectedErrors(page);
     await login(page, email);
     await page.goto('/dashboard/?days=90');
-    await expect(page.getByLabel('Review range')).toHaveValue('90');
+    await expect(page.getByRole('link', { name: '90 days', exact: true }))
+      .toHaveAttribute('aria-current', 'page');
     await expect(page.locator('[data-dashboard-range-days]')).toHaveAttribute(
       'data-dashboard-range-days', '90',
     );
@@ -183,32 +202,31 @@ test('Dashboard supporting actions cover ranges, destinations, and disclosure in
     await page.request.get('/auth/logout');
     await login(page, email);
 
-    // The range is a native select rather than another release-manifest link;
-    // exercise every rendered option from the keyboard in each exact data state.
     for (const item of [
-      { from: 30, to: 7, key: 'ArrowUp' },
-      { from: 7, to: 30, key: 'ArrowDown' },
-      { from: 30, to: 90, key: 'ArrowDown' },
-      { from: 90, to: 365, key: 'ArrowDown' },
+      { from: 30, to: 7 },
+      { from: 7, to: 30 },
+      { from: 30, to: 90 },
+      { from: 90, to: 365 },
     ]) {
       await page.goto(`/dashboard/?days=${item.from}`);
-      const range = page.getByLabel('Review range');
-      const responsePending = page.waitForResponse((response) => (
-        response.request().isNavigationRequest()
-        && response.request().method() === 'GET'
-        && new URL(response.url()).pathname === '/dashboard/'
-        && new URL(response.url()).search === `?days=${item.to}`
-      ));
-      await range.focus();
-      await expect(range).toBeFocused();
-      await page.keyboard.press(item.key);
-      const response = await responsePending;
-      expect(response.status()).toBe(200);
-      expect(response.request().postData()).toBeNull();
-      await expect(page.getByLabel('Review range')).toHaveValue(String(item.to));
-      await expect(page.locator('[data-dashboard-range-days]')).toHaveAttribute(
-        'data-dashboard-range-days', String(item.to),
-      );
+      const action = item.to === 365 ? '1 year' : `${item.to} days`;
+      const range = page.getByRole('link', { name: action, exact: true });
+      const evidence = recorder.forAction(state, action, { page, control: range });
+      const receipt = await evidence.run({
+        activation: { kind: 'keyboard', key: 'Enter' },
+        request: {
+          method: 'GET', path: /^\/dashboard\/$/,
+          search: `?days=${item.to}`, status: 200,
+        },
+        persistence: {
+          kind: 'locator', locator: page.locator('[data-dashboard-range-days]'),
+          property: 'attribute', name: 'data-dashboard-range-days',
+          expectedBefore: String(item.from), expectedAfter: String(item.to),
+        },
+      });
+      recorder.accept(receipt);
+      await expect(page.getByRole('link', { name: action, exact: true }))
+        .toHaveAttribute('aria-current', 'page');
     }
 
     for (const [action, path] of [
@@ -218,25 +236,14 @@ test('Dashboard supporting actions cover ranges, destinations, and disclosure in
     ]) {
       await page.goto('/dashboard/?days=30');
       const control = page.getByRole('link', { name: action });
-      const responsePending = page.waitForResponse((response) => (
-        response.request().isNavigationRequest()
-        && response.request().method() === 'GET'
-        && new URL(response.url()).pathname === path
-      ));
       const evidence = recorder.forAction(state, action, { page, control });
-      const keyboardToken = await evidence.keyboard({
-        key: 'Enter',
-        outcome: {
-          kind: 'response', pending: responsePending,
-          method: 'GET', path: new RegExp(`^${path.replaceAll('/', '\\/')}$`), status: 200,
+      recorder.accept(await evidence.run({
+        activation: { kind: 'keyboard', key: 'Enter' },
+        request: {
+          method: 'GET', path: new RegExp(`^${path.replaceAll('/', '\\/')}$`),
+          status: 200,
         },
-      });
-      recorder.accept(keyboardToken);
-      recorder.accept(await evidence.request({
-        activation: keyboardToken,
-        method: 'GET', path: new RegExp(`^${path.replaceAll('/', '\\/')}$`), status: 200,
       }));
-      await page.waitForLoadState('load');
     }
 
     await page.goto('/dashboard/?days=30');
@@ -247,33 +254,19 @@ test('Dashboard supporting actions cover ranges, destinations, and disclosure in
       const evidence = recorder.forAction(
         state, 'View daily values', { page, control: summary },
       );
-      const keyboardToken = await evidence.keyboard({
-        key: 'Enter',
+      recorder.accept(await evidence.run({
+        activation: { kind: 'keyboard', key: 'Enter' },
         outcome: { kind: 'attribute', locator: details, name: 'open', value: null },
-      });
-      recorder.accept(keyboardToken);
-      recorder.accept(await evidence.focus({ locator: summary }));
+        focus: { mode: 'retained' },
+      }));
     } else {
       const action = 'Start with Today';
       const path = '/today/';
       const control = page.getByRole('link', { name: action });
-      const responsePending = page.waitForResponse((response) => (
-        response.request().isNavigationRequest()
-        && response.request().method() === 'GET'
-        && new URL(response.url()).pathname === path
-      ));
       const evidence = recorder.forAction(state, action, { page, control });
-      const keyboardToken = await evidence.keyboard({
-        key: 'Enter',
-        outcome: {
-          kind: 'response', pending: responsePending,
-          method: 'GET', path: /^\/today\/$/, status: 200,
-        },
-      });
-      recorder.accept(keyboardToken);
-      recorder.accept(await evidence.request({
-        activation: keyboardToken,
-        method: 'GET', path: /^\/today\/$/, status: 200,
+      recorder.accept(await evidence.run({
+        activation: { kind: 'keyboard', key: 'Enter' },
+        request: { method: 'GET', path: /^\/today\/$/, status: 200 },
       }));
     }
   }
