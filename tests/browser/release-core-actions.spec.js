@@ -1,15 +1,35 @@
 const { test, expect } = require('@playwright/test');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const {
   CORE_ACTION_STATES,
   EXPECTED_ACTIONS,
+  RELEASE_STATES,
   loginAs,
+  resolveReleaseState,
 } = require('./helpers/release_manifest');
 const { watchForProductProblems } = require('./helpers/product_guard');
 
 
 function formPayload(request) {
   return Object.fromEntries(new URLSearchParams(request.postData() || ''));
+}
+
+
+function coreChromeActions(stateName) {
+  return EXPECTED_ACTIONS[stateName].filter((action) => (
+    ['Insights', 'Journey', 'Nicotine Tracker home', 'Skip to main content', 'Today', 'You']
+      .includes(action)
+    || action.startsWith('Open your space for ')
+  ));
+}
+
+
+async function keyboardActivate(page, locator) {
+  await locator.focus();
+  await expect(locator).toBeFocused();
+  await page.keyboard.press('Enter');
 }
 
 
@@ -22,6 +42,7 @@ async function signOut(page) {
 async function expectGuardClean(guard, page, stateName, {
   allowAnalytics = false,
   allowedCanceledNavigationPaths = [],
+  expectedHttpErrors = [],
 } = {}) {
   await page.waitForLoadState('networkidle');
   guard.assertClean(expect, {
@@ -30,11 +51,13 @@ async function expectGuardClean(guard, page, stateName, {
     expectedPath: new URL(page.url()).pathname,
     allowAnalytics,
     allowedCanceledNavigationPaths,
+    expectedHttpErrors,
   });
 }
 
 
-test('every core release action names one exact focused-test owner', () => {
+test('every core release action names an exact state-scoped behavioral receipt', () => {
+  const ownerStates = new Map();
   for (const stateName of CORE_ACTION_STATES) {
     const actions = EXPECTED_ACTIONS[stateName];
     expect(actions.coveredBy, `${stateName} has coveredBy metadata`).toBeDefined();
@@ -44,11 +67,127 @@ test('every core release action names one exact focused-test owner', () => {
       Object.keys(actions.coveredBy).sort((left, right) => left.localeCompare(right)),
       `${stateName} covered actions`,
     ).toEqual(actions);
-    for (const [actionName, owner] of Object.entries(actions.coveredBy)) {
+    for (const [actionName, receipt] of Object.entries(actions.coveredBy)) {
       expect(actionName, `${stateName} action name`).toMatch(/\S/);
-      expect(owner, `${stateName} › ${actionName} owner`)
+      expect(receipt, `${stateName} › ${actionName} receipt`).toEqual(expect.objectContaining({
+        action: actionName,
+        state: stateName,
+        dimensions: expect.any(Object),
+      }));
+      expect(receipt.test, `${stateName} › ${actionName} owner`)
         .toMatch(/^tests\/browser\/[a-z0-9-]+\.spec\.js › \S.+$/);
+      const [ownerFile, ownerTitle] = receipt.test.split(' › ');
+      const source = fs.readFileSync(path.resolve(ownerFile), 'utf8');
+      expect(source, `${stateName} › ${actionName} owner exists`)
+        .toContain(`test('${ownerTitle}'`);
+      if (!ownerStates.has(receipt.test)) ownerStates.set(receipt.test, new Set());
+      ownerStates.get(receipt.test).add(stateName);
+      expect(Object.keys(receipt.dimensions).sort()).toEqual([
+        'error', 'focus', 'keyboard', 'loading', 'persistence', 'request',
+      ]);
+      for (const [dimension, disposition] of Object.entries(receipt.dimensions)) {
+        expect(
+          ['asserted', 'not-applicable'].includes(disposition.status),
+          `${stateName} › ${actionName} ${dimension} disposition`,
+        ).toBe(true);
+        expect(disposition.reason).toMatch(/\S/);
+      }
     }
+  }
+  const exactMultiStateOwners = new Set([
+    'tests/browser/release-core-actions.spec.js › authentication links reach the neighboring recovery or account form',
+    'tests/browser/release-core-actions.spec.js › every core chrome action runs in its exact representative state',
+    'tests/browser/release-core-actions.spec.js › Insights actions run in every exact representative data state',
+    'tests/browser/release-core-actions.spec.js › Today fallback and recovery links reach their intended next action',
+    'tests/browser/release-core-actions.spec.js › Today repeated controls run in each exact representative state',
+    'tests/browser/release-core-actions.spec.js › uncovered onboarding choices and Journey handoffs preserve user control',
+    'tests/browser/onboarding.spec.js › registration previews transparently and activates only after final confirmation',
+    'tests/browser/today-states.spec.js › optional empty reflection saves once, reconciles one row, and reopens canonical values',
+  ]);
+  for (const [owner, states] of ownerStates) {
+    if (states.size > 1) {
+      expect(exactMultiStateOwners, `${owner} spans ${[...states].join(', ')}`).toContain(owner);
+    }
+  }
+});
+
+
+test('every core chrome action runs in its exact representative state', async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
+  const states = CORE_ACTION_STATES.map((name) => (
+    resolveReleaseState(RELEASE_STATES.find((state) => state.name === name), testInfo.project.name)
+  ));
+
+  for (const state of states) {
+    const receipts = new Set();
+    if (!state.email) {
+      await page.goto(state.path);
+      const guard = watchForProductProblems(page);
+      const skip = page.getByRole('link', { name: 'Skip to main content' });
+      await keyboardActivate(page, skip);
+      await expect(page.locator('#main-content')).toBeFocused();
+      receipts.add('Skip to main content');
+      await page.goto(state.path);
+      await keyboardActivate(page, page.getByRole('link', { name: 'Nicotine Tracker home' }));
+      await expect(page).toHaveURL(/\/$/);
+      receipts.add('Nicotine Tracker home');
+      await expectGuardClean(guard, page, `${state.name} exact chrome`);
+    } else {
+      await signOut(page);
+      await loginAs(page, state.email);
+      await page.goto(state.path);
+      const guard = watchForProductProblems(page);
+      const skip = page.getByRole('link', { name: 'Skip to main content' });
+      await keyboardActivate(page, skip);
+      await expect(page.locator('#main-content')).toBeFocused();
+      receipts.add('Skip to main content');
+
+      await page.goto(state.path);
+      await keyboardActivate(page, page.getByRole('link', { name: 'Nicotine Tracker home' }));
+      await expect(page).toHaveURL(/\/today\/?$/);
+      receipts.add('Nicotine Tracker home');
+
+      await page.goto(state.path);
+      const accountName = `Open your space for ${state.email}`;
+      await keyboardActivate(page, page.getByRole('link', { name: accountName }));
+      await expect(page).toHaveURL(/\/you\/?$/);
+      receipts.add(accountName);
+
+      for (const [name, path] of [
+        ['Today', '/today/'], ['Journey', '/journey/'], ['You', '/you/'],
+      ]) {
+        await page.goto(state.path);
+        await keyboardActivate(
+          page,
+          page.getByRole('navigation', { name: 'Primary' })
+            .getByRole('link', { name, exact: true }),
+        );
+        await expect(page).toHaveURL(new RegExp(`${path.replaceAll('/', '\\/')}#main-content$`));
+        await expect(page.locator('#main-content')).toBeFocused();
+        receipts.add(name);
+      }
+      await expectGuardClean(guard, page, `${state.name} exact non-analytics chrome`, {
+        allowAnalytics: state.allowAnalytics,
+      });
+      guard.stop();
+
+      await page.goto(state.path);
+      const insightsGuard = watchForProductProblems(page);
+      await keyboardActivate(
+        page,
+        page.getByRole('navigation', { name: 'Primary' })
+          .getByRole('link', { name: 'Insights', exact: true }),
+      );
+      await expect(page).toHaveURL(/\/insights\/#main-content$/);
+      await expect(page.locator('#main-content')).toBeFocused();
+      receipts.add('Insights');
+      await expectGuardClean(insightsGuard, page, `${state.name} exact Insights chrome`, {
+        allowAnalytics: true,
+      });
+      insightsGuard.stop();
+    }
+    expect([...receipts].sort(), `${state.name} runtime chrome receipts`)
+      .toEqual(coreChromeActions(state.name));
   }
 });
 
@@ -62,7 +201,9 @@ test('public and authenticated chrome actions reach focus and navigation targets
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/auth\/login#main-content$/);
   await expect(page.locator('#main-content')).toBeFocused();
-  await page.getByRole('link', { name: 'Nicotine Tracker home' }).click();
+  const publicWordmark = page.getByRole('link', { name: 'Nicotine Tracker home' });
+  await publicWordmark.focus();
+  await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/$/);
 
   await loginAs(page, 'release-settings@example.com');
@@ -73,27 +214,42 @@ test('public and authenticated chrome actions reach focus and navigation targets
   await expect(page.locator('#main-content')).toBeFocused();
 
   await page.goto('/you/');
-  await page.getByRole('link', { name: 'Nicotine Tracker home' }).click();
+  const appWordmark = page.getByRole('link', { name: 'Nicotine Tracker home' });
+  await appWordmark.focus();
+  await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/today\/?$/);
-  await page.getByRole('link', {
+  const accountLink = page.getByRole('link', {
     name: 'Open your space for release-settings@example.com',
-  }).click();
+  });
+  await accountLink.focus();
+  await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/you\/?$/);
 
   for (const [name, path] of [
     ['Today', '/today/'],
     ['Journey', '/journey/'],
-    ['Insights', '/insights/'],
     ['You', '/you/'],
   ]) {
     const link = page.getByRole('navigation', { name: 'Primary' })
       .getByRole('link', { name, exact: true });
     await link.focus();
     await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(new RegExp(`${path.replaceAll('/', '\\/')}?$`));
+    await expect(page).toHaveURL(new RegExp(`${path.replaceAll('/', '\\/')}#main-content$`));
+    await expect(page.locator('#main-content')).toBeFocused();
   }
 
-  await expectGuardClean(guard, page, 'shared chrome activation', { allowAnalytics: true });
+  await expectGuardClean(guard, page, 'shared chrome activation');
+  guard.stop();
+  const insightsGuard = watchForProductProblems(page);
+  const insightsLink = page.getByRole('navigation', { name: 'Primary' })
+    .getByRole('link', { name: 'Insights', exact: true });
+  await insightsLink.focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\/insights\/#main-content$/);
+  await expect(page.locator('#main-content')).toBeFocused();
+  await expectGuardClean(insightsGuard, page, 'Insights chrome activation', {
+    allowAnalytics: true,
+  });
 });
 
 
@@ -151,9 +307,29 @@ test('login validation and Remember me preserve the authenticated session', asyn
     password: 'browser-password',
     remember_me: 'on',
   }));
+  const rememberedSession = (await page.context().cookies())
+    .find((cookie) => cookie.name === 'session');
+  expect(rememberedSession?.expires).toBeGreaterThan(Date.now() / 1000);
   await expect(page).toHaveURL(/\/today\/?$/);
   await page.reload();
   await expect(page).toHaveURL(/\/today\/?$/);
+
+  await signOut(page);
+  await page.goto('/auth/login');
+  await page.getByLabel('Email address').fill('browser@example.com');
+  await page.getByLabel('Password').fill('browser-password');
+  await expect(page.getByRole('checkbox', { name: 'Remember me' })).not.toBeChecked();
+  const sessionLoginResponse = page.waitForResponse((response) => (
+    new URL(response.url()).pathname === '/auth/login'
+    && response.request().method() === 'POST'
+  ));
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  const sessionLogin = await sessionLoginResponse;
+  expect(sessionLogin.status()).toBe(302);
+  expect(formPayload(sessionLogin.request())).not.toHaveProperty('remember_me');
+  const browserSession = (await page.context().cookies())
+    .find((cookie) => cookie.name === 'session');
+  expect(browserSession?.expires).toBe(-1);
 
   await expectGuardClean(guard, page, 'login validation and session');
 });
@@ -270,6 +446,76 @@ test('Today fallback and recovery links reach their intended next action', async
 });
 
 
+test('Today repeated controls run in each exact representative state', async ({ page }, testInfo) => {
+  test.setTimeout(60_000);
+  for (const stateName of ['today', 'today-no-plan', 'today-paused', 'today-exceeded']) {
+    const state = resolveReleaseState(
+      RELEASE_STATES.find((candidate) => candidate.name === stateName),
+      testInfo.project.name,
+    );
+    await signOut(page);
+    await loginAs(page, state.email);
+    await page.goto(state.path);
+    const guard = watchForProductProblems(page);
+    const expected = Object.entries(EXPECTED_ACTIONS[stateName].coveredBy)
+      .filter(([, receipt]) => receipt.test.endsWith(
+        'Today repeated controls run in each exact representative state',
+      ))
+      .map(([action]) => action);
+    const receipts = new Set();
+
+    if (expected.includes('Log nicotine use')) {
+      const quickLogJump = page.getByRole('link', { name: 'Log nicotine use', exact: true });
+      await keyboardActivate(page, quickLogJump);
+      await expect(page).toHaveURL(/\/today\/?#quick-log$/);
+      await expect(page.locator('#quick-log')).toBeInViewport();
+      receipts.add('Log nicotine use');
+    }
+
+    const primaryName = expected.find((action) => action.startsWith('Log nicotine use '));
+    if (primaryName) {
+      await page.goto(state.path);
+      const trigger = page.getByRole(stateName === 'today-no-plan' ? 'link' : 'button', {
+        name: primaryName,
+      });
+      await keyboardActivate(page, trigger);
+      if (stateName === 'today-no-plan') {
+        await expect(page).toHaveURL(/\/log\/(?:add|view)/);
+        await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+      } else {
+        const dialog = page.getByRole('dialog', { name: 'Log nicotine use' });
+        await expect(dialog).toBeVisible();
+        await expect(dialog.getByRole('button', { name: 'Log one pouch' })).toBeFocused();
+        await page.keyboard.press('Escape');
+        await expect(dialog).toBeHidden();
+        await expect(trigger).toBeFocused();
+      }
+      receipts.add(primaryName);
+    }
+
+    const cravingName = 'I have a craving Pause and choose what helps next';
+    if (expected.includes(cravingName)) {
+      await page.goto(state.path);
+      const trigger = page.getByRole('button', { name: cravingName });
+      await keyboardActivate(page, trigger);
+      const dialog = page.getByRole('dialog', { name: 'Take the next useful step' });
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByRole('heading', { name: 'How strong is it right now?' }))
+        .toBeFocused();
+      const close = dialog.getByRole('button', { name: 'Close craving support' });
+      await keyboardActivate(page, close);
+      await expect(dialog).toBeHidden();
+      await expect(trigger).toBeFocused();
+      receipts.add(cravingName);
+    }
+
+    expect([...receipts].sort(), `${stateName} repeated-control receipts`)
+      .toEqual(expected.sort());
+    await expectGuardClean(guard, page, `${stateName} repeated controls`);
+  }
+});
+
+
 test('uncovered onboarding choices and Journey handoffs preserve user control', async ({ page }) => {
   const guard = watchForProductProblems(page);
   await loginAs(page, 'browser@example.com');
@@ -339,6 +585,9 @@ test('Insights export disclosures and next steps keep data accessible', async ({
   const downloadStarted = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export CSV' }).click();
   const [response, download] = await Promise.all([exportResponse, downloadStarted]);
+  expect(response.request().method()).toBe('GET');
+  expect(new URL(response.url()).searchParams.get('days')).toBe('30');
+  expect(response.request().postData()).toBeNull();
   expect(response.status()).toBe(200);
   expect(response.headers()['content-type']).toContain('text/csv');
   expect(response.headers()['content-disposition']).toContain('attachment;');
@@ -366,7 +615,115 @@ test('Insights export disclosures and next steps keep data accessible', async ({
 });
 
 
+test('Insights actions run in every exact representative data state', async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
+  const stateNames = ['insights', 'insights-empty', 'insights-sparse'];
+  const disclosurePairs = [
+    ['View consumption trend data', 'Consumption trend data'],
+    ['View time-of-day data', 'Time of day distribution data'],
+    ['View weekly pattern data', 'Weekly pattern data'],
+    ['View product data', 'Brand preference data'],
+  ];
+
+  for (const stateName of stateNames) {
+    const state = resolveReleaseState(
+      RELEASE_STATES.find((candidate) => candidate.name === stateName),
+      testInfo.project.name,
+    );
+    await signOut(page);
+    await loginAs(page, state.email);
+    await page.goto(state.path);
+    const guard = watchForProductProblems(page);
+    const receipts = new Set();
+
+    for (const [name, days] of [
+      ['7 days', '7'], ['30 days', '30'], ['90 days', '90'], ['1 year', '365'],
+    ]) {
+      const responsePending = page.waitForResponse((response) => (
+        new URL(response.url()).pathname === '/insights/api/insights'
+        && new URL(response.url()).searchParams.get('days') === days
+      ));
+      await keyboardActivate(page, page.getByRole('link', { name, exact: true }));
+      const response = await responsePending;
+      expect(response.request().method()).toBe('GET');
+      expect(response.status()).toBe(200);
+      expect(response.request().postData()).toBeNull();
+      await expect(page.getByRole('link', { name, exact: true }))
+        .toHaveAttribute('aria-current', 'true');
+      receipts.add(name);
+    }
+
+    const weekly = page.getByRole('button', { name: 'Weekly' });
+    await keyboardActivate(page, weekly);
+    await expect(weekly).toHaveAttribute('aria-pressed', 'true');
+    receipts.add('Weekly');
+    const daily = page.getByRole('button', { name: 'Daily' });
+    await keyboardActivate(page, daily);
+    await expect(daily).toHaveAttribute('aria-pressed', 'true');
+    receipts.add('Daily');
+
+    for (const [summaryName, regionName] of disclosurePairs) {
+      const summary = page.getByText(summaryName, { exact: true });
+      await keyboardActivate(page, summary);
+      const details = summary.locator('..');
+      await expect(details).toHaveAttribute('open', '');
+      await page.keyboard.press('Tab');
+      await expect(details.getByRole('region', { name: regionName })).toBeFocused();
+      receipts.add(summaryName);
+    }
+    const hourlySummary = page.getByText(
+      'Open hourly detail and supporting measures', { exact: true },
+    );
+    await keyboardActivate(page, hourlySummary);
+    await expect(hourlySummary.locator('..')).toHaveAttribute('open', '');
+    receipts.add('Open hourly detail and supporting measures');
+
+    const exportButton = page.getByRole('button', { name: 'Export CSV' });
+    if (state.insightsState === 'empty') {
+      let exportRequests = 0;
+      const countExport = (request) => {
+        if (new URL(request.url()).pathname === '/insights/api/export') exportRequests += 1;
+      };
+      page.on('request', countExport);
+      await keyboardActivate(page, exportButton);
+      await expect(page.locator('[data-insights-load-status]'))
+        .toContainText('no data to export');
+      expect(exportRequests).toBe(0);
+      page.off('request', countExport);
+    } else {
+      const exportResponse = page.waitForResponse((response) => (
+        new URL(response.url()).pathname === '/insights/api/export'
+      ));
+      const downloadStarted = page.waitForEvent('download');
+      await keyboardActivate(page, exportButton);
+      const [response, download] = await Promise.all([exportResponse, downloadStarted]);
+      expect(response.request().method()).toBe('GET');
+      expect(new URL(response.url()).searchParams.get('days')).toBe('365');
+      expect(response.status()).toBe(200);
+      expect(download.suggestedFilename()).toMatch(/^nicotine_data_\d{8}\.csv$/);
+    }
+    receipts.add('Export CSV');
+
+    const nextActionName = stateName === 'insights'
+      ? 'Plan for Afternoon (12PM-6PM)'
+      : 'Log today';
+    await keyboardActivate(page, page.getByRole('link', { name: nextActionName }));
+    await expect(page).toHaveURL(stateName === 'insights' ? /\/journey\/?$/ : /\/today\/?$/);
+    receipts.add(nextActionName);
+
+    const pageSpecific = EXPECTED_ACTIONS[stateName]
+      .filter((action) => !coreChromeActions(stateName).includes(action));
+    expect([...receipts].sort(), `${stateName} runtime action receipts`)
+      .toEqual(pageSpecific);
+    await expectGuardClean(guard, page, `${stateName} exact actions`, {
+      allowAnalytics: true,
+    });
+  }
+});
+
+
 test('Insights failed range can be retried without losing current data', async ({ page }) => {
+  const guard = watchForProductProblems(page);
   let attempts = 0;
   await page.route('**/insights/api/insights?days=90', async (route) => {
     attempts += 1;
@@ -395,6 +752,83 @@ test('Insights failed range can be retried without losing current data', async (
     '/insights/api/export?days=90',
   );
   expect(attempts).toBe(2);
+  await expectGuardClean(guard, page, 'Insights expected range failure', {
+    allowAnalytics: true,
+    expectedHttpErrors: [{
+      method: 'GET', path: '/insights/api/insights?days=90', status: 503, count: 1,
+    }],
+  });
+});
+
+
+test('product guard exempts only the exact intentional HTTP failure', async ({ page }) => {
+  await page.route('**/insights/api/insights?days=90', (route) => (
+    route.fulfill({ status: 503, json: { error: 'temporary' } })
+  ));
+  await page.route('**/insights/api/insights?days=365', (route) => (
+    route.fulfill({ status: 503, json: { error: 'unrelated' } })
+  ));
+  await page.goto('/');
+  const expectedFailure = {
+    method: 'GET', path: '/insights/api/insights?days=90', status: 503, count: 1,
+  };
+  const exactGuard = watchForProductProblems(page);
+  await page.evaluate(() => fetch('/insights/api/insights?days=90'));
+  await expect.poll(() => exactGuard.problems().filter(({ kind }) => kind === 'http-5xx').length)
+    .toBe(1);
+  exactGuard.assertClean(expect, {
+    stateName: 'exact intentional 503', expectedHttpErrors: [expectedFailure],
+  });
+  exactGuard.stop();
+
+  const unrelatedGuard = watchForProductProblems(page);
+  await page.evaluate(() => fetch('/insights/api/insights?days=365'));
+  await expect.poll(() => unrelatedGuard.problems().filter(({ kind }) => kind === 'http-5xx').length)
+    .toBe(1);
+  expect(() => unrelatedGuard.assertClean(expect, {
+    stateName: 'unrelated 503', expectedHttpErrors: [expectedFailure],
+  })).toThrow(/unrelated 503 product guard findings/);
+});
+
+
+test('Insights range and export expose deterministic pending state', async ({ page }) => {
+  const guard = watchForProductProblems(page);
+  await loginAs(page, 'release-analytics-ready@example.com');
+  await page.goto('/insights/');
+
+  let releaseRange;
+  const rangeGate = new Promise((resolve) => { releaseRange = resolve; });
+  await page.route('**/insights/api/insights?days=7', async (route) => {
+    await rangeGate;
+    await route.continue();
+  });
+  const range = page.getByRole('link', { name: '7 days', exact: true });
+  await range.click();
+  await expect(page.locator('[data-insights-root]')).toHaveAttribute('aria-busy', 'true');
+  await expect(range).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.locator('[data-insights-load-status]')).toContainText('Updating insights');
+  releaseRange();
+  await expect(range).toHaveAttribute('aria-current', 'true');
+  await expect(page.locator('[data-insights-root]')).not.toHaveAttribute('aria-busy', 'true');
+
+  let releaseExport;
+  const exportGate = new Promise((resolve) => { releaseExport = resolve; });
+  await page.route('**/insights/api/export?days=7', async (route) => {
+    await exportGate;
+    await route.continue();
+  });
+  const exportButton = page.getByRole('button', { name: 'Export CSV' });
+  const downloadStarted = page.waitForEvent('download');
+  await exportButton.click();
+  await expect(exportButton).toBeDisabled();
+  await expect(exportButton).toHaveAttribute('aria-busy', 'true');
+  await expect(page.locator('[data-insights-load-status]')).toContainText('Preparing CSV');
+  releaseExport();
+  await downloadStarted;
+  await expect(exportButton).toBeEnabled();
+  await expect(exportButton).toHaveAttribute('aria-busy', 'false');
+
+  await expectGuardClean(guard, page, 'Insights pending states', { allowAnalytics: true });
 });
 
 

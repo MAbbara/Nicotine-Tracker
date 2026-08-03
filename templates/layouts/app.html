@@ -54,10 +54,10 @@
       {% endif %}
       {% block navigation %}
         <nav class="primary-nav" aria-label="Primary" data-primary-navigation>
-          <a class="primary-nav__link" href="{{ url_for('today.index') }}"{% if active_destination == 'today' %} aria-current="page"{% endif %}>{{ icon('today') }}<span>Today</span></a>
-          <a class="primary-nav__link" href="{{ url_for('journey.index') }}"{% if active_destination == 'journey' %} aria-current="page"{% endif %}>{{ icon('journey') }}<span>Journey</span></a>
-          <a class="primary-nav__link" href="{{ url_for('insights.insights_page') }}"{% if active_destination == 'insights' %} aria-current="page"{% endif %}>{{ icon('insights') }}<span>Insights</span></a>
-          <a class="primary-nav__link" href="{{ url_for('you.index') }}"{% if active_destination == 'you' %} aria-current="page"{% endif %}>{{ icon('you') }}<span>You</span></a>
+          <a class="primary-nav__link" href="{{ url_for('today.index') }}#main-content"{% if active_destination == 'today' %} aria-current="page"{% endif %}>{{ icon('today') }}<span>Today</span></a>
+          <a class="primary-nav__link" href="{{ url_for('journey.index') }}#main-content"{% if active_destination == 'journey' %} aria-current="page"{% endif %}>{{ icon('journey') }}<span>Journey</span></a>
+          <a class="primary-nav__link" href="{{ url_for('insights.insights_page') }}#main-content"{% if active_destination == 'insights' %} aria-current="page"{% endif %}>{{ icon('insights') }}<span>Insights</span></a>
+          <a class="primary-nav__link" href="{{ url_for('you.index') }}#main-content"{% if active_destination == 'you' %} aria-current="page"{% endif %}>{{ icon('you') }}<span>You</span></a>
         </nav>
       {% endblock %}
     {% endif %}

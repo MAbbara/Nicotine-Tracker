@@ -392,16 +392,14 @@ const CORE_ACTION_STATES = [
 ];
 
 const ACTION_OWNERS = {
-  appChrome: 'tests/browser/release-core-actions.spec.js › public and authenticated chrome actions reach focus and navigation targets',
+  appChrome: 'tests/browser/release-core-actions.spec.js › every core chrome action runs in its exact representative state',
   authLinks: 'tests/browser/release-core-actions.spec.js › authentication links reach the neighboring recovery or account form',
   authLogin: 'tests/browser/release-core-actions.spec.js › login validation and Remember me preserve the authenticated session',
   authForgot: 'tests/browser/release-core-actions.spec.js › forgot form enforces validation and preserves a neutral recovery response',
   authReset: 'tests/browser/release-core-actions.spec.js › reset form enforces native and matching validation without consuming the token',
   checkIn: 'tests/browser/today-states.spec.js › optional empty reflection saves once, reconciles one row, and reopens canonical values',
   cravingEnhanced: 'tests/browser/craving-flow.spec.js › Craving enhancement waits for readiness and opens support without navigation',
-  insightsDisclosures: 'tests/browser/release-core-actions.spec.js › Insights export disclosures and next steps keep data accessible',
-  insightsRanges: 'tests/browser/analytics.spec.js › Insights supports every range and preserves current content when refresh fails',
-  insightsRender: 'tests/browser/analytics.spec.js › Insights range response updates narrative controls export chart and table together',
+  insightsExact: 'tests/browser/release-core-actions.spec.js › Insights actions run in every exact representative data state',
   journeyChoices: 'tests/browser/release-core-actions.spec.js › uncovered onboarding choices and Journey handoffs preserve user control',
   journeyLifecycle: 'tests/browser/journey.spec.js › Journey previews explicitly, mutates future rows only, and carries status history through archive',
   journeyObserve: 'tests/browser/journey.spec.js › Observe recovery and migrated Goal review remain visibly separate and non-activating',
@@ -413,6 +411,7 @@ const ACTION_OWNERS = {
   signOut: 'tests/browser/offline-replay.spec.js › logout clears queued storage before another account can replay it',
   theme: 'tests/browser/shell.spec.js › theme choice publishes one effective contract and System alone follows the device',
   todayLinks: 'tests/browser/release-core-actions.spec.js › Today fallback and recovery links reach their intended next action',
+  todayRepeated: 'tests/browser/release-core-actions.spec.js › Today repeated controls run in each exact representative state',
   youLinks: 'tests/browser/release-core-actions.spec.js › You links reach every settings and catalog destination',
 };
 
@@ -440,7 +439,12 @@ function attachActionCoverage(stateName, ...groups) {
       if (coveredBy[name]) {
         throw new Error(`${stateName} action has two owners: ${name}`);
       }
-      coveredBy[name] = owner;
+      coveredBy[name] = Object.freeze({
+        action: name,
+        state: stateName,
+        test: owner,
+        dimensions: actionDimensions(stateName, name, owner),
+      });
     }
   }
   const missing = actions.filter((action) => !coveredBy[action]);
@@ -450,6 +454,77 @@ function attachActionCoverage(stateName, ...groups) {
   Object.defineProperty(actions, 'coveredBy', {
     value: Object.freeze(coveredBy),
     enumerable: false,
+  });
+}
+
+
+function disposition(status, reason) {
+  return Object.freeze({ status, reason });
+}
+
+
+function actionDimensions(stateName, actionName, owner) {
+  const isRange = ['1 year', '30 days', '7 days', '90 days'].includes(actionName);
+  const isExport = actionName === 'Export CSV';
+  const isPreference = ['Dark', 'Light', 'System', 'Remember me'].includes(actionName);
+  const isSubmit = ['Reset password', 'Send reset link'].includes(actionName)
+    || (stateName === 'login' && actionName === 'Sign in')
+    || (stateName === 'register' && actionName === 'Create account');
+  const isMutation = [
+    'Archive plan', 'Finish Observe', 'Mark complete', 'Pause plan',
+  ].includes(actionName) || isPreference;
+  const exactKeyboardOwner = [
+    ACTION_OWNERS.appChrome, ACTION_OWNERS.insightsExact,
+    ACTION_OWNERS.todayRepeated, ACTION_OWNERS.youLinks,
+  ].includes(owner) || (
+    owner === ACTION_OWNERS.todayLinks && actionName === 'Continue neutral tracking'
+  );
+  const focusAsserted = exactKeyboardOwner || [
+    ACTION_OWNERS.authForgot, ACTION_OWNERS.authReset, ACTION_OWNERS.checkIn,
+    ACTION_OWNERS.cravingEnhanced, ACTION_OWNERS.quickLogEnhanced,
+  ].includes(owner);
+  const requestAsserted = isRange
+    || (isExport && stateName !== 'insights-empty')
+    || isSubmit
+    || isMutation;
+  const loadingAsserted = isRange || (isExport && stateName !== 'insights-empty');
+  return Object.freeze({
+    error: disposition(
+      isRange || isExport || isSubmit ? 'asserted' : 'not-applicable',
+      isRange || isExport || isSubmit
+        ? 'Focused owner asserts the controlled failure or validation outcome.'
+        : 'This activation has no recoverable asynchronous error branch.',
+    ),
+    focus: disposition(
+      focusAsserted ? 'asserted' : 'not-applicable',
+      focusAsserted
+        ? 'Focused owner asserts focus transfer, focus return, or the keyboard destination.'
+        : 'This native full-page or local action has no application-managed focus transfer.',
+    ),
+    keyboard: disposition(
+      exactKeyboardOwner ? 'asserted' : 'not-applicable',
+      exactKeyboardOwner
+        ? `The owner activates ${stateName} › ${actionName} from the keyboard.`
+        : 'The control uses browser-native link, form, checkbox, or button semantics; its product outcome is asserted without custom keyboard handling.',
+    ),
+    loading: disposition(
+      loadingAsserted ? 'asserted' : 'not-applicable',
+      loadingAsserted
+        ? 'Focused owner holds the request and asserts busy and disabled state.'
+        : 'The action is synchronous or completes through full-page navigation.',
+    ),
+    persistence: disposition(
+      isPreference || isMutation ? 'asserted' : 'not-applicable',
+      isPreference || isMutation
+        ? 'Focused owner verifies the stored choice after its persistence boundary.'
+        : 'The action does not promise durable state by itself.',
+    ),
+    request: disposition(
+      requestAsserted ? 'asserted' : 'not-applicable',
+      requestAsserted
+        ? 'Focused owner asserts the destination or exact method, target, status, and payload.'
+        : 'The action is a client-local disclosure or preference control.',
+    ),
   });
 }
 
@@ -489,11 +564,9 @@ attachActionCoverage(
   'today',
   ownedBy(ACTION_OWNERS.appChrome, appChromeActions('today')),
   ownedBy(ACTION_OWNERS.checkIn, ['Edit reflection']),
-  ownedBy(ACTION_OWNERS.cravingEnhanced, [
+  ownedBy(ACTION_OWNERS.todayRepeated, [
     'I have a craving Pause and choose what helps next',
-  ]),
-  ownedBy(ACTION_OWNERS.quickLogFallback, ['Log nicotine use']),
-  ownedBy(ACTION_OWNERS.quickLogEnhanced, [
+    'Log nicotine use',
     'Log nicotine use Steady Mint · 6.00 mg is ready',
   ]),
 );
@@ -504,10 +577,8 @@ attachActionCoverage(
   ownedBy(ACTION_OWNERS.todayLinks, [
     'Continue neutral tracking', 'Create a plan', 'Log your first nicotine use',
   ]),
-  ownedBy(ACTION_OWNERS.cravingEnhanced, [
+  ownedBy(ACTION_OWNERS.todayRepeated, [
     'I have a craving Pause and choose what helps next',
-  ]),
-  ownedBy(ACTION_OWNERS.quickLogNoDefault, [
     'Log nicotine use', 'Log nicotine use Add the details now',
   ]),
 );
@@ -516,11 +587,9 @@ attachActionCoverage(
   'today-paused',
   ownedBy(ACTION_OWNERS.appChrome, appChromeActions('today-paused')),
   ownedBy(ACTION_OWNERS.todayLinks, ['Review or resume in Journey']),
-  ownedBy(ACTION_OWNERS.cravingEnhanced, [
+  ownedBy(ACTION_OWNERS.todayRepeated, [
     'I have a craving Pause and choose what helps next',
-  ]),
-  ownedBy(ACTION_OWNERS.quickLogFallback, ['Log nicotine use']),
-  ownedBy(ACTION_OWNERS.quickLogEnhanced, [
+    'Log nicotine use',
     'Log nicotine use Steady Mint · 6.00 mg is ready',
   ]),
 );
@@ -533,10 +602,8 @@ attachActionCoverage(
     'Review the plan in Journey',
   ]),
   ownedBy(ACTION_OWNERS.checkIn, ['Take a short check-in']),
-  ownedBy(ACTION_OWNERS.cravingEnhanced, [
+  ownedBy(ACTION_OWNERS.todayRepeated, [
     'I have a craving Pause and choose what helps next',
-  ]),
-  ownedBy(ACTION_OWNERS.quickLogEnhanced, [
     'Log nicotine use Steady Mint · 6.00 mg is ready',
   ]),
 );
@@ -570,11 +637,9 @@ for (const stateName of ['insights', 'insights-empty', 'insights-sparse']) {
   attachActionCoverage(
     stateName,
     ownedBy(ACTION_OWNERS.appChrome, appChromeActions(stateName)),
-    ownedBy(ACTION_OWNERS.insightsRanges, ['1 year', '30 days', '7 days', '90 days']),
-    ownedBy(ACTION_OWNERS.insightsRender, [
+    ownedBy(ACTION_OWNERS.insightsExact, [
+      '1 year', '30 days', '7 days', '90 days',
       'Open hourly detail and supporting measures', 'Weekly',
-    ]),
-    ownedBy(ACTION_OWNERS.insightsDisclosures, [
       'Daily', 'Export CSV', 'View consumption trend data', 'View product data',
       'View time-of-day data', 'View weekly pattern data',
       stateName === 'insights' ? 'Plan for Afternoon (12PM-6PM)' : 'Log today',

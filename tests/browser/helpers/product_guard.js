@@ -15,9 +15,20 @@ function requestPath(rawUrl) {
 }
 
 
+function requestTarget(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return null;
+  }
+}
+
+
 function watchForProductProblems(page) {
   const findings = [];
   let firstPartyOrigin = null;
+  let active = true;
 
   function isSameOrigin(rawUrl) {
     try {
@@ -32,6 +43,7 @@ function watchForProductProblems(page) {
   }
 
   page.on('console', (message) => {
+    if (!active) return;
     if (message.type() !== 'error') return;
     findings.push({
       kind: 'console-error',
@@ -40,6 +52,7 @@ function watchForProductProblems(page) {
     });
   });
   page.on('pageerror', (error) => {
+    if (!active) return;
     findings.push({
       kind: 'page-error',
       text: error.stack || error.message,
@@ -47,6 +60,7 @@ function watchForProductProblems(page) {
     });
   });
   page.on('requestfailed', (request) => {
+    if (!active) return;
     if (!isSameOrigin(request.url())) return;
     findings.push({
       kind: 'request-failed',
@@ -56,6 +70,7 @@ function watchForProductProblems(page) {
     });
   });
   page.on('response', (response) => {
+    if (!active) return;
     const url = response.url();
     if (!isSameOrigin(url)) return;
     if (response.status() >= 500) {
@@ -63,11 +78,13 @@ function watchForProductProblems(page) {
         kind: 'http-5xx',
         text: `HTTP ${response.status()}`,
         status: response.status(),
+        method: response.request().method(),
         url,
       });
     }
   });
   page.on('request', (request) => {
+    if (!active) return;
     const url = request.url();
     if (!isSameOrigin(url)) return;
     const pathname = requestPath(url);
@@ -87,7 +104,12 @@ function watchForProductProblems(page) {
     const allowedCanceledNavigationPaths = new Set(
       options.allowedCanceledNavigationPaths || [],
     );
-    return findings.filter((finding) => {
+    const expectedHttpErrors = (options.expectedHttpErrors || []).map((entry) => ({
+      ...entry,
+      count: entry.count || 1,
+      seen: 0,
+    }));
+    const unexpected = findings.filter((finding) => {
       if (finding.kind === 'analytics-bundle' && options.allowAnalytics) {
         return false;
       }
@@ -96,6 +118,27 @@ function watchForProductProblems(page) {
         && finding.navigation
         && finding.text.includes('ERR_ABORTED')
         && allowedCanceledNavigationPaths.has(requestPath(finding.url))
+      ) {
+        return false;
+      }
+      const expectedFailure = expectedHttpErrors.find((entry) => (
+        entry.status === finding.status
+        && entry.path === requestTarget(finding.url)
+        && (
+          finding.kind === 'console-error'
+          || entry.method === finding.method
+        )
+      ));
+      if (expectedFailure && finding.kind === 'http-5xx') {
+        expectedFailure.seen += 1;
+        return expectedFailure.seen > expectedFailure.count;
+      }
+      if (
+        finding.kind === 'console-error'
+        && expectedHttpErrors.some((entry) => (
+          finding.text.includes(`status of ${entry.status}`)
+          && entry.path === requestTarget(finding.url)
+        ))
       ) {
         return false;
       }
@@ -118,6 +161,15 @@ function watchForProductProblems(page) {
       }
       return true;
     });
+    for (const entry of expectedHttpErrors) {
+      if (entry.seen !== entry.count) {
+        unexpected.push({
+          kind: 'missing-expected-http-error',
+          text: `Expected ${entry.count} ${entry.method} ${entry.path} HTTP ${entry.status}; saw ${entry.seen}`,
+        });
+      }
+    }
+    return unexpected;
   }
 
   return {
@@ -129,6 +181,9 @@ function watchForProductProblems(page) {
     },
     problems() {
       return findings.map((finding) => ({ ...finding }));
+    },
+    stop() {
+      active = false;
     },
   };
 }

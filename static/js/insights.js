@@ -287,6 +287,65 @@ function setLoadStatus(root, message = '') {
   status.hidden = !message;
 }
 
+function setPending(root, pending, message = '') {
+  if (pending) root.setAttribute('aria-busy', 'true');
+  else root.removeAttribute('aria-busy');
+  root.querySelectorAll('[data-days]').forEach((control) => {
+    if (pending) control.setAttribute('aria-disabled', 'true');
+    else control.removeAttribute('aria-disabled');
+  });
+  setLoadStatus(root, message);
+}
+
+function exportFilename(response) {
+  const disposition = response.headers.get('content-disposition') || '';
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  const plain = disposition.match(/filename="?([^";]+)"?/i)?.[1];
+  try {
+    return decodeURIComponent(encoded || plain || 'nicotine-data.csv');
+  } catch {
+    return plain || 'nicotine-data.csv';
+  }
+}
+
+async function exportRange(root, days) {
+  const button = root.querySelector('#export-data');
+  if (!button || button.disabled) return;
+  if (root.dataset.insightsState === 'empty') {
+    setLoadStatus(root, 'There is no data to export in this range yet.');
+    return;
+  }
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  setLoadStatus(root, 'Preparing CSV…');
+  try {
+    const response = await fetch(`/insights/api/export?days=${days}`);
+    if (!response.ok) {
+      if (response.status === 404) {
+        setLoadStatus(root, 'There is no data to export in this range yet.');
+        return;
+      }
+      throw new Error(`Export request failed (${response.status})`);
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const download = document.createElement('a');
+    download.href = url;
+    download.download = exportFilename(response);
+    download.hidden = true;
+    document.body.append(download);
+    download.click();
+    download.remove();
+    URL.revokeObjectURL(url);
+    setLoadStatus(root);
+  } catch (_) {
+    setLoadStatus(root, 'The CSV could not be prepared. Your insights are still available.');
+  } finally {
+    button.disabled = false;
+    button.setAttribute('aria-busy', 'false');
+  }
+}
+
 export function renderInsights(
   root,
   viewModel,
@@ -361,6 +420,7 @@ export async function startInsights(scope = document) {
   let currentRange = Number(currentData.range_days) || 30;
   let trendType = 'daily';
   let requestGeneration = 0;
+  let rangePending = false;
   const disclosure = createDisclosure({
     trigger: document.querySelector('[data-analytics-disclosure-trigger]'),
     panel: document.querySelector('[data-analytics-disclosure-menu]'),
@@ -392,7 +452,10 @@ export async function startInsights(scope = document) {
   const render = chartRenderer.render;
 
   const loadRange = async (days) => {
+    if (rangePending) return;
+    rangePending = true;
     const generation = ++requestGeneration;
+    setPending(root, true, 'Updating insights…');
     try {
       const response = await fetch(`/insights/api/insights?days=${days}`);
       if (!response.ok) throw new Error(`Insights request failed (${response.status})`);
@@ -400,17 +463,20 @@ export async function startInsights(scope = document) {
       if (generation !== requestGeneration) return;
       currentData = data;
       currentRange = days;
-      setLoadStatus(root);
       await render();
+      setPending(root, false);
     } catch (_) {
       if (generation !== requestGeneration) return;
-      setLoadStatus(root, 'Insights could not refresh. Your current values are still available; choose the range again to retry.');
+      setPending(root, false, 'Insights could not refresh. Your current values are still available; choose the range again to retry.');
+    } finally {
+      rangePending = false;
     }
   };
 
   root.querySelectorAll('.dropdown-item[data-days]').forEach((item) => {
     item.addEventListener('click', (event) => {
       event.preventDefault();
+      if (item.getAttribute('aria-disabled') === 'true') return;
       const days = Number(item.dataset.days) || 30;
       disclosure?.close();
       loadRange(days);
@@ -423,7 +489,7 @@ export async function startInsights(scope = document) {
     });
   });
   root.querySelector('#export-data')?.addEventListener('click', () => {
-    window.location.assign(`/insights/api/export?days=${currentRange}`);
+    exportRange(root, currentRange);
   });
   details?.addEventListener('toggle', render);
   document.documentElement.addEventListener('nicotine-tracker:theme-change', render);
