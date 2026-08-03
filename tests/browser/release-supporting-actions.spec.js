@@ -345,7 +345,7 @@ test('offline supporting states reject the opposite persisted precondition', asy
 });
 
 
-test('causal supporting transactions reject unrelated, pre-existing, and reusable evidence', async ({ page, context }) => {
+test('causal supporting transactions reject moved stale feedback, unrelated focus, and reusable evidence', async ({ page, context }) => {
   await loginAs(page, 'release-settings@example.com');
 
   const chromeRecorder = createSupportingBehaviorRecorder(
@@ -422,10 +422,32 @@ test('causal supporting transactions reject unrelated, pre-existing, and reusabl
   await dashboardRecorder.visitState(page, 'dashboard');
   await expect(dashboardRecorder.forScenario(page, 'dashboard', '7 days').run('success'))
     .rejects.toThrow(/authoritative state principal/);
+
+  await signOut(page);
+  await loginAs(page, 'release-settings@example.com');
+  const feedbackRecorder = createSupportingBehaviorRecorder(
+    SUPPORTING_OWNER_TITLES.settingsReminders, expect,
+  );
+  await feedbackRecorder.visitState(page, 'reminders');
+  await page.evaluate(() => {
+    const realStatus = document.querySelector('#weekly-report-status');
+    const staleStatus = document.createElement('p');
+    staleStatus.setAttribute('role', 'status');
+    staleStatus.textContent = 'Weekly report queued.';
+    document.querySelector('#test-discord-webhook').closest('.reminders-action')
+      .append(staleStatus);
+    document.querySelector('#trigger-weekly-report').addEventListener('click', () => {
+      realStatus.remove();
+      staleStatus.id = 'weekly-report-status';
+    }, { capture: true, once: true });
+  });
+  await expect(feedbackRecorder
+    .forScenario(page, 'reminders', 'Send weekly report').run('success'))
+    .rejects.toThrow(/feedback.*(?:existed|caused|identity)/i);
 });
 
 
-test('catalog authority rejects real control, request, artifact, state, and precondition substitutions', async ({ page }) => {
+test('catalog authority rejects same-scope clones and real control, request, artifact, state, and precondition substitutions', async ({ page }) => {
   await loginAs(page, 'release-settings@example.com');
 
   const chromeRecorder = createSupportingBehaviorRecorder(
@@ -482,6 +504,18 @@ test('catalog authority rejects real control, request, artifact, state, and prec
   });
   await expect(profileRecorder.forScenario(page, 'profile', 'Save profile').run('invalid'))
     .rejects.toThrow(/catalog control|toHaveCount/);
+
+  await profileRecorder.visitState(page, 'profile');
+  await page.locator(
+    '.profile-section form[action="/settings/profile"] .settings-save-row',
+  ).evaluate((scope) => {
+    const real = scope.querySelector('button.c-button--primary[type="submit"]');
+    const clone = real.cloneNode(true);
+    real.setAttribute('aria-label', 'Original save profile control');
+    scope.append(clone);
+  });
+  await expect(profileRecorder.forScenario(page, 'profile', 'Save profile').run('invalid'))
+    .rejects.toThrow(/catalog control selector/);
 
   const accountRecorder = createSupportingBehaviorRecorder(
     SUPPORTING_OWNER_TITLES.settingsAccountValidation, expect,

@@ -87,11 +87,22 @@ function navigationAuthority(state, action, profile) {
     'fixture:catalog-edit': 'a[href^="/catalog/edit/"]',
     'fixture:goal-edit': 'a[href^="/goals/edit/"]',
   });
-  const selector = role === 'button'
+  const exactNavigationSelectors = Object.freeze({
+    'catalog-add\u0000← Your pouches': 'a.catalog-back-link[href="/catalog/"]',
+    'catalog-add\u0000Cancel': '.catalog-form__actions a.c-button--secondary[href="/catalog/"]',
+    'catalog-edit\u0000← Your pouches': 'a.catalog-back-link[href="/catalog/"]',
+    'catalog-edit\u0000Cancel': '.catalog-form__actions a.c-button--secondary[href="/catalog/"]',
+    'goal-create\u0000Back to goals': 'a.goal-form-page__back[href="/goals/"]',
+    'goal-create\u0000Cancel': '.goal-form__actions a.c-button--secondary[href="/goals/"]',
+    'goal-progress\u0000Back to goals': '.goals-intro a.c-button--secondary[href="/goals/"]',
+    'goal-edit\u0000Back to goals': 'a.goal-form-page__back[href="/goals/"]',
+    'goal-edit\u0000Cancel': '.goal-form__actions a.c-button--secondary[href="/goals/"]',
+  });
+  const selector = exactNavigationSelectors[`${state}\u0000${action}`] || (role === 'button'
     ? `button.c-button--${action === 'Apply filters' ? 'primary' : 'secondary'}[type="submit"]`
     : resolved.startsWith('fixture:')
       ? fixtureSelectors[resolved]
-      : `a[href="${href}"]`;
+      : `a[href="${href}"]`);
   const scope = role === 'button'
     ? Object.freeze({ selector: action === 'Apply filters'
       ? 'form.logbook-filters[action="/log/view"]'

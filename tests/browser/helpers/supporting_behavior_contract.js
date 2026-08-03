@@ -463,6 +463,7 @@ function evidenceToken(state, action, dimension) {
 
 const supportingTransactionReceipts = new WeakMap();
 let supportingPageMarkerSequence = 0;
+let supportingFeedbackMarkerSequence = 0;
 
 
 function isLocator(value) {
@@ -664,17 +665,32 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
       ? scope.locator('summary').filter({ hasText: authority.name })
       : scope.getByRole(authority.role, { name: authority.name, exact: true });
     await expectApi(catalogControl).toHaveCount(1);
+    if (!authority.selector) {
+      throw new Error(`${obligation.state} › ${obligation.action} has no catalog control selector`);
+    }
+    const selectorControl = scope.locator(authority.selector);
+    const selectorCount = await selectorControl.count();
+    if (selectorCount !== 1) {
+      throw new Error(
+        `${obligation.state} › ${obligation.action} catalog control selector resolved ${selectorCount} elements`,
+      );
+    }
+    const selectorHandle = await selectorControl.elementHandle();
+    const selectorMatchesCatalog = await catalogControl.evaluate(
+      (element, selected) => element === selected, selectorHandle,
+    );
+    const selectorMatchesControl = await control.evaluate(
+      (element, selected) => element === selected, selectorHandle,
+    );
+    if (!selectorMatchesCatalog || !selectorMatchesControl) {
+      throw new Error('typed evidence did not bind the unique catalog control selector');
+    }
     const matchesCatalogControl = await control.evaluate(
       (element, expected) => element === expected,
       await catalogControl.elementHandle(),
     );
     if (!matchesCatalogControl) {
       throw new Error('typed evidence did not bind the catalog control contract');
-    }
-    if (!authority.selector || !await control.evaluate(
-      (element, selector) => element.matches(selector), authority.selector,
-    )) {
-      throw new Error('typed evidence did not match the catalog control selector');
     }
     for (const [name, value] of Object.entries(authority.attributes || {})) {
       if (name === 'href' && String(value).startsWith('fixture:')) continue;
@@ -808,10 +824,42 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
     }
   }
 
-  async function captureFeedbackState(locator) {
+  async function captureFeedbackState(locator, descriptor, page) {
     if (!isLocator(locator)) throw new TypeError('causal feedback/error requires a locator');
+    let preexistingMatchMarker = null;
+    if (descriptor && page && (
+      descriptor.text !== undefined
+      || descriptor.validationMessage !== undefined
+      || descriptor.state !== undefined
+    )) {
+      preexistingMatchMarker = `supporting-feedback-${++supportingFeedbackMarkerSequence}`;
+      await page.locator('body *').evaluateAll((elements, expected) => {
+        for (const element of elements) {
+          const exactMatch = (
+            (expected.text === undefined || element.textContent === expected.text)
+            && (expected.validationMessage === undefined || (
+              element.validationMessage === expected.validationMessage
+              && element.matches(':user-invalid')
+            ))
+            && (expected.state === undefined
+              || element.getAttribute('data-state') === expected.state)
+          );
+          if (exactMatch) {
+            Object.defineProperty(element, '__supportingPreexistingFeedback', {
+              configurable: true,
+              value: expected.marker,
+            });
+          }
+        }
+      }, {
+        marker: preexistingMatchMarker,
+        text: descriptor.text,
+        validationMessage: descriptor.validationMessage,
+        state: descriptor.state,
+      });
+    }
     const count = await locator.count();
-    if (count === 0) return { count: 0, values: [] };
+    if (count === 0) return { count: 0, values: [], preexistingMatchMarker };
     const values = await locator.evaluateAll((elements) => elements.map((element) => ({
       text: element.textContent,
       role: element.getAttribute('role'),
@@ -821,7 +869,7 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
       validationMessage: element.validationMessage || '',
       userInvalid: element.matches(':user-invalid'),
     })));
-    return { count, values };
+    return { count, values, preexistingMatchMarker };
   }
 
   function feedbackStateAlreadyMatches(before, descriptor) {
@@ -849,6 +897,12 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
       return;
     }
     await expectApi(descriptor.locator).toHaveCount(1);
+    if (before.preexistingMatchMarker && await descriptor.locator.evaluate(
+      (element, marker) => element.__supportingPreexistingFeedback === marker,
+      before.preexistingMatchMarker,
+    )) {
+      throw new Error(`${kind} reused a pre-existing identity not caused by activation`);
+    }
     const semantics = await descriptor.locator.evaluate((element) => ({
       role: element.getAttribute('role'),
       live: element.getAttribute('aria-live'),
@@ -1036,12 +1090,13 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
         }
 
         await ensureControlBound();
-        const beforeFeedback = feedback ? await captureFeedbackState(feedback.locator) : null;
+        const beforeFeedback = feedback
+          ? await captureFeedbackState(feedback.locator, feedback, page) : null;
         const beforeError = error?.kind === 'dismissed-dialog'
           ? await error.locator.count()
-          : (error ? await captureFeedbackState(error.locator) : null);
+          : (error ? await captureFeedbackState(error.locator, error, page) : null);
         const beforeLoadingStatus = loading?.status
-          ? await captureFeedbackState(loading.status.locator) : null;
+          ? await captureFeedbackState(loading.status.locator, loading.status, page) : null;
         if (feedback && feedbackStateAlreadyMatches(beforeFeedback, feedback)) {
           throw new Error('feedback already existed before activation');
         }
