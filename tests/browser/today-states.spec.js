@@ -12,6 +12,10 @@ async function login(page, email) {
   await page.getByLabel('Password').fill('browser-password');
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL(/\/today\/?$/);
+  const clockResponse = await page.request.get('/__test__/release-clock');
+  expect(clockResponse.status()).toBe(200);
+  const { fixed_now: fixedNow } = await clockResponse.json();
+  await page.clock.setFixedTime(new Date(fixedNow));
 }
 
 

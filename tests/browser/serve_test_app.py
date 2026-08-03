@@ -686,6 +686,11 @@ with app.app_context():
 
     seed_review_fixture('journey-review-desktop@example.com', 'c', 'd')
     seed_review_fixture('journey-review-mobile@example.com', 'e', 'f')
+    # The Journey flow mutates its Observe plan to completed. Keep those
+    # destructive lifecycle assertions isolated from the immutable release
+    # inventory principals exercised later in the same one-worker run.
+    seed_review_fixture('journey-review-flow-desktop@example.com', 'g', 'h')
+    seed_review_fixture('journey-review-flow-mobile@example.com', 'i', 'j')
 
     def seed_release_user(
         email,

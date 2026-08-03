@@ -42,7 +42,7 @@ async function register(page, testInfo, label) {
 async function loginReviewFixture(page, testInfo) {
   await page.goto('/auth/login');
   const project = testInfo.project.name.includes('mobile') ? 'mobile' : 'desktop';
-  await page.getByLabel('Email address').fill(`journey-review-${project}@example.com`);
+  await page.getByLabel('Email address').fill(`journey-review-flow-${project}@example.com`);
   await page.getByLabel('Password').fill('browser-password');
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL(/\/today\/?$/);
