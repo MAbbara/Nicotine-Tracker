@@ -343,6 +343,7 @@ async function exportRange(root, days) {
   } finally {
     button.disabled = false;
     button.setAttribute('aria-busy', 'false');
+    button.focus();
   }
 }
 

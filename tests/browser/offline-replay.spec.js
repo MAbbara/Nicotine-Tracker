@@ -1,4 +1,8 @@
 const { test, expect } = require('@playwright/test');
+const {
+  OWNER_TITLES,
+  createBehaviorRecorder,
+} = require('./helpers/core_behavior_contract');
 
 async function login(page, email = 'today-targeted@example.com') {
   await page.goto('/auth/login');
@@ -289,6 +293,7 @@ test('privacy disable plus reload clears the queue and performs no replay POST',
 });
 
 test('logout clears queued storage before another account can replay it', async ({ page, context }) => {
+  const recorder = createBehaviorRecorder(OWNER_TITLES.signOut, expect);
   let postCount = 0;
   let settledPostCount = 0;
   const postPages = [];
@@ -323,13 +328,26 @@ test('logout clears queued storage before another account can replay it', async 
   await expect.poll(() => postCount).toBeGreaterThan(beforeYou);
   await expect.poll(() => settledPostCount).toBeGreaterThan(1);
   const beforeLogout = postCount;
-  await page.getByRole('link', { name: 'Sign out' }).click();
+  const logoutResponsePending = page.waitForResponse((response) => (
+    new URL(response.url()).pathname === '/auth/logout'
+    && response.request().isNavigationRequest()
+  ));
+  const signOut = page.getByRole('link', { name: 'Sign out' });
+  await signOut.focus();
+  await expect(signOut).toBeFocused();
+  await page.keyboard.press('Enter');
+  const logoutResponse = await logoutResponsePending;
+  expect(logoutResponse.request().method()).toBe('GET');
+  expect(logoutResponse.request().postData()).toBeNull();
+  expect(logoutResponse.status()).toBe(302);
   await expect.poll(() => new URL(page.url()).pathname).toBe('/');
   await expect.poll(async () => (await pendingEvents(page)).length).toBe(0);
 
   await login(page, 'browser@example.com');
   await page.waitForTimeout(150);
   expect(postCount, JSON.stringify(postPages)).toBe(beforeLogout);
+  recorder.record('you', 'Sign out', ['keyboard', 'persistence', 'request']);
+  recorder.assertComplete();
 });
 
 test('queued and attention treatments remain focused, touchable, themed, and overflow-safe', async ({ page, context }, testInfo) => {

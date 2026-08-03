@@ -4,25 +4,22 @@ const path = require('node:path');
 
 const {
   CORE_ACTION_STATES,
+  CORE_BEHAVIOR_OBLIGATIONS,
   EXPECTED_ACTIONS,
   RELEASE_STATES,
   loginAs,
   resolveReleaseState,
 } = require('./helpers/release_manifest');
+const {
+  OWNER_TITLES,
+  createBehaviorRecorder,
+  validateCoverage,
+} = require('./helpers/core_behavior_contract');
 const { watchForProductProblems } = require('./helpers/product_guard');
 
 
 function formPayload(request) {
   return Object.fromEntries(new URLSearchParams(request.postData() || ''));
-}
-
-
-function coreChromeActions(stateName) {
-  return EXPECTED_ACTIONS[stateName].filter((action) => (
-    ['Insights', 'Journey', 'Nicotine Tracker home', 'Skip to main content', 'Today', 'You']
-      .includes(action)
-    || action.startsWith('Open your space for ')
-  ));
 }
 
 
@@ -34,7 +31,9 @@ async function keyboardActivate(page, locator) {
 
 
 async function signOut(page) {
-  await page.goto('/auth/logout');
+  const response = await page.request.get('/auth/logout');
+  expect(response.status()).toBe(200);
+  await page.goto('/');
   await expect(page).toHaveURL(/\/$/);
 }
 
@@ -56,7 +55,42 @@ async function expectGuardClean(guard, page, stateName, {
 }
 
 
+async function handoffProductGuard(page, sourceGuard, stateName, options = {}) {
+  const destinationGuard = watchForProductProblems(page);
+  await expectGuardClean(sourceGuard, page, stateName, options);
+  sourceGuard.stop();
+  destinationGuard.clear();
+  return destinationGuard;
+}
+
+
+async function expectKeyboardNavigation(page, locator, expectedPath, {
+  expectedStatus = 200,
+  finalPath = expectedPath,
+} = {}) {
+  const navigationPending = page.waitForNavigation({ waitUntil: 'load' });
+  const responsePending = page.waitForResponse((response) => (
+    response.request().isNavigationRequest()
+    && new URL(response.url()).pathname === expectedPath
+  ));
+  await keyboardActivate(page, locator);
+  const [response] = await Promise.all([responsePending, navigationPending]);
+  expect(response.request().method()).toBe('GET');
+  expect(response.request().postData()).toBeNull();
+  expect(response.status()).toBe(expectedStatus);
+  await expect.poll(() => new URL(page.url()).pathname).toBe(finalPath);
+  return response;
+}
+
+
 test('every core release action names an exact state-scoped behavioral receipt', () => {
+  expect(
+    CORE_BEHAVIOR_OBLIGATIONS,
+    'coverage obligations must be authored independently from coveredBy receipts',
+  ).toBeDefined();
+  expect(validateCoverage(EXPECTED_ACTIONS, Object.fromEntries(
+    CORE_ACTION_STATES.map((state) => [state, EXPECTED_ACTIONS[state].coveredBy]),
+  ))).toBe(true);
   const ownerStates = new Map();
   for (const stateName of CORE_ACTION_STATES) {
     const actions = EXPECTED_ACTIONS[stateName];
@@ -102,9 +136,15 @@ test('every core release action names an exact state-scoped behavioral receipt',
     'tests/browser/release-core-actions.spec.js › Today repeated controls run in each exact representative state',
     'tests/browser/release-core-actions.spec.js › uncovered onboarding choices and Journey handoffs preserve user control',
     'tests/browser/onboarding.spec.js › registration previews transparently and activates only after final confirmation',
-    'tests/browser/today-states.spec.js › optional empty reflection saves once, reconciles one row, and reopens canonical values',
+    OWNER_TITLES.todayCheckIn,
   ]);
   for (const [owner, states] of ownerStates) {
+    const [ownerFile] = owner.split(' › ');
+    const ownerSource = fs.readFileSync(path.resolve(ownerFile), 'utf8');
+    expect(ownerSource, `${owner} creates owner-local runtime receipts`)
+      .toContain('createBehaviorRecorder');
+    expect(ownerSource, `${owner} fails when an obligation is never recorded`)
+      .toContain('recorder.assertComplete()');
     if (states.size > 1) {
       expect(exactMultiStateOwners, `${owner} spans ${[...states].join(', ')}`).toContain(owner);
     }
@@ -112,83 +152,129 @@ test('every core release action names an exact state-scoped behavioral receipt',
 });
 
 
+test('independent behavior contract rejects omissions, remaps, and dimension overclaims', () => {
+  const coverage = Object.fromEntries(CORE_ACTION_STATES.map((state) => [
+    state,
+    { ...EXPECTED_ACTIONS[state].coveredBy },
+  ]));
+
+  delete coverage.landing['Create account'];
+  expect(() => validateCoverage(EXPECTED_ACTIONS, coverage)).toThrow(/missing receipt/);
+  coverage.landing['Create account'] = EXPECTED_ACTIONS.landing.coveredBy['Create account'];
+
+  coverage.today['Edit reflection'] = {
+    ...coverage.today['Edit reflection'],
+    test: OWNER_TITLES.todayRepeated,
+  };
+  expect(() => validateCoverage(EXPECTED_ACTIONS, coverage)).toThrow(/owner mismatch/);
+  coverage.today['Edit reflection'] = EXPECTED_ACTIONS.today.coveredBy['Edit reflection'];
+
+  coverage.insights['30 days'] = {
+    ...coverage.insights['30 days'],
+    dimensions: {
+      ...coverage.insights['30 days'].dimensions,
+      persistence: { status: 'asserted', reason: 'Unproven durable selection.' },
+    },
+  };
+  expect(() => validateCoverage(EXPECTED_ACTIONS, coverage)).toThrow(/dimension evidence mismatch/);
+});
+
+
 test('every core chrome action runs in its exact representative state', async ({ page }, testInfo) => {
-  test.setTimeout(120_000);
+  test.setTimeout(360_000);
   const states = CORE_ACTION_STATES.map((name) => (
     resolveReleaseState(RELEASE_STATES.find((state) => state.name === name), testInfo.project.name)
   ));
+  const recorder = createBehaviorRecorder(OWNER_TITLES.chrome, expect);
 
   for (const state of states) {
-    const receipts = new Set();
-    if (!state.email) {
-      await page.goto(state.path);
-      const guard = watchForProductProblems(page);
-      const skip = page.getByRole('link', { name: 'Skip to main content' });
-      await keyboardActivate(page, skip);
-      await expect(page.locator('#main-content')).toBeFocused();
-      receipts.add('Skip to main content');
-      await page.goto(state.path);
-      await keyboardActivate(page, page.getByRole('link', { name: 'Nicotine Tracker home' }));
-      await expect(page).toHaveURL(/\/$/);
-      receipts.add('Nicotine Tracker home');
-      await expectGuardClean(guard, page, `${state.name} exact chrome`);
-    } else {
+    if (state.email) {
       await signOut(page);
       await loginAs(page, state.email);
-      await page.goto(state.path);
-      const guard = watchForProductProblems(page);
-      const skip = page.getByRole('link', { name: 'Skip to main content' });
-      await keyboardActivate(page, skip);
-      await expect(page.locator('#main-content')).toBeFocused();
-      receipts.add('Skip to main content');
+    } else {
+      await signOut(page);
+    }
 
-      await page.goto(state.path);
-      await keyboardActivate(page, page.getByRole('link', { name: 'Nicotine Tracker home' }));
-      await expect(page).toHaveURL(/\/today\/?$/);
-      receipts.add('Nicotine Tracker home');
+    let sourceGuard = watchForProductProblems(page);
+    await page.goto(state.path);
+    const skip = page.getByRole('link', { name: 'Skip to main content' });
+    await keyboardActivate(page, skip);
+    await expect(page.locator('#main-content')).toBeFocused();
+    recorder.record(state.name, 'Skip to main content', ['focus', 'keyboard']);
+    await expectGuardClean(sourceGuard, page, `${state.name} skip`, {
+      allowAnalytics: state.allowAnalytics,
+    });
+    sourceGuard.stop();
 
+    sourceGuard = watchForProductProblems(page);
+    await page.goto(state.path);
+    let destinationGuard = await handoffProductGuard(
+      page, sourceGuard, `${state.name} before wordmark`, { allowAnalytics: state.allowAnalytics },
+    );
+    await expectKeyboardNavigation(
+      page,
+      page.getByRole('link', { name: 'Nicotine Tracker home' }),
+      state.email ? '/today/' : '/',
+    );
+    recorder.record(state.name, 'Nicotine Tracker home', ['keyboard', 'request']);
+    await expectGuardClean(destinationGuard, page, `${state.name} wordmark destination`);
+    destinationGuard.stop();
+
+    if (state.email) {
+      sourceGuard = watchForProductProblems(page);
       await page.goto(state.path);
       const accountName = `Open your space for ${state.email}`;
-      await keyboardActivate(page, page.getByRole('link', { name: accountName }));
-      await expect(page).toHaveURL(/\/you\/?$/);
-      receipts.add(accountName);
-
-      for (const [name, path] of [
-        ['Today', '/today/'], ['Journey', '/journey/'], ['You', '/you/'],
-      ]) {
-        await page.goto(state.path);
-        await keyboardActivate(
-          page,
-          page.getByRole('navigation', { name: 'Primary' })
-            .getByRole('link', { name, exact: true }),
-        );
-        await expect(page).toHaveURL(new RegExp(`${path.replaceAll('/', '\\/')}#main-content$`));
-        await expect(page.locator('#main-content')).toBeFocused();
-        receipts.add(name);
-      }
-      await expectGuardClean(guard, page, `${state.name} exact non-analytics chrome`, {
-        allowAnalytics: state.allowAnalytics,
-      });
-      guard.stop();
-
-      await page.goto(state.path);
-      const insightsGuard = watchForProductProblems(page);
-      await keyboardActivate(
-        page,
-        page.getByRole('navigation', { name: 'Primary' })
-          .getByRole('link', { name: 'Insights', exact: true }),
+      destinationGuard = await handoffProductGuard(
+        page, sourceGuard, `${state.name} before account`, { allowAnalytics: state.allowAnalytics },
       );
-      await expect(page).toHaveURL(/\/insights\/#main-content$/);
-      await expect(page.locator('#main-content')).toBeFocused();
-      receipts.add('Insights');
-      await expectGuardClean(insightsGuard, page, `${state.name} exact Insights chrome`, {
-        allowAnalytics: true,
-      });
-      insightsGuard.stop();
+      await expectKeyboardNavigation(
+        page, page.getByRole('link', { name: accountName }), '/you/',
+      );
+      recorder.record(state.name, accountName, ['keyboard', 'request']);
+      await expectGuardClean(destinationGuard, page, `${state.name} account destination`);
+      destinationGuard.stop();
+
+      for (const [name, path, destinationAllowsAnalytics] of [
+        ['Today', '/today/', false],
+        ['Journey', '/journey/', false],
+        ['Insights', '/insights/', true],
+        ['You', '/you/', false],
+      ]) {
+        sourceGuard = watchForProductProblems(page);
+        await page.goto(state.path);
+        const link = page.getByRole('navigation', { name: 'Primary' })
+          .getByRole('link', { name, exact: true });
+        const currentDestination = (
+          (name === 'Today' && state.name.startsWith('today'))
+          || (name === 'Journey' && state.name === 'journey')
+          || (name === 'Insights' && state.name.startsWith('insights'))
+          || (name === 'You' && state.name === 'you')
+        );
+        if (currentDestination) {
+          await keyboardActivate(page, link);
+          await expect(page).toHaveURL(new RegExp(`${path.replaceAll('/', '\\/')}#main-content$`));
+          await expect(page.locator('#main-content')).toBeFocused();
+          recorder.record(state.name, name, ['focus', 'keyboard']);
+          await expectGuardClean(sourceGuard, page, `${state.name} current ${name}`, {
+            allowAnalytics: state.allowAnalytics,
+          });
+          sourceGuard.stop();
+          continue;
+        }
+        destinationGuard = await handoffProductGuard(
+          page, sourceGuard, `${state.name} before ${name}`, { allowAnalytics: state.allowAnalytics },
+        );
+        await expectKeyboardNavigation(page, link, path);
+        await expect(page.locator('#main-content')).toBeFocused();
+        recorder.record(state.name, name, ['focus', 'keyboard', 'request']);
+        await expectGuardClean(destinationGuard, page, `${state.name} ${name} destination`, {
+          allowAnalytics: destinationAllowsAnalytics,
+        });
+        destinationGuard.stop();
+      }
     }
-    expect([...receipts].sort(), `${state.name} runtime chrome receipts`)
-      .toEqual(coreChromeActions(state.name));
   }
+  recorder.assertComplete();
 });
 
 
@@ -255,19 +341,22 @@ test('public and authenticated chrome actions reach focus and navigation targets
 
 test('authentication links reach the neighboring recovery or account form', async ({ page }) => {
   const guard = watchForProductProblems(page);
-  await page.goto('/auth/login');
-
-  await page.getByRole('link', { name: 'Create one here' }).click();
-  await expect(page).toHaveURL(/\/auth\/register$/);
-  await page.getByRole('link', { name: 'Sign in here' }).click();
-  await expect(page).toHaveURL(/\/auth\/login$/);
-  await page.getByRole('link', { name: 'Forgot password?' }).click();
-  await expect(page).toHaveURL(/\/auth\/forgot_password$/);
-  await page.getByRole('link', { name: 'Sign in here' }).click();
-  await expect(page).toHaveURL(/\/auth\/login$/);
-  await page.goto('/auth/reset_password/browser-accessibility-reset-token');
-  await page.getByRole('link', { name: 'Sign in here' }).click();
-  await expect(page).toHaveURL(/\/auth\/login$/);
+  const recorder = createBehaviorRecorder(OWNER_TITLES.authLinks, expect);
+  for (const [stateName, source, action, destination] of [
+    ['login', '/auth/login', 'Create one here', '/auth/register'],
+    ['login', '/auth/login', 'Forgot password?', '/auth/forgot_password'],
+    ['register', '/auth/register', 'Sign in here', '/auth/login'],
+    ['forgot-password', '/auth/forgot_password', 'Sign in here', '/auth/login'],
+    [
+      'reset-password', '/auth/reset_password/browser-accessibility-reset-token',
+      'Sign in here', '/auth/login',
+    ],
+  ]) {
+    await page.goto(source);
+    await expectKeyboardNavigation(page, page.getByRole('link', { name: action }), destination);
+    recorder.record(stateName, action, ['keyboard', 'request']);
+  }
+  recorder.assertComplete();
 
   await expectGuardClean(guard, page, 'authentication links');
 });
@@ -275,6 +364,7 @@ test('authentication links reach the neighboring recovery or account form', asyn
 
 test('login validation and Remember me preserve the authenticated session', async ({ page }) => {
   const guard = watchForProductProblems(page);
+  const recorder = createBehaviorRecorder(OWNER_TITLES.authLogin, expect);
   await page.goto('/auth/login');
 
   const invalidLoginResponse = page.waitForResponse((response) => (
@@ -283,7 +373,7 @@ test('login validation and Remember me preserve the authenticated session', asyn
   ));
   await page.getByLabel('Email address').fill('release-settings@example.com');
   await page.getByLabel('Password').fill('wrong-password');
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await keyboardActivate(page, page.getByRole('button', { name: 'Sign in', exact: true }));
   const invalidLogin = await invalidLoginResponse;
   expect(invalidLogin.status()).toBe(200);
   expect(formPayload(invalidLogin.request())).toEqual(expect.objectContaining({
@@ -294,12 +384,15 @@ test('login validation and Remember me preserve the authenticated session', asyn
 
   await page.getByLabel('Email address').fill('release-settings@example.com');
   await page.getByLabel('Password').fill('browser-password');
-  await page.getByRole('checkbox', { name: 'Remember me' }).check();
+  const remember = page.getByRole('checkbox', { name: 'Remember me' });
+  await remember.focus();
+  await page.keyboard.press('Space');
+  await expect(remember).toBeChecked();
   const validLoginResponse = page.waitForResponse((response) => (
     new URL(response.url()).pathname === '/auth/login'
     && response.request().method() === 'POST'
   ));
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await keyboardActivate(page, page.getByRole('button', { name: 'Sign in', exact: true }));
   const validLogin = await validLoginResponse;
   expect(validLogin.status()).toBe(302);
   expect(formPayload(validLogin.request())).toEqual(expect.objectContaining({
@@ -330,6 +423,9 @@ test('login validation and Remember me preserve the authenticated session', asyn
   const browserSession = (await page.context().cookies())
     .find((cookie) => cookie.name === 'session');
   expect(browserSession?.expires).toBe(-1);
+  recorder.record('login', 'Remember me', ['keyboard', 'persistence']);
+  recorder.record('login', 'Sign in', ['error', 'keyboard', 'persistence', 'request']);
+  recorder.assertComplete();
 
   await expectGuardClean(guard, page, 'login validation and session');
 });
@@ -337,6 +433,7 @@ test('login validation and Remember me preserve the authenticated session', asyn
 
 test('forgot form enforces validation and preserves a neutral recovery response', async ({ page }) => {
   const guard = watchForProductProblems(page);
+  const recorder = createBehaviorRecorder(OWNER_TITLES.authForgot, expect);
   await page.goto('/auth/forgot_password');
 
   const forgotEmail = page.getByLabel('Email address');
@@ -348,7 +445,7 @@ test('forgot form enforces validation and preserves a neutral recovery response'
     ) forgotPosts += 1;
   });
   await forgotEmail.fill('not-an-email');
-  await page.getByRole('button', { name: 'Send reset link' }).click();
+  await keyboardActivate(page, page.getByRole('button', { name: 'Send reset link' }));
   await expect(forgotEmail).toBeFocused();
   expect(await forgotEmail.evaluate((element) => element.validity.typeMismatch)).toBe(true);
   expect(forgotPosts).toBe(0);
@@ -358,7 +455,7 @@ test('forgot form enforces validation and preserves a neutral recovery response'
     new URL(response.url()).pathname === '/auth/forgot_password'
     && response.request().method() === 'POST'
   ));
-  await page.getByRole('button', { name: 'Send reset link' }).click();
+  await keyboardActivate(page, page.getByRole('button', { name: 'Send reset link' }));
   const forgot = await forgotResponse;
   expect(forgot.status()).toBe(302);
   expect(formPayload(forgot.request())).toEqual(expect.objectContaining({
@@ -368,6 +465,10 @@ test('forgot form enforces validation and preserves a neutral recovery response'
   await expect(page.getByRole('status')).toContainText(
     'If an account with that email exists, a password reset link has been sent.',
   );
+  recorder.record(
+    'forgot-password', 'Send reset link', ['error', 'focus', 'keyboard', 'request'],
+  );
+  recorder.assertComplete();
 
   await expectGuardClean(guard, page, 'forgot-password validation');
 });
@@ -375,6 +476,7 @@ test('forgot form enforces validation and preserves a neutral recovery response'
 
 test('reset form enforces native and matching validation without consuming the token', async ({ page }) => {
   const guard = watchForProductProblems(page);
+  const recorder = createBehaviorRecorder(OWNER_TITLES.authReset, expect);
 
   await page.goto('/auth/reset_password/browser-accessibility-reset-token');
   let resetPosts = 0;
@@ -390,57 +492,102 @@ test('reset form enforces native and matching validation without consuming the t
   });
   await newPassword.fill('short');
   await confirmation.fill('short');
-  await page.getByRole('button', { name: 'Reset password' }).click();
+  await keyboardActivate(page, page.getByRole('button', { name: 'Reset password' }));
   await expect(newPassword).toBeFocused();
   expect(await newPassword.evaluate((element) => element.validity.tooShort)).toBe(true);
   expect(resetPosts).toBe(0);
 
   await newPassword.fill('browser-password');
   await confirmation.fill('different-password');
-  await page.getByRole('button', { name: 'Reset password' }).click();
+  await keyboardActivate(page, page.getByRole('button', { name: 'Reset password' }));
   await expect(confirmation).toBeFocused();
   expect(await confirmation.evaluate((element) => element.validity.customError)).toBe(true);
   expect(resetPosts).toBe(0);
   await confirmation.fill('browser-password');
   expect(await confirmation.evaluate((element) => element.validity.valid)).toBe(true);
+  recorder.record(
+    'reset-password', 'Reset password', ['error', 'focus', 'keyboard', 'request'],
+  );
+  recorder.assertComplete();
 
   await expectGuardClean(guard, page, 'reset-password validation');
 });
 
 
+test('exact Today check-in actions open and return focus in their representative fixtures', async ({ page }) => {
+  const recorder = createBehaviorRecorder(OWNER_TITLES.todayCheckIn, expect);
+  for (const [stateName, email, actionName, cancelName] of [
+    ['today', 'today-targeted@example.com', 'Edit reflection', 'Keep saved reflection'],
+    ['today-exceeded', 'today-exceeded@example.com', 'Take a short check-in', 'Not now'],
+  ]) {
+    await signOut(page);
+    await loginAs(page, email);
+    const guard = watchForProductProblems(page);
+    const action = page.getByRole('button', { name: actionName, exact: true });
+    await keyboardActivate(page, action);
+    const form = page.locator('[data-check-in-form]');
+    await expect(form).toBeVisible();
+    await expect(form.locator('[name="mood"]').first()).toBeFocused();
+    await keyboardActivate(page, form.getByRole('button', { name: cancelName }));
+    await expect(form).toBeHidden();
+    await expect(action).toBeFocused();
+    recorder.record(stateName, actionName, ['focus', 'keyboard']);
+    await expectGuardClean(guard, page, `${stateName} exact check-in`);
+    guard.stop();
+  }
+  recorder.assertComplete();
+});
+
+
 test('Today fallback and recovery links reach their intended next action', async ({ page }) => {
   const guard = watchForProductProblems(page);
+  const recorder = createBehaviorRecorder(OWNER_TITLES.todayLinks, expect);
   await loginAs(page, 'browser@example.com');
 
-  await page.getByRole('link', { name: 'Create a plan', exact: true }).click();
-  await expect(page).toHaveURL(/\/journey\/onboarding\/?$/);
+  await expectKeyboardNavigation(
+    page, page.getByRole('link', { name: 'Create a plan', exact: true }),
+    '/journey/onboarding',
+  );
+  recorder.record('today-no-plan', 'Create a plan', ['keyboard', 'request']);
   await page.goto('/today/');
   const neutral = page.getByRole('link', { name: 'Continue neutral tracking' });
-  await neutral.focus();
-  await page.keyboard.press('Enter');
+  await expectKeyboardNavigation(page, neutral, '/log/view');
   await expect(page).toHaveURL(/\/log\/view\?open_add_modal=1$/);
+  recorder.record('today-no-plan', 'Continue neutral tracking', ['keyboard', 'request']);
   await page.goto('/today/');
-  await page.getByRole('link', { name: 'Log your first nicotine use' }).click();
+  await expectKeyboardNavigation(
+    page, page.getByRole('link', { name: 'Log your first nicotine use' }), '/log/view',
+  );
   await expect(page).toHaveURL(/\/log\/view\?open_add_modal=1$/);
+  recorder.record('today-no-plan', 'Log your first nicotine use', ['keyboard', 'request']);
 
   await signOut(page);
   await loginAs(page, 'today-paused@example.com');
-  await page.getByRole('link', { name: 'Review or resume in Journey' }).click();
-  await expect(page).toHaveURL(/\/journey\/?$/);
+  await expectKeyboardNavigation(
+    page, page.getByRole('link', { name: 'Review or resume in Journey' }), '/journey/',
+  );
+  recorder.record('today-paused', 'Review or resume in Journey', ['keyboard', 'request']);
 
   await signOut(page);
   await loginAs(page, 'today-exceeded@example.com');
-  await page.getByRole('link', { name: 'Keep logging' }).click();
+  await keyboardActivate(page, page.getByRole('link', { name: 'Keep logging' }));
   await expect(page).toHaveURL(/\/today\/#quick-log$/);
   await expect(page.locator('#quick-log')).toBeInViewport();
-  await page.getByRole('link', { name: 'Reflect on today' }).click();
+  recorder.record('today-exceeded', 'Keep logging', ['keyboard']);
+  await keyboardActivate(page, page.getByRole('link', { name: 'Reflect on today' }));
   await expect(page).toHaveURL(/\/today\/#check-in$/);
   await expect(page.locator('#check-in')).toBeInViewport();
-  await page.getByRole('link', { name: 'Review the plan in Journey' }).click();
-  await expect(page).toHaveURL(/\/journey\/?$/);
+  recorder.record('today-exceeded', 'Reflect on today', ['keyboard']);
+  await expectKeyboardNavigation(
+    page, page.getByRole('link', { name: 'Review the plan in Journey' }), '/journey/',
+  );
+  recorder.record('today-exceeded', 'Review the plan in Journey', ['keyboard', 'request']);
   await page.goto('/today/');
-  await page.getByRole('link', { name: 'Pause or revise in Journey' }).click();
-  await expect(page).toHaveURL(/\/journey\/?$/);
+  await expectKeyboardNavigation(
+    page, page.getByRole('link', { name: 'Pause or revise in Journey' }), '/journey/',
+  );
+  recorder.record('today-exceeded', 'Pause or revise in Journey', ['keyboard', 'request']);
+  recorder.assertComplete();
 
   await expectGuardClean(guard, page, 'Today fallback and recovery actions');
 });
@@ -448,6 +595,7 @@ test('Today fallback and recovery links reach their intended next action', async
 
 test('Today repeated controls run in each exact representative state', async ({ page }, testInfo) => {
   test.setTimeout(60_000);
+  const recorder = createBehaviorRecorder(OWNER_TITLES.todayRepeated, expect);
   for (const stateName of ['today', 'today-no-plan', 'today-paused', 'today-exceeded']) {
     const state = resolveReleaseState(
       RELEASE_STATES.find((candidate) => candidate.name === stateName),
@@ -457,19 +605,16 @@ test('Today repeated controls run in each exact representative state', async ({ 
     await loginAs(page, state.email);
     await page.goto(state.path);
     const guard = watchForProductProblems(page);
-    const expected = Object.entries(EXPECTED_ACTIONS[stateName].coveredBy)
-      .filter(([, receipt]) => receipt.test.endsWith(
-        'Today repeated controls run in each exact representative state',
-      ))
-      .map(([action]) => action);
-    const receipts = new Set();
+    const expected = CORE_BEHAVIOR_OBLIGATIONS
+      .filter((entry) => entry.owner === OWNER_TITLES.todayRepeated && entry.state === stateName)
+      .map(({ action }) => action);
 
     if (expected.includes('Log nicotine use')) {
       const quickLogJump = page.getByRole('link', { name: 'Log nicotine use', exact: true });
       await keyboardActivate(page, quickLogJump);
       await expect(page).toHaveURL(/\/today\/?#quick-log$/);
       await expect(page.locator('#quick-log')).toBeInViewport();
-      receipts.add('Log nicotine use');
+      recorder.record(stateName, 'Log nicotine use', ['keyboard']);
     }
 
     const primaryName = expected.find((action) => action.startsWith('Log nicotine use '));
@@ -478,19 +623,26 @@ test('Today repeated controls run in each exact representative state', async ({ 
       const trigger = page.getByRole(stateName === 'today-no-plan' ? 'link' : 'button', {
         name: primaryName,
       });
-      await keyboardActivate(page, trigger);
       if (stateName === 'today-no-plan') {
-        await expect(page).toHaveURL(/\/log\/(?:add|view)/);
+        const href = await trigger.getAttribute('href');
+        const destinationPath = new URL(href, page.url()).pathname;
+        await expectKeyboardNavigation(page, trigger, destinationPath, {
+          expectedStatus: 302,
+          finalPath: '/log/view',
+        });
+        await expect(page).toHaveURL(/\/log\/view\?open_add_modal=1$/);
         await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+        recorder.record(stateName, primaryName, ['keyboard', 'request']);
       } else {
+        await keyboardActivate(page, trigger);
         const dialog = page.getByRole('dialog', { name: 'Log nicotine use' });
         await expect(dialog).toBeVisible();
         await expect(dialog.getByRole('button', { name: 'Log one pouch' })).toBeFocused();
         await page.keyboard.press('Escape');
         await expect(dialog).toBeHidden();
         await expect(trigger).toBeFocused();
+        recorder.record(stateName, primaryName, ['focus', 'keyboard']);
       }
-      receipts.add(primaryName);
     }
 
     const cravingName = 'I have a craving Pause and choose what helps next';
@@ -506,18 +658,17 @@ test('Today repeated controls run in each exact representative state', async ({ 
       await keyboardActivate(page, close);
       await expect(dialog).toBeHidden();
       await expect(trigger).toBeFocused();
-      receipts.add(cravingName);
+      recorder.record(stateName, cravingName, ['focus', 'keyboard']);
     }
-
-    expect([...receipts].sort(), `${stateName} repeated-control receipts`)
-      .toEqual(expected.sort());
     await expectGuardClean(guard, page, `${stateName} repeated controls`);
   }
+  recorder.assertComplete();
 });
 
 
 test('uncovered onboarding choices and Journey handoffs preserve user control', async ({ page }) => {
   const guard = watchForProductProblems(page);
+  const recorder = createBehaviorRecorder(OWNER_TITLES.journeyChoices, expect);
   await loginAs(page, 'browser@example.com');
   await page.goto('/journey/onboarding');
 
@@ -528,26 +679,44 @@ test('uncovered onboarding choices and Journey handoffs preserve user control', 
   await page.keyboard.press('Space');
   await expect(quit).toBeChecked();
   await expect(page.locator('.onboarding-margin')).toContainText('Quit by a date');
+  recorder.record(
+    'journey-onboarding',
+    'Quit by a date Build a schedule that ends at zero.',
+    ['focus', 'keyboard'],
+  );
 
   const observe = page.getByRole('radio', {
     name: 'Understand my baseline first Track for seven days without a reduction target.',
   });
-  await observe.check();
+  await observe.focus();
+  await page.keyboard.press('Space');
   await expect(observe).toBeChecked();
   await expect(page.locator('.onboarding-margin')).toContainText('Understand my baseline first');
+  recorder.record(
+    'journey-onboarding',
+    'Understand my baseline first Track for seven days without a reduction target.',
+    ['focus', 'keyboard'],
+  );
 
   await signOut(page);
   await loginAs(page, 'journey-review-desktop@example.com');
   await page.goto('/journey/');
-  await page.getByRole('link', { name: 'Review this draft' }).click();
-  await expect(page).toHaveURL(/\/journey\/onboarding\/?$/);
+  await expectKeyboardNavigation(
+    page, page.getByRole('link', { name: 'Review this draft' }), '/journey/onboarding',
+  );
   await expect(page.getByRole('heading', { name: 'Choose your intention' })).toBeFocused();
+  recorder.record('journey', 'Review this draft', ['keyboard', 'request']);
 
   await signOut(page);
   await loginAs(page, 'today-targeted@example.com');
   await page.goto('/journey/');
-  await page.getByRole('link', { name: 'Go to Today’s next useful action' }).click();
-  await expect(page).toHaveURL(/\/today\/?$/);
+  await expectKeyboardNavigation(
+    page, page.getByRole('link', { name: 'Go to Today’s next useful action' }), '/today/',
+  );
+  recorder.record(
+    'journey', 'Go to Today’s next useful action', ['keyboard', 'request'],
+  );
+  recorder.assertComplete();
 
   await expectGuardClean(guard, page, 'Journey choice and handoff actions');
 });
@@ -616,8 +785,9 @@ test('Insights export disclosures and next steps keep data accessible', async ({
 
 
 test('Insights actions run in every exact representative data state', async ({ page }, testInfo) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   const stateNames = ['insights', 'insights-empty', 'insights-sparse'];
+  const recorder = createBehaviorRecorder(OWNER_TITLES.insights, expect);
   const disclosurePairs = [
     ['View consumption trend data', 'Consumption trend data'],
     ['View time-of-day data', 'Time of day distribution data'],
@@ -632,35 +802,73 @@ test('Insights actions run in every exact representative data state', async ({ p
     );
     await signOut(page);
     await loginAs(page, state.email);
-    await page.goto(state.path);
     const guard = watchForProductProblems(page);
-    const receipts = new Set();
+    await page.goto(state.path);
+
+    const rangeAttempts = new Map();
+    let releaseRangeFailure;
+    await page.route('**/insights/api/insights?days=*', async (route) => {
+      const days = new URL(route.request().url()).searchParams.get('days');
+      const attempts = (rangeAttempts.get(days) || 0) + 1;
+      rangeAttempts.set(days, attempts);
+      if (attempts === 1) {
+        await new Promise((resolve) => { releaseRangeFailure = resolve; });
+        await route.fulfill({ status: 503, json: { error: 'controlled range failure' } });
+        return;
+      }
+      await route.continue();
+    });
 
     for (const [name, days] of [
       ['7 days', '7'], ['30 days', '30'], ['90 days', '90'], ['1 year', '365'],
     ]) {
+      const beforeCurrent = await page.locator('[data-days][aria-current="true"]')
+        .getAttribute('data-days');
+      const range = page.getByRole('link', { name, exact: true });
+      const failedResponsePending = page.waitForResponse((response) => (
+        new URL(response.url()).pathname === '/insights/api/insights'
+        && new URL(response.url()).searchParams.get('days') === days
+        && response.status() === 503
+      ));
+      await keyboardActivate(page, range);
+      await expect(page.locator('[data-insights-root]')).toHaveAttribute('aria-busy', 'true');
+      await expect(range).toHaveAttribute('aria-disabled', 'true');
+      await expect(page.locator('[data-insights-load-status]')).toContainText('Updating insights');
+      releaseRangeFailure();
+      const failedResponse = await failedResponsePending;
+      expect(failedResponse.request().method()).toBe('GET');
+      expect(failedResponse.request().postData()).toBeNull();
+      await expect(page.locator('[data-insights-load-status]'))
+        .toContainText('choose the range again to retry');
+      await expect(range).toBeFocused();
+      await expect(page.locator('[data-insights-root]')).not.toHaveAttribute('aria-busy', 'true');
+      await expect(page.locator('[data-days][aria-current="true"]'))
+        .toHaveAttribute('data-days', beforeCurrent);
+
       const responsePending = page.waitForResponse((response) => (
         new URL(response.url()).pathname === '/insights/api/insights'
         && new URL(response.url()).searchParams.get('days') === days
+        && response.status() === 200
       ));
-      await keyboardActivate(page, page.getByRole('link', { name, exact: true }));
+      await keyboardActivate(page, range);
       const response = await responsePending;
       expect(response.request().method()).toBe('GET');
       expect(response.status()).toBe(200);
       expect(response.request().postData()).toBeNull();
-      await expect(page.getByRole('link', { name, exact: true }))
-        .toHaveAttribute('aria-current', 'true');
-      receipts.add(name);
+      await expect(range).toHaveAttribute('aria-current', 'true');
+      await expect(range).toBeFocused();
+      recorder.record(stateName, name, ['error', 'focus', 'keyboard', 'loading', 'request']);
     }
+    await page.unroute('**/insights/api/insights?days=*');
 
     const weekly = page.getByRole('button', { name: 'Weekly' });
     await keyboardActivate(page, weekly);
     await expect(weekly).toHaveAttribute('aria-pressed', 'true');
-    receipts.add('Weekly');
+    recorder.record(stateName, 'Weekly', ['focus', 'keyboard']);
     const daily = page.getByRole('button', { name: 'Daily' });
     await keyboardActivate(page, daily);
     await expect(daily).toHaveAttribute('aria-pressed', 'true');
-    receipts.add('Daily');
+    recorder.record(stateName, 'Daily', ['focus', 'keyboard']);
 
     for (const [summaryName, regionName] of disclosurePairs) {
       const summary = page.getByText(summaryName, { exact: true });
@@ -669,14 +877,17 @@ test('Insights actions run in every exact representative data state', async ({ p
       await expect(details).toHaveAttribute('open', '');
       await page.keyboard.press('Tab');
       await expect(details.getByRole('region', { name: regionName })).toBeFocused();
-      receipts.add(summaryName);
+      recorder.record(stateName, summaryName, ['focus', 'keyboard']);
     }
     const hourlySummary = page.getByText(
       'Open hourly detail and supporting measures', { exact: true },
     );
     await keyboardActivate(page, hourlySummary);
     await expect(hourlySummary.locator('..')).toHaveAttribute('open', '');
-    receipts.add('Open hourly detail and supporting measures');
+    await expect(hourlySummary).toBeFocused();
+    recorder.record(
+      stateName, 'Open hourly detail and supporting measures', ['focus', 'keyboard'],
+    );
 
     const exportButton = page.getByRole('button', { name: 'Export CSV' });
     if (state.insightsState === 'empty') {
@@ -688,37 +899,83 @@ test('Insights actions run in every exact representative data state', async ({ p
       await keyboardActivate(page, exportButton);
       await expect(page.locator('[data-insights-load-status]'))
         .toContainText('no data to export');
+      await expect(exportButton).toBeFocused();
       expect(exportRequests).toBe(0);
       page.off('request', countExport);
+      recorder.record(stateName, 'Export CSV', ['error', 'focus', 'keyboard', 'request']);
     } else {
+      let exportAttempts = 0;
+      let releaseExportFailure;
+      await page.route('**/insights/api/export?days=365', async (route) => {
+        exportAttempts += 1;
+        if (exportAttempts === 1) {
+          await new Promise((resolve) => { releaseExportFailure = resolve; });
+          await route.fulfill({ status: 503, body: 'controlled export failure' });
+          return;
+        }
+        await route.continue();
+      });
+      const failedExportPending = page.waitForResponse((response) => (
+        new URL(response.url()).pathname === '/insights/api/export'
+        && response.status() === 503
+      ));
+      await keyboardActivate(page, exportButton);
+      await expect(exportButton).toBeDisabled();
+      await expect(exportButton).toHaveAttribute('aria-busy', 'true');
+      await expect(page.locator('[data-insights-load-status]')).toContainText('Preparing CSV');
+      releaseExportFailure();
+      const failedExport = await failedExportPending;
+      expect(failedExport.request().method()).toBe('GET');
+      expect(failedExport.request().postData()).toBeNull();
+      await expect(page.locator('[data-insights-load-status]'))
+        .toContainText('CSV could not be prepared');
+      await expect(exportButton).toBeEnabled();
+      await expect(exportButton).toHaveAttribute('aria-busy', 'false');
+      await expect(exportButton).toBeFocused();
+
       const exportResponse = page.waitForResponse((response) => (
         new URL(response.url()).pathname === '/insights/api/export'
+        && response.status() === 200
       ));
       const downloadStarted = page.waitForEvent('download');
       await keyboardActivate(page, exportButton);
       const [response, download] = await Promise.all([exportResponse, downloadStarted]);
       expect(response.request().method()).toBe('GET');
       expect(new URL(response.url()).searchParams.get('days')).toBe('365');
+      expect(response.request().postData()).toBeNull();
       expect(response.status()).toBe(200);
       expect(download.suggestedFilename()).toMatch(/^nicotine_data_\d{8}\.csv$/);
+      await expect(exportButton).toBeFocused();
+      expect(exportAttempts).toBe(2);
+      await page.unroute('**/insights/api/export?days=365');
+      recorder.record(
+        stateName, 'Export CSV', ['error', 'focus', 'keyboard', 'loading', 'request'],
+      );
     }
-    receipts.add('Export CSV');
 
     const nextActionName = stateName === 'insights'
       ? 'Plan for Afternoon (12PM-6PM)'
       : 'Log today';
-    await keyboardActivate(page, page.getByRole('link', { name: nextActionName }));
-    await expect(page).toHaveURL(stateName === 'insights' ? /\/journey\/?$/ : /\/today\/?$/);
-    receipts.add(nextActionName);
-
-    const pageSpecific = EXPECTED_ACTIONS[stateName]
-      .filter((action) => !coreChromeActions(stateName).includes(action));
-    expect([...receipts].sort(), `${stateName} runtime action receipts`)
-      .toEqual(pageSpecific);
-    await expectGuardClean(guard, page, `${stateName} exact actions`, {
+    const destinationPath = stateName === 'insights' ? '/journey/' : '/today/';
+    const destinationGuard = await handoffProductGuard(page, guard, `${stateName} exact actions`, {
       allowAnalytics: true,
+      expectedHttpErrors: [
+        ...['7', '30', '90', '365'].map((days) => ({
+          method: 'GET', path: `/insights/api/insights?days=${days}`, status: 503, count: 1,
+        })),
+        ...(state.insightsState === 'empty' ? [] : [{
+          method: 'GET', path: '/insights/api/export?days=365', status: 503, count: 1,
+        }]),
+      ],
     });
+    await expectKeyboardNavigation(
+      page, page.getByRole('link', { name: nextActionName }), destinationPath,
+    );
+    recorder.record(stateName, nextActionName, ['keyboard', 'request']);
+    await expectGuardClean(destinationGuard, page, `${stateName} next-step destination`);
+    destinationGuard.stop();
   }
+  recorder.assertComplete();
 });
 
 
@@ -791,6 +1048,42 @@ test('product guard exempts only the exact intentional HTTP failure', async ({ p
 });
 
 
+test('transition guard rejects analytics leakage from Insights into non-analytics destinations', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (['/today/', '/journey/', '/you/'].includes(window.location.pathname)) {
+      window.addEventListener('DOMContentLoaded', () => {
+        fetch('/static/js/analytics/runtime.js');
+      }, { once: true });
+    }
+  });
+  await loginAs(page, 'release-analytics-ready@example.com');
+
+  for (const [name, path] of [
+    ['Today', '/today/'], ['Journey', '/journey/'], ['You', '/you/'],
+  ]) {
+    const sourceGuard = watchForProductProblems(page);
+    await page.goto('/insights/');
+    const destinationGuard = await handoffProductGuard(
+      page, sourceGuard, `Insights before injected ${name}`, { allowAnalytics: true },
+    );
+    await keyboardActivate(
+      page,
+      page.getByRole('navigation', { name: 'Primary' })
+        .getByRole('link', { name, exact: true }),
+    );
+    await expect(page).toHaveURL(new RegExp(`${path.replaceAll('/', '\\/')}#main-content$`));
+    await page.waitForLoadState('networkidle');
+    expect(() => destinationGuard.assertClean(expect, {
+      stateName: `injected Insights to ${name}`,
+      expectedStatus: 200,
+      expectedPath: path,
+      allowAnalytics: false,
+    })).toThrow(/analytics-bundle/);
+    destinationGuard.stop();
+  }
+});
+
+
 test('Insights range and export expose deterministic pending state', async ({ page }) => {
   const guard = watchForProductProblems(page);
   await loginAs(page, 'release-analytics-ready@example.com');
@@ -834,6 +1127,7 @@ test('Insights range and export expose deterministic pending state', async ({ pa
 
 test('You links reach every settings and catalog destination', async ({ page }) => {
   const guard = watchForProductProblems(page);
+  const recorder = createBehaviorRecorder(OWNER_TITLES.youLinks, expect);
   const unusedBundles = [];
   page.on('request', (request) => {
     if (new URL(request.url()).pathname === '/static/js/preline.js') {
@@ -851,12 +1145,12 @@ test('You links reach every settings and catalog destination', async ({ page }) 
   ]) {
     await page.goto('/you/');
     const link = page.getByRole('link', { name });
-    await link.focus();
-    await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(new RegExp(`${path.replaceAll('/', '\\/')}?$`));
+    await expectKeyboardNavigation(page, link, path);
     await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+    recorder.record('you', name, ['keyboard', 'request']);
   }
 
   expect(unusedBundles).toEqual([]);
+  recorder.assertComplete();
   await expectGuardClean(guard, page, 'You settings and catalog links');
 });

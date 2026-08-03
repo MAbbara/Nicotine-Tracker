@@ -1,4 +1,8 @@
 const { test, expect } = require('@playwright/test');
+const {
+  OWNER_TITLES,
+  createBehaviorRecorder,
+} = require('./helpers/core_behavior_contract');
 
 
 function deterministicEmail(testInfo) {
@@ -24,28 +28,82 @@ function watchForErrors(page, { ignoreConsole = [] } = {}) {
   return errors;
 }
 
-async function register(page, testInfo) {
+async function register(page, testInfo, recorder = null) {
   await page.goto('/auth/register');
   await page.getByLabel('Email address').fill(deterministicEmail(testInfo));
-  await page.getByRole('textbox', { name: 'Password', exact: true }).fill('browser-password');
-  await page.getByLabel('Confirm Password').fill('browser-password');
-  await page.getByLabel(/I understand this is a personal tracking tool/i).check();
-  await page.getByRole('button', { name: 'Create Account' }).click();
+  const password = page.getByRole('textbox', { name: 'Password', exact: true });
+  const confirmation = page.getByLabel('Confirm Password');
+  await password.fill(recorder ? 'short' : 'browser-password');
+  await confirmation.fill(recorder ? 'short' : 'browser-password');
+  const terms = page.getByLabel(/I understand this is a personal tracking tool/i);
+  if (recorder) {
+    await terms.focus();
+    await page.keyboard.press('Space');
+    await expect(terms).toBeChecked();
+    recorder.record(
+      'register',
+      'I understand this is a personal tracking tool, not medical advice.',
+      ['keyboard'],
+    );
+    const create = page.getByRole('button', { name: 'Create Account' });
+    await create.focus();
+    await page.keyboard.press('Enter');
+    await expect(password).toBeFocused();
+    await expect(page.locator('#password-error')).toHaveText('Use at least 6 characters.');
+    await password.fill('browser-password');
+    await confirmation.fill('browser-password');
+    const responsePending = page.waitForResponse((response) => (
+      new URL(response.url()).pathname === '/auth/register'
+      && response.request().method() === 'POST'
+    ));
+    await create.focus();
+    await page.keyboard.press('Enter');
+    const response = await responsePending;
+    expect(response.status()).toBe(302);
+    expect(Object.fromEntries(new URLSearchParams(response.request().postData() || '')))
+      .toEqual(expect.objectContaining({
+        email: deterministicEmail(testInfo),
+        password: 'browser-password',
+      }));
+  } else {
+    await terms.check();
+    await page.getByRole('button', { name: 'Create Account' }).click();
+  }
   await expect(page).toHaveURL(/\/journey\/onboarding\/?$/);
   await expect(page.getByRole('heading', { name: 'Choose your intention' })).toBeFocused();
+  recorder?.record(
+    'register', 'Create account', ['error', 'focus', 'keyboard', 'persistence', 'request'],
+  );
 }
 
-async function selectManualBaseline(page) {
-  await page.locator('input[name="intention"][value="reduce"]').check();
-  await page.getByRole('button', { name: 'Continue' }).click();
+async function selectManualBaseline(page, recorder = null) {
+  const reduce = page.locator('input[name="intention"][value="reduce"]');
+  if (recorder) {
+    await reduce.focus();
+    await page.keyboard.press('Space');
+    await expect(reduce).toBeChecked();
+    await expect(reduce).toBeFocused();
+    recorder.record(
+      'journey-onboarding',
+      'Reduce steadily Work toward a lower daily pouch ceiling.',
+      ['focus', 'keyboard'],
+    );
+    const continueButton = page.getByRole('button', { name: 'Continue' });
+    await continueButton.focus();
+    await page.keyboard.press('Enter');
+  } else {
+    await reduce.check();
+    await page.getByRole('button', { name: 'Continue' }).click();
+  }
   await expect(page.getByRole('heading', { name: 'Set an honest starting point' })).toBeFocused();
+  recorder?.record('journey-onboarding', 'Continue', ['focus', 'keyboard']);
   await page.locator('input[name="baseline_source"][value="manual"]').check();
   await page.locator('#field-baseline_pouches').fill('8');
   await page.locator('#field-baseline_mg_per_pouch').fill('6');
 }
 
-async function advanceToSupport(page) {
-  await selectManualBaseline(page);
+async function advanceToSupport(page, recorder = null) {
+  await selectManualBaseline(page, recorder);
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { name: 'Choose a pace' })).toBeFocused();
   await page.getByLabel(/Steady · 49 days/).check();
@@ -54,8 +112,8 @@ async function advanceToSupport(page) {
   await expect(page.getByRole('heading', { name: 'Add useful support' })).toBeFocused();
 }
 
-async function previewManualPlan(page) {
-  await advanceToSupport(page);
+async function previewManualPlan(page, recorder = null) {
+  await advanceToSupport(page, recorder);
   await page.getByLabel('Morning', { exact: true }).check();
   await page.getByLabel('Stress').check();
   await page.getByLabel(/Steady Mint/).check();
@@ -67,6 +125,7 @@ async function previewManualPlan(page) {
 }
 
 test('registration previews transparently and activates only after final confirmation', async ({ page }, testInfo) => {
+  const recorder = createBehaviorRecorder(OWNER_TITLES.onboarding, expect);
   const errors = watchForErrors(page);
   const creationRequests = [];
   page.on('request', (request) => {
@@ -75,8 +134,8 @@ test('registration previews transparently and activates only after final confirm
     }
   });
 
-  await register(page, testInfo);
-  await previewManualPlan(page);
+  await register(page, testInfo, recorder);
+  await previewManualPlan(page, recorder);
 
   await expect(page.getByText('Complete daily schedule')).toBeVisible();
   await expect(page.getByText(/behavioral tracking aid, not medical advice/i)).toBeVisible();
@@ -93,6 +152,7 @@ test('registration previews transparently and activates only after final confirm
   await expect(page).toHaveURL(/\/today\/?$/);
   expect(creationRequests).toHaveLength(1);
   expect(errors).toEqual([]);
+  recorder.assertComplete();
 });
 
 test('back and forward navigation preserves entered answers', async ({ page }, testInfo) => {

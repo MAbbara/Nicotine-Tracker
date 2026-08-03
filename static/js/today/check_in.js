@@ -377,6 +377,7 @@ export function createCheckInController({
     state = checkInReducer(state, { type: 'CANCEL' });
     if (state.canonical) view.showSummary(state.canonical);
     else view.showOffer();
+    view.focusEntry?.();
     return state;
   }
 
@@ -695,6 +696,12 @@ export function createCheckInDomView(section) {
     showFieldErrors,
     showFailure,
     showRefreshUnavailable,
+    focusEntry() {
+      const entry = summary.hidden
+        ? section.querySelector('[data-check-in-open]')
+        : section.querySelector('[data-check-in-edit]');
+      entry?.focus();
+    },
     announce(message) { status.textContent = message; },
   };
 }

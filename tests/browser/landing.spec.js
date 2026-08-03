@@ -1,4 +1,8 @@
 const { test, expect } = require('@playwright/test');
+const {
+  OWNER_TITLES,
+  createBehaviorRecorder,
+} = require('./helpers/core_behavior_contract');
 
 
 test.beforeEach(async ({ page }) => {
@@ -7,6 +11,7 @@ test.beforeEach(async ({ page }) => {
 
 
 test('public landing exposes one promise and working account actions', async ({ page }) => {
+  const recorder = createBehaviorRecorder(OWNER_TITLES.landing, expect);
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
   await expect(page.getByRole('heading', {
     level: 1,
@@ -28,8 +33,29 @@ test('public landing exposes one promise and working account actions', async ({ 
     expect(size.height).toBeGreaterThanOrEqual(44);
   }
 
-  await signIn.click();
-  await expect(page).toHaveURL(/\/auth\/login$/);
+  for (const [name, path, heading] of [
+    ['Create account', '/auth/register', 'Create your account'],
+    ['Sign in', '/auth/login', 'Sign in to your account'],
+  ]) {
+    await page.goto('/');
+    const action = page.locator('.landing-actions').getByRole('link', { name, exact: true });
+    const responsePending = page.waitForResponse((response) => (
+      response.request().isNavigationRequest()
+      && new URL(response.url()).pathname === path
+    ));
+    await action.focus();
+    await expect(action).toBeFocused();
+    await page.keyboard.press('Enter');
+    const response = await responsePending;
+    expect(response.request().method()).toBe('GET');
+    expect(response.request().postData()).toBeNull();
+    expect(response.status()).toBe(200);
+    await expect(page).toHaveURL(new RegExp(`${path.replaceAll('/', '\\/')}$`));
+    await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible();
+    recorder.record('landing', name, ['keyboard', 'request']);
+  }
+  recorder.assertComplete();
+
   await expect(page.getByRole('heading', {
     level: 1,
     name: 'Sign in to your account',

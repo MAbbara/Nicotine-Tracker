@@ -1,4 +1,8 @@
 const { test, expect } = require('@playwright/test');
+const {
+  OWNER_TITLES,
+  createBehaviorRecorder,
+} = require('./helpers/core_behavior_contract');
 
 
 function deterministicEmail(testInfo, label) {
@@ -73,6 +77,20 @@ async function previewRevision(page, duration = '35') {
   await expect(editor.getByRole('status')).toContainText(/persisted plan is unchanged/i);
 }
 
+async function keyboardPost(page, button, pathSuffix) {
+  const responsePending = page.waitForResponse((response) => (
+    response.request().method() === 'POST'
+    && new URL(response.url()).pathname.endsWith(pathSuffix)
+  ));
+  await button.focus();
+  await expect(button).toBeFocused();
+  await page.keyboard.press('Enter');
+  const response = await responsePending;
+  expect(response.status()).toBe(302);
+  expect(response.request().postData()).toMatch(/csrf_token=/);
+  await expect(page).toHaveURL(/\/journey\/?$/);
+}
+
 test('no-plan Journey prioritizes creation while neutral tracking remains available', async ({ page }, testInfo) => {
   await register(page, testInfo, 'empty');
   const errors = watchForErrors(page);
@@ -94,6 +112,7 @@ test('no-plan Journey prioritizes creation while neutral tracking remains availa
 });
 
 test('Journey previews explicitly, mutates future rows only, and carries status history through archive', async ({ page }, testInfo) => {
+  const recorder = createBehaviorRecorder(OWNER_TITLES.journeyLifecycle, expect);
   await register(page, testInfo, 'lifecycle');
   await createPlan(page);
   const errors = watchForErrors(page);
@@ -101,8 +120,12 @@ test('Journey previews explicitly, mutates future rows only, and carries status 
   await expect(page.getByRole('heading', { name: 'Current stage' })).toBeVisible();
   await expect(page.locator('[data-mobile-schedule] tbody tr')).toHaveCount(7);
   await expect(page.getByRole('heading', { name: 'Plan facts' })).toBeVisible();
-  await page.getByText('Show the complete schedule').click();
+  const completeSchedule = page.getByText('Show the complete schedule');
+  await completeSchedule.focus();
+  await page.keyboard.press('Enter');
   await expect(page.locator('[data-complete-schedule] tbody tr')).not.toHaveCount(0);
+  await expect(completeSchedule).toBeFocused();
+  recorder.record('journey', 'Show the complete schedule', ['focus', 'keyboard']);
   await expect(page.locator('.journey-history')).toContainText(/Revision \d+/);
 
   const before = await page.locator('[data-complete-schedule] tbody tr').evaluateAll((rows) => rows.map((row) => row.textContent));
@@ -125,8 +148,11 @@ test('Journey previews explicitly, mutates future rows only, and carries status 
   expect(after[0]).toBe(before[0]);
   expect(after.slice(1)).not.toEqual(before.slice(1));
 
-  await page.getByRole('button', { name: 'Pause plan' }).click();
+  await keyboardPost(page, page.getByRole('button', { name: 'Pause plan' }), '/pause');
   await expect(page.getByText(/Plan paused\. Your history is unchanged/i)).toBeVisible();
+  await page.reload();
+  await expect(page.getByText(/Status:\s*Paused/i)).toBeVisible();
+  recorder.record('journey', 'Pause plan', ['keyboard', 'persistence', 'request']);
   const resume = page.locator('[data-plan-editor="resume"]');
   await resume.getByLabel('Required resume date').fill(isoDate(2));
   await resume.getByRole('button', { name: 'Preview resume' }).click();
@@ -135,10 +161,14 @@ test('Journey previews explicitly, mutates future rows only, and carries status 
   await expect(page.getByText(/Status:\s*Active/i)).toBeVisible();
   await expect(page.locator('.journey-history')).toContainText(/Paused .* to .* UTC/s);
 
-  await page.getByRole('button', { name: 'Mark complete' }).click();
+  await keyboardPost(page, page.getByRole('button', { name: 'Mark complete' }), '/complete');
   await expect(page.getByText('Plan marked complete.')).toBeVisible();
-  await page.getByRole('button', { name: 'Archive plan' }).click();
+  await page.reload();
+  await expect(page.locator('[data-historical-plan]')).toContainText('Completed');
+  recorder.record('journey', 'Mark complete', ['keyboard', 'persistence', 'request']);
+  await keyboardPost(page, page.getByRole('button', { name: 'Archive plan' }), '/archive');
   await expect(page.getByText(/Plan archived\. Your history is still available/i)).toBeVisible();
+  await page.reload();
   await expect(page.locator('[data-historical-plan]')).toContainText('Archived');
   await expect(page.locator('[data-historical-plan]')).toContainText(/Revision \d+/);
 
@@ -146,6 +176,8 @@ test('Journey previews explicitly, mutates future rows only, and carries status 
   await expect(legacy.getByRole('heading', { name: 'Legacy Goals remain intact' })).toBeVisible();
   await expect(legacy).toContainText(/history and review context, not an active reduction plan/i);
   expect(errors).toEqual([]);
+  recorder.record('journey', 'Archive plan', ['keyboard', 'persistence', 'request']);
+  recorder.assertComplete();
 });
 
 test('stale revision preview refreshes and requires a second explicit confirmation', async ({ page }, testInfo) => {
@@ -179,6 +211,7 @@ test('stale revision preview refreshes and requires a second explicit confirmati
 });
 
 test('Observe recovery and migrated Goal review remain visibly separate and non-activating', async ({ page }, testInfo) => {
+  const recorder = createBehaviorRecorder(OWNER_TITLES.journeyObserve, expect);
   const errors = watchForErrors(page);
   await loginReviewFixture(page, testInfo);
 
@@ -192,12 +225,16 @@ test('Observe recovery and migrated Goal review remain visibly separate and non-
   await expect(legacy).toContainText(/Conflicts and unattached context/);
   await expect(legacy.locator('tbody tr')).toHaveCount(3);
 
-  await page.getByRole('button', { name: 'Finish Observe' }).click();
+  await keyboardPost(page, page.getByRole('button', { name: 'Finish Observe' }), '/finish-observe');
   await expect(page.getByText(/Observe is complete.*enter a baseline manually/i)).toBeVisible();
   await expect(page.getByText(/Status:\s*Active/i)).toHaveCount(0);
   await expect(page.locator('[data-historical-plan]')).toContainText('Completed');
+  await page.reload();
+  await expect(page.locator('[data-historical-plan]')).toContainText('Completed');
   await expect(legacy).toContainText(/Candidate plan \d+/);
   expect(errors).toEqual([]);
+  recorder.record('journey', 'Finish Observe', ['keyboard', 'persistence', 'request']);
+  recorder.assertComplete();
 });
 
 test('Journey remains usable in dark theme, keyboard focus, 200% text, and reduced motion', async ({ page }, testInfo) => {

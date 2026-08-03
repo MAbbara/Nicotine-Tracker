@@ -182,6 +182,9 @@ function watchForProductProblems(page) {
     problems() {
       return findings.map((finding) => ({ ...finding }));
     },
+    clear() {
+      findings.splice(0, findings.length);
+    },
     stop() {
       active = false;
     },
