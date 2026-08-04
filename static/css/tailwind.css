@@ -912,6 +912,7 @@
     width: 2rem;
     height: 2rem;
     flex: 0 0 2rem;
+    border-radius: 0.5rem;
     object-fit: contain;
   }
 

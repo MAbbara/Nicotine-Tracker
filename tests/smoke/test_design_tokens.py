@@ -1,6 +1,7 @@
 """Source-of-truth contracts for the warm coaching visual system."""
 
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -64,6 +65,26 @@ def test_accessibility_and_motion_foundations_are_explicit():
     assert 'prefers-reduced-motion: reduce' in css
     assert 'color-scheme:' in css
     assert 'viewport-fit=cover' not in css  # markup concern, not CSS source
+
+
+def test_two_point_n_wordmark_keeps_a_modest_raster_radius():
+    css = SOURCE.read_text()
+    rule_match = re.search(r'\.wordmark > img\s*\{(?P<body>[^}]*)\}', css)
+
+    assert rule_match is not None
+    rule = rule_match.group('body')
+    radius_match = re.search(r'border-radius:\s*(?P<radius>[\d.]+)rem', rule)
+    assert radius_match is not None
+    assert 0.4 <= float(radius_match.group('radius')) <= 0.6
+    for declaration in (
+        'width: 2rem',
+        'height: 2rem',
+        'flex: 0 0 2rem',
+        'object-fit: contain',
+    ):
+        assert declaration in rule
+    for rejected in ('border:', 'border-radius: 50%', 'box-shadow:', 'transform:'):
+        assert rejected not in rule
 
 
 def test_source_has_no_rejected_visual_shortcuts():
