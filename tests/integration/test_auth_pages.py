@@ -129,6 +129,28 @@ def test_reset_password_page_preserves_minlength_and_no_referrer(app, client, te
         )
 
 
+def test_reset_password_page_externalizes_matching_validation(app, client, test_user):
+    with app.app_context():
+        token = PasswordResetService().create_reset_token(test_user.id).token
+
+    document, _ = _document(client.get(f"/auth/reset_password/{token}"))
+
+    module_scripts = [
+        script.get("src", "")
+        for script in document.select('script[type="module"]')
+    ]
+    assert any(
+        "js/auth/reset_password_validation.js" in src for src in module_scripts
+    ), "reset-password matching validation must load from its ES module"
+
+    inline_scripts = [
+        script for script in document.find_all("script") if not script.get("src")
+    ]
+    assert inline_scripts == [], (
+        "reset-password must not keep executable inline script blocks"
+    )
+
+
 def test_register_page_loads_validation_module_with_inline_errors(client):
     document, html = _document(client.get("/auth/register"))
 
