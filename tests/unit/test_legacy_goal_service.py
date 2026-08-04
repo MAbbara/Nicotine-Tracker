@@ -136,12 +136,13 @@ def test_migrated_candidate_with_exact_daily_mg_context_attaches(
     assert 'is included as context' in candidate.explanation
 
 
-def test_only_listed_exact_date_daily_mg_attaches_as_nicotine_context(
+def test_listed_active_daily_mg_attaches_while_inactive_history_is_omitted(
         db_session, test_user):
-    """Exact dates alone do not attach an unlisted daily-mg goal."""
     pouch = _create_goal(test_user.id, 'daily_pouches', 4)
     listed_mg = _create_goal(test_user.id, 'daily_mg', 24)
-    unlisted_mg = _create_goal(test_user.id, 'daily_mg', 18)
+    historical_mg = _create_goal(
+        test_user.id, 'daily_mg', 18, is_active=False,
+    )
     plan = _create_migrated_plan(
         test_user.id, [pouch.id, listed_mg.id], 4,
     )
@@ -153,9 +154,8 @@ def test_only_listed_exact_date_daily_mg_attaches_as_nicotine_context(
     assert candidate.plan_id == plan.id
     assert candidate.nicotine_context is not None
     assert candidate.nicotine_context.id == listed_mg.id
-    assert [
-        record.id for record in review.unattached_context_goals
-    ] == [unlisted_mg.id]
+    assert historical_mg.is_active is False
+    assert review.unattached_context_goals == ()
 
 
 def test_plan_end_target_stays_authoritative_after_goal_edit(
@@ -198,10 +198,13 @@ def test_zero_date_matches_keep_daily_mg_as_separate_context(
     assert review.unattached_context_goals[0].goal_type == 'daily_mg'
 
 
-def test_multiple_date_matches_remain_separate_context(db_session, test_user):
+def test_exact_date_unlisted_active_mg_remains_separate_from_inactive_history(
+        db_session, test_user):
     pouch = _create_goal(test_user.id, 'daily_pouches', 6)
-    mg_first = _create_goal(test_user.id, 'daily_mg', 20)
-    mg_second = _create_goal(test_user.id, 'daily_mg', 36)
+    active_mg = _create_goal(test_user.id, 'daily_mg', 20)
+    historical_mg = _create_goal(
+        test_user.id, 'daily_mg', 36, is_active=False,
+    )
     plan = _create_migrated_plan(test_user.id, [pouch.id], 6)
 
     review = LegacyGoalService.get_draft_candidates(test_user.id)
@@ -211,28 +214,29 @@ def test_multiple_date_matches_remain_separate_context(db_session, test_user):
     assert review.candidates[0].nicotine_context is None
     assert [
         record.id for record in review.unattached_context_goals
-    ] == sorted((mg_first.id, mg_second.id))
+    ] == [active_mg.id]
+    assert historical_mg.is_active is False
 
 
-def test_conflicting_listed_mg_sources_also_remain_separate(
+def test_inactive_listed_mg_history_does_not_conflict_with_active_source(
         db_session, test_user):
-    """Even if legacy_goal_ids lists two exactly matching daily_mg goals,
-    the conflict stays visible as separate context instead of attaching."""
     pouch = _create_goal(test_user.id, 'daily_pouches', 6)
-    mg_first = _create_goal(test_user.id, 'daily_mg', 20)
-    mg_second = _create_goal(test_user.id, 'daily_mg', 36)
+    active_mg = _create_goal(test_user.id, 'daily_mg', 20)
+    historical_mg = _create_goal(
+        test_user.id, 'daily_mg', 36, is_active=False,
+    )
     plan = _create_migrated_plan(
-        test_user.id, [pouch.id, mg_first.id, mg_second.id], 6,
+        test_user.id, [pouch.id, active_mg.id, historical_mg.id], 6,
     )
 
     review = LegacyGoalService.get_draft_candidates(test_user.id)
 
     assert len(review.candidates) == 1
     assert review.candidates[0].plan_id == plan.id
-    assert review.candidates[0].nicotine_context is None
-    assert [
-        record.id for record in review.unattached_context_goals
-    ] == sorted((mg_first.id, mg_second.id))
+    assert review.candidates[0].nicotine_context is not None
+    assert review.candidates[0].nicotine_context.id == active_mg.id
+    assert historical_mg.is_active is False
+    assert review.unattached_context_goals == ()
 
 
 def test_date_match_broken_after_migration_detaches_context(
@@ -451,7 +455,7 @@ def test_deterministic_ordering_of_candidates_and_context(
     pouch_one = _create_goal(test_user.id, 'daily_pouches', 4)
     pouch_two = _create_goal(
         test_user.id, 'daily_pouches', 6,
-        start_date=OTHER_START, end_date=OTHER_END,
+        start_date=OTHER_START, end_date=OTHER_END, is_active=False,
     )
     mg = _create_goal(
         test_user.id, 'daily_mg', 30,
@@ -461,6 +465,8 @@ def test_deterministic_ordering_of_candidates_and_context(
     plan_two = _create_migrated_plan(test_user.id, [pouch_two.id], 6)
     plan_one = _create_migrated_plan(test_user.id, [pouch_one.id], 4)
     assert plan_one.id > plan_two.id  # insertion order was reversed
+    assert pouch_one.is_active is True
+    assert pouch_two.is_active is False
 
     first = LegacyGoalService.get_draft_candidates(test_user.id)
     second = LegacyGoalService.get_draft_candidates(test_user.id)
