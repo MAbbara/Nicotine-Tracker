@@ -21,6 +21,15 @@ down_revision = '8a2d1c4e6f90'
 branch_labels = None
 depends_on = None
 
+MYSQL_DOWNGRADE_SUPPORT_INDEX = 'ix_goal_user_id_downgrade_support'
+
+
+def _mysql_goal_index_names(connection):
+    return set(connection.execute(sa.text(
+        'SELECT INDEX_NAME FROM information_schema.STATISTICS '
+        'WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'goal\''
+    )).scalars())
+
 
 def upgrade():
     with op.batch_alter_table('goal') as batch:
@@ -92,13 +101,35 @@ def upgrade():
             ['user_id', 'goal_type', 'active_slot'],
         )
 
+    # The wider unique index now supports the user foreign key. Remove only
+    # the migration-owned downgrade support index; never touch a historical or
+    # operator-created ``user_id`` index.
+    if connection.dialect.name == 'mysql':
+        index_names = _mysql_goal_index_names(connection)
+        if (
+            'uq_goal_user_type_active_slot' in index_names
+            and MYSQL_DOWNGRADE_SUPPORT_INDEX in index_names
+        ):
+            op.drop_index(MYSQL_DOWNGRADE_SUPPORT_INDEX, table_name='goal')
+
 
 def downgrade():
     # InnoDB removes its original implicit ``user_id`` index when the wider
     # active-slot unique index can support the existing user foreign key.
-    # Restore that historical supporting index before dropping the wider one.
-    if op.get_bind().dialect.name == 'mysql':
-        op.create_index('user_id', 'goal', ['user_id'], unique=False)
+    # Restore a migration-owned supporting index before dropping the wider
+    # one. The catalog check makes a retried downgrade safe without assuming
+    # ownership of a generic ``user_id`` index.
+    connection = op.get_bind()
+    if (
+        connection.dialect.name == 'mysql'
+        and MYSQL_DOWNGRADE_SUPPORT_INDEX not in _mysql_goal_index_names(connection)
+    ):
+        op.create_index(
+            MYSQL_DOWNGRADE_SUPPORT_INDEX,
+            'goal',
+            ['user_id'],
+            unique=False,
+        )
 
     with op.batch_alter_table('goal') as batch:
         batch.drop_constraint(

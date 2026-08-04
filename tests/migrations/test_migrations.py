@@ -266,6 +266,26 @@ class TestUpgradeDowngradeReUpgrade:
 
 
 class TestGoalActiveSlotMigration:
+    MYSQL_DOWNGRADE_SUPPORT_INDEX = 'ix_goal_user_id_downgrade_support'
+
+    @staticmethod
+    def _raw_mysql_goal_indexes(db):
+        rows = db.rows(
+            'SELECT INDEX_NAME AS index_name, NON_UNIQUE AS non_unique, '
+            'COLUMN_NAME AS column_name, SEQ_IN_INDEX AS seq_in_index '
+            'FROM information_schema.STATISTICS '
+            'WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'goal\' '
+            'ORDER BY INDEX_NAME, SEQ_IN_INDEX'
+        )
+        indexes = {}
+        for row in rows:
+            entry = indexes.setdefault(row['index_name'], {
+                'non_unique': bool(row['non_unique']),
+                'columns': [],
+            })
+            entry['columns'].append(row['column_name'])
+        return indexes
+
     def test_null_type_normalization_and_active_reconciliation_survive_roundtrip(
             self, prepare):
         db = prepare(harness.SPECS_BY_KEY['legacy'])
@@ -321,23 +341,23 @@ class TestGoalActiveSlotMigration:
         invalid_rows = (
             (
                 201, "'daily_mg'", 1, 'NULL', 3819,
-                "Check constraint 'ck_goal_active_slot_state' is violated.",
+                'ck_goal_active_slot_state',
                 'CHECK constraint failed: ck_goal_active_slot_state',
             ),
             (
                 202, "'daily_mg'", 0, '1', 3819,
-                "Check constraint 'ck_goal_active_slot_state' is violated.",
+                'ck_goal_active_slot_state',
                 'CHECK constraint failed: ck_goal_active_slot_state',
             ),
             (
                 203, 'NULL', 1, '1', 1048,
-                "Column 'goal_type' cannot be null",
+                'goal_type',
                 'NOT NULL constraint failed: goal.goal_type',
             ),
         )
         for (
             row_id, goal_type, is_active, active_slot, mysql_errno,
-            mysql_diagnostic, sqlite_diagnostic,
+            stable_identifier, sqlite_diagnostic,
         ) in invalid_rows:
             expected_error = (
                 sa.exc.DBAPIError
@@ -354,26 +374,35 @@ class TestGoalActiveSlotMigration:
                         f'{active_slot})'
                     )
                 if db.dialect == 'mysql':
-                    assert excinfo.value.orig.args == (
-                        mysql_errno, mysql_diagnostic
-                    )
+                    assert excinfo.value.orig.args[0] == mysql_errno
+                    assert stable_identifier in str(excinfo.value.orig.args[1])
                 else:
                     assert sqlite_diagnostic in str(excinfo.value.orig)
             finally:
                 db.connection.rollback()
+                assert not db.connection.in_transaction()
+
+        assert db.scalar(
+            'SELECT COUNT(*) FROM goal WHERE id IN (201, 202, 203)'
+        ) == 0
+        db.connection.rollback()
+        assert not db.connection.in_transaction()
+
+        downgraded_index_snapshots = []
+        reupgraded_index_snapshots = []
+        if db.dialect == 'mysql':
+            indexes = self._raw_mysql_goal_indexes(db)
+            if 'user_id' not in indexes:
+                db.execute('CREATE INDEX `user_id` ON `goal` (`user_id`)')
 
         db.downgrade('8a2d1c4e6f90')
         downgraded_columns = db.columns('goal')
         assert 'active_slot' not in downgraded_columns
         assert downgraded_columns['goal_type']['nullable'] is True
         if db.dialect == 'mysql':
-            indexes = sa.inspect(db.connection).get_indexes('goal')
-            assert any(
-                index['name'] == 'user_id'
-                and index['column_names'] == ['user_id']
-                and index['unique'] is False
-                for index in indexes
-            ), 'downgrade must retain a nonunique index supporting goal.user_id'
+            downgraded_index_snapshots.append(
+                self._raw_mysql_goal_indexes(db)
+            )
         db.execute(
             "UPDATE goal SET goal_type = NULL, is_active = 1 WHERE id = 101"
         )
@@ -383,6 +412,10 @@ class TestGoalActiveSlotMigration:
         )
 
         db.upgrade('head')
+        if db.dialect == 'mysql':
+            reupgraded_index_snapshots.append(
+                self._raw_mysql_goal_indexes(db)
+            )
 
         rerun_rows = db.rows(
             "SELECT id, goal_type, is_active, active_slot FROM goal "
@@ -393,6 +426,31 @@ class TestGoalActiveSlotMigration:
             row['id'] for row in rerun_rows if row['is_active']
         ] == [min(row['id'] for row in rerun_rows)]
         assert db.columns('goal')['goal_type']['nullable'] is False
+
+        db.downgrade('8a2d1c4e6f90')
+        if db.dialect == 'mysql':
+            downgraded_index_snapshots.append(
+                self._raw_mysql_goal_indexes(db)
+            )
+        assert 'active_slot' not in db.columns('goal')
+
+        db.upgrade('head')
+        if db.dialect == 'mysql':
+            reupgraded_index_snapshots.append(
+                self._raw_mysql_goal_indexes(db)
+            )
+
+            expected_support = {
+                'non_unique': True,
+                'columns': ['user_id'],
+            }
+            for indexes in downgraded_index_snapshots:
+                assert indexes[self.MYSQL_DOWNGRADE_SUPPORT_INDEX] == expected_support
+                assert indexes['user_id'] == expected_support
+            for indexes in reupgraded_index_snapshots:
+                assert self.MYSQL_DOWNGRADE_SUPPORT_INDEX not in indexes
+                assert indexes['user_id'] == expected_support
+
         assert harness.schema_diffs(db.connection) == []
 
 
