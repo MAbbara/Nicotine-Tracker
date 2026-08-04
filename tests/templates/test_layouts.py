@@ -1,5 +1,7 @@
 """Landmark and global-dependency contracts for the three page layouts."""
 
+from pathlib import Path
+
 from bs4 import BeautifulSoup
 import pytest
 
@@ -39,6 +41,25 @@ def _assert_pwa_metadata(html):
 @pytest.mark.parametrize('layout', ['app', 'auth', 'marketing'])
 def test_all_user_facing_layouts_expose_pwa_metadata(app, layout):
     _assert_pwa_metadata(_render_layout(app, layout))
+
+
+@pytest.mark.parametrize('layout', ['app', 'auth', 'marketing'])
+def test_all_layouts_use_the_two_point_n_brand_home(app, layout):
+    soup = BeautifulSoup(_render_layout(app, layout), 'html.parser')
+    brand_home = soup.select_one('a.wordmark[aria-label="Nicotine Tracker home"]')
+
+    assert brand_home is not None
+    assert brand_home.find('img', attrs={
+        'src': '/static/brand/nicotine-tracker-two-point-n-symbol.png',
+        'alt': '',
+        'aria-hidden': 'true',
+    }) is not None
+    assert 'N/T' not in brand_home.get_text(' ', strip=True)
+    assert Path('static/brand/nicotine-tracker-two-point-n-symbol.png').is_file()
+    assert Path('static/brand/nicotine-tracker-two-point-n-lockup.png').is_file()
+    if layout == 'auth':
+        assert brand_home.parent.name == 'header'
+        assert 'auth-brand' in brand_home.parent.get('class', [])
 
 
 def test_app_layout_has_one_main_skip_link_and_flash_region(app):
