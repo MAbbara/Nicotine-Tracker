@@ -281,7 +281,7 @@ def test_craving_pattern_is_unavailable_with_zero_or_two_resolved_events(
         "event_count": 0,
         "resolved_count": 0,
         "leading_trigger": None,
-        "leading_trigger_count": 0,
+        "leading_trigger_count": None,
         "outcome_counts": {
             "resisted": 0,
             "used_alternative": 0,
@@ -307,7 +307,7 @@ def test_craving_pattern_is_unavailable_with_zero_or_two_resolved_events(
         "event_count": 2,
         "resolved_count": 2,
         "leading_trigger": None,
-        "leading_trigger_count": 0,
+        "leading_trigger_count": None,
         "outcome_counts": {
             "resisted": 1,
             "used_alternative": 1,
@@ -338,7 +338,7 @@ def test_craving_pattern_requires_a_repeated_normalized_leader(
     assert result["event_count"] == 3
     assert result["resolved_count"] == 3
     assert result["leading_trigger"] is None
-    assert result["leading_trigger_count"] == 0
+    assert result["leading_trigger_count"] is None
     assert result["non_nicotine_rate"] is None
 
 
@@ -367,7 +367,7 @@ def test_craving_pattern_requires_exact_outcomes_and_nonempty_triggers(
         "event_count": 5,
         "resolved_count": 2,
         "leading_trigger": None,
-        "leading_trigger_count": 0,
+        "leading_trigger_count": None,
         "outcome_counts": {
             "resisted": 1,
             "used_alternative": 1,

@@ -247,7 +247,7 @@ def _craving_pattern(user_id: int, window_start: datetime,
         'event_count': len(rows),
         'resolved_count': resolved_count,
         'leading_trigger': trigger_labels[leading_key] if available else None,
-        'leading_trigger_count': leading_count if available else 0,
+        'leading_trigger_count': leading_count if available else None,
         'outcome_counts': outcome_counts,
         'non_nicotine_rate': (
             round(
