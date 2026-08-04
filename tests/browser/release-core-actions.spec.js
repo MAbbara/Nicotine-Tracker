@@ -274,6 +274,7 @@ test('every core chrome action runs in its exact representative state', async ({
 
       for (const [name, path, destinationAllowsAnalytics] of [
         ['Today', '/today/', false],
+        ['Logbook', '/log/view', false],
         ['Journey', '/journey/', false],
         ['Insights', '/insights/', true],
         ['You', '/you/', false],
@@ -351,6 +352,7 @@ test('public and authenticated chrome actions reach focus and navigation targets
 
   for (const [name, path] of [
     ['Today', '/today/'],
+    ['Logbook', '/log/view'],
     ['Journey', '/journey/'],
     ['You', '/you/'],
   ]) {
@@ -1118,7 +1120,7 @@ test('product guard exempts only the exact intentional HTTP failure', async ({ p
 
 test('transition guard rejects analytics leakage from Insights into non-analytics destinations', async ({ page }) => {
   await page.addInitScript(() => {
-    if (['/today/', '/journey/', '/you/'].includes(window.location.pathname)) {
+    if (['/today/', '/log/view', '/journey/', '/you/'].includes(window.location.pathname)) {
       window.addEventListener('DOMContentLoaded', () => {
         fetch('/static/js/analytics/runtime.js');
       }, { once: true });
@@ -1127,7 +1129,8 @@ test('transition guard rejects analytics leakage from Insights into non-analytic
   await loginAs(page, 'release-analytics-ready@example.com');
 
   for (const [name, path] of [
-    ['Today', '/today/'], ['Journey', '/journey/'], ['You', '/you/'],
+    ['Today', '/today/'], ['Logbook', '/log/view'],
+    ['Journey', '/journey/'], ['You', '/you/'],
   ]) {
     const sourceGuard = watchForProductProblems(page);
     await page.goto('/insights/');

@@ -39,14 +39,20 @@ def test_day_boundary_endpoint_applies_validated_values(
     assert preferences.pending_timezone is None
 
 
-def test_authenticated_shell_has_exactly_four_destinations_in_order(
+def test_authenticated_shell_has_exactly_five_destinations_in_order(
         logged_in_client):
     response = logged_in_client.get('/today')
     assert response.status_code == 200
     soup = BeautifulSoup(response.data, 'html.parser')
     primary = soup.find('nav', attrs={'aria-label': 'Primary'})
-    assert [link.get_text(' ', strip=True) for link in primary.find_all('a')] == [
-        'Today', 'Journey', 'Insights', 'You',
+    links = primary.find_all('a')
+    assert [link.get_text(' ', strip=True) for link in links] == [
+        'Today', 'Logbook', 'Journey', 'Insights', 'You',
+    ]
+    assert [link['href'] for link in links] == [
+        '/today/#main-content', '/log/view#main-content',
+        '/journey/#main-content', '/insights/#main-content',
+        '/you/#main-content',
     ]
     assert len(primary.find_all(attrs={'aria-current': 'page'})) == 1
 
@@ -54,6 +60,7 @@ def test_authenticated_shell_has_exactly_four_destinations_in_order(
 def test_all_foundation_destinations_return_useful_pages(logged_in_client):
     for path, heading in (
         ('/today', 'Today'),
+        ('/log/view', 'Logbook'),
         ('/journey/', 'Journey'),
         ('/insights/', 'Insights'),
         ('/you', 'You'),

@@ -206,7 +206,7 @@ group(OWNER_TITLES.chrome, appChromeStates.flatMap(([state, email, current]) => 
   [state, 'Nicotine Tracker home', 'navigation'],
   [state, 'Skip to main content', 'skip'],
   [state, `Open your space for ${email}`, 'navigation'],
-  ...['Today', 'Journey', 'Insights', 'You'].map((action) => [
+  ...['Today', 'Logbook', 'Journey', 'Insights', 'You'].map((action) => [
     state, action, action === current ? 'primarySameDocument' : 'primaryNavigation',
   ]),
 ]));

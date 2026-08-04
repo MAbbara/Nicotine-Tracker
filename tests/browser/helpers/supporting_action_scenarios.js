@@ -2,7 +2,8 @@ const { SUPPORTING_ACTION_BASELINES } = require('./supporting_action_baseline');
 
 
 const NAVIGATION_DESTINATIONS = Object.freeze({
-  Today: '/today/', Journey: '/journey/', Insights: '/insights/', You: '/you/',
+  Today: '/today/', Logbook: '/log/view', Journey: '/journey/',
+  Insights: '/insights/', You: '/you/',
   Profile: '/settings/profile', Account: '/settings/account',
   Preferences: '/settings/preferences', Reminders: '/settings/notifications',
   'Data & privacy': '/settings/data', Statistics: '/settings/statistics',
@@ -28,7 +29,10 @@ const CONTROL_SCOPES = Object.freeze({
 
 
 function navigationAuthority(state, action, profile) {
-  if (profile === 'primaryNavigation' && ['Today', 'Journey', 'Insights', 'You'].includes(action)) {
+  if (
+    profile === 'primaryNavigation'
+    && ['Today', 'Logbook', 'Journey', 'Insights', 'You'].includes(action)
+  ) {
     return Object.freeze({
       scope: CONTROL_SCOPES.primary, role: 'link', name: action,
       selector: `a[href="${NAVIGATION_DESTINATIONS[action]}#main-content"]`,

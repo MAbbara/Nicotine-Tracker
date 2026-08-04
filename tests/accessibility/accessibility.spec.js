@@ -266,7 +266,7 @@ test('primary authenticated pages have one h1 and no WCAG A/AA violations', asyn
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL(/\/today\/?$/);
 
-  for (const path of ['/today', '/journey/', '/insights/', '/you']) {
+  for (const path of ['/today', '/log/view', '/journey/', '/insights/', '/you']) {
     await page.goto(path);
     await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
     await expectNoWcagViolations(page);
@@ -277,7 +277,7 @@ test('primary authenticated pages have one h1 and no WCAG A/AA violations', asyn
 test('primary destinations follow a visible keyboard order without positive tabindex', async ({ page }) => {
   await login(page, 'today-targeted@example.com');
   const primary = page.getByRole('navigation', { name: 'Primary' });
-  const destinations = ['Today', 'Journey', 'Insights', 'You'];
+  const destinations = ['Today', 'Logbook', 'Journey', 'Insights', 'You'];
 
   await expect(primary).toBeVisible();
   await expect(page.locator('[tabindex]:not([tabindex="0"]):not([tabindex="-1"])')).toHaveCount(0);

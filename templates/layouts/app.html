@@ -45,6 +45,8 @@
       {% set endpoint = request.endpoint or '' %}
       {% if endpoint.startswith('journey.') or endpoint.startswith('goals.') %}
         {% set active_destination = 'journey' %}
+      {% elif endpoint.startswith('logging.') %}
+        {% set active_destination = 'logbook' %}
       {% elif endpoint.startswith('insights.') %}
         {% set active_destination = 'insights' %}
       {% elif endpoint.startswith('you.') or endpoint.startswith('settings.') or endpoint.startswith('catalog.') %}
@@ -55,6 +57,7 @@
       {% block navigation %}
         <nav class="primary-nav" aria-label="Primary" data-primary-navigation>
           <a class="primary-nav__link" href="{{ url_for('today.index') }}#main-content"{% if active_destination == 'today' %} aria-current="page"{% endif %}>{{ icon('today') }}<span>Today</span></a>
+          <a class="primary-nav__link" href="{{ url_for('logging.view_logs') }}#main-content"{% if active_destination == 'logbook' %} aria-current="page"{% endif %}>{{ icon('clock') }}<span>Logbook</span></a>
           <a class="primary-nav__link" href="{{ url_for('journey.index') }}#main-content"{% if active_destination == 'journey' %} aria-current="page"{% endif %}>{{ icon('journey') }}<span>Journey</span></a>
           <a class="primary-nav__link" href="{{ url_for('insights.insights_page') }}#main-content"{% if active_destination == 'insights' %} aria-current="page"{% endif %}>{{ icon('insights') }}<span>Insights</span></a>
           <a class="primary-nav__link" href="{{ url_for('you.index') }}#main-content"{% if active_destination == 'you' %} aria-current="page"{% endif %}>{{ icon('you') }}<span>You</span></a>

@@ -3,6 +3,7 @@ const navigationRegistry = new WeakSet();
 export function destinationForLocation(pathname = '/', endpoint = '') {
   const path = String(pathname).toLowerCase();
   const name = String(endpoint).toLowerCase();
+  if (path === '/log' || path.startsWith('/log/') || name.startsWith('logging.')) return 'logbook';
   if (path.startsWith('/journey') || path.startsWith('/goals') || name.startsWith('journey.') || name.startsWith('goals.')) return 'journey';
   if (path.startsWith('/insights') || name.startsWith('insights.')) return 'insights';
   if (path.startsWith('/you') || path.startsWith('/settings') || path.startsWith('/catalog') || name.startsWith('you.') || name.startsWith('settings.') || name.startsWith('catalog.')) return 'you';
@@ -11,7 +12,7 @@ export function destinationForLocation(pathname = '/', endpoint = '') {
 
 function destinationForLink(link) {
   const label = link.textContent?.trim().toLowerCase();
-  if (['today', 'journey', 'insights', 'you'].includes(label)) return label;
+  if (['today', 'logbook', 'journey', 'insights', 'you'].includes(label)) return label;
   try {
     return destinationForLocation(new URL(link.href, 'https://local.invalid').pathname);
   } catch (_) {

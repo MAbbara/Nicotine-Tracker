@@ -247,6 +247,12 @@ const RECEIPT_SOURCE = {
     ],
     [
       "profile",
+      "Logbook",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "profile",
       "Journey",
       "chrome",
       "primaryNavigation"
@@ -289,6 +295,12 @@ const RECEIPT_SOURCE = {
     ],
     [
       "account",
+      "Logbook",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "account",
       "Journey",
       "chrome",
       "primaryNavigation"
@@ -331,6 +343,12 @@ const RECEIPT_SOURCE = {
     ],
     [
       "preferences",
+      "Logbook",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "preferences",
       "Journey",
       "chrome",
       "primaryNavigation"
@@ -373,6 +391,12 @@ const RECEIPT_SOURCE = {
     ],
     [
       "reminders",
+      "Logbook",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "reminders",
       "Journey",
       "chrome",
       "primaryNavigation"
@@ -415,6 +439,12 @@ const RECEIPT_SOURCE = {
     ],
     [
       "data",
+      "Logbook",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "data",
       "Journey",
       "chrome",
       "primaryNavigation"
@@ -457,6 +487,12 @@ const RECEIPT_SOURCE = {
     ],
     [
       "statistics",
+      "Logbook",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "statistics",
       "Journey",
       "chrome",
       "primaryNavigation"
@@ -499,6 +535,12 @@ const RECEIPT_SOURCE = {
     ],
     [
       "logbook",
+      "Logbook",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "logbook",
       "Journey",
       "chrome",
       "primaryNavigation"
@@ -541,6 +583,12 @@ const RECEIPT_SOURCE = {
     ],
     [
       "log-add",
+      "Logbook",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "log-add",
       "Journey",
       "chrome",
       "primaryNavigation"
@@ -583,6 +631,12 @@ const RECEIPT_SOURCE = {
     ],
     [
       "log-bulk",
+      "Logbook",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "log-bulk",
       "Journey",
       "chrome",
       "primaryNavigation"
@@ -625,6 +679,12 @@ const RECEIPT_SOURCE = {
     ],
     [
       "catalog",
+      "Logbook",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "catalog",
       "Journey",
       "chrome",
       "primaryNavigation"
@@ -667,6 +727,12 @@ const RECEIPT_SOURCE = {
     ],
     [
       "catalog-add",
+      "Logbook",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "catalog-add",
       "Journey",
       "chrome",
       "primaryNavigation"
@@ -704,6 +770,12 @@ const RECEIPT_SOURCE = {
     [
       "cravings",
       "Today",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "cravings",
+      "Logbook",
       "chrome",
       "primaryNavigation"
     ],
@@ -751,6 +823,12 @@ const RECEIPT_SOURCE = {
     ],
     [
       "goals",
+      "Logbook",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "goals",
       "Journey",
       "chrome",
       "primaryNavigation"
@@ -788,6 +866,12 @@ const RECEIPT_SOURCE = {
     [
       "goal-create",
       "Today",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "goal-create",
+      "Logbook",
       "chrome",
       "primaryNavigation"
     ],
@@ -835,6 +919,12 @@ const RECEIPT_SOURCE = {
     ],
     [
       "dashboard",
+      "Logbook",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "dashboard",
       "Journey",
       "chrome",
       "primaryNavigation"
@@ -872,6 +962,12 @@ const RECEIPT_SOURCE = {
     [
       "not-found",
       "Today",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "not-found",
+      "Logbook",
       "chrome",
       "primaryNavigation"
     ],
@@ -919,6 +1015,12 @@ const RECEIPT_SOURCE = {
     ],
     [
       "dashboard-empty",
+      "Logbook",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "dashboard-empty",
       "Journey",
       "chrome",
       "primaryNavigation"
@@ -956,6 +1058,12 @@ const RECEIPT_SOURCE = {
     [
       "dashboard-sparse",
       "Today",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "dashboard-sparse",
+      "Logbook",
       "chrome",
       "primaryNavigation"
     ],
@@ -1003,6 +1111,12 @@ const RECEIPT_SOURCE = {
     ],
     [
       "data-offline-enabled",
+      "Logbook",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "data-offline-enabled",
       "Journey",
       "chrome",
       "primaryNavigation"
@@ -1040,6 +1154,12 @@ const RECEIPT_SOURCE = {
     [
       "data-offline-disabled",
       "Today",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "data-offline-disabled",
+      "Logbook",
       "chrome",
       "primaryNavigation"
     ],
@@ -1087,6 +1207,12 @@ const RECEIPT_SOURCE = {
     ],
     [
       "data-settings-action",
+      "Logbook",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "data-settings-action",
       "Journey",
       "chrome",
       "primaryNavigation"
@@ -1129,6 +1255,12 @@ const RECEIPT_SOURCE = {
     ],
     [
       "account-destructive",
+      "Logbook",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "account-destructive",
       "Journey",
       "chrome",
       "primaryNavigation"
@@ -1171,6 +1303,12 @@ const RECEIPT_SOURCE = {
     ],
     [
       "goal-progress",
+      "Logbook",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "goal-progress",
       "Journey",
       "chrome",
       "primaryNavigation"
@@ -1213,6 +1351,12 @@ const RECEIPT_SOURCE = {
     ],
     [
       "goal-edit",
+      "Logbook",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "goal-edit",
       "Journey",
       "chrome",
       "primaryNavigation"
@@ -1255,6 +1399,12 @@ const RECEIPT_SOURCE = {
     ],
     [
       "log-edit",
+      "Logbook",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "log-edit",
       "Journey",
       "chrome",
       "primaryNavigation"
@@ -1297,6 +1447,12 @@ const RECEIPT_SOURCE = {
     ],
     [
       "catalog-search",
+      "Logbook",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "catalog-search",
       "Journey",
       "chrome",
       "primaryNavigation"
@@ -1334,6 +1490,12 @@ const RECEIPT_SOURCE = {
     [
       "catalog-edit",
       "Today",
+      "chrome",
+      "primaryNavigation"
+    ],
+    [
+      "catalog-edit",
+      "Logbook",
       "chrome",
       "primaryNavigation"
     ],

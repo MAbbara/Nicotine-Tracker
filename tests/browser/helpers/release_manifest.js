@@ -198,7 +198,7 @@ function sortedActions(...groups) {
 
 
 const APP_SHELL_ACTIONS = [
-  'Insights', 'Journey', 'Nicotine Tracker home', 'Skip to main content',
+  'Insights', 'Journey', 'Logbook', 'Nicotine Tracker home', 'Skip to main content',
   'Today', 'You',
 ];
 const SETTINGS_ACTIONS = [

@@ -254,6 +254,7 @@ group(SUPPORTING_OWNER_TITLES.chrome, authenticatedSupportingStates.flatMap(([st
   [state, 'Skip to main content', 'skip'],
   [state, `Open your space for ${email}`, 'navigation'],
   [state, 'Today', 'primaryNavigation'],
+  [state, 'Logbook', 'primaryNavigation'],
   [state, 'Journey', 'primaryNavigation'],
   [state, 'Insights', 'primaryNavigation'],
   [state, 'You', 'primaryNavigation'],
@@ -1397,8 +1398,8 @@ function indexedCoverage(entries, sourceName) {
 
 function validateSupportingCoverage(expectedActions, receipts, policies, obligations) {
   const baselineIndex = indexedCoverage(SUPPORTING_ACTION_BASELINES, 'supporting baseline');
-  if (SUPPORTING_ACTION_BASELINES.length !== 388 || SUPPORTING_BASELINE_STATES.length !== 30) {
-    throw new Error('supporting baseline exact length must remain 388 actions across 30 states');
+  if (SUPPORTING_ACTION_BASELINES.length !== 415 || SUPPORTING_BASELINE_STATES.length !== 30) {
+    throw new Error('supporting baseline exact length must remain 415 actions across 30 states');
   }
   const sources = [
     ['supporting receipts', receipts],

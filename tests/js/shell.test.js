@@ -198,7 +198,7 @@ test('explicit theme selections publish saved state and ignore later device chan
 
 test('navigation chooses exactly one current destination and hides none', async () => {
   const { activateNavigation } = await importBrowserModule('static/js/shell/navigation.js');
-  const labels = ['Today', 'Journey', 'Insights', 'You'];
+  const labels = ['Today', 'Logbook', 'Journey', 'Insights', 'You'];
   const links = labels.map((textContent) => ({
     textContent,
     hidden: false,
@@ -214,6 +214,12 @@ test('navigation chooses exactly one current destination and hides none', async 
     ['Journey'],
   );
   assert.ok(links.every((link) => link.hidden === false));
+
+  assert.equal(activateNavigation(nav, { pathname: '/log/view' }), 'logbook');
+  assert.deepEqual(
+    links.filter((link) => link.attributes.get('aria-current') === 'page').map((link) => link.textContent),
+    ['Logbook'],
+  );
 });
 
 test('offline controller announces transitions, avoids duplicates, and cleans up', async () => {

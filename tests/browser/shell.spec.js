@@ -24,9 +24,10 @@ async function mountLegacyThemeProbe(page) {
   return page.locator('[data-legacy-theme-probe]');
 }
 
-test('authenticated shell exposes four useful destinations with one active item', async ({ page }) => {
+test('authenticated shell exposes five useful destinations with one active item', async ({ page }) => {
   const destinations = [
     ['/today', 'Today'],
+    ['/log/view', 'Logbook'],
     ['/journey/', 'Journey'],
     ['/insights/', 'Insights'],
     ['/you', 'You'],
@@ -36,9 +37,39 @@ test('authenticated shell exposes four useful destinations with one active item'
     await page.goto(path);
     await expect(page.getByRole('heading', { name: new RegExp(heading), level: 1 })).toBeVisible();
     const primary = page.getByRole('navigation', { name: 'Primary' });
-    await expect(primary.getByRole('link')).toHaveText(['Today', 'Journey', 'Insights', 'You']);
+    await expect(primary.getByRole('link')).toHaveText([
+      'Today', 'Logbook', 'Journey', 'Insights', 'You',
+    ]);
     await expect(primary.locator('[aria-current="page"]')).toHaveCount(1);
     await expect(page.locator('html')).not.toHaveClass(/\bdark\b/);
+  }
+});
+
+test('five-item primary navigation stays touchable at 320px and 200 percent text', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+
+  const primary = page.getByRole('navigation', { name: 'Primary' });
+  const links = primary.getByRole('link');
+  await expect(links).toHaveText(['Today', 'Logbook', 'Journey', 'Insights', 'You']);
+  await expect(primary.locator('[aria-current="page"]')).toHaveCount(1);
+
+  const geometry = await links.evaluateAll((elements) => ({
+    pageOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    links: elements.map((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        height: rect.height,
+        visible: rect.width > 0 && rect.height > 0,
+        width: rect.width,
+      };
+    }),
+  }));
+  expect(geometry.pageOverflow).toBe(false);
+  for (const link of geometry.links) {
+    expect(link.visible).toBe(true);
+    expect(link.width).toBeGreaterThanOrEqual(44);
+    expect(link.height).toBeGreaterThanOrEqual(44);
   }
 });
 

@@ -93,10 +93,10 @@ test('functional ownership reconciles the exact post-Task-4 release inventory', 
   const occurrences = Object.values(EXPECTED_ACTIONS).flat();
   expect(RELEASE_PAGES).toHaveLength(21);
   expect(RELEASE_STATES).toHaveLength(45);
-  expect(occurrences).toHaveLength(561);
-  expect(new Set(occurrences).size).toBe(144);
-  expect(CORE_BEHAVIOR_OBLIGATIONS).toHaveLength(173);
-  expect(SUPPORTING_ACTION_RECEIPTS).toHaveLength(388);
+  expect(occurrences).toHaveLength(598);
+  expect(new Set(occurrences).size).toBe(145);
+  expect(CORE_BEHAVIOR_OBLIGATIONS).toHaveLength(183);
+  expect(SUPPORTING_ACTION_RECEIPTS).toHaveLength(415);
   expect(CORE_BEHAVIOR_OBLIGATIONS.length + SUPPORTING_ACTION_RECEIPTS.length)
     .toBe(occurrences.length);
 

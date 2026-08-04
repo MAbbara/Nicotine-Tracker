@@ -22,6 +22,23 @@ BANNED_PALETTE = (
 )
 
 
+def test_logging_pages_mark_only_logbook_as_the_primary_destination(
+        logged_in_client, test_log):
+    for path in (
+        '/log/view', '/log/add', '/log/bulk', f'/log/edit/{test_log.id}',
+    ):
+        response = logged_in_client.get(path, follow_redirects=True)
+        document = BeautifulSoup(response.data, 'html.parser')
+        primary = document.select_one('nav[aria-label="Primary"]')
+
+        assert response.status_code == 200, path
+        assert primary is not None, path
+        current = primary.select('[aria-current="page"]')
+        assert len(current) == 1, path
+        assert current[0].get_text(' ', strip=True) == 'Logbook', path
+        assert current[0]['href'] == '/log/view#main-content', path
+
+
 def test_logbook_renders_editorial_rows_filters_and_one_add_action(
         logged_in_client, test_log):
     response = logged_in_client.get('/log/view')

@@ -148,7 +148,7 @@ async function runConfirmedDataAction(page, recorder, state, action) {
 
 
 test('every supporting action has three independent exact coverage authorities', async () => {
-  expect(SUPPORTING_BEHAVIOR_OBLIGATIONS).toHaveLength(388);
+  expect(SUPPORTING_BEHAVIOR_OBLIGATIONS).toHaveLength(415);
   for (const state of ['dashboard', 'dashboard-empty', 'dashboard-sparse']) {
     for (const action of ['7 days', '30 days', '90 days', '1 year']) {
       expect(EXPECTED_ACTIONS[state]).toContain(action);
@@ -685,6 +685,7 @@ test('every supporting chrome action runs in its exact representative state', as
 
     for (const [name, allowAnalytics] of [
       ['Today', false],
+      ['Logbook', false],
       ['Journey', false],
       ['Insights', true],
       ['You', false],
