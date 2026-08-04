@@ -3,8 +3,10 @@
 from datetime import date, datetime, timedelta, timezone
 
 from bs4 import BeautifulSoup
+import pytest
 
 from models import Log
+from routes import insights as insights_routes
 from services import log_service
 
 
@@ -29,6 +31,185 @@ def _assert_local_analytics_assets(soup, initializer):
     assert apex_css < apex_js < init_js
     analytics_urls = [url for url in urls if "apex" in url.casefold() or "chart" in url.casefold()]
     assert all(not url.startswith(("http://", "https://")) for url in analytics_urls)
+
+
+def _insights_payload(*, plan_context=None, craving_pattern=None):
+    return {
+        "range_days": 7,
+        "observed_days": 3,
+        "log_count": 3,
+        "comparison": {
+            "available": True,
+            "current_total": 15,
+            "previous_total": 18,
+            "absolute_change": -3,
+            "percent_change": -16.7,
+            "direction": "down",
+        },
+        "data_sufficiency": {
+            "trend": True,
+            "time_pattern": False,
+            "brand_pattern": False,
+            "heatmap": False,
+            "plan_adherence": bool(plan_context and plan_context.get(
+                "adherence_available"
+            )),
+            "craving_pattern": bool(craving_pattern and craving_pattern.get(
+                "available"
+            )),
+        },
+        "total_pouches": 15,
+        "daily_average": 2.1,
+        "peak_day": 7,
+        "average_time_between_pouches": "2h",
+        "total_nicotine": 60,
+        "best_day": 3,
+        "consistency_score": 75,
+        "trend_direction": "Stable",
+        "consumption_by_time_of_day": {},
+        "consumption_by_day_of_week": {},
+        "brand_analysis": {},
+        "consumption_trend": [],
+        "heatmap_data": [],
+        "ai_insights": [],
+        "plan_context": plan_context or {
+            "state": "none",
+            "adherence_available": False,
+        },
+        "craving_pattern": craving_pattern or {
+            "available": False,
+            "event_count": 0,
+            "resolved_count": 0,
+            "leading_trigger": None,
+            "leading_trigger_count": None,
+            "outcome_counts": {
+                "resisted": 0,
+                "used_alternative": 0,
+                "used_nicotine": 0,
+            },
+            "non_nicotine_rate": None,
+        },
+    }
+
+
+@pytest.mark.parametrize("plan_context, expected_next_step", [
+    ({"state": "none", "adherence_available": False}, "Review your support plan"),
+    ({
+        "state": "active_observe", "mode": "observe", "status": "active",
+        "adherence_available": False,
+    }, "Review your observations"),
+    ({
+        "state": "paused", "mode": "reduce", "status": "paused",
+        "adherence_available": False,
+    }, "Review or resume your plan"),
+])
+def test_insights_fallback_keeps_neutral_plan_states_out_of_period_copy(
+        logged_in_client, monkeypatch, plan_context, expected_next_step):
+    monkeypatch.setattr(
+        insights_routes,
+        "get_enhanced_insights",
+        lambda _user_id, _days: _insights_payload(plan_context=plan_context),
+    )
+
+    soup = _soup(logged_in_client.get("/insights/?days=7"))
+
+    period_copy = " ".join([
+        soup.select_one("[data-insights-headline]").get_text(" ", strip=True),
+        soup.select_one("[data-insights-interpretation]").get_text(" ", strip=True),
+    ])
+    assert "your plan" not in period_copy.casefold()
+    assert soup.select_one("[data-insights-plan-context][hidden]") is not None
+    assert soup.select_one("[data-insights-next-step]").get_text(
+        " ", strip=True
+    ) == expected_next_step
+
+
+def test_insights_fallback_renders_exact_plan_and_craving_facts(
+        logged_in_client, monkeypatch):
+    plan_context = {
+        "state": "active_targeted",
+        "adherence_available": True,
+        "mode": "reduce",
+        "status": "active",
+        "compared_days": 3,
+        "days_on_or_below_target": 2,
+        "actual_pouches": 15,
+        "target_pouches": 18,
+        "difference_pouches": -3,
+        "adherence_rate": 66.7,
+    }
+    craving_pattern = {
+        "available": True,
+        "event_count": 4,
+        "resolved_count": 3,
+        "leading_trigger": "Stress",
+        "leading_trigger_count": 2,
+        "outcome_counts": {
+            "resisted": 1,
+            "used_alternative": 1,
+            "used_nicotine": 1,
+        },
+        "non_nicotine_rate": 66.7,
+    }
+    monkeypatch.setattr(
+        insights_routes,
+        "get_enhanced_insights",
+        lambda _user_id, _days: _insights_payload(
+            plan_context=plan_context,
+            craving_pattern=craving_pattern,
+        ),
+    )
+
+    soup = _soup(logged_in_client.get("/insights/?days=7"))
+
+    plan_copy = soup.select_one("[data-insights-plan-context]")
+    assert plan_copy is not None
+    assert not plan_copy.has_attr("hidden")
+    assert plan_copy.get_text(" ", strip=True) == (
+        "Across 3 matched plan days, you logged 15 pouches against a target "
+        "of 18. 2 of 3 days were on or below target."
+    )
+    craving = soup.select_one("[data-craving-pattern]")
+    assert craving is not None
+    assert not craving.has_attr("hidden")
+    assert craving.select_one("[data-insights-craving-copy]").get_text(
+        " ", strip=True
+    ) == (
+        "Stress appeared in 2 of 3 resolved cravings. You chose a "
+        "non-nicotine response 66.7% of the time."
+    )
+    assert [item.get_text(" ", strip=True) for item in craving.select("dt")] == [
+        "Leading trigger", "Pattern frequency", "Non-nicotine response",
+    ]
+    assert craving.select_one("[data-craving-leading-trigger]").get_text(
+        strip=True
+    ) == "Stress"
+    assert craving.select_one("[data-craving-resolved-pattern]").get_text(
+        strip=True
+    ) == "2 of 3 resolved"
+    assert craving.select_one("[data-craving-non-nicotine-rate]").get_text(
+        strip=True
+    ) == "66.7%"
+
+
+def test_insights_fallback_hides_insufficient_craving_evidence(
+        logged_in_client, monkeypatch):
+    monkeypatch.setattr(
+        insights_routes,
+        "get_enhanced_insights",
+        lambda _user_id, _days: _insights_payload(craving_pattern={
+            "available": False,
+            "event_count": 2,
+            "resolved_count": 2,
+            "leading_trigger": None,
+            "leading_trigger_count": None,
+            "non_nicotine_rate": None,
+        }),
+    )
+
+    soup = _soup(logged_in_client.get("/insights/?days=7"))
+
+    assert soup.select_one("[data-craving-pattern][hidden]") is not None
 
 
 def test_insights_renders_local_enhancement_and_semantic_values(

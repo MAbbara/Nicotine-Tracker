@@ -70,12 +70,104 @@ function comparisonInterpretation(data) {
     return 'This range gives you a useful baseline. Another complete range will make direction clearer.';
   }
   if (comparison.direction === 'down') {
-    return 'Your recent pattern is moving in the same direction as your plan. Keep the part of your routine that helped.';
+    return 'This lower total is useful context. Notice what changed in this range and what you may want to repeat.';
   }
   if (comparison.direction === 'up') {
     return 'This is useful context, not a verdict. Look for what made this range harder, then choose one adjustment.';
   }
   return 'A consistent range gives you a clear baseline for the next adjustment.';
+}
+
+function planContextModel(rawPlanContext = {}) {
+  const state = rawPlanContext.state || 'none';
+  const visible = state === 'active_targeted';
+  const available = visible && Boolean(rawPlanContext.adherence_available);
+  const comparedDays = Math.max(0, Math.trunc(finiteNumber(rawPlanContext.compared_days)));
+
+  if (!visible) {
+    return {
+      state,
+      visible: false,
+      available: false,
+      interpretation: '',
+    };
+  }
+
+  if (!available) {
+    const evidence = comparedDays > 0
+      ? `This range has ${pluralize(comparedDays, 'matched plan day')}.`
+      : 'This range does not have a matched plan day yet.';
+    return {
+      state,
+      visible: true,
+      available: false,
+      comparedDays,
+      interpretation: `${evidence} Keep logging on plan days; three matched days are needed before comparing intake with your targets.`,
+    };
+  }
+
+  const actualPouches = finiteNumber(rawPlanContext.actual_pouches);
+  const targetPouches = finiteNumber(rawPlanContext.target_pouches);
+  const daysOnOrBelowTarget = Math.max(
+    0,
+    Math.trunc(finiteNumber(rawPlanContext.days_on_or_below_target)),
+  );
+  return {
+    state,
+    visible: true,
+    available: true,
+    comparedDays,
+    actualPouches,
+    targetPouches,
+    daysOnOrBelowTarget,
+    differencePouches: finiteNumber(rawPlanContext.difference_pouches),
+    adherenceRate: finiteNumber(rawPlanContext.adherence_rate),
+    interpretation: `Across ${pluralize(comparedDays, 'matched plan day')}, you logged ${pluralize(actualPouches, 'pouch', 'pouches')} against a target of ${formatNumber(targetPouches)}. ${formatNumber(daysOnOrBelowTarget)} of ${formatNumber(comparedDays)} days were on or below target.`,
+  };
+}
+
+function cravingPatternModel(rawCravingPattern = {}) {
+  const leadingTrigger = typeof rawCravingPattern.leading_trigger === 'string'
+    ? rawCravingPattern.leading_trigger.trim()
+    : '';
+  const leadingTriggerCount = Math.max(
+    0,
+    Math.trunc(finiteNumber(rawCravingPattern.leading_trigger_count)),
+  );
+  const resolvedCount = Math.max(
+    0,
+    Math.trunc(finiteNumber(rawCravingPattern.resolved_count)),
+  );
+  const nonNicotineRate = Number(rawCravingPattern.non_nicotine_rate);
+  const visible = Boolean(
+    rawCravingPattern.available
+    && leadingTrigger
+    && leadingTriggerCount > 0
+    && resolvedCount > 0
+    && Number.isFinite(nonNicotineRate),
+  );
+  if (!visible) {
+    return {
+      visible: false,
+      leadingTrigger: null,
+      resolvedPattern: null,
+      nonNicotineResponse: null,
+      interpretation: '',
+    };
+  }
+
+  const resolvedPattern = `${formatNumber(leadingTriggerCount)} of ${formatNumber(resolvedCount)} resolved`;
+  const nonNicotineResponse = `${formatNumber(nonNicotineRate)}%`;
+  return {
+    visible: true,
+    leadingTrigger,
+    leadingTriggerCount,
+    resolvedCount,
+    resolvedPattern,
+    nonNicotineRate,
+    nonNicotineResponse,
+    interpretation: `${leadingTrigger} appeared in ${formatNumber(leadingTriggerCount)} of ${formatNumber(resolvedCount)} resolved cravings. You chose a non-nicotine response ${nonNicotineResponse} of the time.`,
+  };
 }
 
 function patternSection({ available, values, heading, availableCopy, unavailableCopy }) {
@@ -143,6 +235,39 @@ export function buildInsightsViewModel(data = {}, rangeDays = 30) {
       ? `${hourlyLeader.day} around ${hourlyLeader.hour} has the highest logged use in this detail. Consider support before that time.`
       : 'Log across more days and times to reveal a dependable hourly pattern.',
   };
+  const planContext = planContextModel(data.plan_context);
+  const cravingPattern = cravingPatternModel(data.craving_pattern);
+
+  let nextStep;
+  if (state !== 'ready') {
+    nextStep = {
+      label: 'Log today',
+      href: '/today/',
+      description: 'A quick entry is enough to keep your pattern honest.',
+    };
+  } else if (planContext.state === 'active_observe') {
+    nextStep = {
+      label: 'Review your observations',
+      href: '/journey/',
+      description: 'Use the baseline you are building to choose what comes next.',
+    };
+  } else if (planContext.state === 'paused') {
+    nextStep = {
+      label: 'Review or resume your plan',
+      href: '/journey/',
+      description: 'Keep this comparison neutral until you decide what the plan should do next.',
+    };
+  } else {
+    nextStep = {
+      label: timePattern.available
+        ? `Plan for ${timePattern.leadingLabel}`
+        : 'Review your support plan',
+      href: '/journey/',
+      description: timePattern.available
+        ? 'Review your support plan and add help before this window begins.'
+        : 'Use this pattern to choose one practical adjustment.',
+    };
+  }
 
   return {
     state,
@@ -166,20 +291,8 @@ export function buildInsightsViewModel(data = {}, rangeDays = 30) {
       },
     ],
     sections: { timePattern, weeklyPattern, productPattern, hourlyDetail },
-    nextStep: state === 'ready'
-      ? {
-        label: timePattern.available
-          ? `Plan for ${timePattern.leadingLabel}`
-          : 'Review your support plan',
-        href: '/journey/',
-        description: timePattern.available
-          ? 'Review your support plan and add help before this window begins.'
-          : 'Use this pattern to choose one practical adjustment.',
-      }
-      : {
-        label: 'Log today',
-        href: '/today/',
-        description: 'A quick entry is enough to keep your pattern honest.',
-      },
+    planContext,
+    cravingPattern,
+    nextStep,
   };
 }

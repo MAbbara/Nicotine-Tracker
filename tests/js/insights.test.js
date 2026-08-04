@@ -185,7 +185,7 @@ test('trend data labels are limited to short readable series', async () => {
   assert.equal(shouldShowTrendDataLabels(365), false);
 });
 
-test('progress-first model frames lower use as movement with the plan', async () => {
+test('progress-first model separates period direction from active plan evidence', async () => {
   const { buildInsightsViewModel } = await importModule('static/js/insights/view_model.js');
   const model = buildInsightsViewModel({
     total_pouches: 21,
@@ -205,6 +205,18 @@ test('progress-first model frames lower use as movement with the plan', async ()
       brand_pattern: true,
       heatmap: true,
     },
+    plan_context: {
+      state: 'active_targeted',
+      adherence_available: true,
+      mode: 'reduce',
+      status: 'active',
+      compared_days: 3,
+      days_on_or_below_target: 2,
+      actual_pouches: 15,
+      target_pouches: 18,
+      difference_pouches: -3,
+      adherence_rate: 66.7,
+    },
     consumption_by_time_of_day: {
       'Morning (6AM-12PM)': 5,
       'Evening (6PM-12AM)': 16,
@@ -215,7 +227,10 @@ test('progress-first model frames lower use as movement with the plan', async ()
 
   assert.equal(model.state, 'ready');
   assert.equal(model.headline, 'You used 25% less than the previous 30 days.');
-  assert.match(model.interpretation, /moving in the same direction as your plan/i);
+  assert.doesNotMatch(model.interpretation, /your plan/i);
+  assert.equal(model.planContext.visible, true);
+  assert.match(model.planContext.interpretation, /15 pouches against a target of 18/i);
+  assert.match(model.planContext.interpretation, /2 of 3 days/i);
   assert.deepEqual(model.metrics.map(({ key }) => key), [
     'current-use', 'daily-average', 'days-observed',
   ]);
@@ -227,6 +242,136 @@ test('progress-first model frames lower use as movement with the plan', async ()
   assert.equal(model.nextStep.label, 'Plan for Evening (6PM-12AM)');
   assert.match(model.nextStep.description, /before this window begins/i);
   assert.equal(model.nextStep.href, '/journey/');
+});
+
+test('plan context gates plan language and gives neutral state-aware next steps', async () => {
+  const { buildInsightsViewModel } = await importModule('static/js/insights/view_model.js');
+  const base = {
+    total_pouches: 15,
+    observed_days: 3,
+    log_count: 3,
+    comparison: {
+      available: true,
+      current_total: 15,
+      previous_total: 18,
+      percent_change: -16.7,
+      direction: 'down',
+    },
+    data_sufficiency: { trend: true, time_pattern: true },
+    consumption_by_time_of_day: { Morning: 15 },
+  };
+  const neutralCases = [
+    [{ state: 'none', adherence_available: false }, 'Plan for Morning'],
+    [{ state: 'active_observe', mode: 'observe', status: 'active', adherence_available: false }, 'Review your observations'],
+    [{ state: 'paused', mode: 'reduce', status: 'paused', adherence_available: false }, 'Review or resume your plan'],
+  ];
+
+  for (const [planContext, expectedNextStep] of neutralCases) {
+    const model = buildInsightsViewModel({ ...base, plan_context: planContext }, 7);
+    assert.equal(model.planContext.visible, false);
+    assert.equal(model.planContext.interpretation, '');
+    assert.equal(model.nextStep.label, expectedNextStep);
+    assert.doesNotMatch(`${model.headline} ${model.interpretation}`, /your plan/i);
+  }
+
+  const insufficient = buildInsightsViewModel({
+    ...base,
+    plan_context: {
+      state: 'active_targeted',
+      mode: 'reduce',
+      status: 'active',
+      adherence_available: false,
+      compared_days: 2,
+    },
+  }, 7);
+  assert.equal(insufficient.planContext.visible, true);
+  assert.equal(insufficient.planContext.available, false);
+  assert.match(insufficient.planContext.interpretation, /2 matched plan days/i);
+  assert.match(insufficient.planContext.interpretation, /keep logging on plan days/i);
+
+  const onTarget = buildInsightsViewModel({
+    ...base,
+    plan_context: {
+      state: 'active_targeted',
+      mode: 'reduce',
+      status: 'active',
+      adherence_available: true,
+      compared_days: 3,
+      days_on_or_below_target: 2,
+      actual_pouches: 15,
+      target_pouches: 18,
+      difference_pouches: -3,
+      adherence_rate: 66.7,
+    },
+  }, 7);
+  const aboveTarget = buildInsightsViewModel({
+    ...base,
+    plan_context: {
+      state: 'active_targeted',
+      mode: 'quit_by_date',
+      status: 'active',
+      adherence_available: true,
+      compared_days: 3,
+      days_on_or_below_target: 1,
+      actual_pouches: 21,
+      target_pouches: 18,
+      difference_pouches: 3,
+      adherence_rate: 33.3,
+    },
+  }, 7);
+
+  assert.match(onTarget.planContext.interpretation, /15 pouches against a target of 18/i);
+  assert.match(onTarget.planContext.interpretation, /2 of 3 days/i);
+  assert.match(aboveTarget.planContext.interpretation, /21 pouches against a target of 18/i);
+  assert.match(aboveTarget.planContext.interpretation, /1 of 3 days/i);
+  assert.doesNotMatch(JSON.stringify([onTarget, aboveTarget]), /success|failure/i);
+});
+
+test('craving pattern model stays hidden until bounded evidence is available', async () => {
+  const { buildInsightsViewModel } = await importModule('static/js/insights/view_model.js');
+  const base = {
+    total_pouches: 4,
+    observed_days: 3,
+    log_count: 3,
+    data_sufficiency: { trend: true },
+  };
+  const insufficient = buildInsightsViewModel({
+    ...base,
+    craving_pattern: {
+      available: false,
+      event_count: 2,
+      resolved_count: 2,
+      leading_trigger: null,
+      leading_trigger_count: null,
+      non_nicotine_rate: null,
+    },
+  }, 7);
+  const available = buildInsightsViewModel({
+    ...base,
+    craving_pattern: {
+      available: true,
+      event_count: 4,
+      resolved_count: 3,
+      leading_trigger: 'Stress',
+      leading_trigger_count: 2,
+      outcome_counts: {
+        resisted: 1,
+        used_alternative: 1,
+        used_nicotine: 1,
+      },
+      non_nicotine_rate: 66.7,
+    },
+  }, 7);
+
+  assert.equal(insufficient.cravingPattern.visible, false);
+  assert.equal(insufficient.cravingPattern.leadingTrigger, null);
+  assert.equal(available.cravingPattern.visible, true);
+  assert.equal(available.cravingPattern.leadingTrigger, 'Stress');
+  assert.equal(available.cravingPattern.resolvedPattern, '2 of 3 resolved');
+  assert.equal(available.cravingPattern.nonNicotineResponse, '66.7%');
+  assert.match(available.cravingPattern.interpretation, /Stress appeared in 2 of 3 resolved cravings/i);
+  assert.match(available.cravingPattern.interpretation, /non-nicotine response 66.7%/i);
+  assert.doesNotMatch(JSON.stringify(available.cravingPattern), /notes|context/i);
 });
 
 test('weekly and hourly figures receive honest sufficiency-gated interpretations', async () => {

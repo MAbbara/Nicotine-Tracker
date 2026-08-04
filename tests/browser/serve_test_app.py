@@ -796,6 +796,126 @@ with app.app_context():
         log_quantity=1,
         owned_data=True,
     )
+
+    def seed_insights_context_user(email, *, plan_state, craving_state):
+        """Build deterministic plan/craving authorities for Insights QA."""
+        insights_user = User(
+            email=email,
+            email_verified=True,
+            timezone='UTC',
+        )
+        insights_user.set_password('browser-password')
+        db.session.add(insights_user)
+        db.session.flush()
+
+        selected = date.today()
+        for day_offset, quantity in ((2, 5), (1, 7), (0, 3)):
+            log_day = selected - timedelta(days=day_offset)
+            db.session.add(Log(
+                user_id=insights_user.id,
+                pouch_id=default_pouch.id,
+                log_date=log_day,
+                log_time=datetime.combine(log_day, time(9, 0)),
+                product_brand_snapshot=default_pouch.brand,
+                nicotine_mg_snapshot=default_pouch.nicotine_mg,
+                quantity=quantity,
+            ))
+
+        if plan_state != 'none':
+            observe = plan_state == 'observe'
+            paused = plan_state == 'paused'
+            start = selected - timedelta(days=2)
+            plan = ReductionPlan(
+                user_id=insights_user.id,
+                mode='observe' if observe else 'reduce',
+                status='draft',
+                active_slot=None,
+                start_date=start,
+                target_date=selected,
+                baseline_pouches=None if observe else Decimal('8.00'),
+                baseline_mg=None if observe else Decimal('48.00'),
+                baseline_mg_per_pouch=None if observe else Decimal('6.00'),
+                baseline_source='observe' if observe else 'manual',
+                pace=None if observe else 'steady',
+                end_target_pouches=None if observe else 6,
+            )
+            db.session.add(plan)
+            db.session.flush()
+            revision = PlanRevision(
+                plan_id=plan.id,
+                effective_date=start,
+                pace=plan.pace,
+                target_date=plan.target_date,
+                end_target_pouches=plan.end_target_pouches,
+                generation_inputs={},
+                preview_digest=(str(plan.id) * 64)[:64],
+                reason='initial',
+            )
+            db.session.add(revision)
+            db.session.flush()
+            plan.active_revision_id = revision.id
+            plan.status = 'paused' if paused else 'active'
+            plan.active_slot = None if paused else 1
+            for day_offset in range(3):
+                db.session.add(PlanDay(
+                    plan_id=plan.id,
+                    revision_id=revision.id,
+                    local_date=start + timedelta(days=day_offset),
+                    target_pouches=None if observe else 6,
+                    nicotine_ceiling_mg=(
+                        None if observe else Decimal('36.00')
+                    ),
+                ))
+
+        craving_rows = []
+        if craving_state == 'insufficient':
+            craving_rows = [
+                (selected - timedelta(days=2), time(10, 0), 'Stress', 'resisted'),
+                (
+                    selected - timedelta(days=1), time(10, 0),
+                    ' stress ', 'used_alternative',
+                ),
+            ]
+        elif craving_state == 'available':
+            craving_rows = [
+                (selected - timedelta(days=2), time(10, 0), 'Stress', 'resisted'),
+                (
+                    selected - timedelta(days=1), time(10, 0),
+                    ' stress ', 'used_alternative',
+                ),
+                (selected, time(7, 0), 'Work', 'used_nicotine'),
+                (selected, time(8, 0), 'Stress', None),
+            ]
+        for craving_day, craving_time, trigger, outcome in craving_rows:
+            db.session.add(Craving(
+                user_id=insights_user.id,
+                craving_time=datetime.combine(craving_day, craving_time),
+                intensity=6,
+                trigger=trigger,
+                outcome=outcome,
+                notes='Private browser fixture note',
+            ))
+
+    seed_insights_context_user(
+        'insights-no-plan@example.com',
+        plan_state='none',
+        craving_state='insufficient',
+    )
+    seed_insights_context_user(
+        'insights-observe@example.com',
+        plan_state='observe',
+        craving_state='none',
+    )
+    seed_insights_context_user(
+        'insights-paused@example.com',
+        plan_state='paused',
+        craving_state='none',
+    )
+    seed_insights_context_user(
+        'insights-targeted@example.com',
+        plan_state='targeted',
+        craving_state='available',
+    )
     User.query.update({User.created_at: RELEASE_TEST_NOW.replace(tzinfo=None)})
     PlanRevision.query.update({
         PlanRevision.created_at: RELEASE_TEST_NOW.replace(tzinfo=None),

@@ -254,10 +254,30 @@ function updateEditorial(root, viewModel, rangeDays) {
   };
   setText('[data-insights-headline]', viewModel.headline);
   setText('[data-insights-interpretation]', viewModel.interpretation);
+  setText('[data-insights-plan-context]', viewModel.planContext.interpretation);
   setText('[data-insights-time-copy]', viewModel.sections.timePattern.interpretation);
   setText('[data-insights-weekly-copy]', viewModel.sections.weeklyPattern.interpretation);
   setText('[data-insights-product-copy]', viewModel.sections.productPattern.interpretation);
   setText('[data-insights-hourly-copy]', viewModel.sections.hourlyDetail.interpretation);
+  const planContext = root.querySelector('[data-insights-plan-context]');
+  if (planContext) planContext.hidden = !viewModel.planContext.visible;
+  const cravingPattern = root.querySelector('[data-craving-pattern]');
+  if (cravingPattern) {
+    cravingPattern.hidden = !viewModel.cravingPattern.visible;
+    setText('[data-insights-craving-copy]', viewModel.cravingPattern.interpretation);
+    setText(
+      '[data-craving-leading-trigger]',
+      viewModel.cravingPattern.leadingTrigger || '',
+    );
+    setText(
+      '[data-craving-resolved-pattern]',
+      viewModel.cravingPattern.resolvedPattern || '',
+    );
+    setText(
+      '[data-craving-non-nicotine-rate]',
+      viewModel.cravingPattern.nonNicotineResponse || '',
+    );
+  }
   const nextStep = root.querySelector('[data-insights-next-step]');
   if (nextStep) {
     nextStep.textContent = viewModel.nextStep.label;

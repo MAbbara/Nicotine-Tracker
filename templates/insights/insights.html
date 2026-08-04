@@ -15,6 +15,8 @@
 {% set observed_days = initial_insights.get('observed_days', 0) %}
 {% set current_total = comparison.get('current_total', initial_insights.get('total_pouches', 0)) %}
 {% set range_days = initial_insights.get('range_days', 30) %}
+{% set plan_context = initial_insights.get('plan_context', {}) %}
+{% set craving_pattern = initial_insights.get('craving_pattern', {}) %}
 {% set insight_state = 'empty' if log_count == 0 else ('ready' if sufficiency.get('trend') else 'sparse') %}
 {% set weekly_leader = namespace(label=none, value=0) %}
 {% for label, value in initial_insights.get('consumption_by_day_of_week', {}).items() %}
@@ -85,15 +87,39 @@
                 {% elif insight_state == 'sparse' %}
                     You have {{ observed_days }} {{ 'day' if observed_days == 1 else 'days' }} with logs. Continue at your own pace so comparisons stay honest.
                 {% elif comparison.get('direction') == 'down' %}
-                    Your recent pattern is moving in the same direction as your plan. Keep the part of your routine that helped.
+                    This lower total is useful context. Notice what changed in this range and what you may want to repeat.
                 {% elif comparison.get('direction') == 'up' %}
                     This is useful context, not a verdict. Look for what made this range harder, then choose one adjustment.
                 {% else %}
                     Use this range as a practical baseline for your next adjustment.
                 {% endif %}
             </p>
+            <p
+                class="insights-lead__interpretation"
+                data-insights-plan-context
+                {% if plan_context.get('state') != 'active_targeted' %}hidden{% endif %}
+            >
+                {% if plan_context.get('state') == 'active_targeted' %}
+                    {% set compared_days = plan_context.get('compared_days', 0)|int %}
+                    {% if plan_context.get('adherence_available') %}
+                        Across {{ compared_days }} matched plan {{ 'day' if compared_days == 1 else 'days' }}, you logged {{ plan_context.get('actual_pouches', 0) }} pouches against a target of {{ plan_context.get('target_pouches', 0) }}. {{ plan_context.get('days_on_or_below_target', 0) }} of {{ compared_days }} days were on or below target.
+                    {% elif compared_days > 0 %}
+                        This range has {{ compared_days }} matched plan {{ 'day' if compared_days == 1 else 'days' }}. Keep logging on plan days; three matched days are needed before comparing intake with your targets.
+                    {% else %}
+                        This range does not have a matched plan day yet. Keep logging on plan days; three matched days are needed before comparing intake with your targets.
+                    {% endif %}
+                {% endif %}
+            </p>
             <a class="text-link insights-next-step" href="{{ '/journey/' if insight_state == 'ready' else '/today/' }}" data-insights-next-step>
-                {{ 'Review your support plan' if insight_state == 'ready' else 'Log today' }}
+                {% if insight_state != 'ready' %}
+                    Log today
+                {% elif plan_context.get('state') == 'active_observe' %}
+                    Review your observations
+                {% elif plan_context.get('state') == 'paused' %}
+                    Review or resume your plan
+                {% else %}
+                    Review your support plan
+                {% endif %}
             </a>
         </div>
 
@@ -176,12 +202,26 @@
         </section>
     </div>
 
-    <section class="insights-pattern insights-pattern--cravings" aria-labelledby="craving-pattern-title" data-craving-pattern hidden>
+    <section
+        class="insights-pattern insights-pattern--cravings"
+        aria-labelledby="craving-pattern-title"
+        data-craving-pattern
+        {% if not craving_pattern.get('available') %}hidden{% endif %}
+    >
         <div class="insights-pattern__copy">
             <p class="eyebrow">Support moments</p>
             <h2 id="craving-pattern-title">Cravings and response</h2>
-            <p data-insights-craving-copy>Craving patterns will appear here when they can suggest a useful response.</p>
+            <p data-insights-craving-copy>
+                {% if craving_pattern.get('available') %}
+                    {{ craving_pattern.get('leading_trigger') }} appeared in {{ craving_pattern.get('leading_trigger_count') }} of {{ craving_pattern.get('resolved_count') }} resolved cravings. You chose a non-nicotine response {{ craving_pattern.get('non_nicotine_rate') }}% of the time.
+                {% endif %}
+            </p>
         </div>
+        <dl class="insights-supporting-measures" aria-label="Craving response pattern">
+            <div><dt>Leading trigger</dt><dd data-craving-leading-trigger>{{ craving_pattern.get('leading_trigger', '') if craving_pattern.get('available') else '' }}</dd></div>
+            <div><dt>Pattern frequency</dt><dd data-craving-resolved-pattern>{% if craving_pattern.get('available') %}{{ craving_pattern.get('leading_trigger_count') }} of {{ craving_pattern.get('resolved_count') }} resolved{% endif %}</dd></div>
+            <div><dt>Non-nicotine response</dt><dd data-craving-non-nicotine-rate>{% if craving_pattern.get('available') %}{{ craving_pattern.get('non_nicotine_rate') }}%{% endif %}</dd></div>
+        </dl>
     </section>
 
     <section class="insights-details" aria-labelledby="detailed-data-title">
