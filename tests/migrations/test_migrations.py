@@ -319,25 +319,61 @@ class TestGoalActiveSlotMigration:
         assert db.columns('goal')['goal_type']['nullable'] is False
 
         invalid_rows = (
-            (201, "'daily_mg'", 1, 'NULL'),
-            (202, "'daily_mg'", 0, '1'),
-            (203, 'NULL', 1, '1'),
+            (
+                201, "'daily_mg'", 1, 'NULL', 3819,
+                "Check constraint 'ck_goal_active_slot_state' is violated.",
+                'CHECK constraint failed: ck_goal_active_slot_state',
+            ),
+            (
+                202, "'daily_mg'", 0, '1', 3819,
+                "Check constraint 'ck_goal_active_slot_state' is violated.",
+                'CHECK constraint failed: ck_goal_active_slot_state',
+            ),
+            (
+                203, 'NULL', 1, '1', 1048,
+                "Column 'goal_type' cannot be null",
+                'NOT NULL constraint failed: goal.goal_type',
+            ),
         )
-        for row_id, goal_type, is_active, active_slot in invalid_rows:
-            with pytest.raises(sa.exc.IntegrityError):
-                db.execute(
-                    'INSERT INTO goal '
-                    '(id, user_id, goal_type, target_value, is_active, '
-                    'active_slot) VALUES '
-                    f'({row_id}, 1, {goal_type}, 7, {is_active}, '
-                    f'{active_slot})'
-                )
-            db.connection.rollback()
+        for (
+            row_id, goal_type, is_active, active_slot, mysql_errno,
+            mysql_diagnostic, sqlite_diagnostic,
+        ) in invalid_rows:
+            expected_error = (
+                sa.exc.DBAPIError
+                if db.dialect == 'mysql'
+                else sa.exc.IntegrityError
+            )
+            try:
+                with pytest.raises(expected_error) as excinfo:
+                    db.execute(
+                        'INSERT INTO goal '
+                        '(id, user_id, goal_type, target_value, is_active, '
+                        'active_slot) VALUES '
+                        f'({row_id}, 1, {goal_type}, 7, {is_active}, '
+                        f'{active_slot})'
+                    )
+                if db.dialect == 'mysql':
+                    assert excinfo.value.orig.args == (
+                        mysql_errno, mysql_diagnostic
+                    )
+                else:
+                    assert sqlite_diagnostic in str(excinfo.value.orig)
+            finally:
+                db.connection.rollback()
 
         db.downgrade('8a2d1c4e6f90')
         downgraded_columns = db.columns('goal')
         assert 'active_slot' not in downgraded_columns
         assert downgraded_columns['goal_type']['nullable'] is True
+        if db.dialect == 'mysql':
+            indexes = sa.inspect(db.connection).get_indexes('goal')
+            assert any(
+                index['name'] == 'user_id'
+                and index['column_names'] == ['user_id']
+                and index['unique'] is False
+                for index in indexes
+            ), 'downgrade must retain a nonunique index supporting goal.user_id'
         db.execute(
             "UPDATE goal SET goal_type = NULL, is_active = 1 WHERE id = 101"
         )
@@ -357,6 +393,7 @@ class TestGoalActiveSlotMigration:
             row['id'] for row in rerun_rows if row['is_active']
         ] == [min(row['id'] for row in rerun_rows)]
         assert db.columns('goal')['goal_type']['nullable'] is False
+        assert harness.schema_diffs(db.connection) == []
 
 
 class TestMySQLFractionalRoundTrip:

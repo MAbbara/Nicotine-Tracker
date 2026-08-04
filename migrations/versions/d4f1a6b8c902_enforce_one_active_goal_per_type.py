@@ -94,6 +94,12 @@ def upgrade():
 
 
 def downgrade():
+    # InnoDB removes its original implicit ``user_id`` index when the wider
+    # active-slot unique index can support the existing user foreign key.
+    # Restore that historical supporting index before dropping the wider one.
+    if op.get_bind().dialect.name == 'mysql':
+        op.create_index('user_id', 'goal', ['user_id'], unique=False)
+
     with op.batch_alter_table('goal') as batch:
         batch.drop_constraint(
             'uq_goal_user_type_active_slot', type_='unique'
