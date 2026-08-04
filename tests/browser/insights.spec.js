@@ -12,100 +12,6 @@ async function login(page, email) {
   await expect(page).toHaveURL(/\/today\/?$/);
 }
 
-
-function rangePayload({
-  days,
-  planContext,
-  cravingPattern,
-  total = 15,
-}) {
-  return {
-    range_days: days,
-    observed_days: 3,
-    log_count: 3,
-    comparison: {
-      available: true,
-      current_total: total,
-      previous_total: 18,
-      absolute_change: total - 18,
-      percent_change: Number((((total - 18) / 18) * 100).toFixed(1)),
-      direction: total < 18 ? 'down' : total > 18 ? 'up' : 'steady',
-    },
-    data_sufficiency: {
-      trend: true,
-      time_pattern: false,
-      brand_pattern: false,
-      heatmap: false,
-      plan_adherence: Boolean(planContext?.adherence_available),
-      craving_pattern: Boolean(cravingPattern?.available),
-    },
-    total_pouches: total,
-    daily_average: Number((total / days).toFixed(1)),
-    peak_day: 7,
-    average_time_between_pouches: '2h',
-    total_nicotine: 60,
-    unknown_strength_count: 0,
-    best_day: 3,
-    consistency_score: 75,
-    trend_direction: 'Stable',
-    consumption_by_time_of_day: {},
-    consumption_by_day_of_week: {},
-    brand_analysis: {},
-    consumption_trend: [
-      { date: '2026-08-01', value: 5 },
-      { date: '2026-08-02', value: 7 },
-      { date: '2026-08-03', value: total - 12 },
-    ],
-    heatmap_data: [],
-    ai_insights: [],
-    plan_context: planContext,
-    craving_pattern: cravingPattern,
-  };
-}
-
-
-const NO_PLAN = {
-  state: 'none',
-  adherence_available: false,
-  mode: null,
-  status: null,
-  compared_days: 0,
-};
-const NO_CRAVING_PATTERN = {
-  available: false,
-  event_count: 2,
-  resolved_count: 2,
-  leading_trigger: null,
-  leading_trigger_count: null,
-  non_nicotine_rate: null,
-};
-const TARGETED_PLAN = {
-  state: 'active_targeted',
-  adherence_available: true,
-  mode: 'reduce',
-  status: 'active',
-  compared_days: 3,
-  days_on_or_below_target: 2,
-  actual_pouches: 15,
-  target_pouches: 18,
-  difference_pouches: -3,
-  adherence_rate: 66.7,
-};
-const READY_CRAVINGS = {
-  available: true,
-  event_count: 4,
-  resolved_count: 3,
-  leading_trigger: 'Stress',
-  leading_trigger_count: 2,
-  outcome_counts: {
-    resisted: 1,
-    used_alternative: 1,
-    used_nicotine: 1,
-  },
-  non_nicotine_rate: 66.7,
-};
-
-
 test('Insights server fallback keeps neutral plan states neutral and reveals only sufficient cravings', async ({ page }) => {
   const guard = watchForProductProblems(page);
   await page.route('**/static/js/insights.js', (route) => route.fulfill({
@@ -113,13 +19,25 @@ test('Insights server fallback keeps neutral plan states neutral and reveals onl
     body: '',
   }));
   const states = [
-    ['insights-no-plan@example.com', false, false],
-    ['insights-observe@example.com', false, false],
-    ['insights-paused@example.com', false, false],
-    ['insights-targeted@example.com', true, true],
+    [
+      'insights-no-plan@example.com', false, false,
+      'Plan for Morning (6AM-12PM)', '/journey/',
+    ],
+    [
+      'insights-observe@example.com', false, false,
+      'Review your observations', '/journey/',
+    ],
+    [
+      'insights-paused@example.com', false, false,
+      'Review or resume your plan', '/journey/',
+    ],
+    [
+      'insights-targeted@example.com', true, true,
+      'Plan for Morning (6AM-12PM)', '/journey/',
+    ],
   ];
 
-  for (const [email, planVisible, cravingVisible] of states) {
+  for (const [email, planVisible, cravingVisible, label, href] of states) {
     await login(page, email);
     await page.goto('/insights/?days=7');
     const periodCopy = await page.locator([
@@ -131,6 +49,10 @@ test('Insights server fallback keeps neutral plan states neutral and reveals onl
       [planVisible ? 'toBeVisible' : 'toBeHidden']();
     await expect(page.locator('[data-craving-pattern]'))
       [cravingVisible ? 'toBeVisible' : 'toBeHidden']();
+    await expect(page.locator('[data-insights-next-step]')).toHaveText(label);
+    await expect(page.locator('[data-insights-next-step]')).toHaveAttribute(
+      'href', href,
+    );
   }
 
   await expect(page.locator('[data-insights-plan-context]')).toContainText(
@@ -139,6 +61,23 @@ test('Insights server fallback keeps neutral plan states neutral and reveals onl
   await expect(page.locator('[data-craving-leading-trigger]')).toHaveText('Stress');
   await expect(page.locator('[data-craving-resolved-pattern]')).toHaveText('2 of 3 resolved');
   await expect(page.locator('[data-craving-non-nicotine-rate]')).toHaveText('66.7%');
+  const payload = await page.evaluate(async () => (
+    fetch('/insights/api/insights?days=7').then((response) => response.json())
+  ));
+  expect(payload.data_sufficiency.time_pattern).toBe(true);
+  expect(payload.plan_context.actual_pouches).toBe(15);
+  expect(payload.plan_context.target_pouches).toBe(18);
+  const privateValues = [
+    'Private browser fixture note',
+    'Private browser situation context',
+    'Private browser outcome note',
+  ];
+  const serializedPayload = JSON.stringify(payload);
+  const renderedHtml = await page.content();
+  for (const value of privateValues) {
+    expect(serializedPayload).not.toContain(value);
+    expect(renderedHtml).not.toContain(value);
+  }
   guard.assertClean(expect, {
     stateName: 'Insights fallback plan and craving states',
     expectedStatus: 200,
@@ -150,52 +89,86 @@ test('Insights server fallback keeps neutral plan states neutral and reveals onl
 
 test('Insights range refresh hides and restores plan and craving evidence from one contract', async ({ page }) => {
   const guard = watchForProductProblems(page);
-  await page.route('**/insights/api/insights?days=90', (route) => route.fulfill({
-    json: rangePayload({
-      days: 90,
-      planContext: NO_PLAN,
-      cravingPattern: NO_CRAVING_PATTERN,
-    }),
-  }));
-  await page.route('**/insights/api/insights?days=365', (route) => route.fulfill({
-    json: rangePayload({
-      days: 365,
-      total: 21,
-      planContext: {
-        ...TARGETED_PLAN,
-        mode: 'quit_by_date',
-        days_on_or_below_target: 1,
-        actual_pouches: 21,
-        difference_pouches: 3,
-        adherence_rate: 33.3,
-      },
-      cravingPattern: {
-        ...READY_CRAVINGS,
-        leading_trigger: 'Routine',
-      },
-    }),
-  }));
-  await login(page, 'insights-targeted@example.com');
-  await page.goto('/insights/?days=7');
+  await login(page, 'insights-range@example.com');
+  await page.goto('/insights/?days=30');
   await expect(page.locator('[data-insights-root]')).toHaveAttribute(
     'data-insights-started', 'true',
   );
-  await expect(page.locator('[data-insights-plan-context]')).toBeVisible();
-  await expect(page.locator('[data-craving-pattern]')).toBeVisible();
+  await expect(page.locator('[data-insights-plan-context]')).toContainText(
+    'Across 3 matched plan days, you logged 15 pouches against a target of 18.',
+  );
+  await expect(page.locator('[data-craving-leading-trigger]')).toHaveText('Routine');
 
-  await page.getByRole('link', { name: '90 days', exact: true }).click();
-  await expect(page.locator('[data-insights-plan-context]')).toBeHidden();
+  const sevenResponsePromise = page.waitForResponse((response) => (
+    new URL(response.url()).pathname === '/insights/api/insights'
+      && new URL(response.url()).search === '?days=7'
+  ));
+  await page.getByRole('link', { name: '7 days', exact: true }).click();
+  const sevenResponse = await sevenResponsePromise;
+  expect(sevenResponse.status()).toBe(200);
+  const sevenPayload = await sevenResponse.json();
+  expect(sevenPayload.log_count).toBe(0);
+  expect(sevenPayload.data_sufficiency).toMatchObject({
+    plan_adherence: false,
+    craving_pattern: false,
+  });
+  expect(sevenPayload.plan_context).toMatchObject({
+    state: 'active_targeted',
+    adherence_available: false,
+    compared_days: 0,
+  });
+  expect(sevenPayload.craving_pattern.available).toBe(false);
+  await expect(page.locator('[data-insights-plan-context]')).toContainText(
+    'This range does not have a matched plan day yet.',
+  );
   await expect(page.locator('[data-craving-pattern]')).toBeHidden();
+  await expect(page.locator('[data-insights-next-step]')).toHaveText('Log today');
+  await expect(page.locator('[data-insights-next-step]')).toHaveAttribute(
+    'href', '/today/',
+  );
   await expect(page.locator('[data-insights-interpretation]')).not.toContainText(/your plan/i);
 
-  await page.getByRole('link', { name: '1 year', exact: true }).click();
+  const thirtyResponsePromise = page.waitForResponse((response) => (
+    new URL(response.url()).pathname === '/insights/api/insights'
+      && new URL(response.url()).search === '?days=30'
+  ));
+  await page.getByRole('link', { name: '30 days', exact: true }).click();
+  const thirtyResponse = await thirtyResponsePromise;
+  expect(thirtyResponse.status()).toBe(200);
+  const thirtyPayload = await thirtyResponse.json();
+  expect(thirtyPayload.plan_context).toMatchObject({
+    state: 'active_targeted',
+    adherence_available: true,
+    compared_days: 3,
+    actual_pouches: 15,
+    target_pouches: 18,
+    days_on_or_below_target: 2,
+  });
+  expect(thirtyPayload.craving_pattern).toMatchObject({
+    available: true,
+    leading_trigger: 'Routine',
+    leading_trigger_count: 2,
+    resolved_count: 3,
+    non_nicotine_rate: 66.7,
+  });
   await expect(page.locator('[data-insights-plan-context]')).toContainText(
-    'Across 3 matched plan days, you logged 21 pouches against a target of 18.',
+    'Across 3 matched plan days, you logged 15 pouches against a target of 18.',
   );
   await expect(page.locator('[data-craving-pattern]')).toBeVisible();
   await expect(page.locator('[data-craving-leading-trigger]')).toHaveText('Routine');
   await expect(page.locator('[data-craving-resolved-pattern]')).toHaveText('2 of 3 resolved');
   await expect(page.locator('[data-craving-non-nicotine-rate]')).toHaveText('66.7%');
+  const serializedPayload = JSON.stringify(thirtyPayload);
+  const renderedHtml = await page.content();
+  for (const value of [
+    'Private range fixture note',
+    'Private range situation context',
+    'Private range outcome note',
+    'Private range plan note',
+  ]) {
+    expect(serializedPayload).not.toContain(value);
+    expect(renderedHtml).not.toContain(value);
+  }
   guard.assertClean(expect, {
     stateName: 'Insights plan and craving range refresh',
     expectedStatus: 200,

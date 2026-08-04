@@ -18,6 +18,15 @@
 {% set plan_context = initial_insights.get('plan_context', {}) %}
 {% set craving_pattern = initial_insights.get('craving_pattern', {}) %}
 {% set insight_state = 'empty' if log_count == 0 else ('ready' if sufficiency.get('trend') else 'sparse') %}
+{% set time_leader = namespace(label=none, value=0) %}
+{% if sufficiency.get('time_pattern') %}
+    {% for label, value in initial_insights.get('consumption_by_time_of_day', {}).items() %}
+        {% if value|float > time_leader.value %}
+            {% set time_leader.label = label %}
+            {% set time_leader.value = value|float %}
+        {% endif %}
+    {% endfor %}
+{% endif %}
 {% set weekly_leader = namespace(label=none, value=0) %}
 {% for label, value in initial_insights.get('consumption_by_day_of_week', {}).items() %}
     {% if value|float > weekly_leader.value %}
@@ -117,6 +126,8 @@
                     Review your observations
                 {% elif plan_context.get('state') == 'paused' %}
                     Review or resume your plan
+                {% elif time_leader.label %}
+                    Plan for {{ time_leader.label }}
                 {% else %}
                     Review your support plan
                 {% endif %}

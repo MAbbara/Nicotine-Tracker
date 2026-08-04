@@ -809,16 +809,23 @@ with app.app_context():
         db.session.flush()
 
         selected = date.today()
-        for day_offset, quantity in ((2, 5), (1, 7), (0, 3)):
+        for day_offset, hour, quantity in (
+            (2, 8, 2),
+            (2, 10, 3),
+            (1, 8, 3),
+            (1, 10, 4),
+            (0, 9, 3),
+        ):
             log_day = selected - timedelta(days=day_offset)
             db.session.add(Log(
                 user_id=insights_user.id,
                 pouch_id=default_pouch.id,
                 log_date=log_day,
-                log_time=datetime.combine(log_day, time(9, 0)),
+                log_time=datetime.combine(log_day, time(hour, 0)),
                 product_brand_snapshot=default_pouch.brand,
                 nicotine_mg_snapshot=default_pouch.nicotine_mg,
                 quantity=quantity,
+                notes='Private browser fixture note',
             ))
 
         if plan_state != 'none':
@@ -894,6 +901,99 @@ with app.app_context():
                 trigger=trigger,
                 outcome=outcome,
                 notes='Private browser fixture note',
+                situation_context='Private browser situation context',
+                outcome_notes='Private browser outcome note',
+            ))
+
+    def seed_insights_range_user():
+        """Build real 7-day-insufficient and 30-day-sufficient evidence."""
+        insights_user = User(
+            email='insights-range@example.com',
+            email_verified=True,
+            timezone='UTC',
+        )
+        insights_user.set_password('browser-password')
+        db.session.add(insights_user)
+        db.session.flush()
+
+        selected = date.today()
+        evidence_dates = tuple(
+            selected - timedelta(days=offset) for offset in (12, 11, 10)
+        )
+        for local_date, hour, quantity in (
+            (evidence_dates[0], 8, 2),
+            (evidence_dates[0], 10, 3),
+            (evidence_dates[1], 8, 3),
+            (evidence_dates[1], 10, 4),
+            (evidence_dates[2], 9, 3),
+        ):
+            db.session.add(Log(
+                user_id=insights_user.id,
+                pouch_id=default_pouch.id,
+                log_date=local_date,
+                log_time=datetime.combine(local_date, time(hour, 0)),
+                product_brand_snapshot=default_pouch.brand,
+                nicotine_mg_snapshot=default_pouch.nicotine_mg,
+                quantity=quantity,
+                notes='Private range fixture note',
+            ))
+
+        plan = ReductionPlan(
+            user_id=insights_user.id,
+            mode='reduce',
+            status='draft',
+            active_slot=None,
+            start_date=evidence_dates[0],
+            target_date=evidence_dates[-1],
+            baseline_pouches=Decimal('8.00'),
+            baseline_mg=Decimal('48.00'),
+            baseline_mg_per_pouch=Decimal('6.00'),
+            baseline_source='manual',
+            pace='steady',
+            end_target_pouches=6,
+        )
+        db.session.add(plan)
+        db.session.flush()
+        revision = PlanRevision(
+            plan_id=plan.id,
+            effective_date=evidence_dates[0],
+            pace=plan.pace,
+            target_date=plan.target_date,
+            end_target_pouches=plan.end_target_pouches,
+            generation_inputs={},
+            preview_digest=(str(plan.id) * 64)[:64],
+            reason='initial',
+            note='Private range plan note',
+        )
+        db.session.add(revision)
+        db.session.flush()
+        plan.active_revision_id = revision.id
+        plan.status = 'active'
+        plan.active_slot = 1
+        for local_date in evidence_dates:
+            db.session.add(PlanDay(
+                plan_id=plan.id,
+                revision_id=revision.id,
+                local_date=local_date,
+                target_pouches=6,
+                nicotine_ceiling_mg=Decimal('36.00'),
+            ))
+
+        for local_date, hour, trigger, outcome in (
+            (evidence_dates[0], 11, 'Routine', 'resisted'),
+            (evidence_dates[1], 11, ' routine ', 'used_alternative'),
+            (evidence_dates[2], 7, 'Travel', 'used_nicotine'),
+            (evidence_dates[2], 8, 'Routine', None),
+        ):
+            db.session.add(Craving(
+                user_id=insights_user.id,
+                craving_time=datetime.combine(local_date, time(hour, 0)),
+                intensity=6,
+                trigger=trigger,
+                outcome=outcome,
+                notes='Private range fixture note',
+                situation_context='Private range situation context',
+                outcome_notes='Private range outcome note',
             ))
 
     seed_insights_context_user(
@@ -916,6 +1016,7 @@ with app.app_context():
         plan_state='targeted',
         craving_state='available',
     )
+    seed_insights_range_user()
     User.query.update({User.created_at: RELEASE_TEST_NOW.replace(tzinfo=None)})
     PlanRevision.query.update({
         PlanRevision.created_at: RELEASE_TEST_NOW.replace(tzinfo=None),

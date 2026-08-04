@@ -1,12 +1,13 @@
 """Rendered-page contracts for resilient, route-scoped analytics."""
 
+import json
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 
 from bs4 import BeautifulSoup
 import pytest
 
-from models import Log
-from routes import insights as insights_routes
+from models import Craving, Log, PlanDay, PlanRevision, ReductionPlan
 from services import log_service
 
 
@@ -33,134 +34,195 @@ def _assert_local_analytics_assets(soup, initializer):
     assert all(not url.startswith(("http://", "https://")) for url in analytics_urls)
 
 
-def _insights_payload(*, plan_context=None, craving_pattern=None):
-    return {
-        "range_days": 7,
-        "observed_days": 3,
-        "log_count": 3,
-        "comparison": {
-            "available": True,
-            "current_total": 15,
-            "previous_total": 18,
-            "absolute_change": -3,
-            "percent_change": -16.7,
-            "direction": "down",
-        },
-        "data_sufficiency": {
-            "trend": True,
-            "time_pattern": False,
-            "brand_pattern": False,
-            "heatmap": False,
-            "plan_adherence": bool(plan_context and plan_context.get(
-                "adherence_available"
-            )),
-            "craving_pattern": bool(craving_pattern and craving_pattern.get(
-                "available"
-            )),
-        },
-        "total_pouches": 15,
-        "daily_average": 2.1,
-        "peak_day": 7,
-        "average_time_between_pouches": "2h",
-        "total_nicotine": 60,
-        "best_day": 3,
-        "consistency_score": 75,
-        "trend_direction": "Stable",
-        "consumption_by_time_of_day": {},
-        "consumption_by_day_of_week": {},
-        "brand_analysis": {},
-        "consumption_trend": [],
-        "heatmap_data": [],
-        "ai_insights": [],
-        "plan_context": plan_context or {
-            "state": "none",
-            "adherence_available": False,
-        },
-        "craving_pattern": craving_pattern or {
-            "available": False,
-            "event_count": 0,
-            "resolved_count": 0,
-            "leading_trigger": None,
-            "leading_trigger_count": None,
-            "outcome_counts": {
-                "resisted": 0,
-                "used_alternative": 0,
-                "used_nicotine": 0,
-            },
-            "non_nicotine_rate": None,
-        },
-    }
+def _seed_insights_logs(db_session, user, pouch, *, profile="ready"):
+    selected = (datetime.now(timezone.utc) - timedelta(days=1)).date()
+    dates = tuple(selected - timedelta(days=offset) for offset in (2, 1, 0))
+    if profile == "empty":
+        return dates
+    entries = (
+        ((dates[-1], 9, 1),)
+        if profile == "sparse"
+        else (
+            (dates[0], 8, 2),
+            (dates[0], 10, 3),
+            (dates[1], 8, 3),
+            (dates[1], 10, 4),
+            (dates[2], 9, 3),
+        )
+    )
+    for local_date, hour, quantity in entries:
+        log = Log(
+            user_id=user.id,
+            quantity=quantity,
+            log_time=datetime.combine(local_date, datetime.min.time()).replace(
+                hour=hour,
+            ),
+            notes="private integration log note",
+        )
+        log_service.assign_log_product(log, pouch_id=pouch.id)
+        db_session.add(log)
+    return dates
 
 
-@pytest.mark.parametrize("plan_context, expected_next_step", [
-    ({"state": "none", "adherence_available": False}, "Review your support plan"),
-    ({
-        "state": "active_observe", "mode": "observe", "status": "active",
-        "adherence_available": False,
-    }, "Review your observations"),
-    ({
-        "state": "paused", "mode": "reduce", "status": "paused",
-        "adherence_available": False,
-    }, "Review or resume your plan"),
-])
-def test_insights_fallback_keeps_neutral_plan_states_out_of_period_copy(
-        logged_in_client, monkeypatch, plan_context, expected_next_step):
-    monkeypatch.setattr(
-        insights_routes,
-        "get_enhanced_insights",
-        lambda _user_id, _days: _insights_payload(plan_context=plan_context),
+def _seed_insights_plan(db_session, user, dates, *, state):
+    if state == "none":
+        return
+    observe = state == "observe"
+    paused = state == "paused"
+    targeted = not observe
+    target_dates = dates[:2] if state == "targeted_insufficient" else dates
+    plan = ReductionPlan(
+        user_id=user.id,
+        mode="observe" if observe else "reduce",
+        status="draft",
+        start_date=dates[0],
+        target_date=dates[-1],
+        baseline_pouches=Decimal("8.00") if targeted else None,
+        baseline_mg=Decimal("32.00") if targeted else None,
+        baseline_mg_per_pouch=Decimal("4.00") if targeted else None,
+        baseline_source="manual" if targeted else "observe",
+        pace="steady" if targeted else None,
+        end_target_pouches=6 if targeted else None,
+    )
+    db_session.add(plan)
+    db_session.flush()
+    revision = PlanRevision(
+        plan_id=plan.id,
+        effective_date=dates[0],
+        pace=plan.pace,
+        target_date=plan.target_date,
+        end_target_pouches=plan.end_target_pouches,
+        generation_inputs={},
+        preview_digest=(str(plan.id) * 64)[:64],
+        reason="initial",
+        note="private integration plan note",
+    )
+    db_session.add(revision)
+    db_session.flush()
+    plan.active_revision_id = revision.id
+    plan.status = "paused" if paused else "active"
+    plan.active_slot = None if paused else 1
+    for local_date in target_dates:
+        db_session.add(PlanDay(
+            plan_id=plan.id,
+            revision_id=revision.id,
+            local_date=local_date,
+            target_pouches=6 if targeted else None,
+            nicotine_ceiling_mg=Decimal("24.00") if targeted else None,
+        ))
+
+
+def _seed_insights_cravings(db_session, user, dates, *, available):
+    rows = [
+        (dates[0], 11, "Stress", "resisted"),
+        (dates[1], 11, " stress ", "used_alternative"),
+    ]
+    if available:
+        rows.extend([
+            (dates[2], 7, "Work", "used_nicotine"),
+            (dates[2], 8, "Stress", None),
+        ])
+    for local_date, hour, trigger, outcome in rows:
+        db_session.add(Craving(
+            user_id=user.id,
+            craving_time=datetime.combine(
+                local_date, datetime.min.time(),
+            ).replace(hour=hour),
+            intensity=6,
+            trigger=trigger,
+            outcome=outcome,
+            notes="private integration craving note",
+            situation_context="private integration situation context",
+            outcome_notes="private integration outcome note",
+        ))
+
+
+def _seed_insights_context(
+        db_session, user, pouch, *, profile="ready", plan_state="none",
+        cravings=None):
+    dates = _seed_insights_logs(
+        db_session, user, pouch, profile=profile,
+    )
+    _seed_insights_plan(db_session, user, dates, state=plan_state)
+    if cravings is not None:
+        _seed_insights_cravings(
+            db_session, user, dates, available=cravings == "available",
+        )
+    db_session.commit()
+
+
+@pytest.mark.parametrize(
+    "profile, plan_state, expected_label, expected_href, expected_state",
+    [
+        ("empty", "none", "Log today", "/today/", "empty"),
+        ("sparse", "none", "Log today", "/today/", "sparse"),
+        (
+            "ready", "none", "Plan for Morning (6AM-12PM)",
+            "/journey/", "ready",
+        ),
+        (
+            "ready", "observe", "Review your observations",
+            "/journey/", "ready",
+        ),
+        (
+            "ready", "paused", "Review or resume your plan",
+            "/journey/", "ready",
+        ),
+        (
+            "ready", "targeted_insufficient",
+            "Plan for Morning (6AM-12PM)", "/journey/", "ready",
+        ),
+    ],
+)
+def test_insights_fallback_next_step_matches_live_payload_contract(
+        logged_in_client, db_session, test_user, test_pouch, profile,
+        plan_state, expected_label, expected_href, expected_state):
+    _seed_insights_context(
+        db_session, test_user, test_pouch,
+        profile=profile, plan_state=plan_state,
     )
 
     soup = _soup(logged_in_client.get("/insights/?days=7"))
+    initial = json.loads(soup.select_one("#initial-insights-data").string)
+    next_step = soup.select_one("[data-insights-next-step]")
 
+    assert soup.select_one("[data-insights-root]")["data-insights-state"] == (
+        expected_state
+    )
+    assert next_step.get_text(" ", strip=True) == expected_label
+    assert next_step["href"] == expected_href
+    if profile == "ready":
+        assert initial["data_sufficiency"]["time_pattern"] is True
+        assert initial["consumption_by_time_of_day"] == {
+            "Afternoon (12PM-6PM)": 0,
+            "Evening (6PM-12AM)": 0,
+            "Morning (6AM-12PM)": 15,
+            "Night (12AM-6AM)": 0,
+        }
     period_copy = " ".join([
         soup.select_one("[data-insights-headline]").get_text(" ", strip=True),
         soup.select_one("[data-insights-interpretation]").get_text(" ", strip=True),
     ])
     assert "your plan" not in period_copy.casefold()
-    assert soup.select_one("[data-insights-plan-context][hidden]") is not None
-    assert soup.select_one("[data-insights-next-step]").get_text(
-        " ", strip=True
-    ) == expected_next_step
+    if plan_state == "targeted_insufficient":
+        assert initial["plan_context"]["compared_days"] == 2
+        assert initial["plan_context"]["adherence_available"] is False
+        assert "2 matched plan days" in soup.select_one(
+            "[data-insights-plan-context]",
+        ).get_text(" ", strip=True)
+    else:
+        assert soup.select_one("[data-insights-plan-context][hidden]") is not None
 
 
-def test_insights_fallback_renders_exact_plan_and_craving_facts(
-        logged_in_client, monkeypatch):
-    plan_context = {
-        "state": "active_targeted",
-        "adherence_available": True,
-        "mode": "reduce",
-        "status": "active",
-        "compared_days": 3,
-        "days_on_or_below_target": 2,
-        "actual_pouches": 15,
-        "target_pouches": 18,
-        "difference_pouches": -3,
-        "adherence_rate": 66.7,
-    }
-    craving_pattern = {
-        "available": True,
-        "event_count": 4,
-        "resolved_count": 3,
-        "leading_trigger": "Stress",
-        "leading_trigger_count": 2,
-        "outcome_counts": {
-            "resisted": 1,
-            "used_alternative": 1,
-            "used_nicotine": 1,
-        },
-        "non_nicotine_rate": 66.7,
-    }
-    monkeypatch.setattr(
-        insights_routes,
-        "get_enhanced_insights",
-        lambda _user_id, _days: _insights_payload(
-            plan_context=plan_context,
-            craving_pattern=craving_pattern,
-        ),
+def test_insights_live_chain_renders_exact_plan_and_craving_facts_without_private_text(
+        logged_in_client, db_session, test_user, test_pouch):
+    _seed_insights_context(
+        db_session, test_user, test_pouch,
+        plan_state="targeted", cravings="available",
     )
 
-    soup = _soup(logged_in_client.get("/insights/?days=7"))
+    response = logged_in_client.get("/insights/?days=7")
+    soup = _soup(response)
 
     plan_copy = soup.select_one("[data-insights-plan-context]")
     assert plan_copy is not None
@@ -190,26 +252,50 @@ def test_insights_fallback_renders_exact_plan_and_craving_facts(
     assert craving.select_one("[data-craving-non-nicotine-rate]").get_text(
         strip=True
     ) == "66.7%"
+    api_response = logged_in_client.get("/insights/api/insights?days=7")
+    assert api_response.status_code == 200
+    payload = api_response.get_json()
+    assert payload["plan_context"] == {
+        "state": "active_targeted",
+        "adherence_available": True,
+        "mode": "reduce",
+        "status": "active",
+        "compared_days": 3,
+        "days_on_or_below_target": 2,
+        "actual_pouches": 15,
+        "target_pouches": 18,
+        "difference_pouches": -3,
+        "adherence_rate": 66.7,
+    }
+    assert payload["craving_pattern"]["leading_trigger"] == "Stress"
+    assert payload["craving_pattern"]["non_nicotine_rate"] == 66.7
+    private_values = (
+        "private integration log note",
+        "private integration plan note",
+        "private integration craving note",
+        "private integration situation context",
+        "private integration outcome note",
+    )
+    serialized_payload = json.dumps(payload)
+    rendered_html = response.get_data(as_text=True)
+    assert all(value not in serialized_payload for value in private_values)
+    assert all(value not in rendered_html for value in private_values)
 
 
-def test_insights_fallback_hides_insufficient_craving_evidence(
-        logged_in_client, monkeypatch):
-    monkeypatch.setattr(
-        insights_routes,
-        "get_enhanced_insights",
-        lambda _user_id, _days: _insights_payload(craving_pattern={
-            "available": False,
-            "event_count": 2,
-            "resolved_count": 2,
-            "leading_trigger": None,
-            "leading_trigger_count": None,
-            "non_nicotine_rate": None,
-        }),
+def test_insights_live_chain_hides_insufficient_craving_evidence(
+        logged_in_client, db_session, test_user, test_pouch):
+    _seed_insights_context(
+        db_session, test_user, test_pouch, cravings="insufficient",
     )
 
     soup = _soup(logged_in_client.get("/insights/?days=7"))
 
     assert soup.select_one("[data-craving-pattern][hidden]") is not None
+    payload = logged_in_client.get(
+        "/insights/api/insights?days=7",
+    ).get_json()
+    assert payload["craving_pattern"]["available"] is False
+    assert payload["craving_pattern"]["resolved_count"] == 2
 
 
 def test_insights_renders_local_enhancement_and_semantic_values(
