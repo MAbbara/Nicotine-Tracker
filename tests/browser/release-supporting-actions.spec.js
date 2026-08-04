@@ -280,6 +280,30 @@ test('every supporting action has three independent exact coverage authorities',
 });
 
 
+test('current Logbook primary action is a request-free keyboard focus jump', async ({ page }) => {
+  const recorder = createSupportingBehaviorRecorder(SUPPORTING_OWNER_TITLES.chrome, expect);
+  await loginAs(page, 'release-inventory@example.com');
+  await recorder.visitState(page, 'logbook');
+  page.setDefaultTimeout(2_000);
+
+  let sameDocumentRequests = 0;
+  const countSameDocumentRequest = (request) => {
+    if (request.method() === 'GET' && new URL(request.url()).pathname === '/log/view') {
+      sameDocumentRequests += 1;
+    }
+  };
+  page.on('request', countSameDocumentRequest);
+  try {
+    await recorder.runScenario(page, 'logbook', 'Logbook', 'success');
+    await expect(page).toHaveURL(/\/log\/view#main-content$/);
+    await expect(page.locator('#main-content')).toBeFocused();
+    expect(sameDocumentRequests).toBe(0);
+  } finally {
+    page.off('request', countSameDocumentRequest);
+  }
+});
+
+
 test('every mutation authority has an exact form and request identity', () => {
   const mutationProfiles = new Set([
     'destructiveMutation', 'download', 'formMutation', 'rowDelete', 'validatedMutation',

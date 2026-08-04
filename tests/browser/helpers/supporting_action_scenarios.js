@@ -29,6 +29,16 @@ const CONTROL_SCOPES = Object.freeze({
 
 
 function navigationAuthority(state, action, profile) {
+  if (profile === 'primarySameDocument') {
+    if (state !== 'logbook' || action !== 'Logbook') {
+      throw new Error(`same-document primary navigation is not cataloged for ${state} › ${action}`);
+    }
+    return Object.freeze({
+      scope: CONTROL_SCOPES.primary, role: 'link', name: action,
+      selector: 'a[href="/log/view#main-content"]',
+      attributes: Object.freeze({ href: '/log/view#main-content' }),
+    });
+  }
   if (
     profile === 'primaryNavigation'
     && ['Today', 'Logbook', 'Journey', 'Insights', 'You'].includes(action)
@@ -163,7 +173,7 @@ function postForm(action, fields = {}) {
 
 
 function supportingControlAuthority(state, action, profile) {
-  if (['navigation', 'primaryNavigation'].includes(profile)) {
+  if (['navigation', 'primaryNavigation', 'primarySameDocument'].includes(profile)) {
     return navigationAuthority(state, action, profile);
   }
   if (profile === 'skip') {
@@ -600,6 +610,29 @@ function navigationScenario(page, state, action, profile) {
             search: authority.request.search, status: authority.request.status,
           },
           authority: resolvedAuthority,
+        },
+      };
+    },
+  });
+}
+
+
+function primarySameDocumentScenario(page, state, action) {
+  const authority = navigationAuthority(state, action, 'primarySameDocument');
+  return Object.freeze({
+    branches: Object.freeze(['success']),
+    async resolve(branch) {
+      if (branch !== 'success') {
+        throw new Error(`unknown same-document primary navigation branch: ${branch}`);
+      }
+      await prepareShellActionState(page, state);
+      return {
+        control: controlFromAuthority(page, authority),
+        descriptor: {
+          activation: { kind: 'keyboard', key: 'Enter' },
+          focus: { mode: 'moved', locator: page.locator('#main-content') },
+          outcome: { kind: 'location', pathname: '/log/view', hash: '#main-content' },
+          authority,
         },
       };
     },
@@ -1873,6 +1906,9 @@ function supportingScenarioFor(page, state, action) {
     entry.state === state && entry.action === action
   ));
   if (!baseline) throw new Error(`unknown supporting scenario: ${state} › ${action}`);
+  if (baseline.profile === 'primarySameDocument') {
+    return primarySameDocumentScenario(page, state, action);
+  }
   if (['navigation', 'primaryNavigation'].includes(baseline.profile)) {
     return navigationScenario(page, state, action, baseline.profile);
   }

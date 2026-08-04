@@ -57,6 +57,15 @@ const POLICY_SOURCE = {
       "request": "asserted",
       "feedback": "not-applicable"
     },
+    "primarySameDocument": {
+      "error": "not-applicable",
+      "focus": "asserted",
+      "keyboard": "asserted",
+      "loading": "not-applicable",
+      "persistence": "not-applicable",
+      "request": "not-applicable",
+      "feedback": "not-applicable"
+    },
     "validatedMutation": {
       "error": "asserted",
       "focus": "asserted",
@@ -537,7 +546,7 @@ const POLICY_SOURCE = {
       "logbook",
       "Logbook",
       "chrome",
-      "primaryNavigation"
+      "primarySameDocument"
     ],
     [
       "logbook",

@@ -66,6 +66,15 @@ const PROFILE_EVIDENCE = Object.freeze({
     persistence: ['not-applicable', 'the destination is the complete action outcome'],
     request: ['asserted', 'the owner asserts exact GET target, status, and empty body'],
   },
+  primarySameDocument: {
+    error: ['not-applicable', 'the current-destination focus jump has no recoverable error branch'],
+    feedback: ['not-applicable', 'the focused main region is the direct outcome'],
+    focus: ['asserted', 'the current page main region receives focus'],
+    keyboard: ['asserted', 'the current primary link is focused and activated with Enter'],
+    loading: ['not-applicable', 'the hash focus jump is synchronous'],
+    persistence: ['not-applicable', 'the focus jump has no durable state'],
+    request: ['not-applicable', 'the current-destination hash changes without HTTP'],
+  },
   draftToggle: {
     error: ['not-applicable', 'the local draft control has no asynchronous error branch'],
     feedback: ['not-applicable', 'the native checked state is the direct draft outcome'],
@@ -254,7 +263,7 @@ group(SUPPORTING_OWNER_TITLES.chrome, authenticatedSupportingStates.flatMap(([st
   [state, 'Skip to main content', 'skip'],
   [state, `Open your space for ${email}`, 'navigation'],
   [state, 'Today', 'primaryNavigation'],
-  [state, 'Logbook', 'primaryNavigation'],
+  [state, 'Logbook', state === 'logbook' ? 'primarySameDocument' : 'primaryNavigation'],
   [state, 'Journey', 'primaryNavigation'],
   [state, 'Insights', 'primaryNavigation'],
   [state, 'You', 'primaryNavigation'],
@@ -1031,8 +1040,14 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
     }
   }
 
-  async function assertTransactionOutcome(outcome) {
+  async function assertTransactionOutcome(page, outcome) {
     if (!outcome) return;
+    if (outcome.kind === 'location') {
+      const actual = new URL(page.url());
+      expectApi(actual.pathname).toBe(outcome.pathname);
+      expectApi(actual.hash).toBe(outcome.hash);
+      return;
+    }
     if (!isLocator(outcome.locator)) {
       throw new TypeError('transaction outcome requires a typed locator');
     }
@@ -1196,7 +1211,7 @@ function createSupportingBehaviorRecorder(owner, expectApi) {
             await page.waitForLoadState('load');
           }
         }
-        await assertTransactionOutcome(outcome);
+        await assertTransactionOutcome(page, outcome);
         if (feedback) {
           await assertCausalFeedback('feedback', feedback, beforeFeedback, control);
           dimensions.push('feedback');
