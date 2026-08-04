@@ -81,11 +81,15 @@ def test_insights_renders_local_enhancement_and_semantic_values(
         "log_count",
         "comparison",
         "data_sufficiency",
+        "plan_context",
+        "craving_pattern",
         "total_pouches",
         "consumption_trend",
         "heatmap_data",
     } <= payload.keys()
     assert payload["range_days"] == 7
+    assert "plan_adherence" in payload["data_sufficiency"]
+    assert "craving_pattern" in payload["data_sufficiency"]
 
 
 def test_insights_uses_editorial_structure_and_retired_legacy_dashboard(

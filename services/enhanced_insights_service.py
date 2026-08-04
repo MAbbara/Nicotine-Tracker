@@ -1,9 +1,10 @@
 import pandas as pd
 from datetime import datetime, timedelta
 import pytz
+from sqlalchemy import case
 
 from extensions import db
-from models import Log, User
+from models import Craving, Log, PlanDay, ReductionPlan, User
 from services.log_service import (
     get_historical_brand,
     get_historical_nicotine_strength,
@@ -96,6 +97,170 @@ def _comparison_metadata(current_df, previous_df, days):
         },
     }
 
+
+def _neutral_plan_context(plan=None, *, state="none", compared_days=0):
+    return {
+        'state': state,
+        'adherence_available': False,
+        'mode': plan.mode if plan is not None else None,
+        'status': plan.status if plan is not None else None,
+        'compared_days': int(compared_days),
+        'days_on_or_below_target': None,
+        'actual_pouches': None,
+        'target_pouches': None,
+        'difference_pouches': None,
+        'adherence_rate': None,
+    }
+
+
+def _plan_context(user_id: int, df: pd.DataFrame, window_end: datetime,
+                  days: int) -> dict:
+    """Return plan state and adherence based only on matched logged dates."""
+    plan = (
+        ReductionPlan.query.filter(
+            ReductionPlan.user_id == user_id,
+            ReductionPlan.status.in_(("active", "paused")),
+        )
+        .order_by(
+            case((ReductionPlan.status == "active", 0), else_=1),
+            ReductionPlan.updated_at.desc(),
+            ReductionPlan.id.desc(),
+        )
+        .first()
+    )
+    if plan is None:
+        return _neutral_plan_context()
+    if plan.status == "paused":
+        return _neutral_plan_context(plan, state="paused")
+    if plan.mode == "observe":
+        return _neutral_plan_context(plan, state="active_observe")
+
+    if df.empty or 'user_time' not in df or 'quantity' not in df:
+        return _neutral_plan_context(plan, state="active_targeted")
+
+    local_timezone = df['user_time'].dt.tz
+    normalized_end = tz_service.to_naive_utc(window_end)
+    end_utc = pytz.UTC.localize(normalized_end)
+    start_utc = end_utc - timedelta(days=days)
+    local_start_date = start_utc.astimezone(local_timezone).date()
+    local_end_date = end_utc.astimezone(local_timezone).date()
+
+    actual_by_date = (
+        df.assign(local_date=df['user_time'].dt.date)
+        .groupby('local_date')['quantity']
+        .sum()
+    )
+    logged_dates = tuple(actual_by_date.index)
+    plan_days = (
+        PlanDay.query.with_entities(
+            PlanDay.local_date,
+            PlanDay.target_pouches,
+        )
+        .filter(
+            PlanDay.plan_id == plan.id,
+            PlanDay.target_pouches.isnot(None),
+            PlanDay.local_date.in_(logged_dates),
+            PlanDay.local_date >= local_start_date,
+            PlanDay.local_date <= local_end_date,
+        )
+        .order_by(PlanDay.local_date, PlanDay.id)
+        .all()
+    )
+    compared_days = len(plan_days)
+    if compared_days < 3:
+        return _neutral_plan_context(
+            plan, state="active_targeted", compared_days=compared_days,
+        )
+
+    actual_pouches = sum(
+        int(actual_by_date.loc[local_date])
+        for local_date, _target in plan_days
+    )
+    target_pouches = sum(int(target) for _local_date, target in plan_days)
+    days_on_or_below_target = sum(
+        int(actual_by_date.loc[local_date]) <= int(target)
+        for local_date, target in plan_days
+    )
+    return {
+        'state': 'active_targeted',
+        'adherence_available': True,
+        'mode': plan.mode,
+        'status': plan.status,
+        'compared_days': compared_days,
+        'days_on_or_below_target': days_on_or_below_target,
+        'actual_pouches': actual_pouches,
+        'target_pouches': target_pouches,
+        'difference_pouches': actual_pouches - target_pouches,
+        'adherence_rate': round(
+            (days_on_or_below_target / compared_days) * 100, 1,
+        ),
+    }
+
+
+def _craving_pattern(user_id: int, window_start: datetime,
+                     window_end: datetime) -> dict:
+    """Return a bounded trigger/outcome pattern without private free text."""
+    recognized_outcomes = (
+        'resisted',
+        'used_alternative',
+        'used_nicotine',
+    )
+    outcome_counts = {outcome: 0 for outcome in recognized_outcomes}
+    rows = (
+        Craving.query.with_entities(
+            Craving.id,
+            Craving.trigger,
+            Craving.outcome,
+        )
+        .filter(
+            Craving.user_id == user_id,
+            Craving.craving_time >= tz_service.to_naive_utc(window_start),
+            Craving.craving_time < tz_service.to_naive_utc(window_end),
+        )
+        .order_by(Craving.craving_time, Craving.id)
+        .all()
+    )
+
+    trigger_counts = {}
+    trigger_labels = {}
+    resolved_count = 0
+    for _craving_id, trigger, outcome in rows:
+        display_trigger = trigger.strip() if trigger else ''
+        if not display_trigger or outcome not in recognized_outcomes:
+            continue
+        normalized_trigger = display_trigger.casefold()
+        trigger_labels.setdefault(normalized_trigger, display_trigger)
+        trigger_counts[normalized_trigger] = (
+            trigger_counts.get(normalized_trigger, 0) + 1
+        )
+        outcome_counts[outcome] += 1
+        resolved_count += 1
+
+    leading_key = (
+        max(trigger_counts, key=trigger_counts.get)
+        if trigger_counts else None
+    )
+    leading_count = trigger_counts.get(leading_key, 0)
+    available = resolved_count >= 3 and leading_count >= 2
+    return {
+        'available': available,
+        'event_count': len(rows),
+        'resolved_count': resolved_count,
+        'leading_trigger': trigger_labels[leading_key] if available else None,
+        'leading_trigger_count': leading_count if available else 0,
+        'outcome_counts': outcome_counts,
+        'non_nicotine_rate': (
+            round(
+                (
+                    outcome_counts['resisted']
+                    + outcome_counts['used_alternative']
+                ) / resolved_count * 100,
+                1,
+            )
+            if available else None
+        ),
+    }
+
 def get_enhanced_insights(user_id: int, days: int = 30):
     """Get comprehensive insights for the user"""
     user = db.session.get(User, user_id)
@@ -104,6 +269,7 @@ def get_enhanced_insights(user_id: int, days: int = 30):
 
     user_timezone = user.timezone
     window_end = datetime.utcnow()
+    window_start = window_end - timedelta(days=days)
     df = get_user_logs_df(user_id, user_timezone, days, end_at=window_end)
     previous_df = get_user_logs_df(
         user_id,
@@ -112,6 +278,12 @@ def get_enhanced_insights(user_id: int, days: int = 30):
         end_at=window_end - timedelta(days=days),
     )
     metadata = _comparison_metadata(df, previous_df, days)
+    plan_context = _plan_context(user_id, df, window_end, days)
+    craving_pattern = _craving_pattern(user_id, window_start, window_end)
+    metadata['data_sufficiency'].update({
+        'plan_adherence': plan_context['adherence_available'],
+        'craving_pattern': craving_pattern['available'],
+    })
     
     if df.empty:
         return {
@@ -130,6 +302,8 @@ def get_enhanced_insights(user_id: int, days: int = 30):
             'consumption_trend': [],
             'heatmap_data': [],
             'ai_insights': [],
+            'plan_context': plan_context,
+            'craving_pattern': craving_pattern,
             **metadata,
         }
 
@@ -199,6 +373,8 @@ def get_enhanced_insights(user_id: int, days: int = 30):
         'consumption_trend': consumption_trend,
         'heatmap_data': heatmap_data,
         'ai_insights': ai_insights,
+        'plan_context': plan_context,
+        'craving_pattern': craving_pattern,
         **metadata,
     }
 
