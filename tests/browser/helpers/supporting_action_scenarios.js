@@ -1826,8 +1826,12 @@ function quickMutationScenario(page, state, action) {
               status: 503,
               contentType: 'application/json',
               body: JSON.stringify({
-                success: false,
-                error: 'Quick add is temporarily unavailable.',
+                error: {
+                  code: 'internal_error',
+                  message: 'Quick add is temporarily unavailable.',
+                  field_errors: {},
+                  retryable: true,
+                },
               }),
             });
             return;
@@ -1841,9 +1845,16 @@ function quickMutationScenario(page, state, action) {
             activation: { kind: 'keyboard', key: 'Enter' },
             request: {
               method: 'POST', path: /^\/log\/api\/quick_add$/, status: 503,
-              payload: { kind: 'json', exact: { pouch_id: pouchId, quantity: 1 } },
+              payload: {
+                kind: 'json',
+                exact: {
+                  pouch_id: Number(pouchId), quantity: 1,
+                  view: { page: 1, q: '', from_date: '', to_date: '' },
+                },
+              },
+              dynamicFields: { client_event_id: 'uuid' },
             },
-            loading: { disabled: true, text: 'Adding...' },
+            loading: { disabled: true, text: 'Adding…' },
             error: {
               locator: page.locator('[data-notification-type="error"] [data-notification-message]'),
               text: 'Quick add is temporarily unavailable.',
@@ -1880,12 +1891,19 @@ function quickMutationScenario(page, state, action) {
         descriptor: {
           activation: { kind: 'keyboard', key: 'Enter' },
           request: {
-            method: 'POST', path: /^\/log\/api\/quick_add$/, status: 200,
-            payload: { kind: 'json', exact: { pouch_id: pouchId, quantity: 1 } },
+            method: 'POST', path: /^\/log\/api\/quick_add$/, status: 201,
+            payload: {
+              kind: 'json',
+              exact: {
+                pouch_id: Number(pouchId), quantity: 1,
+                view: { page: 1, q: '', from_date: '', to_date: '' },
+              },
+            },
+            dynamicFields: { client_event_id: 'uuid' },
           },
           feedback: {
             locator: page.locator('[data-notification-type="success"] [data-notification-message]'),
-            text: `Added 1 ${fixture.brand} (${fixture.displayStrength}mg)`,
+            text: 'Log saved.',
             ownership: { kind: 'quick-notification', type: 'success' },
           },
           persistence: {

@@ -5860,6 +5860,33 @@
     background: var(--color-surface);
   }
 
+  .logbook-row--new {
+    background: var(--color-constructive-soft);
+    transition: background-color 700ms var(--ease-out-expo);
+  }
+
+  .logbook-notification {
+    position: fixed;
+    inset-block-start: var(--space-4);
+    inset-inline-end: var(--space-4);
+    z-index: 50;
+    width: min(calc(100% - 2rem), 24rem);
+    padding: var(--space-4);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-control);
+    background: var(--color-surface-raised);
+    box-shadow: var(--shadow-raised);
+    color: var(--color-ink);
+  }
+
+  .logbook-notification--success {
+    border-color: var(--color-constructive);
+  }
+
+  .logbook-notification--error {
+    border-color: var(--color-danger);
+  }
+
   .logbook-row__primary {
     display: grid;
     min-width: 0;
@@ -6080,6 +6107,7 @@
 
   @media (prefers-reduced-motion: reduce) {
     .logbook-quick__action,
+    .logbook-row--new,
     .log-dialog,
     .log-dialog * {
       transition: none !important;

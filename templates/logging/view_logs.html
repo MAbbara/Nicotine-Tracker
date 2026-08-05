@@ -3,7 +3,7 @@
 {% block title %}Logbook - Nicotine Tracker{% endblock %}
 
 {% block content %}
-<div class="logbook-page" data-user-timezone="{{ user_timezone or 'UTC' }}">
+<div class="logbook-page" data-logbook-page data-user-timezone="{{ user_timezone or 'UTC' }}">
   <header class="page-intro page-intro--wide logbook-intro">
     <div class="space-y-3">
       <p class="eyebrow">Your record</p>
@@ -41,7 +41,6 @@
         class="logbook-quick__action"
         type="button"
         data-quick-add
-        data-quick-add-refresh
         data-pouch-id="{{ pouch.id }}"
         data-pouch-brand="{{ pouch.brand }}"
         data-pouch-strength="{{ pouch.nicotine_mg_display() }}"
@@ -56,104 +55,7 @@
   </section>
   {% endif %}
 
-  <section class="logbook-history" aria-labelledby="logbook-history-title">
-    <div class="section-heading">
-      <div>
-        <h2 id="logbook-history-title">History</h2>
-        <p>Newest entries appear first.</p>
-      </div>
-    </div>
-
-    <form class="logbook-filters logging-form" method="get" action="{{ url_for('logging.view_logs') }}" aria-label="Filter log history">
-      <div class="c-field logbook-filters__search">
-        <label class="c-field__label" for="logbook-search">Search logs</label>
-        <input class="c-field__control" id="logbook-search" name="q" type="search" maxlength="80" value="{{ filters.q }}" placeholder="Product or note">
-      </div>
-      <div class="c-field">
-        <label class="c-field__label" for="logbook-from">From date</label>
-        <input class="c-field__control" id="logbook-from" name="from_date" type="date" value="{{ filters.from_date }}">
-      </div>
-      <div class="c-field">
-        <label class="c-field__label" for="logbook-to">To date</label>
-        <input class="c-field__control" id="logbook-to" name="to_date" type="date" value="{{ filters.to_date }}">
-      </div>
-      <div class="logbook-filters__actions">
-        <button class="c-button c-button--primary" type="submit">Apply filters</button>
-        {% if filters.q or filters.from_date or filters.to_date %}
-        <a class="c-button c-button--quiet" href="{{ url_for('logging.view_logs') }}">Clear</a>
-        {% endif %}
-      </div>
-    </form>
-
-    {% if logs and logs.items %}
-    <div class="logbook-days">
-      {% for day, day_logs in grouped_logs.items() %}
-      <section class="logbook-day" aria-labelledby="logbook-day-{{ loop.index }}">
-        <header class="logbook-day__heading">
-          <h3 id="logbook-day-{{ loop.index }}">{{ day.strftime('%A, %B %-d') }}</h3>
-          {% set totals = daily_totals.get(day) %}
-          {% if totals %}
-          <p>{{ totals.pouches|int }} {{ 'pouch' if totals.pouches == 1 else 'pouches' }}{% if totals.unknown_strength_count %} · nicotine total incomplete{% else %} · {{ totals.mg }} mg{% endif %}</p>
-          {% endif %}
-        </header>
-        <div class="logbook-day__rows">
-          {% for log in day_logs %}
-          {% set strength = log.get_nicotine_content() %}
-          {% set total = log.get_total_nicotine() %}
-          {% set local_date = log.get_user_date(user_timezone) if user_timezone else log.log_date %}
-          {% set local_time = log.get_user_time(user_timezone) if log.log_time and user_timezone else (log.log_time.time() if log.log_time else none) %}
-          <article class="logbook-row" data-log-id="{{ log.id }}">
-            <div class="logbook-row__primary">
-              <time datetime="{{ log.log_time.strftime('%Y-%m-%dT%H:%M:%SZ') if log.log_time else local_date.isoformat() }}">
-                {{ local_time.strftime('%H:%M') if local_time else 'Time not recorded' }}
-              </time>
-              <h4>{{ log.get_brand_name() or 'Product not recorded' }}</h4>
-              <p>{{ log.quantity }} {{ 'pouch' if log.quantity == 1 else 'pouches' }}{% if strength is not none %} · {{ strength }} mg each{% else %} · strength unknown{% endif %}</p>
-            </div>
-            <dl class="logbook-row__facts">
-              <div><dt>Total nicotine</dt><dd>{{ total ~ ' mg' if total is not none else 'Not available' }}</dd></div>
-              <div><dt>Notes</dt><dd>{{ log.notes or 'No notes' }}</dd></div>
-            </dl>
-            <div class="logbook-row__actions">
-              <a class="c-button c-button--quiet" href="{{ url_for('logging.edit_log', log_id=log.id) }}">Edit</a>
-              <form action="{{ url_for('logging.delete_log', log_id=log.id) }}" method="post" data-confirm-delete>
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button class="c-button c-button--danger" type="submit">Delete</button>
-              </form>
-            </div>
-          </article>
-          {% endfor %}
-        </div>
-      </section>
-      {% endfor %}
-    </div>
-
-    {% if logs.pages > 1 %}
-    <nav class="logbook-pagination" aria-label="Logbook pages">
-      {% if logs.has_prev %}
-      <a class="c-button c-button--secondary" href="{{ url_for('logging.view_logs', page=logs.prev_num, q=filters.q, from_date=filters.from_date, to_date=filters.to_date) }}">Previous</a>
-      {% endif %}
-      <p>Page {{ logs.page }} of {{ logs.pages }}</p>
-      {% if logs.has_next %}
-      <a class="c-button c-button--secondary" href="{{ url_for('logging.view_logs', page=logs.next_num, q=filters.q, from_date=filters.from_date, to_date=filters.to_date) }}">Next</a>
-      {% endif %}
-    </nav>
-    {% endif %}
-    {% else %}
-    <div class="logbook-empty">
-      {% if filters.q or filters.from_date or filters.to_date %}
-      <p class="eyebrow">No match</p>
-      <h3>No logs match these filters</h3>
-      <p>Clear the filters or widen the date range. Your saved entries have not changed.</p>
-      <a class="c-button c-button--secondary" href="{{ url_for('logging.view_logs') }}">Clear filters</a>
-      {% else %}
-      <p class="eyebrow">A quiet start</p>
-      <h3>No logs yet</h3>
-      <p>Use the Add log action above when you next use nicotine. One honest record is enough to begin.</p>
-      {% endif %}
-    </div>
-    {% endif %}
-  </section>
+  {% include "logging/_history.html" %}
 </div>
 {% endblock %}
 

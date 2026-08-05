@@ -31,13 +31,17 @@ function initializeApp() {
     // Tooltips and form validation
     initializeTooltips();
     initializeFormValidations();
-
-    const pendingQuickAddFeedback = sessionStorage.getItem('quick-add-feedback');
-    if (pendingQuickAddFeedback) {
-        sessionStorage.removeItem('quick-add-feedback');
-        showNotification(pendingQuickAddFeedback, 'success');
-    }
+    initializeLogbookQuickAdd();
     initializeQuickAdd();
+}
+
+function initializeLogbookQuickAdd() {
+    if (!document.querySelector('[data-logbook-page]')) return;
+    import('/static/js/logbook/quick_add.js').then(({ initLogbookQuickAdd }) => {
+        initLogbookQuickAdd(document);
+    }).catch((error) => {
+        console.error('Logbook quick add could not start:', error);
+    });
 }
 
 // Tooltip helper functions
@@ -131,6 +135,7 @@ function isValidEmail(email) {
 function initializeQuickAdd() {
     const quickAddButtons = document.querySelectorAll('[data-quick-add]');
     quickAddButtons.forEach(button => {
+        if (button.closest?.('[data-logbook-page]')) return;
         button.addEventListener('click', handleQuickAdd);
     });
 }
@@ -169,11 +174,6 @@ function handleQuickAdd(event) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            if (button.hasAttribute('data-quick-add-refresh')) {
-                sessionStorage.setItem('quick-add-feedback', data.message);
-                window.location.reload();
-                return;
-            }
             showNotification(data.message, 'success');
             if (typeof refreshDashboard === 'function') {
                 refreshDashboard();

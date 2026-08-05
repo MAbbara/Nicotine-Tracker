@@ -1,16 +1,223 @@
-"""Temporary `/api/quick_add` compatibility adapter contracts."""
+"""Canonical and temporary quick-add adapter contracts."""
 
-from datetime import timezone
+from datetime import datetime, time, timezone
 
 import pytest
 
-from models import Log, Pouch, User
+from models import Log, Pouch, User, UserPreferences
 from routes import api as api_routes
+from services.log_service import assign_log_product
+
+
+EVENT_ID = '018f3f5c-68af-7e4d-bf5d-0123456789ab'
+
+
+def _logbook_payload(pouch_id, **overrides):
+    payload = {
+        'pouch_id': pouch_id,
+        'quantity': 1,
+        'client_event_id': EVENT_ID,
+        'view': {'page': 1, 'q': '', 'from_date': '', 'to_date': ''},
+    }
+    payload.update(overrides)
+    return payload
 
 
 def _assert_deprecation_headers(response):
     assert response.headers["Deprecation"] == "true"
     assert response.headers["Link"] == '</api/logs>; rel="successor-version"'
+
+
+def test_logbook_fragment_matches_full_page_history(logged_in_client, test_log):
+    page = logged_in_client.get('/log/view?q=Test')
+    fragment = logged_in_client.get('/log/view?q=Test&fragment=history')
+    fragment_html = fragment.get_data(as_text=True)
+
+    assert fragment.status_code == 200
+    assert 'data-logbook-history' in fragment_html
+    assert '<h1>Logbook</h1>' not in fragment_html
+    assert fragment_html in page.get_data(as_text=True)
+
+
+def test_logbook_quick_add_is_idempotent_and_returns_authoritative_history(
+    logged_in_client, db_session, test_user, test_pouch
+):
+    payload = _logbook_payload(test_pouch.id)
+
+    first = logged_in_client.post('/log/api/quick_add', json=payload)
+    replay = logged_in_client.post('/log/api/quick_add', json=payload)
+
+    assert first.status_code == 201
+    assert replay.status_code == 200
+    first_body = first.get_json()
+    replay_body = replay.get_json()
+    assert first_body['success'] is True
+    assert first_body['message'] == 'Log saved.'
+    assert first_body['created'] is True
+    assert replay_body['created'] is False
+    assert replay_body['new_log_id'] == first_body['new_log_id']
+    assert first_body['fragment_version'] == 'logbook-history-v1'
+    assert first_body['visible'] is True
+    assert f'data-log-id="{first_body["new_log_id"]}"' in first_body['history_html']
+    _assert_deprecation_headers(first)
+    _assert_deprecation_headers(replay)
+    assert db_session.query(Log).filter_by(
+        user_id=test_user.id,
+        client_event_id=EVENT_ID,
+    ).count() == 1
+
+
+@pytest.mark.parametrize(
+    ('payload', 'status', 'code'),
+    [
+        ({}, 400, 'invalid_request'),
+        (_logbook_payload(1, quantity='1'), 400, 'invalid_request'),
+        (_logbook_payload(1, client_event_id=None), 422, 'validation_error'),
+        (_logbook_payload(1, client_event_id='not-a-uuid'), 422, 'validation_error'),
+    ],
+)
+def test_logbook_quick_add_rejects_invalid_requests_with_stable_envelopes(
+    logged_in_client, payload, status, code
+):
+    response = logged_in_client.post('/log/api/quick_add', json=payload)
+
+    assert response.status_code == status
+    error = response.get_json()['error']
+    assert error['code'] == code
+    assert isinstance(error['message'], str) and error['message']
+    assert isinstance(error['field_errors'], dict)
+    assert error['retryable'] is False
+
+
+def test_logbook_quick_add_hides_foreign_and_missing_pouches(
+    logged_in_client, db_session, test_user
+):
+    other = User(
+        email='logbook-quick-other@example.com',
+        email_verified=True,
+        timezone='UTC',
+    )
+    other.set_password('password123')
+    db_session.add(other)
+    db_session.flush()
+    foreign = Pouch(
+        brand='Private quick product',
+        nicotine_mg='18.00',
+        is_default=False,
+        created_by=other.id,
+    )
+    db_session.add(foreign)
+    db_session.commit()
+
+    responses = [
+        logged_in_client.post(
+            '/log/api/quick_add',
+            json=_logbook_payload(pouch_id, client_event_id=event_id),
+        )
+        for pouch_id, event_id in (
+            (foreign.id, '118f3f5c-68af-7e4d-bf5d-0123456789ab'),
+            (foreign.id + 1000, '218f3f5c-68af-7e4d-bf5d-0123456789ab'),
+        )
+    ]
+
+    for response in responses:
+        assert response.status_code == 404
+        assert response.get_json()['error'] == {
+            'code': 'not_found',
+            'message': 'That resource does not exist.',
+            'field_errors': {},
+            'retryable': False,
+        }
+    assert db_session.query(Log).filter_by(user_id=test_user.id).count() == 0
+
+
+def test_logbook_quick_add_preserves_filter_and_page_authority(
+    app, logged_in_client, db_session, test_user, test_pouch
+):
+    app.config['LOGS_PER_PAGE'] = 1
+    older = Log(
+        user_id=test_user.id,
+        quantity=1,
+        log_time=datetime(2026, 1, 1, 9, 0),
+        notes='older page marker',
+    )
+    assign_log_product(older, pouch_id=test_pouch.id)
+    db_session.add(older)
+    db_session.commit()
+    payload = _logbook_payload(
+        test_pouch.id,
+        view={'page': 2, 'q': '', 'from_date': '', 'to_date': ''},
+    )
+
+    response = logged_in_client.post('/log/api/quick_add', json=payload)
+
+    assert response.status_code == 201
+    body = response.get_json()
+    assert body['visible'] is False
+    assert body['message'] == 'Log saved. It is outside the current view.'
+    assert f'data-log-id="{body["new_log_id"]}"' not in body['history_html']
+    assert 'older page marker' in body['history_html']
+    assert 'Page 2 of 2' in body['history_html']
+
+
+def test_logbook_quick_add_uses_effective_day_and_escapes_html_brand(
+    logged_in_client, db_session, test_user, monkeypatch
+):
+    import routes.logging as logging_routes
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            fixed = cls(2026, 1, 10, 0, 30, tzinfo=timezone.utc)
+            return fixed.astimezone(tz) if tz else fixed.replace(tzinfo=None)
+
+    test_user.timezone = 'Asia/Riyadh'
+    db_session.add(UserPreferences(
+        user_id=test_user.id,
+        daily_reset_time=time(4, 0),
+    ))
+    pouch = Pouch(
+        brand='<img src=x onerror=alert(1)>',
+        nicotine_mg='6.00',
+        is_default=False,
+        created_by=test_user.id,
+    )
+    db_session.add(pouch)
+    db_session.commit()
+    monkeypatch.setattr(logging_routes, 'datetime', FrozenDateTime)
+
+    response = logged_in_client.post(
+        '/log/api/quick_add',
+        json=_logbook_payload(pouch.id),
+    )
+
+    assert response.status_code == 201
+    history_html = response.get_json()['history_html']
+    assert 'Friday, January 9' in history_html
+    assert '<img src=x onerror=alert(1)>' not in history_html
+    assert '&lt;img src=x onerror=alert(1)&gt;' in history_html
+
+
+def test_deprecated_today_quick_add_returns_literal_brand_free_feedback(
+    logged_in_client, db_session, test_user
+):
+    pouch = Pouch(
+        brand='<img src=x onerror=alert(1)>',
+        nicotine_mg='6.00',
+        is_default=False,
+        created_by=test_user.id,
+    )
+    db_session.add(pouch)
+    db_session.commit()
+
+    response = logged_in_client.post('/log/api/quick_add', json={
+        'pouch_id': pouch.id,
+        'quantity': 1,
+    })
+
+    assert response.status_code == 200
+    assert response.get_json()['message'] == 'Log saved.'
+    assert pouch.brand not in response.get_data(as_text=True)
 
 
 def test_quick_add_delegates_once_to_canonical_service_and_keeps_legacy_body(

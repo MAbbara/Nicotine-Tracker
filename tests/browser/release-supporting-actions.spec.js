@@ -921,10 +921,6 @@ test('remaining logging actions preserve exact navigation and isolated records',
     if (state === 'log-add') {
       dialog = page.getByRole('dialog', { name: 'Add a log' });
       await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
-      await page.waitForTimeout(100);
-      if (await dialog.isVisible()) {
-        await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
-      }
       await expect(dialog).not.toBeVisible();
     }
     await page.getByLabel('Search logs').fill('supporting add entry');
@@ -934,10 +930,6 @@ test('remaining logging actions preserve exact navigation and isolated records',
     if (state === 'log-add') {
       dialog = page.getByRole('dialog', { name: 'Add a log' });
       await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
-      await page.waitForTimeout(100);
-      if (await dialog.isVisible()) {
-        await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
-      }
       await expect(dialog).not.toBeVisible();
     }
     await recorder.runScenario(page, state, 'Bulk add', 'success');
@@ -946,10 +938,6 @@ test('remaining logging actions preserve exact navigation and isolated records',
     if (state === 'log-add') {
       dialog = page.getByRole('dialog', { name: 'Add a log' });
       await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
-      await page.waitForTimeout(100);
-      if (await dialog.isVisible()) {
-        await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
-      }
       await expect(dialog).not.toBeVisible();
     }
     await recorder.runScenario(page, state, 'Edit', 'success');
@@ -974,10 +962,6 @@ test('remaining logging actions preserve exact navigation and isolated records',
     if (state === 'log-add') {
       dialog = page.getByRole('dialog', { name: 'Add a log' });
       await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
-      await page.waitForTimeout(100);
-      if (await dialog.isVisible()) {
-        await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
-      }
       await expect(dialog).not.toBeVisible();
     }
     await recorder.runScenario(page, state, 'Delete', 'dismiss', 'accept');
@@ -995,7 +979,13 @@ test('remaining logging actions preserve exact navigation and isolated records',
         await dialog.getByRole('button', { name: 'Close add log dialog' }).click();
         await expect(dialog).not.toBeVisible();
       }
+      const quickAddUrl = page.url();
+      const quickAddScroll = await page.evaluate(() => [window.scrollX, window.scrollY]);
       await recorder.runScenario(page, state, action, 'failure', 'success');
+      expect(page.url()).toBe(quickAddUrl);
+      expect(await page.evaluate(() => [window.scrollX, window.scrollY])).toEqual(
+        quickAddScroll,
+      );
     }
   }
 

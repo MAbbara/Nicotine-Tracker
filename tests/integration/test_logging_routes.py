@@ -12,7 +12,11 @@ from services.log_service import assign_log_product
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LOGGING_TEMPLATES = (
-    'view_logs.html', '_add_log_modal.html', 'add_log.html',
+    'view_logs.html', '_history.html', '_add_log_modal.html', 'add_log.html',
+    'edit_log.html', 'bulk_add.html',
+)
+LOGGING_FORM_TEMPLATES = (
+    '_history.html', '_add_log_modal.html', 'add_log.html',
     'edit_log.html', 'bulk_add.html',
 )
 BANNED_PALETTE = (
@@ -51,6 +55,8 @@ def test_logbook_renders_editorial_rows_filters_and_one_add_action(
     assert document.select_one('input[name="q"]')
     assert document.select_one('input[name="from_date"][type="date"]')
     assert document.select_one('input[name="to_date"][type="date"]')
+    assert document.select_one('[data-logbook-page]')
+    assert document.select_one('[data-quick-add-refresh]') is None
     assert len(document.select('[data-logbook-add-action]')) == 1
     assert len(document.select('.logbook-page [data-hs-overlay="#addLogModal"]')) == 3
     row = document.select_one('article.logbook-row')
@@ -342,6 +348,14 @@ def test_logging_templates_use_shared_primitives_and_retire_legacy_palette():
         source = (
             PROJECT_ROOT / 'templates' / 'logging' / name
         ).read_text().casefold()
-        assert 'logging-form' in source, name
         for token in BANNED_PALETTE:
             assert token not in source, f'{name}: {token}'
+    for name in LOGGING_FORM_TEMPLATES:
+        source = (
+            PROJECT_ROOT / 'templates' / 'logging' / name
+        ).read_text().casefold()
+        assert 'logging-form' in source, name
+    page_source = (
+        PROJECT_ROOT / 'templates' / 'logging' / 'view_logs.html'
+    ).read_text().casefold()
+    assert '{% include "logging/_history.html" %}' in page_source

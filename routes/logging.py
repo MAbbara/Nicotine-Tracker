@@ -1,15 +1,28 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, jsonify, session
+from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, jsonify, session, after_this_request
 from datetime import datetime, time
 from datetime import date
+from dataclasses import dataclass
+from typing import Any, Mapping
 import pytz
 from models import User, Log, Pouch
 from services import add_log_entry, add_bulk_logs  # use service layer for log creation
 from services.log_service import (
+    CreateLogInput,
+    LogService,
+    LogValidationError,
     group_logs_by_effective_day,
     has_custom_product_input,
     parse_nicotine_strength,
     summarize_logs,
 )
+from services.api_errors import (
+    ApiValidationError,
+    error_response,
+    internal_error_response,
+    not_found_response,
+    validation_error_response,
+)
+from services.serializers import _parse_client_event_id
 from services.timezone_service import (
     get_current_user_time,
     get_user_day_window,
@@ -27,6 +40,10 @@ import re
 # Specify the template folder for logging-related templates
 logging_bp = Blueprint('logging', __name__, template_folder='../templates/logging')
 
+LOGBOOK_HISTORY_FRAGMENT_VERSION = 'logbook-history-v1'
+_QUICK_ADD_KEYS = {'pouch_id', 'quantity', 'client_event_id', 'view'}
+_QUICK_ADD_VIEW_KEYS = {'page', 'q', 'from_date', 'to_date'}
+
 
 def _available_pouch_for_user(user_id, pouch_id):
     """Return a default or user-owned pouch without crossing tenant scope."""
@@ -34,6 +51,232 @@ def _available_pouch_for_user(user_id, pouch_id):
         Pouch.id == pouch_id,
         db.or_(Pouch.is_default, Pouch.created_by == user_id),
     ).first()
+
+
+def _parse_quick_add_request(data):
+    if not isinstance(data, dict) or set(data) != _QUICK_ADD_KEYS:
+        raise ValueError('invalid request shape')
+    pouch_id = data.get('pouch_id')
+    quantity = data.get('quantity')
+    if (
+        isinstance(pouch_id, bool)
+        or not isinstance(pouch_id, int)
+        or pouch_id <= 0
+        or isinstance(quantity, bool)
+        or not isinstance(quantity, int)
+        or not 1 <= quantity <= 100
+    ):
+        raise ValueError('invalid mutation values')
+    view = data.get('view')
+    if not isinstance(view, dict) or set(view) != _QUICK_ADD_VIEW_KEYS:
+        raise ValueError('invalid view shape')
+    page = view.get('page')
+    query = view.get('q')
+    from_date = view.get('from_date')
+    to_date = view.get('to_date')
+    if (
+        isinstance(page, bool)
+        or not isinstance(page, int)
+        or page <= 0
+        or not isinstance(query, str)
+        or len(query) > 80
+        or not isinstance(from_date, str)
+        or not isinstance(to_date, str)
+    ):
+        raise ValueError('invalid view values')
+    for value in (from_date, to_date):
+        if not value:
+            continue
+        try:
+            datetime.strptime(value, '%Y-%m-%d')
+        except ValueError:
+            raise ValueError('invalid view date') from None
+    client_event_id = _parse_client_event_id(data.get('client_event_id'))
+    if client_event_id is None:
+        raise ApiValidationError({
+            'client_event_id': ['Use a canonical hyphenated UUID.'],
+        })
+    return pouch_id, quantity, client_event_id, {
+        'page': page,
+        'q': query.strip(),
+        'from_date': from_date,
+        'to_date': to_date,
+    }
+
+
+def _is_legacy_quick_add_request(data):
+    return (
+        isinstance(data, dict)
+        and 'pouch_id' in data
+        and 'client_event_id' not in data
+        and 'view' not in data
+    )
+
+
+def _legacy_quick_add_response(user, data):
+    pouch_id = data.get('pouch_id')
+    quantity = data.get('quantity', 1)
+    if (
+        isinstance(pouch_id, bool)
+        or not isinstance(pouch_id, int)
+        or pouch_id <= 0
+        or isinstance(quantity, bool)
+        or not isinstance(quantity, int)
+        or not 1 <= quantity <= 100
+    ):
+        return jsonify({'success': False, 'error': 'Invalid data'})
+    if has_custom_product_input(
+        data.get('custom_brand'), data.get('custom_nicotine_mg')
+    ):
+        return jsonify({
+            'success': False,
+            'error': 'Cannot combine an existing pouch with custom product fields',
+        })
+    pouch = _available_pouch_for_user(user.id, pouch_id)
+    if pouch is None:
+        return jsonify({'success': False, 'error': 'Pouch not found'})
+    instant = datetime.now(pytz.UTC)
+    resolved_timezone = resolve_timezone(user.timezone)
+    try:
+        LogService.create_idempotent(user.id, CreateLogInput(
+            client_event_id=None,
+            pouch_id=pouch.id,
+            custom_product=None,
+            quantity=quantity,
+            occurred_at_utc=instant,
+            occurred_at_local=instant.astimezone(resolved_timezone),
+            timezone=resolved_timezone.zone,
+            notes=None,
+            craving_id=None,
+        ))
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception('Deprecated quick add failed before commit')
+        return jsonify({'success': False, 'error': 'Server error'})
+    return jsonify({
+        'success': True,
+        'message': 'Log saved.',
+    })
+
+
+@dataclass(frozen=True)
+class LogbookHistoryContext:
+    logs: Any
+    grouped_logs: dict
+    daily_totals: dict
+    filters: dict
+    user_timezone: str
+
+    def as_template_context(self):
+        return {
+            'logs': self.logs,
+            'grouped_logs': self.grouped_logs,
+            'daily_totals': self.daily_totals,
+            'filters': self.filters,
+            'user_timezone': self.user_timezone,
+            'fragment_version': LOGBOOK_HISTORY_FRAGMENT_VERSION,
+        }
+
+
+def build_logbook_history_context(user, raw_filters: Mapping) -> LogbookHistoryContext:
+    """Build the one authoritative filtered and paginated Logbook history."""
+    raw_page = raw_filters.get('page', 1)
+    try:
+        page = max(1, int(raw_page))
+    except (TypeError, ValueError):
+        page = 1
+    per_page = current_app.config.get('LOGS_PER_PAGE', 20)
+    search_query = str(raw_filters.get('q', '') or '').strip()[:80]
+    from_date_value = str(raw_filters.get('from_date', '') or '').strip()
+    to_date_value = str(raw_filters.get('to_date', '') or '').strip()
+
+    resolved_timezone = resolve_timezone(user.timezone)
+    preferences = user.preferences
+    reset_time = (
+        preferences.daily_reset_time
+        if preferences and preferences.daily_reset_time
+        else time.min
+    )
+    query = Log.query.filter_by(user_id=user.id)
+    if search_query:
+        pattern = f'%{search_query}%'
+        query = query.filter(db.or_(
+            Log.notes.ilike(pattern),
+            Log.product_brand_snapshot.ilike(pattern),
+            Log.custom_brand.ilike(pattern),
+            Log.pouch.has(Pouch.brand.ilike(pattern)),
+        ))
+
+    def local_boundary(value, *, end=False):
+        if not value:
+            return None
+        try:
+            local_date = datetime.strptime(value, '%Y-%m-%d').date()
+        except ValueError:
+            return None
+        window = get_user_day_window(
+            resolved_timezone.zone, local_date, reset_time
+        )
+        boundary = window.end_utc if end else window.start_utc
+        return to_naive_utc(boundary)
+
+    from_boundary = local_boundary(from_date_value)
+    to_boundary = local_boundary(to_date_value, end=True)
+    if from_date_value and from_boundary is None:
+        flash('The starting date filter was ignored because it is invalid.', 'error')
+        from_date_value = ''
+    if to_date_value and to_boundary is None:
+        flash('The ending date filter was ignored because it is invalid.', 'error')
+        to_date_value = ''
+    if from_boundary is not None:
+        query = query.filter(Log.log_time >= from_boundary)
+    if to_boundary is not None:
+        query = query.filter(Log.log_time < to_boundary)
+
+    logs = query.order_by(
+        desc(Log.log_time), desc(Log.created_at), desc(Log.id)
+    ).paginate(page=page, per_page=per_page, error_out=False)
+    grouped_logs = group_logs_by_effective_day(
+        logs.items, resolved_timezone, reset_time
+    )
+    displayed_windows = [
+        get_user_day_window(resolved_timezone.zone, date_key, reset_time)
+        for date_key in grouped_logs
+    ]
+    complete_grouped_logs = {}
+    if displayed_windows:
+        displayed_day_predicates = [
+            db.and_(
+                Log.log_time >= to_naive_utc(window.start_utc),
+                Log.log_time < to_naive_utc(window.end_utc),
+            )
+            for window in displayed_windows
+        ]
+        complete_day_rows = query.filter(
+            db.or_(*displayed_day_predicates)
+        ).all()
+        complete_grouped_logs = group_logs_by_effective_day(
+            complete_day_rows, resolved_timezone, reset_time
+        )
+    daily_totals = {}
+    for date_key in grouped_logs:
+        summary = summarize_logs(complete_grouped_logs.get(date_key, []))
+        daily_totals[date_key] = {
+            'pouches': summary['total_pouches'],
+            'mg': summary['total_mg'],
+            'unknown_strength_count': summary['unknown_strength_count'],
+        }
+    return LogbookHistoryContext(
+        logs=logs,
+        grouped_logs=grouped_logs,
+        daily_totals=daily_totals,
+        filters={
+            'q': search_query,
+            'from_date': from_date_value,
+            'to_date': to_date_value,
+        },
+        user_timezone=user.timezone,
+    )
 
 @logging_bp.route('/add', methods=['GET', 'POST'])
 @login_required
@@ -296,114 +539,21 @@ def view_logs():
     """View log history"""
     try:
         user = get_current_user()
-        page = request.args.get('page', 1, type=int)
-        per_page = current_app.config.get('LOGS_PER_PAGE', 20)
         open_add_modal = request.args.get('open_add_modal') == '1'
-        search_query = request.args.get('q', '').strip()[:80]
-        from_date_value = request.args.get('from_date', '').strip()
-        to_date_value = request.args.get('to_date', '').strip()
-        
         default_pouches, user_pouches = get_sorted_pouches(user)
         quick_add_pouches = (default_pouches + user_pouches)[:6]
-
         resolved_timezone = resolve_timezone(user.timezone)
-        preferences = user.preferences
-        reset_time = (
-            preferences.daily_reset_time
-            if preferences and preferences.daily_reset_time
-            else time.min
-        )
         local_now = datetime.now(pytz.UTC).astimezone(resolved_timezone)
         today = local_now.date().isoformat()
         current_time = local_now.time().strftime('%H:%M')
-        
-        query = Log.query.filter_by(user_id=user.id)
-        if search_query:
-            pattern = f'%{search_query}%'
-            query = query.filter(db.or_(
-                Log.notes.ilike(pattern),
-                Log.product_brand_snapshot.ilike(pattern),
-                Log.custom_brand.ilike(pattern),
-                Log.pouch.has(Pouch.brand.ilike(pattern)),
-            ))
-
-        def local_boundary(value, *, end=False):
-            if not value:
-                return None
-            try:
-                local_date = datetime.strptime(value, '%Y-%m-%d').date()
-            except ValueError:
-                return None
-            window = get_user_day_window(
-                resolved_timezone.zone, local_date, reset_time
+        history = build_logbook_history_context(user, request.args)
+        if request.args.get('fragment') == 'history':
+            return render_template(
+                'logging/_history.html',
+                **history.as_template_context(),
             )
-            boundary = window.end_utc if end else window.start_utc
-            return to_naive_utc(boundary)
-
-        from_boundary = local_boundary(from_date_value)
-        to_boundary = local_boundary(to_date_value, end=True)
-        if from_date_value and from_boundary is None:
-            flash('The starting date filter was ignored because it is invalid.', 'error')
-            from_date_value = ''
-        if to_date_value and to_boundary is None:
-            flash('The ending date filter was ignored because it is invalid.', 'error')
-            to_date_value = ''
-        if from_boundary is not None:
-            query = query.filter(Log.log_time >= from_boundary)
-        if to_boundary is not None:
-            query = query.filter(Log.log_time < to_boundary)
-
-        # Get logs with pagination
-        logs = query.order_by(
-            desc(Log.log_time), desc(Log.created_at), desc(Log.id)
-        ).paginate(
-            page=page, per_page=per_page, error_out=False
-        )
-        
-        grouped_logs = group_logs_by_effective_day(
-            logs.items, resolved_timezone, reset_time
-        )
-        daily_totals = {}
-        displayed_windows = [
-            get_user_day_window(
-                resolved_timezone.zone, date_key, reset_time
-            )
-            for date_key in grouped_logs
-        ]
-        complete_grouped_logs = {}
-        if displayed_windows:
-            displayed_day_predicates = [
-                db.and_(
-                    Log.log_time >= to_naive_utc(window.start_utc),
-                    Log.log_time < to_naive_utc(window.end_utc),
-                )
-                for window in displayed_windows
-            ]
-            complete_day_rows = query.filter(
-                db.or_(*displayed_day_predicates)
-            ).all()
-            complete_grouped_logs = group_logs_by_effective_day(
-                complete_day_rows, resolved_timezone, reset_time
-            )
-
-        for date_key in grouped_logs:
-            summary = summarize_logs(complete_grouped_logs.get(date_key, []))
-            daily_totals[date_key] = {
-                'pouches': summary['total_pouches'],
-                'mg': summary['total_mg'],
-                'unknown_strength_count': summary['unknown_strength_count'],
-            }
-        
-        return render_template('view_logs.html', 
-                             logs=logs, 
-                             grouped_logs=grouped_logs,
-                             daily_totals=daily_totals,
-                             filters={
-                                 'q': search_query,
-                                 'from_date': from_date_value,
-                                 'to_date': to_date_value,
-                             },
-                             user_timezone=user.timezone,
+        return render_template('view_logs.html',
+                             **history.as_template_context(),
                              default_pouches=default_pouches,
                              user_pouches=user_pouches,
                              quick_add_pouches=quick_add_pouches,
@@ -540,62 +690,78 @@ def delete_log(log_id):
 @logging_bp.route('/api/quick_add', methods=['POST'])
 @login_required
 def quick_add_api():
-    """API endpoint for quick log addition"""
-    try:
-        user = get_current_user()
-        data = request.get_json()
-        
-        if not data:
-            return jsonify({'success': False, 'error': 'No data provided'})
-        
-        pouch_id = data.get('pouch_id')
-        quantity = data.get('quantity', 1)
-        
-        if not pouch_id or quantity <= 0:
-            return jsonify({'success': False, 'error': 'Invalid data'})
-        if has_custom_product_input(
-                data.get('custom_brand'), data.get('custom_nicotine_mg')):
-            return jsonify({
-                'success': False,
-                'error': 'Cannot combine an existing pouch with custom product fields',
-            })
-        
-        pouch = _available_pouch_for_user(user.id, pouch_id)
-        if not pouch:
-            return jsonify({'success': False, 'error': 'Pouch not found'})
+    """Create one idempotent usual-product log and rebuild server history."""
+    @after_this_request
+    def advertise_canonical_successor(response):
+        response.headers['Deprecation'] = 'true'
+        response.headers['Link'] = '</api/logs>; rel="successor-version"'
+        return response
 
-        
-        # Use service layer to create quick log entry with current date and time in user's timezone
-        try:
-            _, user_date, user_time = get_current_user_time(user.timezone)
-            log_entry = add_log_entry(
-                user_id=user.id,
-                log_date=user_date,
-                log_time=user_time,
-                quantity=quantity,
-                notes="",
-                pouch_id=pouch.id,
-                user_timezone=user.timezone
-            )
-            log_data = log_entry.to_dict(user_timezone=user.timezone)
-            log_data.update({
-                'display_date': log_entry.get_user_date(user.timezone).strftime('%Y-%m-%d'),
-                'display_time': log_entry.get_user_time(user.timezone).strftime('%H:%M'),
-                'nicotine_content': (float(log_entry.get_nicotine_content())
-                                     if log_entry.get_nicotine_content() is not None else None),
-                'edit_url': url_for('logging.edit_log', log_id=log_entry.id),
-                'delete_url': url_for('logging.delete_log', log_id=log_entry.id)
-            })
-            return jsonify({
-                'success': True,
-                'message': f'Added {quantity} {pouch.brand} ({pouch.nicotine_mg_display()}mg)',
-                'log': log_data
-            })
-        except Exception as e:
-            current_app.logger.error(f'Quick add API error: {e}')
-            return jsonify({'success': False, 'error': 'Server error'})
-        
-    except Exception as e:
+    data = request.get_json(silent=True)
+    user = get_current_user()
+    if _is_legacy_quick_add_request(data):
+        return _legacy_quick_add_response(user, data)
+    try:
+        pouch_id, quantity, client_event_id, raw_view = (
+            _parse_quick_add_request(data)
+        )
+    except ApiValidationError as exc:
+        return validation_error_response(exc)
+    except ValueError:
+        return error_response(
+            400,
+            'invalid_request',
+            'Send a valid usual-product log request.',
+        )
+    pouch = _available_pouch_for_user(user.id, pouch_id)
+    if pouch is None:
+        return not_found_response()
+    instant = datetime.now(pytz.UTC)
+    resolved_timezone = resolve_timezone(user.timezone)
+    payload = CreateLogInput(
+        client_event_id=client_event_id,
+        pouch_id=pouch.id,
+        custom_product=None,
+        quantity=quantity,
+        occurred_at_utc=instant,
+        occurred_at_local=instant.astimezone(resolved_timezone),
+        timezone=resolved_timezone.zone,
+        notes=None,
+        craving_id=None,
+    )
+    try:
+        result = LogService.create_idempotent(user.id, payload)
+    except LogValidationError as exc:
+        return validation_error_response(ApiValidationError(exc.field_errors))
+    except Exception:
         db.session.rollback()
-        current_app.logger.error(f'Quick add API error: {e}')
-        return jsonify({'success': False, 'error': 'Server error'})
+        current_app.logger.exception('Logbook quick add failed before commit')
+        return internal_error_response()
+
+    try:
+        history = build_logbook_history_context(user, raw_view)
+        history_html = render_template(
+            'logging/_history.html',
+            **history.as_template_context(),
+        )
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception(
+            'Logbook history refresh failed after quick add commit'
+        )
+        return internal_error_response()
+    visible = any(log.id == result.log.id for log in history.logs.items)
+    message = (
+        'Log saved.'
+        if visible
+        else 'Log saved. It is outside the current view.'
+    )
+    return jsonify({
+        'success': True,
+        'message': message,
+        'new_log_id': result.log.id,
+        'created': result.created,
+        'history_html': history_html,
+        'fragment_version': LOGBOOK_HISTORY_FRAGMENT_VERSION,
+        'visible': visible,
+    }), 201 if result.created else 200
