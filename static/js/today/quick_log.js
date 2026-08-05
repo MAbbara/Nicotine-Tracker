@@ -2,7 +2,11 @@ import { activateActionEnhancement } from './action_enhancement.js';
 import { createTimelineDomAdapter } from './timeline.js';
 import { getOfflineQueueRuntime } from './offline_queue.js';
 import { installDialogFocusTrap, restoreDialogFocus } from '../shell/dialog_focus.js';
-import { installDialogDismissal } from '../shell/dialog_lifecycle.js';
+import {
+  installDialogDismissal,
+  requestDialogClose,
+  showDialog,
+} from '../shell/dialog_lifecycle.js';
 
 const QUICK_LOG_CONTROLLERS = new WeakMap();
 
@@ -483,7 +487,7 @@ export function createQuickLogController({
           : 'Saved after reconnecting. Today’s totals will refresh later.',
       );
     } else {
-      view.close();
+      view.close({ reason: 'saved' });
       view.announce(totalsCurrent ? 'Log saved' : 'Log saved. Today’s totals will refresh later.');
     }
 
@@ -902,7 +906,7 @@ export function createQuickLogController({
     return requestPromise;
   }
 
-  function close() {
+  function close(reason = 'dismiss') {
     const closingDraft = state.draft;
     const closingPendingKey = state.pendingKey;
     if (state.status === 'submitting' && state.operation === 'create') {
@@ -923,7 +927,7 @@ export function createQuickLogController({
         publishTerminalHandoff('linked_log_handoff_closed', closingDraft);
       }
       state = quickLogReducer(state, { type: 'CLOSE' });
-      view.close();
+      view.close({ reason });
       view.returnFocus();
     }
   }
@@ -940,7 +944,7 @@ export function createQuickLogController({
       timeline.removePending(pendingKey);
       state = quickLogReducer(state, { type: 'DISCARD' });
       publishTerminalHandoff('linked_log_handoff_closed', discardedDraft);
-      view.close();
+      view.close({ reason: 'discard' });
       view.returnFocus();
       return true;
     };
@@ -1092,15 +1096,24 @@ export function createQuickLogDomView(root, dialog) {
     confirm.disabled = false;
     details.open = false;
     renderDraft(draft);
-    if (!dialog.open) dialog.showModal();
+    showDialog(dialog);
     confirm.focus();
   }
 
-  function close() {
-    if (dialog.open) dialog.close();
+  function close({ reason = 'dismiss', restoreFocus = true } = {}) {
+    const sourceTrigger = restoreFocus ? trigger : false;
+    return requestDialogClose(dialog, {
+      reason,
+      restoreFocusTo: sourceTrigger,
+    }).then((closed) => {
+      if (closed && trigger === sourceTrigger) trigger = null;
+      if (closed && !restoreFocus) trigger = null;
+      return closed;
+    });
   }
 
   function returnFocus() {
+    if (dialog.open) return false;
     const sourceTrigger = trigger;
     trigger = null;
     return restoreDialogFocus(dialog, sourceTrigger);
@@ -1154,7 +1167,7 @@ export function createQuickLogDomView(root, dialog) {
   function showSavedAttention() {
     clearErrors();
     recovery.hidden = true;
-    if (dialog.open) dialog.close();
+    close({ reason: 'saved' });
     returnFocus();
   }
 
@@ -1162,7 +1175,7 @@ export function createQuickLogDomView(root, dialog) {
     if (activeClientEventId !== clientEventId) return;
     clearErrors();
     recovery.hidden = true;
-    if (dialog.open) dialog.close();
+    close({ reason: 'synced', restoreFocus: false });
   }
 
   function restoreEditing() {
@@ -1247,7 +1260,7 @@ export function createQuickLogDomView(root, dialog) {
       }
       return;
     }
-    if (event.target.closest('[data-quick-log-close]')) handlers.close();
+    if (event.target.closest('[data-quick-log-close]')) handlers.close('close-button');
     else if (event.target.closest('[data-quick-log-retry]')) handlers.retry();
     else if (event.target.closest('[data-quick-log-discard]')) handlers.discard();
     else if (event.target.closest('[data-quick-log-undo-action]')) handlers.undo();
@@ -1310,7 +1323,7 @@ export function createQuickLogDomView(root, dialog) {
     root.addEventListener('toggle', onToggle, true);
     removeDialogDismissal = installDialogDismissal(dialog, {
       panel: dialog.querySelector('[data-dialog-panel]'),
-      dismiss: () => handlers.close(),
+      dismiss: (reason) => handlers.close(reason),
     });
     removeFocusTrap = installDialogFocusTrap(dialog);
   }

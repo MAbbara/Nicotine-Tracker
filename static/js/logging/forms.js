@@ -1,5 +1,10 @@
-import { installDialogFocusTrap, restoreDialogFocus } from '../shell/dialog_focus.js';
-import { installDialogDismissal, removeTransientSearchParam } from '../shell/dialog_lifecycle.js';
+import { installDialogFocusTrap } from '../shell/dialog_focus.js';
+import {
+  installDialogDismissal,
+  removeTransientSearchParam,
+  requestDialogClose,
+  showDialog,
+} from '../shell/dialog_lifecycle.js';
 
 function syncCustomProductFields(form) {
   const select = form.querySelector('[data-product-select]');
@@ -42,10 +47,13 @@ export function initLoggingForms(root = document, confirmImpl = window.confirm) 
   const dialog = root.querySelector('#addLogModal');
   if (dialog && typeof dialog.showModal === 'function') {
     let returnFocus = null;
-    const closeAddLogModal = () => {
-      if (dialog.open) dialog.close();
-      removeTransientSearchParam(dialog.ownerDocument.defaultView, 'open_add_modal');
-    };
+    const closeAddLogModal = (reason = 'dismiss') => requestDialogClose(dialog, {
+      reason,
+      restoreFocusTo: returnFocus,
+      beforeNativeClose: () => {
+        removeTransientSearchParam(dialog.ownerDocument.defaultView, 'open_add_modal');
+      },
+    });
     cleanups.push(installDialogFocusTrap(dialog));
     cleanups.push(installDialogDismissal(dialog, {
       panel: dialog.querySelector('[data-dialog-panel]'),
@@ -55,11 +63,11 @@ export function initLoggingForms(root = document, confirmImpl = window.confirm) 
       const handleClick = (event) => {
         event.preventDefault();
         if (dialog.contains(trigger)) {
-          closeAddLogModal();
+          closeAddLogModal('cancel');
           return;
         }
         returnFocus = trigger;
-        if (!dialog.open) dialog.showModal();
+        showDialog(dialog);
         trigger.setAttribute('aria-expanded', 'true');
         dialog.querySelector('[name="log_date"]')?.focus({ preventScroll: true });
       };
@@ -71,7 +79,6 @@ export function initLoggingForms(root = document, confirmImpl = window.confirm) 
       root.querySelectorAll('[aria-controls="addLogModal"]').forEach((trigger) => {
         trigger.setAttribute('aria-expanded', 'false');
       });
-      restoreDialogFocus(dialog, returnFocus);
       returnFocus = null;
     };
     dialog.addEventListener('close', handleClose);

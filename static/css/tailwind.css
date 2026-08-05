@@ -4169,37 +4169,8 @@
     }
   }
 
-  .quick-log,
-  .craving-flow {
-    opacity: 0;
-    transform: translateY(var(--space-2));
-    transition:
-      opacity var(--duration-feedback) var(--ease-out-expo),
-      transform var(--duration-feedback) var(--ease-out-expo),
-      overlay var(--duration-feedback) allow-discrete,
-      display var(--duration-feedback) allow-discrete;
-  }
-
-  .quick-log[open],
-  .craving-flow[open] {
-    opacity: 1;
-    transform: translateY(0);
-  }
-
-  @starting-style {
-    .quick-log[open],
-    .craving-flow[open] {
-      opacity: 0;
-      transform: translateY(var(--space-2));
-    }
-  }
-
   .quick-log {
     color: var(--color-ink);
-  }
-
-  .quick-log::backdrop {
-    background: color-mix(in oklab, var(--color-ink) 48%, transparent);
   }
 
   .quick-log__panel {
@@ -4479,10 +4450,6 @@
 
   .craving-flow {
     color: var(--color-ink);
-  }
-
-  .craving-flow::backdrop {
-    background: color-mix(in oklab, var(--color-ink) 48%, transparent);
   }
 
   .craving-flow__panel {
@@ -4880,6 +4847,11 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  .c-dialog::backdrop {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
   }
 
   .quick-log-undo__rule {
@@ -6004,10 +5976,6 @@
     color: var(--color-ink);
   }
 
-  .log-dialog::backdrop {
-    background: color-mix(in srgb, var(--color-ink) 58%, transparent);
-  }
-
   .log-dialog__position {
     display: block;
   }
@@ -6771,6 +6739,15 @@
     overflow: visible;
     border: 0;
     background: transparent;
+    transition:
+      overlay 220ms allow-discrete,
+      display 220ms allow-discrete;
+  }
+
+  .c-dialog::backdrop {
+    background: rgb(from var(--color-overlay) r g b / 58%);
+    opacity: 0;
+    transition: opacity 180ms cubic-bezier(0.4, 0, 1, 1);
   }
 
   .c-dialog[open] {
@@ -6795,6 +6772,39 @@
     grid-template-rows: auto minmax(0, 1fr) auto;
     margin: 0 auto;
     overflow: hidden;
+    opacity: 0;
+    transform: translateY(10px) scale(.995);
+    transition:
+      opacity 220ms cubic-bezier(0.4, 0, 1, 1),
+      transform 220ms cubic-bezier(0.4, 0, 1, 1);
+  }
+
+  .c-dialog:is([data-dialog-state="opening"], [data-dialog-state="open"])::backdrop {
+    opacity: 1;
+    transition-duration: 260ms;
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .c-dialog:is([data-dialog-state="opening"], [data-dialog-state="open"]) .c-dialog__panel {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    transition-duration: 300ms;
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .c-dialog[data-dialog-state="closing"] .c-dialog__panel {
+    pointer-events: none;
+  }
+
+  @starting-style {
+    .c-dialog:is([data-dialog-state="opening"], [data-dialog-state="open"])::backdrop {
+      opacity: 0;
+    }
+
+    .c-dialog:is([data-dialog-state="opening"], [data-dialog-state="open"]) .c-dialog__panel {
+      opacity: 0;
+      transform: translateY(14px) scale(.99);
+    }
   }
 
   .c-dialog:is(.quick-log, .craving-flow) .c-dialog__panel {

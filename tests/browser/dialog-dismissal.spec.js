@@ -54,9 +54,6 @@ const SCROLLING_DIALOGS = [
 ];
 
 
-const COMPACT_DIALOGS = DIALOGS.filter(({ compact }) => compact);
-
-
 function splitComputedList(value) {
   const items = [];
   let depth = 0;
@@ -82,44 +79,88 @@ function durationInMilliseconds(value) {
 }
 
 
-async function readDialogMotion(dialog) {
+async function readDialogVisualContract(dialog) {
   return dialog.evaluate((element) => {
-    const style = getComputedStyle(element);
+    const panelStyle = getComputedStyle(element.querySelector('[data-dialog-panel]'));
+    const hostStyle = getComputedStyle(element);
+    const backdropStyle = getComputedStyle(element, '::backdrop');
+    const colorPixel = (value) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1;
+      canvas.height = 1;
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      context.clearRect(0, 0, 1, 1);
+      context.fillStyle = value;
+      context.fillRect(0, 0, 1, 1);
+      return [...context.getImageData(0, 0, 1, 1).data];
+    };
+    const overlayProbe = document.createElement('span');
+    overlayProbe.style.backgroundColor = 'var(--color-overlay)';
+    document.body.append(overlayProbe);
+    const overlayColor = getComputedStyle(overlayProbe).backgroundColor;
+    overlayProbe.remove();
     return {
-      durations: style.transitionDuration,
-      properties: style.transitionProperty,
-      timingFunctions: style.transitionTimingFunction,
+      backdrop: {
+        background: colorPixel(backdropStyle.backgroundColor),
+        duration: backdropStyle.transitionDuration,
+        opacity: Number.parseFloat(backdropStyle.opacity),
+        properties: backdropStyle.transitionProperty,
+        timing: backdropStyle.transitionTimingFunction,
+      },
+      host: {
+        opacity: hostStyle.opacity,
+        properties: hostStyle.transitionProperty,
+        transform: hostStyle.transform,
+      },
+      overlay: colorPixel(overlayColor),
+      panel: {
+        duration: panelStyle.transitionDuration,
+        opacity: Number.parseFloat(panelStyle.opacity),
+        properties: panelStyle.transitionProperty,
+        timing: panelStyle.transitionTimingFunction,
+        transform: panelStyle.transform,
+      },
+      state: element.dataset.dialogState || null,
     };
   });
 }
 
 
-function expectDialogMotion(motion, direction) {
-  const properties = splitComputedList(motion.properties);
-  const durations = splitComputedList(motion.durations);
-  const timingFunctions = splitComputedList(motion.timingFunctions);
-  const visualProperties = properties.filter((property) => !['display', 'overlay'].includes(property));
-
-  expect(visualProperties, `${direction}: only opacity and transform may animate`).toEqual([
-    'opacity',
-    'transform',
-  ]);
-  expect(
-    properties.filter((property) => !visualProperties.includes(property))
-      .every((property) => ['display', 'overlay'].includes(property)),
-    `${direction}: any discrete transitions must only preserve native dialog lifecycle`,
-  ).toBe(true);
-
-  for (const property of visualProperties) {
-    const index = properties.indexOf(property);
-    const duration = durationInMilliseconds(durations[index % durations.length]);
-    expect(duration, `${direction}: ${property} duration`).toBeGreaterThanOrEqual(180);
-    expect(duration, `${direction}: ${property} duration`).toBeLessThanOrEqual(220);
-    expect(
-      timingFunctions[index % timingFunctions.length],
-      `${direction}: ${property} must use the shared ease-out curve`,
-    ).toBe('cubic-bezier(0.16, 1, 0.3, 1)');
+function expectTransition(style, { properties, duration, timing }, label) {
+  const actualProperties = splitComputedList(style.properties);
+  const durations = splitComputedList(style.duration).map(durationInMilliseconds);
+  const timingFunctions = splitComputedList(style.timing);
+  expect(actualProperties, `${label}: transition properties`).toEqual(properties);
+  for (let index = 0; index < properties.length; index += 1) {
+    expect(durations[index % durations.length], `${label}: ${properties[index]} duration`)
+      .toBeCloseTo(duration, 3);
+    expect(timingFunctions[index % timingFunctions.length], `${label}: ${properties[index]} easing`)
+      .toBe(timing);
   }
+}
+
+
+async function sampleDialogFrames(dialog, count) {
+  return dialog.evaluate(async (element, frameCount) => {
+    const frames = [];
+    const panel = element.querySelector('[data-dialog-panel]');
+    for (let index = 0; index < frameCount; index += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      frames.push({
+        backdropOpacity: Number.parseFloat(getComputedStyle(element, '::backdrop').opacity),
+        open: element.open,
+        panelOpacity: Number.parseFloat(getComputedStyle(panel).opacity),
+        panelTransform: getComputedStyle(panel).transform,
+        state: element.dataset.dialogState || null,
+      });
+    }
+    return frames;
+  }, count);
+}
+
+
+function hasIntermediateOpacity(frames, key) {
+  return frames.some((frame) => frame[key] > 0.01 && frame[key] < 0.99);
 }
 
 
@@ -152,11 +193,32 @@ async function openDialog(page, contract) {
   await opener.click();
   const dialog = page.getByRole('dialog', { name: contract.dialogName });
   await expect(dialog).toBeVisible();
-  return { opener, dialog, panel: dialog.locator('[data-dialog-panel]') };
+  const dialogId = await dialog.getAttribute('id');
+  const attachedDialog = page.locator(`#${dialogId}`);
+  return { opener, dialog, attachedDialog, panel: dialog.locator('[data-dialog-panel]') };
+}
+
+
+async function expectSharedDismissalLifecycle(current, activate) {
+  const lifecycleDialog = current.attachedDialog || current.dialog;
+  await current.dialog.evaluate((element) => {
+    element.dataset.testCloseEvents = '0';
+    element.addEventListener('close', () => {
+      element.dataset.testCloseEvents = String(Number(element.dataset.testCloseEvents) + 1);
+    }, { once: true });
+  });
+  await activate();
+  await expect(lifecycleDialog).toHaveAttribute('data-dialog-state', 'closing');
+  await expect(current.dialog).toBeVisible();
+  await expect(current.dialog).toBeHidden();
+  await expect(lifecycleDialog).not.toHaveAttribute('data-dialog-state');
+  await expect(lifecycleDialog).toHaveAttribute('data-test-close-events', '1');
+  await expect(current.opener).toBeFocused();
 }
 
 
 async function expectSharedGeometry(page, panel, { compact }, testInfo) {
+  await page.waitForTimeout(320);
   await expect(panel).toHaveCSS('position', 'relative');
   const [panelBox, viewport] = await Promise.all([
     panel.boundingBox(),
@@ -263,7 +325,7 @@ async function expectActionVisibility(state, stage) {
 
 
 for (const contract of DIALOGS) {
-  test(`${contract.name} shares safe dismissal and responsive geometry`, async ({ page }, testInfo) => {
+  test(`${contract.name} shared dismissal lifecycle preserves responsive geometry`, async ({ page }, testInfo) => {
     const errors = watchForProductProblems(page);
     await loginAs(page, contract.email);
     await page.goto(contract.path);
@@ -318,19 +380,24 @@ for (const contract of DIALOGS) {
     await page.mouse.up();
     await expect(current.dialog).toBeVisible();
 
-    await page.keyboard.press('Escape');
-    await expect(current.dialog).toBeHidden();
-    await expect(current.opener).toBeFocused();
+    await expectSharedDismissalLifecycle(current, () => page.keyboard.press('Escape'));
 
     current = await openDialog(page, contract);
-    await page.mouse.click(4, 4);
-    await expect(current.dialog).toBeHidden();
-    await expect(current.opener).toBeFocused();
+    await expectSharedDismissalLifecycle(current, () => page.mouse.click(4, 4));
 
     current = await openDialog(page, contract);
-    await current.dialog.locator('.c-dialog__close').click();
-    await expect(current.dialog).toBeHidden();
-    await expect(current.opener).toBeFocused();
+    await expectSharedDismissalLifecycle(
+      current,
+      () => current.dialog.locator('.c-dialog__close').click(),
+    );
+
+    if (contract.name === 'add log') {
+      current = await openDialog(page, contract);
+      await expectSharedDismissalLifecycle(
+        current,
+        () => current.dialog.getByRole('button', { name: 'Cancel' }).click(),
+      );
+    }
     expect(errors).toEqual([]);
   });
 }
@@ -346,6 +413,7 @@ test('add-log actions reserve the mobile safe area without changing desktop spac
     await loginAs(page, 'release-inventory@example.com');
     await page.goto('/log/view');
     const { dialog } = await openDialog(page, DIALOGS[2]);
+    await page.waitForTimeout(320);
     const actions = dialog.locator('.c-dialog__actions');
     const baselinePadding = await actions.evaluate((element) => (
       Number.parseFloat(getComputedStyle(element).paddingBottom)
@@ -381,33 +449,87 @@ test('add-log actions reserve the mobile safe area without changing desktop spac
 });
 
 
-test('quick-log and craving dialogs share compliant bidirectional motion', async ({ page }) => {
-  await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await loginAs(page, 'today-targeted@example.com');
-  await page.goto('/today/');
-
-  for (const contract of COMPACT_DIALOGS) {
+for (const contract of DIALOGS) {
+  test(`${contract.name} backdrop and panel motion use shared theme-safe frames`, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await loginAs(page, contract.email);
+    await page.goto(contract.path);
     await contract.ready(page);
-    const dialog = page.locator(contract.name === 'quick log' ? 'dialog.quick-log' : 'dialog.craving-flow');
-    await expect(dialog).toBeHidden();
-    expectDialogMotion(await readDialogMotion(dialog), `${contract.name} close`);
 
-    const current = await openDialog(page, contract);
-    expectDialogMotion(await readDialogMotion(current.dialog), `${contract.name} open`);
-    await page.keyboard.press('Escape');
-    await expect(current.dialog).toBeHidden();
-  }
+    for (const theme of ['light', 'dark']) {
+      await page.locator('html').evaluate((element, nextTheme) => {
+        element.dataset.theme = nextTheme;
+      }, theme);
+      const current = await openDialog(page, contract);
+      const entranceFrames = await sampleDialogFrames(current.dialog, 14);
+      await page.waitForTimeout(100);
+      const entered = await readDialogVisualContract(current.dialog);
 
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  for (const contract of COMPACT_DIALOGS) {
-    const current = await openDialog(page, contract);
-    const durations = splitComputedList((await readDialogMotion(current.dialog)).durations)
+      expect(entered.state).toBe('open');
+      expect(entered.host.transform).toBe('none');
+      expect(entered.host.opacity).toBe('1');
+      expect(splitComputedList(entered.host.properties).sort()).toEqual(['display', 'overlay']);
+      expectTransition(entered.panel, {
+        properties: ['opacity', 'transform'],
+        duration: 300,
+        timing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+      }, `${contract.name} ${theme} entrance panel`);
+      expectTransition(entered.backdrop, {
+        properties: ['opacity'],
+        duration: 260,
+        timing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+      }, `${contract.name} ${theme} entrance backdrop`);
+      expect(hasIntermediateOpacity(entranceFrames, 'panelOpacity')).toBe(true);
+      expect(hasIntermediateOpacity(entranceFrames, 'backdropOpacity')).toBe(true);
+      expect(entranceFrames.some((frame) => frame.panelTransform !== 'none')).toBe(true);
+      expect(entered.panel.opacity).toBeCloseTo(1, 2);
+      expect(entered.backdrop.opacity).toBeCloseTo(1, 2);
+      entered.backdrop.background.slice(0, 3).forEach((channel, index) => {
+        expect(Math.abs(channel - entered.overlay[index])).toBeLessThanOrEqual(1);
+      });
+      expect(entered.backdrop.background[3]).toBeGreaterThan(0);
+      expect(entered.backdrop.background[3]).toBeLessThan(255);
+
+      await current.dialog.locator('.c-dialog__close').click();
+      await expect(current.dialog).toHaveAttribute('data-dialog-state', 'closing');
+      await expect(current.dialog).toBeVisible();
+      const exiting = await readDialogVisualContract(current.dialog);
+      expectTransition(exiting.panel, {
+        properties: ['opacity', 'transform'],
+        duration: 220,
+        timing: 'cubic-bezier(0.4, 0, 1, 1)',
+      }, `${contract.name} ${theme} exit panel`);
+      expectTransition(exiting.backdrop, {
+        properties: ['opacity'],
+        duration: 180,
+        timing: 'cubic-bezier(0.4, 0, 1, 1)',
+      }, `${contract.name} ${theme} exit backdrop`);
+      const exitFrames = await sampleDialogFrames(current.dialog, 10);
+      expect(hasIntermediateOpacity(exitFrames, 'panelOpacity')).toBe(true);
+      expect(hasIntermediateOpacity(exitFrames, 'backdropOpacity')).toBe(true);
+      expect(exitFrames.some((frame) => frame.open)).toBe(true);
+      await expect(current.dialog).toBeHidden();
+      await expect(current.opener).toBeFocused();
+    }
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const reduced = await openDialog(page, contract);
+    const reducedContract = await readDialogVisualContract(reduced.dialog);
+    const panelDurations = splitComputedList(reducedContract.panel.duration)
       .map(durationInMilliseconds);
-    expect(Math.max(...durations), `${contract.name} reduced-motion duration`).toBeLessThanOrEqual(1);
-    await page.keyboard.press('Escape');
-    await expect(current.dialog).toBeHidden();
-  }
-});
+    const backdropDurations = splitComputedList(reducedContract.backdrop.duration)
+      .map(durationInMilliseconds);
+    expect(Math.max(...panelDurations)).toBeLessThanOrEqual(1);
+    expect(Math.max(...backdropDurations)).toBeLessThanOrEqual(1);
+    const closeElapsed = await reduced.dialog.evaluate((element) => new Promise((resolve) => {
+      const startedAt = performance.now();
+      element.addEventListener('close', () => resolve(performance.now() - startedAt), { once: true });
+      element.querySelector('.c-dialog__close').click();
+    }));
+    expect(closeElapsed).toBeLessThanOrEqual(32);
+    await expect(reduced.opener).toBeFocused();
+  });
+}
 
 
 for (const contract of SCROLLING_DIALOGS) {

@@ -2,7 +2,11 @@ import { bootstrapQuickLog, formatOffsetIso, toDateTimeLocal } from './quick_log
 import { createTimelineDomAdapter } from './timeline.js';
 import { activateActionEnhancement } from './action_enhancement.js';
 import { installDialogFocusTrap, restoreDialogFocus } from '../shell/dialog_focus.js';
-import { installDialogDismissal } from '../shell/dialog_lifecycle.js';
+import {
+  installDialogDismissal,
+  requestDialogClose,
+  showDialog,
+} from '../shell/dialog_lifecycle.js';
 
 const OUTCOMES = new Set(['resisted', 'used_nicotine', 'used_alternative']);
 const CRAVING_FLOW_CONTROLLERS = new WeakMap();
@@ -926,7 +930,7 @@ export function createCravingFlowController({
       cravingId: state.canonicalCraving.id,
     });
     view.render(state);
-    view.close();
+    view.close({ reason: 'handoff', restoreFocus: false });
     view.showQuickLogHandoff('Finish the nicotine log to link it to this craving.');
     return true;
   }
@@ -1021,12 +1025,12 @@ export function createCravingFlowController({
   function done() {
     if (state.status !== 'complete') return false;
     state = cravingFlowReducer(state, { type: 'DONE' });
-    view.close();
+    view.close({ reason: 'complete' });
     view.returnFocus();
     return true;
   }
 
-  function close() {
+  function close(reason = 'dismiss') {
     if (state.status === 'closed') return false;
     const discardedClientEventId = state.canonicalCraving ? null : state.clientEventId;
     stopPauseTimer();
@@ -1036,7 +1040,7 @@ export function createCravingFlowController({
     view.setBusy('details', false);
     state = cravingFlowReducer(state, { type: 'CLOSE' });
     if (discardedClientEventId) timeline.removePendingCraving(discardedClientEventId);
-    view.close();
+    view.close({ reason });
     view.returnFocus();
     return true;
   }
@@ -1223,16 +1227,25 @@ export function createCravingFlowDomView(root, dialog) {
     sourceTrigger = trigger || sourceTrigger;
     if (fresh) resetFreshControls();
     clearErrors();
-    if (!dialog.open) dialog.showModal();
+    showDialog(dialog);
     render(state);
     focusStep(activeStep());
   }
 
-  function close() {
-    if (dialog.open) dialog.close();
+  function close({ reason = 'dismiss', restoreFocus = true } = {}) {
+    const trigger = restoreFocus ? sourceTrigger : false;
+    return requestDialogClose(dialog, {
+      reason,
+      restoreFocusTo: trigger,
+    }).then((closed) => {
+      if (closed && sourceTrigger === trigger) sourceTrigger = null;
+      if (closed && !restoreFocus) sourceTrigger = null;
+      return closed;
+    });
   }
 
   function returnFocus() {
+    if (dialog.open) return false;
     const trigger = sourceTrigger;
     sourceTrigger = null;
     return restoreDialogFocus(dialog, trigger);
@@ -1304,8 +1317,8 @@ export function createCravingFlowDomView(root, dialog) {
       handlers.open(trigger);
       return;
     }
-    if (event.target.closest('[data-craving-close]')) handlers.close();
-    else if (event.target.closest('[data-craving-cancel-check-in]')) handlers.close();
+    if (event.target.closest('[data-craving-close]')) handlers.close('close-button');
+    else if (event.target.closest('[data-craving-cancel-check-in]')) handlers.close('cancel');
     else if (event.target.closest('[data-craving-retry-create]')) handlers.retryCreate();
     else if (event.target.closest('[data-craving-show-outcome]')) handlers.showOutcome();
     else if (event.target.closest('[data-craving-retry-outcome]')) handlers.retryOutcome();
@@ -1362,7 +1375,7 @@ export function createCravingFlowDomView(root, dialog) {
     root.addEventListener('change', onChange);
     removeDialogDismissal = installDialogDismissal(dialog, {
       panel: dialog.querySelector('[data-dialog-panel]'),
-      dismiss: () => handlers.close(),
+      dismiss: (reason) => handlers.close(reason),
     });
     removeFocusTrap = installDialogFocusTrap(dialog);
   }
