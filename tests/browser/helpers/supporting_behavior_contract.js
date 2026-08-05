@@ -263,7 +263,8 @@ group(SUPPORTING_OWNER_TITLES.chrome, authenticatedSupportingStates.flatMap(([st
   [state, 'Skip to main content', 'skip'],
   [state, `Open your space for ${email}`, 'navigation'],
   [state, 'Today', 'primaryNavigation'],
-  [state, 'Logbook', state === 'logbook' ? 'primarySameDocument' : 'primaryNavigation'],
+  [state, 'Logbook', ['logbook', 'log-add'].includes(state)
+    ? 'primarySameDocument' : 'primaryNavigation'],
   [state, 'Journey', 'primaryNavigation'],
   [state, 'Insights', 'primaryNavigation'],
   [state, 'You', 'primaryNavigation'],

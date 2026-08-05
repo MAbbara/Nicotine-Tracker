@@ -594,7 +594,7 @@ const POLICY_SOURCE = {
       "log-add",
       "Logbook",
       "chrome",
-      "primaryNavigation"
+      "primarySameDocument"
     ],
     [
       "log-add",

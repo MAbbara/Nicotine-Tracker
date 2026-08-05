@@ -30,7 +30,7 @@ const CONTROL_SCOPES = Object.freeze({
 
 function navigationAuthority(state, action, profile) {
   if (profile === 'primarySameDocument') {
-    if (state !== 'logbook' || action !== 'Logbook') {
+    if (!['logbook', 'log-add'].includes(state) || action !== 'Logbook') {
       throw new Error(`same-document primary navigation is not cataloged for ${state} › ${action}`);
     }
     return Object.freeze({
@@ -503,6 +503,7 @@ const STATE_VISITS = Object.freeze({
 
 
 const STATE_RUNTIME_QUERIES = Object.freeze({
+  'log-add': Object.freeze(['?open_add_modal=1', '']),
   dashboard: Object.freeze(['', '?days=7', '?days=30', '?days=90', '?days=365']),
   'dashboard-empty': Object.freeze(['', '?days=7', '?days=30', '?days=90', '?days=365']),
   'dashboard-sparse': Object.freeze(['', '?days=7', '?days=30', '?days=90', '?days=365']),
