@@ -210,6 +210,100 @@ test('stale revision preview refreshes and requires a second explicit confirmati
   expect(errors).toEqual([]);
 });
 
+test('Journey planning flow stays contiguous and balanced across target viewports', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name.includes('mobile'), 'One canonical exact-viewport geometry run');
+  await register(page, testInfo, 'geometry');
+  await createPlan(page);
+
+  for (const viewport of [
+    { width: 1920, height: 1080 },
+    { width: 1440, height: 900 },
+    { width: 390, height: 844 },
+    { width: 320, height: 700 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.reload();
+    const layout = await page.evaluate(() => {
+      const rect = (element) => {
+        const value = element.getBoundingClientRect();
+        return {
+          top: value.top, right: value.right, bottom: value.bottom,
+          left: value.left, width: value.width, height: value.height,
+        };
+      };
+      const visible = (element) => {
+        const value = rect(element);
+        const style = getComputedStyle(element);
+        return style.display !== 'none' && style.visibility !== 'hidden'
+          && value.width > 0 && value.height > 0;
+      };
+      const plan = document.querySelector('.journey-plan');
+      const overview = plan.querySelector(':scope > .journey-plan__overview');
+      const schedule = plan.querySelector(':scope > .journey-plan__schedule');
+      const maintenance = plan.querySelector(':scope > .journey-plan__maintenance');
+      const editor = maintenance.querySelector('[data-plan-editor="revision"]');
+      const fieldItems = [...editor.querySelectorAll('.journey-editor__fields > div')];
+      const fullWidthItems = [
+        editor.querySelector('.journey-editor__fields'),
+        editor.querySelector('form > p'),
+        editor.querySelector('.journey-editor__buttons'),
+        editor.querySelector('[data-plan-editor-status]'),
+        editor.querySelector('[data-plan-editor-preview]'),
+      ].filter((element) => element && visible(element)).map(rect);
+      const flowChildren = [...plan.children].filter(visible).map(rect)
+        .sort((left, right) => left.top - right.top);
+      const emptyGaps = flowChildren.slice(1).map((item, index) => (
+        item.top - flowChildren[index].bottom
+      )).filter((gap) => gap > 0);
+      const actualHorizontalScrollers = [...document.querySelectorAll('body *')]
+        .filter(visible)
+        .filter((element) => ['auto', 'scroll'].includes(getComputedStyle(element).overflowX))
+        .filter((element) => element.scrollWidth > element.clientWidth + 1)
+        .map((element) => ({
+          className: String(element.className || ''),
+          insideSchedule: Boolean(element.closest('.journey-plan__schedule')),
+        }));
+      return {
+        documentWidth: document.documentElement.clientWidth,
+        documentScrollWidth: document.documentElement.scrollWidth,
+        overview: rect(overview),
+        schedule: rect(schedule),
+        maintenance: rect(maintenance),
+        editor: rect(editor),
+        fieldItems: fieldItems.map(rect),
+        fullWidthItems,
+        emptyGaps,
+        actualHorizontalScrollers,
+        scheduleBeforeEditor: Boolean(schedule.compareDocumentPosition(editor)
+          & Node.DOCUMENT_POSITION_FOLLOWING),
+      };
+    });
+
+    expect(layout.scheduleBeforeEditor).toBe(true);
+    expect(layout.editor.top - layout.schedule.bottom).toBeGreaterThanOrEqual(0);
+    expect(layout.editor.top - layout.schedule.bottom).toBeLessThanOrEqual(96);
+    expect(layout.editor.width).toBeGreaterThanOrEqual(layout.schedule.width * 0.95);
+    expect(Math.max(0, ...layout.emptyGaps)).toBeLessThanOrEqual(192);
+    const fullWidthValues = layout.fullWidthItems.map((item) => item.width);
+    expect(
+      Math.max(...fullWidthValues) - Math.min(...fullWidthValues),
+      `${viewport.width}x${viewport.height}: ${JSON.stringify(layout.fullWidthItems)}`,
+    ).toBeLessThanOrEqual(1);
+
+    const columnStarts = new Set(layout.fieldItems.map((item) => Math.round(item.left)));
+    if (viewport.width >= 1024) {
+      expect(columnStarts.size).toBe(2);
+      expect(layout.fieldItems).toHaveLength(4);
+      expect(layout.fieldItems[0].width).toBeGreaterThanOrEqual(layout.editor.width * 0.4);
+      expect(layout.fieldItems[1].width).toBeGreaterThanOrEqual(layout.editor.width * 0.4);
+    } else {
+      expect(columnStarts.size).toBe(1);
+      expect(layout.documentScrollWidth).toBeLessThanOrEqual(layout.documentWidth + 1);
+      expect(layout.actualHorizontalScrollers.every(({ insideSchedule }) => insideSchedule)).toBe(true);
+    }
+  }
+});
+
 test('Observe recovery and migrated Goal review remain visibly separate and non-activating', async ({ page }, testInfo) => {
   const recorder = createBehaviorRecorder(OWNER_TITLES.journeyObserve, expect);
   const errors = watchForErrors(page);

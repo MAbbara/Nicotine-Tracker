@@ -127,6 +127,29 @@ def _graph(user_id):
     }
 
 
+def _form_contract(form):
+    fields = []
+    for control in form.select('input[name], select[name], button[name]'):
+        name = control.get('name')
+        if name == 'csrf_token':
+            assert control.get('type') == 'hidden'
+            assert control.get('value')
+            value = '<csrf>'
+        elif control.name == 'select':
+            option = control.select_one('option[selected]') or control.select_one(
+                'option'
+            )
+            value = option.get('value', '')
+        else:
+            value = control.get('value', '')
+        fields.append((control.name, control.get('type'), name, value))
+    return {
+        'method': form.get('method', 'get').lower(),
+        'action': form.get('action'),
+        'fields': fields,
+    }
+
+
 class TestJourneyComposition:
     def test_login_protection_and_two_action_empty_state(self, app,
                                                          logged_in_client):
@@ -142,6 +165,125 @@ class TestJourneyComposition:
         text = soup.get_text(' ', strip=True)
         assert 'Create a plan' in text
         assert 'Continue neutral tracking' in text
+
+    def test_active_plan_preserves_exact_form_and_editor_hook_contracts(
+            self, logged_in_client, db_session, test_user):
+        plan = _plan(db_session, test_user)
+
+        soup = BeautifulSoup(
+            logged_in_client.get('/journey/').data, 'html.parser'
+        )
+        forms = {
+            form['action']: _form_contract(form)
+            for form in soup.select('.journey-plan form[action]')
+        }
+        csrf_only = [('input', 'hidden', 'csrf_token', '<csrf>')]
+        assert forms[f'/journey/plans/{plan.id}/pause'] == {
+            'method': 'post',
+            'action': f'/journey/plans/{plan.id}/pause',
+            'fields': csrf_only,
+        }
+        assert forms[f'/journey/plans/{plan.id}/complete'] == {
+            'method': 'post',
+            'action': f'/journey/plans/{plan.id}/complete',
+            'fields': csrf_only,
+        }
+        assert forms[f'/journey/plans/{plan.id}/archive'] == {
+            'method': 'post',
+            'action': f'/journey/plans/{plan.id}/archive',
+            'fields': csrf_only,
+        }
+        assert forms[f'/journey/plans/{plan.id}/revision'] == {
+            'method': 'post',
+            'action': f'/journey/plans/{plan.id}/revision',
+            'fields': [
+                ('input', 'hidden', 'csrf_token', '<csrf>'),
+                ('input', 'date', 'effective_date', ''),
+                ('select', None, 'pace', ''),
+                ('input', 'number', 'duration_days', ''),
+                ('input', 'number', 'end_target_pouches', ''),
+                ('button', 'submit', 'form_action', 'preview'),
+            ],
+        }
+
+        editor = soup.select_one('[data-plan-editor="revision"]')
+        assert editor['data-plan-id'] == str(plan.id)
+        assert editor.select_one('form[data-plan-editor-form]') is not None
+        digest = editor.select_one('input[data-plan-editor-digest]')
+        assert digest.get('type') == 'hidden'
+        assert digest.get('name') is None
+        preview = editor.select_one('[data-plan-editor-preview-button]')
+        assert preview.get('type') == 'submit'
+        assert (preview.get('name'), preview.get('value')) == (
+            'form_action', 'preview'
+        )
+        confirm = editor.select_one('[data-plan-editor-confirm]')
+        assert confirm.get('type') == 'button'
+        assert confirm.get('name') is None
+        assert confirm.has_attr('hidden')
+        assert editor.select_one('[data-plan-editor-status]') is not None
+        assert editor.select_one('[data-plan-editor-preview]') is not None
+
+    def test_paused_plan_preserves_resume_form_and_editor_hook_contracts(
+            self, logged_in_client, db_session, test_user):
+        plan = _plan(db_session, test_user, status='paused')
+
+        soup = BeautifulSoup(
+            logged_in_client.get('/journey/').data, 'html.parser'
+        )
+        form = soup.select_one('[data-plan-editor="resume"] form')
+        assert _form_contract(form) == {
+            'method': 'post',
+            'action': f'/journey/plans/{plan.id}/resume',
+            'fields': [
+                ('input', 'hidden', 'csrf_token', '<csrf>'),
+                ('input', 'date', 'resume_date', ''),
+                ('button', 'submit', 'form_action', 'preview'),
+            ],
+        }
+        assert form.has_attr('data-plan-editor-form')
+        assert form.select_one('input[data-plan-editor-digest]') is not None
+        assert form.select_one('[data-plan-editor-preview-button]') is not None
+        assert form.select_one('[data-plan-editor-confirm]') is not None
+
+    def test_plan_flow_wraps_overview_schedule_maintenance_and_revision_fields(
+            self, logged_in_client, db_session, test_user):
+        _plan(db_session, test_user)
+
+        soup = BeautifulSoup(
+            logged_in_client.get('/journey/').data, 'html.parser'
+        )
+        plan = soup.select_one('.journey-plan')
+        overview = plan.select_one(':scope > .journey-plan__overview')
+        schedule = plan.select_one(':scope > .journey-plan__schedule')
+        maintenance = plan.select_one(':scope > .journey-plan__maintenance')
+        assert overview.select_one('#current-plan-title') is not None
+        assert overview.select_one('.journey-current') is not None
+        assert overview.select_one('#plan-facts-title') is not None
+        assert schedule.select_one('.journey-schedule') is not None
+        assert maintenance.select_one('.journey-actions') is not None
+        editor = maintenance.select_one('[data-plan-editor="revision"]')
+        assert editor is not None
+
+        direct_children = [child for child in plan.children if child.name]
+        assert direct_children.index(schedule) < direct_children.index(maintenance)
+        assert plan.select_one('.journey-schedule').find_next(
+            attrs={'data-plan-editor': 'revision'}
+        ) == editor
+
+        fields = editor.select_one('.journey-editor__fields')
+        assert [control.get('name') for control in fields.select(
+            'input[name], select[name]'
+        )] == [
+            'effective_date', 'pace', 'duration_days',
+            'end_target_pouches',
+        ]
+        assert len(fields.find_all('div', recursive=False)) == 4
+        assert editor.select_one('.journey-editor__fields p') is None
+        assert editor.select_one('.journey-editor__fields [role="alert"]') is None
+        assert editor.select_one('.journey-editor__fields .journey-editor__buttons') is None
+        assert editor.select_one('.journey-editor__fields [data-plan-editor-status]') is None
+        assert editor.select_one('.journey-editor__fields [data-plan-editor-preview]') is None
 
     def test_active_plan_renders_truthful_baseline_schedule_history_and_milestones(
             self, logged_in_client, db_session, test_user):
