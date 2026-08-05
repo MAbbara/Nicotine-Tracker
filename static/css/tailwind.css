@@ -6438,7 +6438,7 @@
   .primary-nav,
   .today-shell .primary-nav,
   .journey-shell .primary-nav {
-    grid-template-columns: repeat(auto-fit, minmax(min(4.375rem, 100%), 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(2.75rem, 100%), 1fr));
     gap: 0.125rem;
     padding: 0.25rem max(0.25rem, env(safe-area-inset-right)) max(0.25rem, env(safe-area-inset-bottom)) max(0.25rem, env(safe-area-inset-left));
     overflow: visible;
@@ -6448,9 +6448,9 @@
   .today-shell .primary-nav__link,
   .journey-shell .primary-nav__link {
     min-height: 44px;
-    flex-flow: row nowrap;
+    flex-flow: column nowrap;
     gap: 0.125rem;
-    padding-inline: 0.25rem;
+    padding-inline: max(0.125rem, 4px);
   }
 
   .primary-nav__link .c-icon {

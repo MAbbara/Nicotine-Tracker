@@ -45,32 +45,109 @@ test('authenticated shell exposes five useful destinations with one active item'
   }
 });
 
-test('five-item primary navigation stays touchable at 320px and 200 percent text', async ({ page }) => {
-  await page.setViewportSize({ width: 320, height: 800 });
-  await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+test('five-item primary navigation keeps its complete contract in compact narrow rows', async ({ page }) => {
+  const expectedLabels = ['Today', 'Logbook', 'Journey', 'Insights', 'You'];
+  const expectedHrefs = [
+    '/today/#main-content',
+    '/log/view#main-content',
+    '/journey/#main-content',
+    '/insights/#main-content',
+    '/you/#main-content',
+  ];
+  const scenarios = [
+    { width: 320, height: 800, textScale: 2, theme: 'light', reducedMotion: 'no-preference', maxRows: 2 },
+    { width: 320, height: 800, textScale: 2, theme: 'dark', reducedMotion: 'reduce', maxRows: 2 },
+    { width: 360, height: 800, textScale: 1, theme: 'light', reducedMotion: 'no-preference', maxRows: 1 },
+  ];
 
-  const primary = page.getByRole('navigation', { name: 'Primary' });
-  const links = primary.getByRole('link');
-  await expect(links).toHaveText(['Today', 'Logbook', 'Journey', 'Insights', 'You']);
-  await expect(primary.locator('[aria-current="page"]')).toHaveCount(1);
+  for (const scenario of scenarios) {
+    await page.setViewportSize({ width: scenario.width, height: scenario.height });
+    await page.emulateMedia({ reducedMotion: scenario.reducedMotion });
+    await page.evaluate((theme) => {
+      localStorage.setItem('nicotine-tracker-theme', theme);
+    }, scenario.theme);
+    await page.reload();
+    await page.addStyleTag({
+      content: `html { font-size: ${scenario.textScale * 100}% !important; }`,
+    });
 
-  const geometry = await links.evaluateAll((elements) => ({
-    pageOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
-    links: elements.map((element) => {
-      const rect = element.getBoundingClientRect();
+    const primary = page.getByRole('navigation', { name: 'Primary' });
+    const links = primary.getByRole('link');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', scenario.theme);
+    await expect(links).toHaveText(expectedLabels);
+    expect(await links.evaluateAll((elements) => (
+      elements.map((element) => element.getAttribute('href'))
+    ))).toEqual(expectedHrefs);
+    await expect(primary.locator('[aria-current="page"]')).toHaveCount(1);
+    await expect(primary.locator('[aria-current="page"]')).toHaveText('Today');
+
+    const geometry = await primary.evaluate((navigation) => {
+      const navRect = navigation.getBoundingClientRect();
+      const main = document.querySelector('#main-content');
+      const mainStyle = getComputedStyle(main);
       return {
-        height: rect.height,
-        visible: rect.width > 0 && rect.height > 0,
-        width: rect.width,
+        documentClientWidth: document.documentElement.clientWidth,
+        documentScrollWidth: document.documentElement.scrollWidth,
+        mainPaddingBottom: Number.parseFloat(mainStyle.paddingBottom),
+        navClientWidth: navigation.clientWidth,
+        navHeight: navRect.height,
+        navScrollWidth: navigation.scrollWidth,
+        rows: [...new Set([...navigation.querySelectorAll('.primary-nav__link')]
+          .map((link) => Math.round(link.getBoundingClientRect().top)))],
+        links: [...navigation.querySelectorAll('.primary-nav__link')].map((link) => {
+          const label = link.querySelector('span');
+          const linkRect = link.getBoundingClientRect();
+          const labelRect = label.getBoundingClientRect();
+          const transitionDurations = getComputedStyle(link).transitionDuration
+            .split(',').map((value) => Number.parseFloat(value) * (value.includes('ms') ? 0.001 : 1));
+          return {
+            height: linkRect.height,
+            label: label.textContent.trim(),
+            labelClientWidth: label.clientWidth,
+            labelInside: labelRect.left >= linkRect.left - 1
+              && labelRect.right <= linkRect.right + 1,
+            labelOverflow: label.scrollWidth > label.clientWidth + 1,
+            labelScrollWidth: label.scrollWidth,
+            maxTransitionDuration: Math.max(0, ...transitionDurations),
+            visible: linkRect.width > 0 && linkRect.height > 0,
+            width: linkRect.width,
+          };
+        }),
       };
-    }),
-  }));
-  expect(geometry.pageOverflow).toBe(false);
-  for (const link of geometry.links) {
-    expect(link.visible).toBe(true);
-    expect(link.width).toBeGreaterThanOrEqual(44);
-    expect(link.height).toBeGreaterThanOrEqual(44);
+    });
+    expect(geometry.documentScrollWidth).toBeLessThanOrEqual(geometry.documentClientWidth + 1);
+    expect(geometry.navScrollWidth).toBeLessThanOrEqual(geometry.navClientWidth + 1);
+    expect(geometry.rows.length).toBeLessThanOrEqual(scenario.maxRows);
+    expect(geometry.mainPaddingBottom).toBeGreaterThanOrEqual(geometry.navHeight);
+    for (const link of geometry.links) {
+      expect(link.visible).toBe(true);
+      expect(link.width).toBeGreaterThanOrEqual(44);
+      expect(link.height).toBeGreaterThanOrEqual(44);
+      expect(link.labelInside).toBe(true);
+      expect(
+        link.labelOverflow,
+        `${scenario.width}px/${scenario.textScale * 100}% ${link.label}: `
+          + `${link.labelScrollWidth}px content in ${link.labelClientWidth}px`,
+      ).toBe(false);
+      if (scenario.reducedMotion === 'reduce') {
+        expect(link.maxTransitionDuration).toBeLessThanOrEqual(0.001);
+      }
+    }
+
+    await links.first().focus();
+    for (let index = 0; index < expectedLabels.length; index += 1) {
+      await expect(links.nth(index)).toBeFocused();
+      if (index < expectedLabels.length - 1) await page.keyboard.press('Tab');
+    }
   }
+
+  await page.goto('/log/view');
+  const currentLogbook = page.getByRole('navigation', { name: 'Primary' })
+    .getByRole('link', { name: 'Logbook', exact: true });
+  await currentLogbook.focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\/log\/view#main-content$/);
+  await expect(page.locator('#main-content')).toBeFocused();
 });
 
 test('primary navigation hands focus to main without hiding the next keyboard focus', async ({ page }) => {
