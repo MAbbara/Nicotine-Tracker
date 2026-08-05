@@ -27,6 +27,36 @@ async function expectThemeContract(page, { saved, effective }) {
 }
 
 
+async function readLandingEditorialGeometry(page) {
+  return page.locator('.landing-next').evaluate((next) => {
+    const note = next.querySelector('.landing-next__note');
+    const bodyCopy = next.querySelector(':scope > p:not(.landing-next__note)');
+    const nextRect = next.getBoundingClientRect();
+    const noteRect = note.getBoundingClientRect();
+    const bodyCopyRect = bodyCopy.getBoundingClientRect();
+    const style = getComputedStyle(next);
+    return {
+      afterContent: getComputedStyle(next, '::after').content,
+      borderBottomStyle: style.borderBottomStyle,
+      borderBottomWidth: parseFloat(style.borderBottomWidth),
+      borderTopStyle: style.borderTopStyle,
+      borderTopWidth: parseFloat(style.borderTopWidth),
+      documentHorizontalOverflow: document.documentElement.scrollWidth
+        - document.documentElement.clientWidth,
+      heroHorizontalOverflow: next.closest('.landing-hero').scrollWidth
+        - next.closest('.landing-hero').clientWidth,
+      heroVerticalOverflow: next.closest('.landing-hero').scrollHeight
+        - next.closest('.landing-hero').clientHeight,
+      nextHorizontalOverflow: next.scrollWidth - next.clientWidth,
+      nextVerticalOverflow: next.scrollHeight - next.clientHeight,
+      noteFollowsCopy: noteRect.top >= bodyCopyRect.bottom,
+      noteIsLast: next.lastElementChild === note,
+      noteAboveLowerRule: noteRect.bottom <= nextRect.bottom - parseFloat(style.borderBottomWidth) + 1,
+    };
+  });
+}
+
+
 for (const [name, path] of PUBLIC_ROUTES) {
   test(`${name} applies a saved dark choice without a harness`, async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'light' });
@@ -39,6 +69,39 @@ for (const [name, path] of PUBLIC_ROUTES) {
     await expectThemeContract(page, { saved: 'dark', effective: 'dark' });
   });
 }
+
+
+test('landing keeps both editorial rules and note ordering without a generated step number', async ({ page }, testInfo) => {
+  const mobile = testInfo.project.name.includes('mobile');
+  await page.setViewportSize(mobile
+    ? { width: 390, height: 844 }
+    : { width: 1440, height: 900 });
+  await page.goto('/');
+
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate((savedTheme) => {
+      localStorage.setItem('nicotine-tracker-theme', savedTheme);
+    }, theme);
+    await page.reload();
+    await expectThemeContract(page, { saved: theme, effective: theme });
+
+    const geometry = await readLandingEditorialGeometry(page);
+    const message = `${theme} ${mobile ? 'mobile' : 'desktop'}: ${JSON.stringify(geometry)}`;
+    expect.soft(geometry.afterContent, message).toBe('none');
+    expect.soft(geometry.borderTopStyle, message).toBe('double');
+    expect.soft(geometry.borderBottomStyle, message).toBe('double');
+    expect.soft(geometry.borderTopWidth, message).toBeGreaterThanOrEqual(3);
+    expect.soft(geometry.borderBottomWidth, message).toBeGreaterThanOrEqual(3);
+    expect.soft(geometry.noteFollowsCopy, message).toBe(true);
+    expect.soft(geometry.noteIsLast, message).toBe(true);
+    expect.soft(geometry.noteAboveLowerRule, message).toBe(true);
+    expect.soft(geometry.documentHorizontalOverflow, message).toBeLessThanOrEqual(1);
+    expect.soft(geometry.heroHorizontalOverflow, message).toBeLessThanOrEqual(1);
+    expect.soft(geometry.heroVerticalOverflow, message).toBeLessThanOrEqual(1);
+    expect.soft(geometry.nextHorizontalOverflow, message).toBeLessThanOrEqual(1);
+    expect.soft(geometry.nextVerticalOverflow, message).toBeLessThanOrEqual(1);
+  }
+});
 
 
 test('anonymous System follows initial and live device preference changes', async ({ page }) => {

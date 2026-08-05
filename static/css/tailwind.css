@@ -1006,6 +1006,10 @@
     grid-template-rows: auto auto 1fr;
   }
 
+  .auth-shell > .flash-region {
+    grid-column: 1;
+  }
+
   .auth-brand {
     justify-content: center;
   }
@@ -1014,7 +1018,7 @@
     display: grid;
     width: min(100%, 34rem);
     margin-inline: auto;
-    align-content: center;
+    align-content: start;
     padding: clamp(1.5rem, 5vw, 4rem) clamp(1rem, 4vw, 2rem) var(--space-16);
     padding-inline-start: max(clamp(1rem, 4vw, 2rem), env(safe-area-inset-left));
     padding-inline-end: max(clamp(1rem, 4vw, 2rem), env(safe-area-inset-right));
@@ -1068,6 +1072,19 @@
 
   .auth-form__submit {
     width: 100%;
+  }
+
+  @media (min-width: 48rem) {
+    .auth-content {
+      min-height: 0;
+      place-items: center;
+      align-content: center;
+      padding-block: var(--space-6);
+    }
+
+    .auth-panel {
+      width: 100%;
+    }
   }
 
   .marketing-header {
@@ -1178,21 +1195,8 @@
   }
 
   .landing-next {
-    position: relative;
     padding: clamp(1.5rem, 5vw, 3rem) 0;
     border-block: 0.1875rem double var(--color-border-strong);
-  }
-
-  .landing-next::after {
-    content: '01';
-    position: absolute;
-    inset: auto 0 -0.45em auto;
-    color: var(--color-milestone-soft);
-    font-family: var(--font-display);
-    font-size: clamp(5rem, 22vw, 9rem);
-    font-weight: 650;
-    line-height: 0.75;
-    pointer-events: none;
   }
 
   .landing-next__heading {
@@ -1229,8 +1233,6 @@
   }
 
   .landing-next .landing-next__note {
-    position: relative;
-    z-index: 1;
     max-width: 25rem;
     margin-block-start: var(--space-8);
     padding-inline-start: var(--space-4);

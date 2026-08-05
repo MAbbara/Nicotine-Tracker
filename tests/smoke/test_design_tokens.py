@@ -93,6 +93,23 @@ def test_source_has_no_rejected_visual_shortcuts():
         assert rejected not in css
 
 
+def test_auth_alignment_is_mobile_first_and_landing_has_no_generated_step_number():
+    css = SOURCE.read_text()
+    auth_base_match = re.search(r'\.auth-content\s*\{(?P<body>[^}]*)\}', css)
+    auth_desktop_match = re.search(
+        r'@media \(min-width: 48rem\)\s*\{\s*'
+        r'\.auth-content\s*\{(?P<body>[^}]*)\}',
+        css,
+    )
+
+    assert auth_base_match is not None
+    assert 'align-content: start' in auth_base_match.group('body')
+    assert auth_desktop_match is not None
+    assert 'place-items: center' in auth_desktop_match.group('body')
+    assert '.landing-next::after' not in css
+    assert re.search(r"content:\s*(['\"])01\1", css) is None
+
+
 def test_icon_inventory_is_one_pinned_family():
     icon_dir = ROOT / 'static' / 'icons'
     readme = (icon_dir / 'README.md').read_text()
