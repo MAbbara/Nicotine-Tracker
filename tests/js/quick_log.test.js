@@ -1530,6 +1530,64 @@ test('close defers controller cleanup until the shared native-close boundary', a
   assert.equal(view.returnedFocus, 0);
 });
 
+test('close immediately quarantines an in-flight create while deferring controller cleanup', async () => {
+  const { createQuickLogController } = await loadQuickLog();
+  const view = makeControllerView();
+  const timeline = makeControllerTimeline();
+  const responseGate = deferred();
+  const closeGate = deferred();
+  let closeOptions = null;
+  let aborts = 0;
+  class FakeAbortController {
+    constructor() { this.signal = {}; }
+    abort() { aborts += 1; }
+  }
+  view.close = (options) => {
+    view.closed += 1;
+    closeOptions = options;
+    return closeGate.promise;
+  };
+  const canonicalLog = {
+    id: 31,
+    client_event_id: 'event-close-quarantine',
+    occurred_at_utc: '2026-07-30T18:42:00+00:00',
+    occurred_at_local: '2026-07-30T18:42:00+00:00',
+    product_brand: 'Steady Mint',
+    quantity: 1,
+    total_nicotine_mg: '6.00',
+  };
+  const controller = createQuickLogController({
+    view,
+    timeline,
+    clock: () => new Date('2026-07-30T18:42:00Z'),
+    uuid: () => canonicalLog.client_event_id,
+    timezone: () => 'UTC',
+    fetchImpl: () => responseGate.promise,
+    AbortControllerImpl: FakeAbortController,
+  });
+  controller.open({ pouchId: 12, brand: 'Steady Mint', nicotineMg: '6.00' }, {});
+  const submission = controller.submit();
+
+  const closing = controller.close('escape');
+
+  assert.equal(aborts, 1, 'the request is quarantined when close begins');
+  assert.equal(controller.getState().status, 'submitting');
+  assert.deepEqual(timeline.failed, []);
+  responseGate.resolve(jsonResponse(201, {
+    created: true, log: canonicalLog, today: { status: 'on_track' }, warnings: [],
+  }));
+  assert.equal(await submission, false);
+  assert.deepEqual(timeline.canonical, []);
+  assert.equal(controller.getState().canonicalLog, null);
+  assert.equal(controller.getState().status, 'submitting');
+
+  closeOptions.beforeNativeClose();
+  assert.equal(controller.getState().status, 'closed');
+  assert.deepEqual(timeline.failed, [canonicalLog.client_event_id]);
+  closeGate.resolve(true);
+  assert.equal(await closing, true);
+});
+
 test('closing invalidates an abandoned create before the retained draft reopens', async () => {
   const { createQuickLogController } = await loadQuickLog();
   const view = makeControllerView();

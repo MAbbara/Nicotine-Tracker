@@ -661,6 +661,68 @@ test('close defers craving cleanup and pending-row removal to the native-close b
   assert.equal(view.returnedFocus, 0);
 });
 
+test('close immediately quarantines an in-flight craving create while deferring cleanup', async () => {
+  const { createCravingFlowController } = await loadCravingFlow();
+  const view = makeView();
+  const timeline = makeTimeline();
+  const responseGate = deferred();
+  const closeGate = deferred();
+  let closeOptions = null;
+  let aborts = 0;
+  class FakeAbortController {
+    constructor() { this.signal = {}; }
+    abort() { aborts += 1; }
+  }
+  view.close = (options) => {
+    view.closed += 1;
+    closeOptions = options;
+    return closeGate.promise;
+  };
+  const canonicalCraving = {
+    id: 41,
+    client_event_id: 'event-close-quarantine',
+    occurred_at_utc: '2026-07-30T15:42:00+00:00',
+    occurred_at_local: '2026-07-30T18:42:00+03:00',
+    intensity: 7,
+    trigger: null,
+    outcome: null,
+    linked_log_id: null,
+  };
+  const controller = createCravingFlowController({
+    view,
+    timeline,
+    clock: () => new Date('2026-07-30T18:42:18+03:00'),
+    uuid: () => canonicalCraving.client_event_id,
+    timezone: () => 'Asia/Riyadh',
+    fetchImpl: () => responseGate.promise,
+    AbortControllerImpl: FakeAbortController,
+  });
+  controller.initialize();
+  controller.open({ id: 'trigger' });
+  controller.editCheckIn({ intensity: 7 });
+  const submission = controller.submitCheckIn();
+
+  const closing = controller.close('escape');
+
+  assert.equal(aborts, 1, 'the request is quarantined when close begins');
+  assert.equal(controller.getState().status, 'check_in');
+  assert.equal(controller.getState().operation, 'create');
+  assert.deepEqual(timeline.removedCravings, []);
+  responseGate.resolve(jsonResponse(201, {
+    craving: canonicalCraving, today: null, created: true, warnings: [],
+  }));
+  await submission;
+  assert.deepEqual(timeline.canonicalCravings, []);
+  assert.equal(controller.getState().canonicalCraving, null);
+  assert.equal(controller.getState().status, 'check_in');
+
+  closeOptions.beforeNativeClose();
+  assert.equal(controller.getState().status, 'closed');
+  assert.deepEqual(timeline.removedCravings, [canonicalCraving.client_event_id]);
+  closeGate.resolve(true);
+  assert.equal(await closing, true);
+});
+
 test('validateCravingCheckIn rejects out-of-range intensity and an oversized trigger', async () => {
   const { validateCravingCheckIn, CravingFlowValidationError } = await loadCravingFlow();
 

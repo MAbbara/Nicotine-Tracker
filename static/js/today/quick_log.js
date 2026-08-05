@@ -912,9 +912,11 @@ export function createQuickLogController({
     const closable = ['editing', 'failed'].includes(state.status)
       || (state.status === 'submitting' && state.operation === 'create');
     if (!closable) return Promise.resolve(false);
+    if (state.status === 'submitting' && state.operation === 'create') {
+      invalidateActiveRequest();
+    }
     const beforeNativeClose = () => {
       if (state.status === 'submitting' && state.operation === 'create') {
-        invalidateActiveRequest();
         const error = {
           message: 'Sync paused. Your draft is still here.',
           fieldErrors: {},

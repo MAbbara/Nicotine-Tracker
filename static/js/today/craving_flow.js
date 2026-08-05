@@ -1035,9 +1035,9 @@ export function createCravingFlowController({
   function close(reason = 'dismiss') {
     if (state.status === 'closed') return Promise.resolve(false);
     const discardedClientEventId = state.canonicalCraving ? null : state.clientEventId;
+    invalidateRequest();
     const beforeNativeClose = () => {
       stopPauseTimer();
-      invalidateRequest();
       view.setBusy('create', false);
       view.setBusy('outcome', false);
       view.setBusy('details', false);
