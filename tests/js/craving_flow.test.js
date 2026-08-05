@@ -29,6 +29,12 @@ async function loadCravingFlow() {
     );
     const dialogFocusUrl = `data:text/javascript;base64,${Buffer.from(dialogFocusSource).toString('base64')}`;
     quickLogSource = quickLogSource.replace("'../shell/dialog_focus.js'", `'${dialogFocusUrl}'`);
+    const nestedLifecycleSource = fs.readFileSync(
+      path.join(projectRoot, 'static', 'js', 'shell', 'dialog_lifecycle.js'),
+      'utf8',
+    );
+    const nestedLifecycleUrl = `data:text/javascript;base64,${Buffer.from(nestedLifecycleSource).toString('base64')}`;
+    quickLogSource = quickLogSource.replace("'../shell/dialog_lifecycle.js'", `'${nestedLifecycleUrl}'`);
     const quickLogUrl = `data:text/javascript;base64,${Buffer.from(quickLogSource).toString('base64')}`;
     source = source.replace("'./quick_log.js'", `'${quickLogUrl}'`);
   }
@@ -55,6 +61,14 @@ async function loadCravingFlow() {
     );
     const dialogFocusUrl = `data:text/javascript;base64,${Buffer.from(dialogFocusSource).toString('base64')}`;
     source = source.replace("'../shell/dialog_focus.js'", `'${dialogFocusUrl}'`);
+  }
+  if (source.includes("'../shell/dialog_lifecycle.js'")) {
+    const dialogLifecycleSource = fs.readFileSync(
+      path.join(projectRoot, 'static', 'js', 'shell', 'dialog_lifecycle.js'),
+      'utf8',
+    );
+    const dialogLifecycleUrl = `data:text/javascript;base64,${Buffer.from(dialogLifecycleSource).toString('base64')}`;
+    source = source.replace("'../shell/dialog_lifecycle.js'", `'${dialogLifecycleUrl}'`);
   }
   return import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 }
@@ -1930,10 +1944,44 @@ test('Craving bootstrap reuses one controller and activation without duplicate l
   assert.notEqual(first.getState().clientEventId, clientEventId);
 });
 
+test('Craving Flow delegates native cancel and backdrop dismissal to the shared lifecycle', async () => {
+  const { bootstrapCravingFlow } = await loadCravingFlow();
+  const {
+    documentRef, root, dialog, enhanced,
+  } = makeCravingBootstrapDocument();
+
+  const controller = bootstrapCravingFlow(documentRef);
+
+  assert.ok(controller);
+  assert.equal(root.listenerCount('cancel'), 0, 'shared utility owns native cancel');
+  assert.equal(dialog.listenerCount('pointerdown'), 1);
+  assert.equal(dialog.listenerCount('pointerup'), 1);
+  assert.equal(dialog.listenerCount('cancel'), 1);
+
+  enhanced.dispatchEvent({ type: 'click' });
+  assert.equal(controller.getState().status, 'check_in');
+
+  dialog.dispatchEvent({ type: 'pointerdown', target: dialog, pointerId: 1 });
+  dialog.dispatchEvent({ type: 'pointerup', target: dialog, pointerId: 1 });
+  assert.equal(controller.getState().status, 'closed', 'backdrop activation routes to handlers.close');
+
+  enhanced.dispatchEvent({ type: 'click' });
+  assert.equal(controller.getState().status, 'check_in');
+  const cancelEvent = {
+    type: 'cancel',
+    target: dialog,
+    defaultPrevented: false,
+    preventDefault() { this.defaultPrevented = true; },
+  };
+  dialog.dispatchEvent(cancelEvent);
+  assert.equal(cancelEvent.defaultPrevented, true);
+  assert.equal(controller.getState().status, 'closed', 'Escape routes to handlers.close');
+});
+
 test('Craving bootstrap rolls back a partial initialization before a natural retry', async () => {
   const { bootstrapCravingFlow } = await loadCravingFlow();
   const {
-    documentRef, root, slot, fallback, enhanced,
+    documentRef, root, dialog, slot, fallback, enhanced,
   } = makeCravingBootstrapDocument({ failFirstRootListener: true });
   const reported = [];
   const originalError = console.error;
@@ -1958,8 +2006,12 @@ test('Craving bootstrap rolls back a partial initialization before a natural ret
   assert.ok(second);
   assert.equal(slot.dataset.controllerReady, 'true');
   assert.equal(enhanced.listenerCount('click'), 1);
-  for (const eventType of ['click', 'submit', 'input', 'change', 'cancel']) {
+  for (const eventType of ['click', 'submit', 'input', 'change']) {
     assert.equal(root.listenerCount(eventType), 1, `${eventType} is rebound exactly once`);
+  }
+  assert.equal(root.listenerCount('cancel'), 0, 'shared utility owns native cancel');
+  for (const eventType of ['pointerdown', 'pointerup', 'pointercancel', 'cancel']) {
+    assert.equal(dialog.listenerCount(eventType), 1, `dialog ${eventType} is rebound exactly once`);
   }
   assert.equal(documentRef.listenerCount('visibilitychange'), 1);
 });

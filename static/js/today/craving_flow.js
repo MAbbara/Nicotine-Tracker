@@ -2,6 +2,7 @@ import { bootstrapQuickLog, formatOffsetIso, toDateTimeLocal } from './quick_log
 import { createTimelineDomAdapter } from './timeline.js';
 import { activateActionEnhancement } from './action_enhancement.js';
 import { installDialogFocusTrap, restoreDialogFocus } from '../shell/dialog_focus.js';
+import { installDialogDismissal } from '../shell/dialog_lifecycle.js';
 
 const OUTCOMES = new Set(['resisted', 'used_nicotine', 'used_alternative']);
 const CRAVING_FLOW_CONTROLLERS = new WeakMap();
@@ -1104,6 +1105,7 @@ export function createCravingFlowDomView(root, dialog) {
   let bound = false;
   let lastStatus = null;
   let removeFocusTrap = null;
+  let removeDialogDismissal = null;
 
   function activeStep() {
     return dialog.querySelector('[data-craving-step]:not([hidden])');
@@ -1350,12 +1352,6 @@ export function createCravingFlowDomView(root, dialog) {
     }
   }
 
-  function onCancel(event) {
-    if (event.target !== dialog) return;
-    event.preventDefault();
-    handlers.close();
-  }
-
   function initialize(nextHandlers) {
     if (bound) return;
     bound = true;
@@ -1364,7 +1360,10 @@ export function createCravingFlowDomView(root, dialog) {
     root.addEventListener('submit', onSubmit);
     root.addEventListener('input', onInput);
     root.addEventListener('change', onChange);
-    root.addEventListener('cancel', onCancel, true);
+    removeDialogDismissal = installDialogDismissal(dialog, {
+      panel: dialog.querySelector('[data-dialog-panel]'),
+      dismiss: () => handlers.close(),
+    });
     removeFocusTrap = installDialogFocusTrap(dialog);
   }
 
@@ -1375,7 +1374,8 @@ export function createCravingFlowDomView(root, dialog) {
     root.removeEventListener('submit', onSubmit);
     root.removeEventListener('input', onInput);
     root.removeEventListener('change', onChange);
-    root.removeEventListener('cancel', onCancel, true);
+    removeDialogDismissal?.();
+    removeDialogDismissal = null;
     removeFocusTrap?.();
     removeFocusTrap = null;
   }

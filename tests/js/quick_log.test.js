@@ -34,6 +34,12 @@ async function loadQuickLog() {
     const dialogFocusUrl = `data:text/javascript;base64,${Buffer.from(dialogFocusSource).toString('base64')}`;
     source = source.replace("'../shell/dialog_focus.js'", `'${dialogFocusUrl}'`);
   }
+  const dialogLifecyclePath = path.join(projectRoot, 'static', 'js', 'shell', 'dialog_lifecycle.js');
+  if (source.includes("'../shell/dialog_lifecycle.js'")) {
+    const dialogLifecycleSource = fs.readFileSync(dialogLifecyclePath, 'utf8');
+    const dialogLifecycleUrl = `data:text/javascript;base64,${Buffer.from(dialogLifecycleSource).toString('base64')}`;
+    source = source.replace("'../shell/dialog_lifecycle.js'", `'${dialogLifecycleUrl}'`);
+  }
   return import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 }
 
@@ -2853,7 +2859,7 @@ test('Quick Log bootstrap reports a recoverable error and preserves the fallback
 test('Quick Log bootstrap rolls back a partially initialized controller before a natural retry', async () => {
   const { bootstrapQuickLog } = await loadQuickLog();
   const {
-    documentRef, root, slot, fallback, enhanced,
+    documentRef, root, dialog, slot, fallback, enhanced,
   } = makeBootstrapDocument({ failFirstRootListener: true });
   const reported = [];
   const originalError = console.error;
@@ -2880,12 +2886,51 @@ test('Quick Log bootstrap rolls back a partially initialized controller before a
   assert.equal(fallback.hidden, true);
   assert.equal(enhanced.hidden, false);
   assert.equal(enhanced.listenerCount('click'), 1);
-  for (const eventType of ['click', 'submit', 'input', 'change', 'toggle', 'cancel']) {
+  for (const eventType of ['click', 'submit', 'input', 'change', 'toggle']) {
     assert.equal(root.listenerCount(eventType), 1, `${eventType} is rebound exactly once`);
+  }
+  assert.equal(root.listenerCount('cancel'), 0, 'shared utility owns native cancel');
+  for (const eventType of ['pointerdown', 'pointerup', 'pointercancel', 'cancel']) {
+    assert.equal(dialog.listenerCount(eventType), 1, `dialog ${eventType} is rebound exactly once`);
   }
 
   enhanced.dispatchEvent({ type: 'click' });
   assert.equal(second.getState().status, 'editing');
   assert.equal(second.getState().draft.pouchId, 12);
+  await new Promise((resolve) => setImmediate(resolve));
+});
+
+test('Quick Log delegates native cancel and backdrop dismissal to the shared lifecycle', async () => {
+  const { bootstrapQuickLog } = await loadQuickLog();
+  const {
+    documentRef, root, dialog, enhanced,
+  } = makeBootstrapDocument();
+
+  const controller = bootstrapQuickLog(documentRef);
+
+  assert.ok(controller);
+  assert.equal(root.listenerCount('cancel'), 0, 'shared utility owns native cancel');
+  assert.equal(dialog.listenerCount('pointerdown'), 1);
+  assert.equal(dialog.listenerCount('pointerup'), 1);
+  assert.equal(dialog.listenerCount('cancel'), 1);
+
+  enhanced.dispatchEvent({ type: 'click' });
+  assert.equal(controller.getState().status, 'editing');
+
+  dialog.dispatchEvent({ type: 'pointerdown', target: dialog, pointerId: 1 });
+  dialog.dispatchEvent({ type: 'pointerup', target: dialog, pointerId: 1 });
+  assert.equal(controller.getState().status, 'closed', 'backdrop activation routes to handlers.close');
+
+  enhanced.dispatchEvent({ type: 'click' });
+  assert.equal(controller.getState().status, 'editing');
+  const cancelEvent = {
+    type: 'cancel',
+    target: dialog,
+    defaultPrevented: false,
+    preventDefault() { this.defaultPrevented = true; },
+  };
+  dialog.dispatchEvent(cancelEvent);
+  assert.equal(cancelEvent.defaultPrevented, true);
+  assert.equal(controller.getState().status, 'closed', 'Escape routes to handlers.close');
   await new Promise((resolve) => setImmediate(resolve));
 });

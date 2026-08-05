@@ -1,4 +1,5 @@
 import { installDialogFocusTrap, restoreDialogFocus } from '../shell/dialog_focus.js';
+import { installDialogDismissal, removeTransientSearchParam } from '../shell/dialog_lifecycle.js';
 
 function syncCustomProductFields(form) {
   const select = form.querySelector('[data-product-select]');
@@ -42,6 +43,13 @@ export function initLoggingForms(root = document, confirmImpl = window.confirm) 
   if (dialog && typeof dialog.showModal === 'function') {
     let returnFocus = null;
     cleanups.push(installDialogFocusTrap(dialog));
+    cleanups.push(installDialogDismissal(dialog, {
+      panel: dialog.querySelector('[data-dialog-panel]'),
+      dismiss: () => {
+        if (dialog.open) dialog.close();
+        removeTransientSearchParam(dialog.ownerDocument.defaultView, 'open_add_modal');
+      },
+    }));
     root.querySelectorAll('[data-hs-overlay="#addLogModal"]').forEach((trigger) => {
       const handleClick = (event) => {
         event.preventDefault();

@@ -2,6 +2,7 @@ import { activateActionEnhancement } from './action_enhancement.js';
 import { createTimelineDomAdapter } from './timeline.js';
 import { getOfflineQueueRuntime } from './offline_queue.js';
 import { installDialogFocusTrap, restoreDialogFocus } from '../shell/dialog_focus.js';
+import { installDialogDismissal } from '../shell/dialog_lifecycle.js';
 
 const QUICK_LOG_CONTROLLERS = new WeakMap();
 
@@ -1043,6 +1044,7 @@ export function createQuickLogDomView(root, dialog) {
   let trigger = null;
   let bound = false;
   let removeFocusTrap = null;
+  let removeDialogDismissal = null;
   let activeClientEventId = null;
 
   function confirmLabel() {
@@ -1297,12 +1299,6 @@ export function createQuickLogDomView(root, dialog) {
     if (event.target === details && details.open) handlers.loadPouches();
   }
 
-  function onCancel(event) {
-    if (event.target !== dialog) return;
-    event.preventDefault();
-    handlers.close();
-  }
-
   function initialize(nextHandlers) {
     if (bound) return;
     handlers = nextHandlers;
@@ -1312,7 +1308,10 @@ export function createQuickLogDomView(root, dialog) {
     root.addEventListener('input', onInput);
     root.addEventListener('change', onChange);
     root.addEventListener('toggle', onToggle, true);
-    root.addEventListener('cancel', onCancel, true);
+    removeDialogDismissal = installDialogDismissal(dialog, {
+      panel: dialog.querySelector('[data-dialog-panel]'),
+      dismiss: () => handlers.close(),
+    });
     removeFocusTrap = installDialogFocusTrap(dialog);
   }
 
@@ -1324,7 +1323,8 @@ export function createQuickLogDomView(root, dialog) {
     root.removeEventListener('input', onInput);
     root.removeEventListener('change', onChange);
     root.removeEventListener('toggle', onToggle, true);
-    root.removeEventListener('cancel', onCancel, true);
+    removeDialogDismissal?.();
+    removeDialogDismissal = null;
     removeFocusTrap?.();
     removeFocusTrap = null;
   }
