@@ -54,6 +54,89 @@ const SCROLLING_DIALOGS = [
 ];
 
 
+const COMPACT_DIALOGS = DIALOGS.filter(({ compact }) => compact);
+
+
+function splitComputedList(value) {
+  const items = [];
+  let depth = 0;
+  let item = '';
+  for (const character of value) {
+    if (character === '(') depth += 1;
+    if (character === ')') depth -= 1;
+    if (character === ',' && depth === 0) {
+      items.push(item.trim());
+      item = '';
+    } else {
+      item += character;
+    }
+  }
+  if (item) items.push(item.trim());
+  return items;
+}
+
+
+function durationInMilliseconds(value) {
+  const duration = Number.parseFloat(value);
+  return value.endsWith('ms') ? duration : duration * 1000;
+}
+
+
+async function readDialogMotion(dialog) {
+  return dialog.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      durations: style.transitionDuration,
+      properties: style.transitionProperty,
+      timingFunctions: style.transitionTimingFunction,
+    };
+  });
+}
+
+
+function expectDialogMotion(motion, direction) {
+  const properties = splitComputedList(motion.properties);
+  const durations = splitComputedList(motion.durations);
+  const timingFunctions = splitComputedList(motion.timingFunctions);
+  const visualProperties = properties.filter((property) => !['display', 'overlay'].includes(property));
+
+  expect(visualProperties, `${direction}: only opacity and transform may animate`).toEqual([
+    'opacity',
+    'transform',
+  ]);
+  expect(
+    properties.filter((property) => !visualProperties.includes(property))
+      .every((property) => ['display', 'overlay'].includes(property)),
+    `${direction}: any discrete transitions must only preserve native dialog lifecycle`,
+  ).toBe(true);
+
+  for (const property of visualProperties) {
+    const index = properties.indexOf(property);
+    const duration = durationInMilliseconds(durations[index % durations.length]);
+    expect(duration, `${direction}: ${property} duration`).toBeGreaterThanOrEqual(180);
+    expect(duration, `${direction}: ${property} duration`).toBeLessThanOrEqual(220);
+    expect(
+      timingFunctions[index % timingFunctions.length],
+      `${direction}: ${property} must use the shared ease-out curve`,
+    ).toBe('cubic-bezier(0.16, 1, 0.3, 1)');
+  }
+}
+
+
+async function readCloseFeedback(close) {
+  return close.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      backgroundColor: style.backgroundColor,
+      borderColor: style.borderColor,
+      borderRadius: style.borderRadius,
+      outlineStyle: style.outlineStyle,
+      outlineWidth: Number.parseFloat(style.outlineWidth),
+    };
+  });
+}
+
+
 function watchForProductProblems(page) {
   const errors = [];
   page.on('console', (message) => {
@@ -190,10 +273,42 @@ for (const contract of DIALOGS) {
     await expectSharedGeometry(page, current.panel, contract, testInfo);
 
     const close = current.dialog.locator('.c-dialog__close');
+    const panelBox = await current.panel.boundingBox();
+    const restingFeedback = await readCloseFeedback(close);
     await close.hover();
     await expect(close).toHaveCSS('cursor', 'pointer');
 
-    const panelBox = await current.panel.boundingBox();
+    if (await page.evaluate(() => matchMedia('(hover: hover)').matches)) {
+      const hoverFeedback = await readCloseFeedback(close);
+      expect(
+        hoverFeedback.backgroundColor !== restingFeedback.backgroundColor
+          || hoverFeedback.borderColor !== restingFeedback.borderColor,
+        'hover must produce calm visible color feedback',
+      ).toBe(true);
+      expect(hoverFeedback.borderRadius).toBe(restingFeedback.borderRadius);
+    }
+
+    await page.keyboard.press('Tab');
+    await close.focus();
+    const focusFeedback = await readCloseFeedback(close);
+    expect(focusFeedback.outlineStyle).not.toBe('none');
+    expect(focusFeedback.outlineWidth).toBeGreaterThanOrEqual(3);
+    expect(focusFeedback.borderRadius).toBe(restingFeedback.borderRadius);
+
+    const closeBox = await close.boundingBox();
+    await page.mouse.move(closeBox.x + closeBox.width / 2, closeBox.y + closeBox.height / 2);
+    await page.mouse.down();
+    const activeFeedback = await readCloseFeedback(close);
+    expect(
+      activeFeedback.backgroundColor !== restingFeedback.backgroundColor
+        || activeFeedback.borderColor !== restingFeedback.borderColor,
+      'active press must produce calm visible color feedback',
+    ).toBe(true);
+    expect(activeFeedback.borderRadius).toBe(restingFeedback.borderRadius);
+    await page.mouse.move(panelBox.x + panelBox.width / 2, panelBox.y + panelBox.height / 2);
+    await page.mouse.up();
+    await expect(current.dialog).toBeVisible();
+
     await page.mouse.click(panelBox.x + panelBox.width / 2, panelBox.y + 8);
     await expect(current.dialog).toBeVisible();
 
@@ -219,6 +334,80 @@ for (const contract of DIALOGS) {
     expect(errors).toEqual([]);
   });
 }
+
+
+test('add-log actions reserve the mobile safe area without changing desktop spacing', async ({ page }, testInfo) => {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setSafeAreaInsetsOverride', {
+    insets: { top: 0, right: 0, bottom: 0, left: 0 },
+  });
+
+  try {
+    await loginAs(page, 'release-inventory@example.com');
+    await page.goto('/log/view');
+    const { dialog } = await openDialog(page, DIALOGS[2]);
+    const actions = dialog.locator('.c-dialog__actions');
+    const baselinePadding = await actions.evaluate((element) => (
+      Number.parseFloat(getComputedStyle(element).paddingBottom)
+    ));
+
+    await cdp.send('Emulation.setSafeAreaInsetsOverride', {
+      insets: { top: 0, right: 0, bottom: 34, left: 0 },
+    });
+
+    const safeLayout = await actions.evaluate((element) => {
+      const actionsRect = element.getBoundingClientRect();
+      const buttonRects = [...element.querySelectorAll('button')]
+        .filter((button) => getComputedStyle(button).display !== 'none')
+        .map((button) => button.getBoundingClientRect());
+      return {
+        bottomReserve: actionsRect.bottom - Math.max(...buttonRects.map((rect) => rect.bottom)),
+        minButtonHeight: Math.min(...buttonRects.map((rect) => rect.height)),
+        paddingBottom: Number.parseFloat(getComputedStyle(element).paddingBottom),
+      };
+    });
+
+    if (testInfo.project.name.includes('mobile')) {
+      expect(safeLayout.paddingBottom - baselinePadding).toBeGreaterThanOrEqual(33);
+      expect(safeLayout.bottomReserve).toBeGreaterThanOrEqual(34);
+      expect(safeLayout.minButtonHeight).toBeGreaterThanOrEqual(44);
+    } else {
+      expect(Math.abs(safeLayout.paddingBottom - baselinePadding)).toBeLessThanOrEqual(0.1);
+    }
+  } finally {
+    await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: {} });
+    await cdp.detach();
+  }
+});
+
+
+test('quick-log and craving dialogs share compliant bidirectional motion', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await loginAs(page, 'today-targeted@example.com');
+  await page.goto('/today/');
+
+  for (const contract of COMPACT_DIALOGS) {
+    await contract.ready(page);
+    const dialog = page.locator(contract.name === 'quick log' ? 'dialog.quick-log' : 'dialog.craving-flow');
+    await expect(dialog).toBeHidden();
+    expectDialogMotion(await readDialogMotion(dialog), `${contract.name} close`);
+
+    const current = await openDialog(page, contract);
+    expectDialogMotion(await readDialogMotion(current.dialog), `${contract.name} open`);
+    await page.keyboard.press('Escape');
+    await expect(current.dialog).toBeHidden();
+  }
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  for (const contract of COMPACT_DIALOGS) {
+    const current = await openDialog(page, contract);
+    const durations = splitComputedList((await readDialogMotion(current.dialog)).durations)
+      .map(durationInMilliseconds);
+    expect(Math.max(...durations), `${contract.name} reduced-motion duration`).toBeLessThanOrEqual(1);
+    await page.keyboard.press('Escape');
+    await expect(current.dialog).toBeHidden();
+  }
+});
 
 
 for (const contract of SCROLLING_DIALOGS) {

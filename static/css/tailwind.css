@@ -4169,25 +4169,33 @@
     }
   }
 
-  .quick-log {
-    color: var(--color-ink);
+  .quick-log,
+  .craving-flow {
     opacity: 0;
+    transform: translateY(var(--space-2));
     transition:
-      opacity 180ms cubic-bezier(0.7, 0, 0.84, 0),
-      overlay 180ms allow-discrete,
-      display 180ms allow-discrete;
+      opacity var(--duration-feedback) var(--ease-out-expo),
+      transform var(--duration-feedback) var(--ease-out-expo),
+      overlay var(--duration-feedback) allow-discrete,
+      display var(--duration-feedback) allow-discrete;
   }
 
-  .quick-log[open] {
+  .quick-log[open],
+  .craving-flow[open] {
     opacity: 1;
-    transition-duration: 260ms;
-    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+    transform: translateY(0);
   }
 
   @starting-style {
-    .quick-log[open] {
+    .quick-log[open],
+    .craving-flow[open] {
       opacity: 0;
+      transform: translateY(var(--space-2));
     }
+  }
+
+  .quick-log {
+    color: var(--color-ink);
   }
 
   .quick-log::backdrop {
@@ -4471,23 +4479,6 @@
 
   .craving-flow {
     color: var(--color-ink);
-    opacity: 0;
-    transition:
-      opacity 180ms cubic-bezier(0.7, 0, 0.84, 0),
-      overlay 180ms allow-discrete,
-      display 180ms allow-discrete;
-  }
-
-  .craving-flow[open] {
-    opacity: 1;
-    transition-duration: 260ms;
-    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  @starting-style {
-    .craving-flow[open] {
-      opacity: 0;
-    }
   }
 
   .craving-flow::backdrop {
@@ -5830,8 +5821,7 @@
     font-weight: 760;
   }
 
-  .logbook-quick__action:focus-visible,
-  .log-dialog__close:focus-visible {
+  .logbook-quick__action:focus-visible {
     outline: .1875rem solid var(--color-focus);
     outline-offset: .125rem;
   }
@@ -6836,6 +6826,23 @@
     cursor: pointer;
   }
 
+  .c-dialog__close:focus-visible {
+    outline: .1875rem solid var(--color-focus);
+    outline-offset: .125rem;
+  }
+
+  @media (hover: hover) {
+    .c-dialog__close:hover {
+      border-color: var(--color-constructive);
+      background: var(--color-constructive-soft);
+    }
+  }
+
+  .c-dialog__close:active {
+    border-color: var(--color-constructive);
+    background: color-mix(in oklab, var(--color-constructive) 18%, var(--color-surface));
+  }
+
   @media (max-width: 47.999rem) {
     .c-dialog[open] {
       align-items: end;
@@ -6848,6 +6855,10 @@
       max-height: calc(100dvh - 1rem);
       margin: 1rem 0 0;
       border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+    }
+
+    .log-dialog .c-dialog__actions {
+      padding-block-end: calc(var(--space-5) + env(safe-area-inset-bottom));
     }
   }
 }
