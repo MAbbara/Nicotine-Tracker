@@ -67,6 +67,44 @@ def test_logbook_quick_add_is_idempotent_and_returns_authoritative_history(
     ).count() == 1
 
 
+def test_logbook_quick_add_reports_saved_when_fragment_rendering_fails(
+    logged_in_client, db_session, test_user, test_pouch, monkeypatch
+):
+    import routes.logging as logging_routes
+
+    original_render_template = logging_routes.render_template
+
+    def fail_history_fragment(template_name, **context):
+        if template_name == 'logging/_history.html':
+            raise RuntimeError('forced fragment rendering failure')
+        return original_render_template(template_name, **context)
+
+    monkeypatch.setattr(logging_routes, 'render_template', fail_history_fragment)
+
+    response = logged_in_client.post(
+        '/log/api/quick_add',
+        json=_logbook_payload(test_pouch.id),
+    )
+
+    assert response.status_code == 201
+    body = response.get_json()
+    assert body == {
+        'success': True,
+        'message': 'Log saved, but history could not refresh. Reload when convenient.',
+        'new_log_id': body['new_log_id'],
+        'created': True,
+        'history_html': None,
+        'fragment_version': 'logbook-history-v1',
+        'visible': False,
+        'history_refresh_failed': True,
+    }
+    persisted = db_session.query(Log).filter_by(
+        user_id=test_user.id,
+        client_event_id=EVENT_ID,
+    ).one()
+    assert persisted.id == body['new_log_id']
+
+
 @pytest.mark.parametrize(
     ('payload', 'status', 'code'),
     [

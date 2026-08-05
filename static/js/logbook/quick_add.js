@@ -1,4 +1,5 @@
 const HISTORY_SELECTOR = '[data-logbook-history]';
+const FILTER_CONTROL_SELECTOR = '[data-logbook-filters] input[name], [data-logbook-filters] select[name], [data-logbook-filters] textarea[name]';
 const FRAGMENT_VERSION = 'logbook-history-v1';
 const HIGHLIGHT_MS = 700;
 
@@ -37,12 +38,86 @@ function parseHistory(documentRef, historyHtml, fragmentVersion) {
   ) return null;
   const template = documentRef.createElement('template');
   template.innerHTML = historyHtml.trim();
+  if (template.content.children.length !== 1) return null;
   const nextRoot = template.content.firstElementChild;
   if (
     !nextRoot
+    || !nextRoot.matches(HISTORY_SELECTOR)
     || nextRoot.dataset?.fragmentVersion !== fragmentVersion
   ) return null;
   return nextRoot;
+}
+
+function keyedFilterControls(root) {
+  const occurrences = new Map();
+  return [...root.querySelectorAll(FILTER_CONTROL_SELECTOR)].map((control) => {
+    const base = `${control.tagName}:${control.name}`;
+    const occurrence = occurrences.get(base) || 0;
+    occurrences.set(base, occurrence + 1);
+    return [`${base}:${occurrence}`, control];
+  });
+}
+
+function captureHistoryState(root, documentRef) {
+  const controls = keyedFilterControls(root);
+  const activeElement = documentRef.activeElement;
+  return {
+    controls: controls.map(([key, control]) => ({
+      key,
+      value: control.value,
+      checked: control.checked,
+    })),
+    focus: controls.reduce((snapshot, [key, control]) => {
+      if (snapshot || control !== activeElement) return snapshot;
+      return {
+        key,
+        selectionStart: Number.isInteger(control.selectionStart)
+          ? control.selectionStart
+          : null,
+        selectionEnd: Number.isInteger(control.selectionEnd)
+          ? control.selectionEnd
+          : null,
+      };
+    }, null),
+  };
+}
+
+function restoreHistoryState(root, state) {
+  const nextControls = new Map(keyedFilterControls(root));
+  for (const saved of state.controls) {
+    const control = nextControls.get(saved.key);
+    if (!control) continue;
+    if (control.type === 'checkbox' || control.type === 'radio') {
+      control.checked = saved.checked;
+    } else {
+      control.value = saved.value;
+    }
+  }
+  if (!state.focus) return;
+  const focusTarget = nextControls.get(state.focus.key);
+  if (!focusTarget) return;
+  focusTarget.focus({ preventScroll: true });
+  if (
+    state.focus.selectionStart !== null
+    && typeof focusTarget.setSelectionRange === 'function'
+  ) {
+    focusTarget.setSelectionRange(
+      state.focus.selectionStart,
+      state.focus.selectionEnd,
+    );
+  }
+}
+
+function restoreScrollPosition(windowRef, position) {
+  if (
+    (windowRef.scrollX || 0) === position[0]
+    && (windowRef.scrollY || 0) === position[1]
+  ) return;
+  windowRef.scrollTo?.({
+    left: position[0],
+    top: position[1],
+    behavior: 'instant',
+  });
 }
 
 function retryAfterMessage(response) {
@@ -84,7 +159,6 @@ export function createLogbookQuickAddController({
     const clientEventId = uuid();
     const originalMarkup = button.innerHTML;
     const initiatedWithFocus = documentRef.activeElement === button;
-    const scrollPosition = [windowRef.scrollX || 0, windowRef.scrollY || 0];
     let userTransferredFocus = false;
     const notePointerTransfer = (event) => {
       if (event.target !== button) userTransferredFocus = true;
@@ -136,12 +210,18 @@ export function createLogbookQuickAddController({
         if (!currentHistory || !nextHistory) {
           announce(
             documentRef,
-            'The log was saved, but history could not refresh. Reload when convenient.',
+            body.history_refresh_failed && typeof body.message === 'string'
+              ? body.message
+              : 'The log was saved, but history could not refresh. Reload when convenient.',
             'error',
           );
           return false;
         }
+        const historyState = captureHistoryState(currentHistory, documentRef);
+        const swapScrollPosition = [windowRef.scrollX || 0, windowRef.scrollY || 0];
         currentHistory.replaceWith(nextHistory);
+        restoreHistoryState(nextHistory, historyState);
+        restoreScrollPosition(windowRef, swapScrollPosition);
         if (body.visible) {
           const newLogId = Number.parseInt(String(body.new_log_id), 10);
           const row = Number.isInteger(newLogId)
@@ -164,6 +244,10 @@ export function createLogbookQuickAddController({
       } finally {
         documentRef.removeEventListener?.('pointerdown', notePointerTransfer, true);
         documentRef.removeEventListener?.('keydown', noteKeyboardTransfer, true);
+        const completionScrollPosition = [
+          windowRef.scrollX || 0,
+          windowRef.scrollY || 0,
+        ];
         button.innerHTML = originalMarkup;
         button.disabled = false;
         delete button.dataset.busy;
@@ -172,8 +256,12 @@ export function createLogbookQuickAddController({
           && button.isConnected
           && documentRef.visibilityState !== 'hidden'
           && !userTransferredFocus
+          && (
+            documentRef.activeElement === button
+            || documentRef.activeElement === documentRef.body
+          )
         ) button.focus({ preventScroll: true });
-        windowRef.scrollTo?.(...scrollPosition);
+        restoreScrollPosition(windowRef, completionScrollPosition);
         active.delete(button);
       }
     })();

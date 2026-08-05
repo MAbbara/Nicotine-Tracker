@@ -749,7 +749,19 @@ def quick_add_api():
         current_app.logger.exception(
             'Logbook history refresh failed after quick add commit'
         )
-        return internal_error_response()
+        return jsonify({
+            'success': True,
+            'message': (
+                'Log saved, but history could not refresh. '
+                'Reload when convenient.'
+            ),
+            'new_log_id': result.log.id,
+            'created': result.created,
+            'history_html': None,
+            'fragment_version': LOGBOOK_HISTORY_FRAGMENT_VERSION,
+            'visible': False,
+            'history_refresh_failed': True,
+        }), 201 if result.created else 200
     visible = any(log.id == result.log.id for log in history.logs.items)
     message = (
         'Log saved.'

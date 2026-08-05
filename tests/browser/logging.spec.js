@@ -78,6 +78,66 @@ test('usual-product add replaces server history without navigation, focus loss, 
 });
 
 
+test('pending filter edits, focus, and user scroll survive the history swap', async ({ page }, testInfo) => {
+  await register(page, testInfo);
+  await page.goto('/log/view?q=Steady#main-content');
+  await page.evaluate(() => {
+    const spacer = document.createElement('div');
+    spacer.style.height = '1800px';
+    document.body.appendChild(spacer);
+  });
+  let releaseRequest;
+  const heldRequest = new Promise((resolve) => { releaseRequest = resolve; });
+  await page.route('**/log/api/quick_add', async (route) => {
+    await heldRequest;
+    await route.continue();
+  });
+  const button = page.getByRole('button', { name: /Log one Steady Mint/ });
+
+  await button.click();
+  await expect(button).toBeDisabled();
+  const search = page.getByLabel('Search logs');
+  await search.click();
+  await search.fill('edited while pending');
+  await page.getByLabel('From date').fill('2026-02-01');
+  await page.getByLabel('To date').fill('2026-02-28');
+  await search.focus();
+  await search.evaluate((control) => control.setSelectionRange(3, 9));
+  await page.evaluate(() => window.scrollTo(0, 900));
+  const pendingScroll = await page.evaluate(() => window.scrollY);
+  expect(pendingScroll).toBeGreaterThan(0);
+  releaseRequest();
+
+  await expect(page.locator(
+    '[data-notification-type="success"] [data-notification-message]',
+  )).toHaveText('Log saved.');
+  await expect(page.getByLabel('Search logs')).toHaveValue('edited while pending');
+  await expect(page.getByLabel('From date')).toHaveValue('2026-02-01');
+  await expect(page.getByLabel('To date')).toHaveValue('2026-02-28');
+  await expect(page.getByLabel('Search logs')).toBeFocused();
+  expect(await page.getByLabel('Search logs').evaluate((control) => [
+    control.selectionStart,
+    control.selectionEnd,
+  ])).toEqual([3, 9]);
+  expect(await page.evaluate(() => window.scrollY)).toBe(pendingScroll);
+});
+
+
+test('delete confirmation still cancels for a row inserted by quick add', async ({ page }, testInfo) => {
+  await register(page, testInfo);
+  await page.goto('/log/view?q=Steady');
+
+  await page.getByRole('button', { name: /Log one Steady Mint/ }).click();
+  const insertedRow = page.locator('.logbook-row--new');
+  await expect(insertedRow).toHaveCount(1);
+  const logId = await insertedRow.getAttribute('data-log-id');
+  page.once('dialog', (dialog) => dialog.dismiss());
+  await insertedRow.getByRole('button', { name: 'Delete' }).click();
+
+  await expect(page.locator(`[data-log-id="${logId}"]`)).toBeVisible();
+});
+
+
 test('filtered-out success keeps filters and explains that the saved row is outside the view', async ({ page }, testInfo) => {
   await register(page, testInfo);
   await page.goto('/log/view?q=does-not-match#main-content');

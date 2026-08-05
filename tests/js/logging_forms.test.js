@@ -182,3 +182,32 @@ for (const [name, dismiss] of Object.entries(DISMISSALS)) {
     cleanup();
   });
 }
+
+test('delete confirmation delegates to forms inserted after initialization', async () => {
+  const { initLoggingForms } = await loadLoggingForms();
+  const root = makeLoggingElement('document');
+  root.querySelector = () => null;
+  root.querySelectorAll = () => [];
+  const insertedForm = makeLoggingElement('inserted-delete-form');
+  insertedForm.closest = (selector) => (
+    selector === 'form[data-confirm-delete]' ? insertedForm : null
+  );
+  root.children.push(insertedForm);
+  let confirmations = 0;
+  const cleanup = initLoggingForms(root, () => {
+    confirmations += 1;
+    return false;
+  });
+  const event = {
+    type: 'submit',
+    target: insertedForm,
+    defaultPrevented: false,
+    preventDefault() { this.defaultPrevented = true; },
+  };
+
+  root.dispatchEvent(event);
+
+  assert.equal(confirmations, 1);
+  assert.equal(event.defaultPrevented, true);
+  cleanup();
+});

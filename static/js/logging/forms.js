@@ -36,13 +36,13 @@ export function initLoggingForms(root = document, confirmImpl = window.confirm) 
     cleanups.push(() => select.removeEventListener('change', handleChange));
   });
 
-  root.querySelectorAll('form[data-confirm-delete]').forEach((form) => {
-    const handleSubmit = (event) => {
-      if (!confirmImpl('Delete this log permanently?')) event.preventDefault();
-    };
-    form.addEventListener('submit', handleSubmit);
-    cleanups.push(() => form.removeEventListener('submit', handleSubmit));
-  });
+  const handleDeleteSubmit = (event) => {
+    const form = event.target?.closest?.('form[data-confirm-delete]');
+    if (!form || (typeof root.contains === 'function' && !root.contains(form))) return;
+    if (!confirmImpl('Delete this log permanently?')) event.preventDefault();
+  };
+  root.addEventListener('submit', handleDeleteSubmit);
+  cleanups.push(() => root.removeEventListener('submit', handleDeleteSubmit));
 
   const dialog = root.querySelector('#addLogModal');
   if (dialog && typeof dialog.showModal === 'function') {

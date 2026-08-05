@@ -6,7 +6,7 @@
     </div>
   </div>
 
-  <form class="logbook-filters logging-form" method="get" action="{{ url_for('logging.view_logs') }}" aria-label="Filter log history">
+  <form class="logbook-filters logging-form" method="get" action="{{ url_for('logging.view_logs') }}" aria-label="Filter log history" data-logbook-filters>
     <div class="c-field logbook-filters__search">
       <label class="c-field__label" for="logbook-search">Search logs</label>
       <input class="c-field__control" id="logbook-search" name="q" type="search" maxlength="80" value="{{ filters.q }}" placeholder="Product or note">
