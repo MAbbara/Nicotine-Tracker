@@ -22,6 +22,12 @@ const AUTH_GEOMETRY_CASES = [
   { viewport: { width: 390, height: 844 }, layout: 'mobile' },
   { viewport: { width: 320, height: 700 }, layout: 'mobile' },
 ];
+const AUTH_GEOMETRY_STATES = [
+  { name: 'login', path: '/auth/login' },
+  { name: 'login with validation flash', path: '/auth/login', flash: 'login' },
+  { name: 'register', path: '/auth/register' },
+  { name: 'register with validation flash', path: '/auth/register', flash: 'register' },
+];
 
 
 function stateNamed(name) {
@@ -31,12 +37,40 @@ function stateNamed(name) {
 }
 
 
-async function useSavedTheme(page, theme) {
+async function prepareAuthState(page, state, theme) {
+  await page.goto(state.path);
   await page.evaluate((savedTheme) => {
     localStorage.setItem('nicotine-tracker-theme', savedTheme);
   }, theme);
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+
+  if (state.flash === 'login') {
+    const responsePending = page.waitForResponse((response) => (
+      new URL(response.url()).pathname === '/auth/login'
+      && response.request().method() === 'POST'
+    ));
+    await page.getByLabel('Email address').fill('release-settings@example.com');
+    await page.getByLabel('Password').fill('wrong-password');
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    expect((await responsePending).status()).toBe(200);
+    await expect(page.getByRole('status')).toContainText('Invalid email or password.');
+  } else if (state.flash === 'register') {
+    const responsePending = page.waitForResponse((response) => (
+      new URL(response.url()).pathname === '/auth/register'
+      && response.request().method() === 'POST'
+    ));
+    await page.getByLabel('Email address').fill('release-settings@example.com');
+    await page.locator('#password').fill('browser-password');
+    await page.locator('#confirm_password').fill('browser-password');
+    await page.getByLabel('I understand this is a personal tracking tool, not medical advice.').check();
+    await page.getByRole('button', { name: 'Create account', exact: true }).click();
+    expect((await responsePending).status()).toBe(200);
+    await expect(page.getByRole('status')).toContainText(
+      'An account with this email already exists.',
+    );
+  }
+
   await page.evaluate(async () => {
     if (document.fonts?.ready) await document.fonts.ready;
   });
@@ -71,11 +105,13 @@ async function readAuthGeometry(page) {
         - document.documentElement.clientWidth,
       midpointDelta: panelMidpoint - usableMidpoint,
       panelBottom: panelRect.bottom,
+      panelHeight: panelRect.height,
       panelLeft: panelRect.left,
       panelRight: panelRect.right,
       panelTop: panelRect.top,
       shellGridRows: shellStyle.gridTemplateRows,
       shellHeight: document.body.getBoundingClientRect().height,
+      usableHeight: innerHeight - precedingBottom,
       viewportHeight: innerHeight,
       viewportWidth: innerWidth,
     };
@@ -89,25 +125,34 @@ test.describe('release page visual captures', () => {
       const projectLayout = testInfo.project.name.includes('mobile') ? 'mobile' : 'desktop';
       test.skip(projectLayout !== layout, `${layout} geometry belongs to its matching project`);
       await page.setViewportSize(viewport);
-      await page.goto('/auth/login');
 
-      for (const theme of ['light', 'dark']) {
-        await useSavedTheme(page, theme);
-        const geometry = await readAuthGeometry(page);
-        const message = `${theme} ${viewport.width}x${viewport.height}: ${JSON.stringify(geometry)}`;
+      for (const state of AUTH_GEOMETRY_STATES) {
+        for (const theme of ['light', 'dark']) {
+          await prepareAuthState(page, state, theme);
+          const geometry = await readAuthGeometry(page);
+          const message = `${state.name}, ${theme} ${viewport.width}x${viewport.height}: ${JSON.stringify(geometry)}`;
 
-        expect.soft(geometry.horizontalOverflow, message).toBeLessThanOrEqual(1);
-        expect.soft(geometry.panelLeft, message).toBeGreaterThanOrEqual(-1);
-        expect.soft(geometry.panelRight, message).toBeLessThanOrEqual(viewport.width + 1);
-        expect.soft(geometry.panelTop, message).toBeGreaterThanOrEqual(0);
-        expect.soft(geometry.panelBottom, message).toBeLessThanOrEqual(
-          geometry.documentHeight + 1,
-        );
-        if (layout === 'desktop') {
-          expect.soft(Math.abs(geometry.midpointDelta), message).toBeLessThanOrEqual(3);
-        } else {
-          expect.soft(geometry.alignContent, message).toBe('start');
-          expect.soft(geometry.clearance, message).toBeGreaterThanOrEqual(16);
+          expect.soft(geometry.horizontalOverflow, message).toBeLessThanOrEqual(1);
+          expect.soft(geometry.panelLeft, message).toBeGreaterThanOrEqual(-1);
+          expect.soft(geometry.panelRight, message).toBeLessThanOrEqual(viewport.width + 1);
+          expect.soft(geometry.panelTop, message).toBeGreaterThanOrEqual(0);
+          expect.soft(geometry.panelBottom, message).toBeLessThanOrEqual(
+            geometry.documentHeight + 1,
+          );
+          if (layout === 'desktop') {
+            const centeringIsFeasible = geometry.panelHeight <= geometry.usableHeight + 1;
+            if (centeringIsFeasible) {
+              expect.soft(Math.abs(geometry.midpointDelta), message).toBeLessThanOrEqual(3);
+            } else {
+              expect.soft(geometry.clearance, message).toBeGreaterThanOrEqual(-1);
+            }
+            expect.soft(geometry.documentHeight, message).toBeLessThanOrEqual(
+              Math.max(geometry.viewportHeight, geometry.panelBottom) + 1,
+            );
+          } else {
+            expect.soft(geometry.alignContent, message).toBe('start');
+            expect.soft(geometry.clearance, message).toBeGreaterThanOrEqual(16);
+          }
         }
       }
     });
