@@ -26,6 +26,7 @@ async function loadLoggingForms() {
 function makeLoggingElement(name) {
   return {
     name,
+    children: [],
     dataset: {},
     attributes: {},
     listeners: new Map(),
@@ -52,7 +53,12 @@ function makeLoggingElement(name) {
     getAttribute(name) { return Object.hasOwn(this.attributes, name) ? this.attributes[name] : null; },
     querySelector() { return null; },
     querySelectorAll() { return []; },
-    contains() { return false; },
+    contains(node) {
+      if (node === this) return true;
+      return this.children.some((child) => (
+        child === node || (typeof child.contains === 'function' && child.contains(node))
+      ));
+    },
     focus() {},
     showModal() { this.open = true; },
     close() {
@@ -88,6 +94,9 @@ function makeLoggingDocument({
   const dialog = makeLoggingElement('dialog');
   dialog.dataset.autoOpen = autoOpen ? 'true' : 'false';
   const addAction = makeLoggingElement('button');
+  const closeAction = makeLoggingElement('close-button');
+  const cancelAction = makeLoggingElement('cancel-button');
+  dialog.children.push(closeAction, cancelAction);
   const documentRef = makeLoggingElement('document');
   documentRef.defaultView = fakeWindow;
   documentRef.querySelector = (selector) => {
@@ -96,84 +105,80 @@ function makeLoggingDocument({
     return null;
   };
   documentRef.querySelectorAll = (selector) => {
-    if (selector === '[data-hs-overlay="#addLogModal"]') return [addAction];
+    if (selector === '[data-hs-overlay="#addLogModal"]') {
+      return [addAction, closeAction, cancelAction];
+    }
     return [];
   };
   dialog.ownerDocument = documentRef;
   addAction.ownerDocument = documentRef;
-  return { documentRef, dialog, addAction, fakeWindow };
+  closeAction.ownerDocument = documentRef;
+  cancelAction.ownerDocument = documentRef;
+  return {
+    documentRef, dialog, addAction, closeAction, cancelAction, fakeWindow,
+  };
 }
 
-test('auto-open dialog dismissal removes the transient param and preserves the rest of the URL', async () => {
-  const { initLoggingForms } = await loadLoggingForms();
-  const {
-    documentRef, dialog, fakeWindow,
-  } = makeLoggingDocument();
-
-  const cleanup = initLoggingForms(documentRef, () => true);
-  await new Promise((resolve) => setImmediate(resolve));
-
-  assert.equal(dialog.open, true, 'auto-open trigger shows the dialog');
-  assert.equal(dialog.listenerCount('pointerdown'), 1);
-  assert.equal(dialog.listenerCount('pointerup'), 1);
-  assert.equal(dialog.listenerCount('cancel'), 1);
-
-  const cancelEvent = {
-    type: 'cancel',
-    target: dialog,
-    defaultPrevented: false,
-    preventDefault() { this.defaultPrevented = true; },
-  };
-  dialog.dispatchEvent(cancelEvent);
-
-  assert.equal(cancelEvent.defaultPrevented, true, 'native cancel stays under shared control');
-  assert.equal(dialog.open, false, 'dismissal closes the native dialog');
-  assert.equal(fakeWindow.history.replaceCalls, 1);
-  assert.equal(fakeWindow.location.href, '/log/view?q=mint#main-content');
-  cleanup();
+const DISMISSALS = Object.freeze({
+  X({ closeAction }) {
+    closeAction.click();
+  },
+  Cancel({ cancelAction }) {
+    cancelAction.click();
+  },
+  Escape({ dialog }) {
+    const event = {
+      type: 'cancel',
+      target: dialog,
+      defaultPrevented: false,
+      preventDefault() { this.defaultPrevented = true; },
+    };
+    dialog.dispatchEvent(event);
+    assert.equal(event.defaultPrevented, true, 'native cancel stays under shared control');
+  },
+  backdrop({ dialog }) {
+    dialog.dispatchEvent({ type: 'pointerdown', target: dialog, pointerId: 1 });
+    dialog.dispatchEvent({ type: 'pointerup', target: dialog, pointerId: 1 });
+  },
 });
 
-test('backdrop dismissal of an auto-open dialog also strips the transient param', async () => {
-  const { initLoggingForms } = await loadLoggingForms();
-  const {
-    documentRef, dialog, fakeWindow,
-  } = makeLoggingDocument();
+for (const [name, dismiss] of Object.entries(DISMISSALS)) {
+  test(`${name} removes only the transient add-log param exactly once`, async () => {
+    const { initLoggingForms } = await loadLoggingForms();
+    const fixture = makeLoggingDocument();
+    const { documentRef, dialog, fakeWindow } = fixture;
 
-  const cleanup = initLoggingForms(documentRef, () => true);
-  await new Promise((resolve) => setImmediate(resolve));
+    const cleanup = initLoggingForms(documentRef, () => true);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(dialog.open, true, 'auto-open trigger shows the dialog');
 
-  assert.equal(dialog.open, true);
+    dismiss(fixture);
+    assert.equal(dialog.open, false, `${name} closes the native dialog`);
+    assert.equal(fakeWindow.location.href, '/log/view?q=mint#main-content');
+    assert.equal(fakeWindow.history.replaceCalls, 1);
 
-  dialog.dispatchEvent({ type: 'pointerdown', target: dialog, pointerId: 1 });
-  dialog.dispatchEvent({ type: 'pointerup', target: dialog, pointerId: 1 });
+    dismiss(fixture);
+    assert.equal(fakeWindow.location.href, '/log/view?q=mint#main-content');
+    assert.equal(fakeWindow.history.replaceCalls, 1, 'repeat dismissal does not replace twice');
+    cleanup();
+  });
 
-  assert.equal(dialog.open, false, 'backdrop activation closes the native dialog');
-  assert.equal(fakeWindow.history.replaceCalls, 1);
-  assert.equal(fakeWindow.location.href, '/log/view?q=mint#main-content');
-  cleanup();
-});
+  test(`${name} URL cleanup is a no-op when the transient param is absent`, async () => {
+    const { initLoggingForms } = await loadLoggingForms();
+    const fixture = makeLoggingDocument({
+      autoOpen: false,
+      href: '/log/view?q=mint#main-content',
+    });
+    const { documentRef, addAction, dialog, fakeWindow } = fixture;
 
-test('dismissal leaves the URL untouched when the transient param is absent', async () => {
-  const { initLoggingForms } = await loadLoggingForms();
-  const {
-    documentRef, dialog, fakeWindow,
-  } = makeLoggingDocument({ autoOpen: false, href: '/log/view?q=mint#main-content' });
+    const cleanup = initLoggingForms(documentRef, () => true);
+    addAction.click();
+    assert.equal(dialog.open, true);
 
-  const cleanup = initLoggingForms(documentRef, () => true);
-  const addAction = documentRef.querySelector('[data-logbook-add-action]');
-  addAction.click();
-  assert.equal(dialog.open, true);
-
-  const cancelEvent = {
-    type: 'cancel',
-    target: dialog,
-    defaultPrevented: false,
-    preventDefault() { this.defaultPrevented = true; },
-  };
-  dialog.dispatchEvent(cancelEvent);
-
-  assert.equal(dialog.open, false);
-  assert.equal(fakeWindow.history.replaceCalls, 0);
-  assert.equal(fakeWindow.location.href, '/log/view?q=mint#main-content');
-  cleanup();
-});
+    dismiss(fixture);
+    assert.equal(dialog.open, false, `${name} closes the native dialog`);
+    assert.equal(fakeWindow.location.href, '/log/view?q=mint#main-content');
+    assert.equal(fakeWindow.history.replaceCalls, 0);
+    cleanup();
+  });
+}

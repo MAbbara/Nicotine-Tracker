@@ -42,19 +42,20 @@ export function initLoggingForms(root = document, confirmImpl = window.confirm) 
   const dialog = root.querySelector('#addLogModal');
   if (dialog && typeof dialog.showModal === 'function') {
     let returnFocus = null;
+    const closeAddLogModal = () => {
+      if (dialog.open) dialog.close();
+      removeTransientSearchParam(dialog.ownerDocument.defaultView, 'open_add_modal');
+    };
     cleanups.push(installDialogFocusTrap(dialog));
     cleanups.push(installDialogDismissal(dialog, {
       panel: dialog.querySelector('[data-dialog-panel]'),
-      dismiss: () => {
-        if (dialog.open) dialog.close();
-        removeTransientSearchParam(dialog.ownerDocument.defaultView, 'open_add_modal');
-      },
+      dismiss: closeAddLogModal,
     }));
     root.querySelectorAll('[data-hs-overlay="#addLogModal"]').forEach((trigger) => {
       const handleClick = (event) => {
         event.preventDefault();
         if (dialog.contains(trigger)) {
-          dialog.close();
+          closeAddLogModal();
           return;
         }
         returnFocus = trigger;
