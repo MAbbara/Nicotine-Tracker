@@ -329,6 +329,46 @@ test('handoff close can explicitly suppress focus restoration', async () => {
   assert.equal(fixture.documentRef.activeElement, fixture.dialog);
 });
 
+test('reduced motion closes and restores focus without waiting for a timer or frame', async () => {
+  const { requestDialogClose } = await loadDialogLifecycle();
+  const fixture = nativeDialogFixture({ reducedMotion: true });
+  fixture.dialog.dataset.dialogState = 'open';
+
+  const closing = requestDialogClose(fixture.dialog, {
+    reason: 'escape',
+    restoreFocusTo: fixture.opener,
+  });
+
+  assert.equal(fixture.dialog.open, false);
+  assert.equal(fixture.dialog.closeCalls, 1);
+  assert.equal(fixture.dialog.dataset.dialogState, undefined);
+  assert.equal(fixture.documentRef.activeElement, fixture.opener);
+  assert.equal(await closing, true);
+});
+
+test('throwing caller cleanup still closes, restores focus, and settles the request', async () => {
+  const { requestDialogClose } = await loadDialogLifecycle();
+  const fixture = nativeDialogFixture();
+  fixture.dialog.dataset.dialogState = 'open';
+  const failure = new Error('cleanup failed');
+
+  const closing = requestDialogClose(fixture.dialog, {
+    reason: 'cancel',
+    restoreFocusTo: fixture.opener,
+    beforeNativeClose: () => { throw failure; },
+  });
+  fixture.panel.dispatchEvent({
+    type: 'transitionend', target: fixture.panel, propertyName: 'opacity',
+  });
+
+  await assert.rejects(closing, failure);
+  assert.equal(fixture.dialog.open, false);
+  assert.equal(fixture.dialog.closeCalls, 1);
+  assert.equal(fixture.dialog.inert, false);
+  assert.equal(fixture.dialog.dataset.dialogState, undefined);
+  assert.equal(fixture.documentRef.activeElement, fixture.opener);
+});
+
 test('X, Escape, and backdrop reasons all reach the promise-returning close boundary', async (t) => {
   const { installDialogDismissal, requestDialogClose } = await loadDialogLifecycle();
   assert.equal(typeof requestDialogClose, 'function', 'shared close boundary is exported');

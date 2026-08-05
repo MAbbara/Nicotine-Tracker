@@ -909,16 +909,20 @@ export function createQuickLogController({
   function close(reason = 'dismiss') {
     const closingDraft = state.draft;
     const closingPendingKey = state.pendingKey;
-    if (state.status === 'submitting' && state.operation === 'create') {
-      invalidateActiveRequest();
-      const error = {
-        message: 'Sync paused. Your draft is still here.',
-        fieldErrors: {},
-      };
-      state = quickLogReducer(state, { type: 'CREATE_FAILED', error });
-      timeline.markFailed(state.pendingKey);
-    }
-    if (['editing', 'failed'].includes(state.status)) {
+    const closable = ['editing', 'failed'].includes(state.status)
+      || (state.status === 'submitting' && state.operation === 'create');
+    if (!closable) return Promise.resolve(false);
+    const beforeNativeClose = () => {
+      if (state.status === 'submitting' && state.operation === 'create') {
+        invalidateActiveRequest();
+        const error = {
+          message: 'Sync paused. Your draft is still here.',
+          fieldErrors: {},
+        };
+        state = quickLogReducer(state, { type: 'CREATE_FAILED', error });
+        timeline.markFailed(state.pendingKey);
+      }
+      if (!['editing', 'failed'].includes(state.status)) return;
       if (
         state.operation === 'create'
         && !state.canonicalLog
@@ -927,9 +931,8 @@ export function createQuickLogController({
         publishTerminalHandoff('linked_log_handoff_closed', closingDraft);
       }
       state = quickLogReducer(state, { type: 'CLOSE' });
-      view.close({ reason });
-      view.returnFocus();
-    }
+    };
+    return Promise.resolve(view.close({ reason, beforeNativeClose }));
   }
 
   function discard() {
@@ -939,14 +942,14 @@ export function createQuickLogController({
     const pendingKey = state.pendingKey;
     const discardedDraft = state.draft;
     const finishDiscard = () => {
-      queuedEventIds.delete(pendingKey);
-      queuedRecords.delete(pendingKey);
-      timeline.removePending(pendingKey);
-      state = quickLogReducer(state, { type: 'DISCARD' });
-      publishTerminalHandoff('linked_log_handoff_closed', discardedDraft);
-      view.close({ reason: 'discard' });
-      view.returnFocus();
-      return true;
+      const beforeNativeClose = () => {
+        queuedEventIds.delete(pendingKey);
+        queuedRecords.delete(pendingKey);
+        timeline.removePending(pendingKey);
+        state = quickLogReducer(state, { type: 'DISCARD' });
+        publishTerminalHandoff('linked_log_handoff_closed', discardedDraft);
+      };
+      return Promise.resolve(view.close({ reason: 'discard', beforeNativeClose }));
     };
     if (
       queuedEventIds.has(pendingKey)
@@ -1100,11 +1103,14 @@ export function createQuickLogDomView(root, dialog) {
     confirm.focus();
   }
 
-  function close({ reason = 'dismiss', restoreFocus = true } = {}) {
+  function close({
+    reason = 'dismiss', restoreFocus = true, beforeNativeClose = null,
+  } = {}) {
     const sourceTrigger = restoreFocus ? trigger : false;
     return requestDialogClose(dialog, {
       reason,
       restoreFocusTo: sourceTrigger,
+      beforeNativeClose,
     }).then((closed) => {
       if (closed && trigger === sourceTrigger) trigger = null;
       if (closed && !restoreFocus) trigger = null;

@@ -106,7 +106,11 @@ function makeControllerView() {
     initialize(handlers) { this.initialized += 1; this.handlers = handlers; },
     cleanup() { this.cleaned += 1; },
     open(draft, trigger) { this.opened.push([draft, trigger]); this.mode = 'editing'; },
-    close() { this.closed += 1; },
+    close(options = {}) {
+      this.closed += 1;
+      options.beforeNativeClose?.();
+      return Promise.resolve(true);
+    },
     returnFocus() { this.returnedFocus += 1; },
     setBusy(value) { this.busy.push(value); },
     announce(message) { this.announcements.push(message); },
@@ -1492,7 +1496,38 @@ test('closing an active create aborts the client wait and retains the failed dra
   assert.equal(controller.getState().pendingKey, draft.clientEventId);
   assert.deepEqual(timeline.failed, [draft.clientEventId]);
   assert.equal(view.closed, 1);
-  assert.equal(view.returnedFocus, 1);
+  assert.equal(view.returnedFocus, 0);
+});
+
+test('close defers controller cleanup until the shared native-close boundary', async () => {
+  const { createQuickLogController } = await loadQuickLog();
+  const view = makeControllerView();
+  const timeline = makeControllerTimeline();
+  const closeGate = deferred();
+  let closeOptions = null;
+  view.close = (options) => {
+    view.closed += 1;
+    closeOptions = options;
+    return closeGate.promise;
+  };
+  const controller = createQuickLogController({
+    view,
+    timeline,
+    clock: () => new Date('2026-07-30T18:42:00Z'),
+    uuid: () => '550e8400-e29b-41d4-a716-446655440000',
+    timezone: () => 'UTC',
+  });
+  controller.open({ pouchId: 12, brand: 'Steady Mint', nicotineMg: '6.00' }, {});
+
+  const closing = controller.close('escape');
+
+  assert.equal(controller.getState().status, 'editing');
+  assert.equal(typeof closeOptions.beforeNativeClose, 'function');
+  closeOptions.beforeNativeClose();
+  assert.equal(controller.getState().status, 'closed');
+  closeGate.resolve(true);
+  assert.equal(await closing, true);
+  assert.equal(view.returnedFocus, 0);
 });
 
 test('closing invalidates an abandoned create before the retained draft reopens', async () => {
@@ -1602,7 +1637,7 @@ test('Discard removes only the failed pending draft and closes the dialog', asyn
     canonicalLog: null, error: null, undoDeadline: null,
   });
   assert.equal(view.closed, 1);
-  assert.equal(view.returnedFocus, 1);
+  assert.equal(view.returnedFocus, 0);
 });
 
 test('todayStatusPatch derives every visible total only from the canonical server summary', async () => {
@@ -2919,6 +2954,12 @@ test('Quick Log delegates native cancel and backdrop dismissal to the shared lif
 
   dialog.dispatchEvent({ type: 'pointerdown', target: dialog, pointerId: 1 });
   dialog.dispatchEvent({ type: 'pointerup', target: dialog, pointerId: 1 });
+  assert.equal(controller.getState().status, 'editing', 'cleanup waits for the exit boundary');
+  dialog.querySelector('[data-dialog-panel]').dispatchEvent({
+    type: 'transitionend',
+    target: dialog.querySelector('[data-dialog-panel]'),
+    propertyName: 'opacity',
+  });
   assert.equal(controller.getState().status, 'closed', 'backdrop activation routes to handlers.close');
 
   enhanced.dispatchEvent({ type: 'click' });
@@ -2931,6 +2972,12 @@ test('Quick Log delegates native cancel and backdrop dismissal to the shared lif
   };
   dialog.dispatchEvent(cancelEvent);
   assert.equal(cancelEvent.defaultPrevented, true);
+  assert.equal(controller.getState().status, 'editing', 'Escape cleanup waits for the exit boundary');
+  dialog.querySelector('[data-dialog-panel]').dispatchEvent({
+    type: 'transitionend',
+    target: dialog.querySelector('[data-dialog-panel]'),
+    propertyName: 'transform',
+  });
   assert.equal(controller.getState().status, 'closed', 'Escape routes to handlers.close');
   await new Promise((resolve) => setImmediate(resolve));
 });

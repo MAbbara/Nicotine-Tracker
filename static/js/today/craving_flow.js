@@ -1024,25 +1024,27 @@ export function createCravingFlowController({
 
   function done() {
     if (state.status !== 'complete') return false;
-    state = cravingFlowReducer(state, { type: 'DONE' });
-    view.close({ reason: 'complete' });
-    view.returnFocus();
-    return true;
+    return Promise.resolve(view.close({
+      reason: 'complete',
+      beforeNativeClose: () => {
+        state = cravingFlowReducer(state, { type: 'DONE' });
+      },
+    }));
   }
 
   function close(reason = 'dismiss') {
-    if (state.status === 'closed') return false;
+    if (state.status === 'closed') return Promise.resolve(false);
     const discardedClientEventId = state.canonicalCraving ? null : state.clientEventId;
-    stopPauseTimer();
-    invalidateRequest();
-    view.setBusy('create', false);
-    view.setBusy('outcome', false);
-    view.setBusy('details', false);
-    state = cravingFlowReducer(state, { type: 'CLOSE' });
-    if (discardedClientEventId) timeline.removePendingCraving(discardedClientEventId);
-    view.close({ reason });
-    view.returnFocus();
-    return true;
+    const beforeNativeClose = () => {
+      stopPauseTimer();
+      invalidateRequest();
+      view.setBusy('create', false);
+      view.setBusy('outcome', false);
+      view.setBusy('details', false);
+      state = cravingFlowReducer(state, { type: 'CLOSE' });
+      if (discardedClientEventId) timeline.removePendingCraving(discardedClientEventId);
+    };
+    return Promise.resolve(view.close({ reason, beforeNativeClose }));
   }
 
   function initialize() {
@@ -1232,11 +1234,14 @@ export function createCravingFlowDomView(root, dialog) {
     focusStep(activeStep());
   }
 
-  function close({ reason = 'dismiss', restoreFocus = true } = {}) {
+  function close({
+    reason = 'dismiss', restoreFocus = true, beforeNativeClose = null,
+  } = {}) {
     const trigger = restoreFocus ? sourceTrigger : false;
     return requestDialogClose(dialog, {
       reason,
       restoreFocusTo: trigger,
+      beforeNativeClose,
     }).then((closed) => {
       if (closed && sourceTrigger === trigger) sourceTrigger = null;
       if (closed && !restoreFocus) sourceTrigger = null;

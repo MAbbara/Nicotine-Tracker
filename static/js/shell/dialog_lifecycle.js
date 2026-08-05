@@ -1,5 +1,4 @@
 const EXIT_FALLBACK_MS = 260;
-const REDUCED_MOTION_EXIT_MS = 1;
 
 function dialogWindow(dialog) {
   return dialog?.ownerDocument?.defaultView || globalThis;
@@ -46,12 +45,33 @@ function focusAfterNativeClose(dialog, opener) {
 }
 
 function finishDialogClose(dialog, { reason, restoreFocusTo, beforeNativeClose }) {
-  beforeNativeClose?.();
-  dialog.close(reason);
-  dialog.inert = false;
-  delete dialog.dataset.dialogState;
-  focusAfterNativeClose(dialog, restoreFocusTo);
+  let cleanupFailure = null;
+  let closeFailure = null;
+  try {
+    beforeNativeClose?.();
+  } catch (error) {
+    cleanupFailure = error;
+  }
+  try {
+    dialog.close(reason);
+  } catch (error) {
+    closeFailure = error;
+  } finally {
+    dialog.inert = false;
+    delete dialog.dataset.dialogState;
+    focusAfterNativeClose(dialog, restoreFocusTo);
+  }
+  if (cleanupFailure) throw cleanupFailure;
+  if (closeFailure) throw closeFailure;
   return true;
+}
+
+function finishDialogCloseRequest(dialog, options) {
+  try {
+    return Promise.resolve(finishDialogClose(dialog, options));
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 export function showDialog(dialog) {
@@ -84,19 +104,18 @@ export function requestDialogClose(dialog, {
 
   dialog.dataset.dialogState = 'closing';
   dialog.inert = true;
+  const options = { reason, restoreFocusTo, beforeNativeClose };
+  if (reducedMotionRequested(dialog)) {
+    return finishDialogCloseRequest(dialog, options);
+  }
   const panel = dialog.querySelector?.('[data-dialog-panel]');
   if (!panel) {
-    return Promise.resolve(finishDialogClose(dialog, {
-      reason, restoreFocusTo, beforeNativeClose,
-    }));
+    return finishDialogCloseRequest(dialog, options);
   }
 
   const windowRef = dialogWindow(dialog);
-  const timeoutMs = reducedMotionRequested(dialog)
-    ? REDUCED_MOTION_EXIT_MS
-    : EXIT_FALLBACK_MS;
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     let timer = null;
     let finished = false;
     const complete = () => {
@@ -104,9 +123,11 @@ export function requestDialogClose(dialog, {
       finished = true;
       panel.removeEventListener('transitionend', onTransitionEnd);
       windowRef.clearTimeout?.(timer);
-      resolve(finishDialogClose(dialog, {
-        reason, restoreFocusTo, beforeNativeClose,
-      }));
+      try {
+        resolve(finishDialogClose(dialog, options));
+      } catch (error) {
+        reject(error);
+      }
     };
     const onTransitionEnd = (event) => {
       if (
@@ -115,7 +136,8 @@ export function requestDialogClose(dialog, {
       ) complete();
     };
     panel.addEventListener('transitionend', onTransitionEnd);
-    timer = windowRef.setTimeout?.(complete, timeoutMs) ?? setTimeout(complete, timeoutMs);
+    timer = windowRef.setTimeout?.(complete, EXIT_FALLBACK_MS)
+      ?? setTimeout(complete, EXIT_FALLBACK_MS);
   });
 }
 

@@ -521,12 +521,19 @@ for (const contract of DIALOGS) {
       .map(durationInMilliseconds);
     expect(Math.max(...panelDurations)).toBeLessThanOrEqual(1);
     expect(Math.max(...backdropDurations)).toBeLessThanOrEqual(1);
-    const closeElapsed = await reduced.dialog.evaluate((element) => new Promise((resolve) => {
-      const startedAt = performance.now();
-      element.addEventListener('close', () => resolve(performance.now() - startedAt), { once: true });
+    const reducedClose = await reduced.dialog.evaluate((element, openerSelector) => {
+      const opener = document.querySelector(openerSelector);
       element.querySelector('.c-dialog__close').click();
-    }));
-    expect(closeElapsed).toBeLessThanOrEqual(32);
+      return {
+        focusRestored: document.activeElement === opener,
+        open: element.open,
+        state: element.dataset.dialogState || null,
+      };
+    }, contract.opener);
+    expect(reducedClose.open).toBe(false);
+    expect(reducedClose.state).toBeNull();
+    expect(reducedClose.focusRestored).toBe(true);
+    await expect(reduced.dialog).toBeHidden();
     await expect(reduced.opener).toBeFocused();
   });
 }

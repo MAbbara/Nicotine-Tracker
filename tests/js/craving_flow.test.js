@@ -130,7 +130,11 @@ function makeView() {
     setBusy(operation, value) { this.busy.push([operation, value]); },
     showFailure(error) { this.failures.push(error); },
     announce(message) { this.announcements.push(message); },
-    close() { this.closed += 1; },
+    close(options = {}) {
+      this.closed += 1;
+      options.beforeNativeClose?.();
+      return Promise.resolve(true);
+    },
     showQuickLogHandoff(message) { this.quickLogHandoffs.push(message); },
     showQuickLogUnavailable(message) { this.quickLogUnavailable.push(message); },
     returnedFocus: 0,
@@ -619,7 +623,42 @@ test('cancelling a pre-canonical recovery removes only its temporary timeline ro
 
   assert.equal(controller.getState().status, 'closed');
   assert.deepEqual(timeline.removedCravings, [clientEventId]);
-  assert.equal(view.returnedFocus, 1);
+  assert.equal(view.returnedFocus, 0);
+});
+
+test('close defers craving cleanup and pending-row removal to the native-close boundary', async () => {
+  const { createCravingFlowController } = await loadCravingFlow();
+  const view = makeView();
+  const timeline = makeTimeline();
+  const closeGate = deferred();
+  let closeOptions = null;
+  view.close = (options) => {
+    view.closed += 1;
+    closeOptions = options;
+    return closeGate.promise;
+  };
+  const clientEventId = 'event-deferred-close';
+  const controller = createCravingFlowController({
+    view,
+    timeline,
+    clock: () => new Date('2026-07-30T18:42:18+03:00'),
+    uuid: () => clientEventId,
+    timezone: () => 'Asia/Riyadh',
+  });
+  controller.initialize();
+  controller.open({ id: 'trigger' });
+
+  const closing = controller.close('escape');
+
+  assert.equal(controller.getState().status, 'check_in');
+  assert.deepEqual(timeline.removedCravings, []);
+  assert.equal(typeof closeOptions.beforeNativeClose, 'function');
+  closeOptions.beforeNativeClose();
+  assert.equal(controller.getState().status, 'closed');
+  assert.deepEqual(timeline.removedCravings, [clientEventId]);
+  closeGate.resolve(true);
+  assert.equal(await closing, true);
+  assert.equal(view.returnedFocus, 0);
 });
 
 test('validateCravingCheckIn rejects out-of-range intensity and an oversized trigger', async () => {
@@ -700,7 +739,7 @@ test('pause timer recomputes on visibility resume and cleanup clears the active 
 
   controller.close();
   assert.deepEqual(cleared, [91]);
-  assert.equal(view.returnedFocus, 1);
+  assert.equal(view.returnedFocus, 0);
 });
 
 test('outcome submission PATCHes each exact canonical value before showing details', async (t) => {
@@ -1939,7 +1978,10 @@ test('Craving bootstrap reuses one controller and activation without duplicate l
   const clientEventId = first.getState().clientEventId;
   assert.ok(clientEventId);
 
-  first.close();
+  const closing = first.close();
+  const panel = dialog.querySelector('[data-dialog-panel]');
+  panel.dispatchEvent({ type: 'transitionend', target: panel, propertyName: 'opacity' });
+  await closing;
   enhanced.dispatchEvent({ type: 'click' });
   assert.notEqual(first.getState().clientEventId, clientEventId);
 });
@@ -1963,6 +2005,12 @@ test('Craving Flow delegates native cancel and backdrop dismissal to the shared 
 
   dialog.dispatchEvent({ type: 'pointerdown', target: dialog, pointerId: 1 });
   dialog.dispatchEvent({ type: 'pointerup', target: dialog, pointerId: 1 });
+  assert.equal(controller.getState().status, 'check_in', 'cleanup waits for the exit boundary');
+  dialog.querySelector('[data-dialog-panel]').dispatchEvent({
+    type: 'transitionend',
+    target: dialog.querySelector('[data-dialog-panel]'),
+    propertyName: 'opacity',
+  });
   assert.equal(controller.getState().status, 'closed', 'backdrop activation routes to handlers.close');
 
   enhanced.dispatchEvent({ type: 'click' });
@@ -1975,6 +2023,12 @@ test('Craving Flow delegates native cancel and backdrop dismissal to the shared 
   };
   dialog.dispatchEvent(cancelEvent);
   assert.equal(cancelEvent.defaultPrevented, true);
+  assert.equal(controller.getState().status, 'check_in', 'Escape cleanup waits for the exit boundary');
+  dialog.querySelector('[data-dialog-panel]').dispatchEvent({
+    type: 'transitionend',
+    target: dialog.querySelector('[data-dialog-panel]'),
+    propertyName: 'transform',
+  });
   assert.equal(controller.getState().status, 'closed', 'Escape routes to handlers.close');
 });
 
