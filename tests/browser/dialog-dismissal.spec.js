@@ -40,6 +40,20 @@ const DIALOGS = [
 ];
 
 
+const SCROLLING_DIALOGS = [
+  {
+    ...DIALOGS[0],
+    async exposeOverflow(dialog) {
+      await dialog.locator('[data-quick-log-details] > summary').click();
+    },
+  },
+  {
+    ...DIALOGS[1],
+    async exposeOverflow() {},
+  },
+];
+
+
 function watchForProductProblems(page) {
   const errors = [];
   page.on('console', (message) => {
@@ -123,6 +137,48 @@ async function expectSharedGeometry(page, panel, { compact }, testInfo) {
 }
 
 
+async function readActionVisibility(body, actions, panel) {
+  return body.evaluate((bodyElement, { actionsElement, panelElement }) => {
+    const bodyRect = bodyElement.getBoundingClientRect();
+    const actionsRect = actionsElement.getBoundingClientRect();
+    const panelRect = panelElement.getBoundingClientRect();
+    const clippingTop = Math.max(bodyRect.top, panelRect.top, 0);
+    const clippingBottom = Math.min(bodyRect.bottom, panelRect.bottom, innerHeight);
+    const visibleHeight = Math.max(
+      0,
+      Math.min(actionsRect.bottom, clippingBottom) - Math.max(actionsRect.top, clippingTop),
+    );
+    return {
+      actionHeight: actionsRect.height,
+      actionsBottom: actionsRect.bottom,
+      actionsTop: actionsRect.top,
+      bodyBottom: bodyRect.bottom,
+      bodyClientHeight: bodyElement.clientHeight,
+      bodyTop: bodyRect.top,
+      bodyScrollHeight: bodyElement.scrollHeight,
+      maxScrollTop: bodyElement.scrollHeight - bodyElement.clientHeight,
+      position: getComputedStyle(actionsElement).position,
+      panelBottom: panelRect.bottom,
+      panelTop: panelRect.top,
+      scrollTop: bodyElement.scrollTop,
+      visibleHeight,
+    };
+  }, {
+    actionsElement: await actions.elementHandle(),
+    panelElement: await panel.elementHandle(),
+  });
+}
+
+
+async function expectActionVisibility(state, stage) {
+  const requiredVisibleHeight = Math.min(state.actionHeight, state.bodyClientHeight) * 0.75;
+  expect.soft(
+    state.visibleHeight,
+    `${stage}: actions must remain visibly intersecting the dialog body; ${JSON.stringify(state)}`,
+  ).toBeGreaterThanOrEqual(requiredVisibleHeight);
+}
+
+
 for (const contract of DIALOGS) {
   test(`${contract.name} shares safe dismissal and responsive geometry`, async ({ page }, testInfo) => {
     const errors = watchForProductProblems(page);
@@ -161,6 +217,47 @@ for (const contract of DIALOGS) {
     await expect(current.dialog).toBeHidden();
     await expect(current.opener).toBeFocused();
     expect(errors).toEqual([]);
+  });
+}
+
+
+for (const contract of SCROLLING_DIALOGS) {
+  test(`${contract.name} actions remain visible while its overflowing body scrolls`, async ({ page }, testInfo) => {
+    const mobile = testInfo.project.name.includes('mobile');
+    await page.setViewportSize({ width: mobile ? 390 : 1024, height: 360 });
+    await loginAs(page, contract.email);
+    await page.goto(contract.path);
+    await contract.ready(page);
+
+    const { dialog, panel } = await openDialog(page, contract);
+    await contract.exposeOverflow(dialog);
+    const body = dialog.locator('.c-dialog__body');
+    const actions = body.locator('.c-dialog__actions:visible').first();
+    await expect(actions).toBeVisible();
+    await expect.poll(
+      () => body.evaluate((element) => element.scrollHeight - element.clientHeight),
+      { message: `${contract.name} fixture must genuinely overflow` },
+    ).toBeGreaterThan(32);
+
+    const initial = await readActionVisibility(body, actions, panel);
+    expect.soft(initial.position, 'the action row must use sticky positioning').toBe('sticky');
+    await expectActionVisibility(initial, 'before scrolling');
+
+    await body.evaluate((element) => {
+      element.scrollTop = (element.scrollHeight - element.clientHeight) / 2;
+    });
+    await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    const midway = await readActionVisibility(body, actions, panel);
+    await expectActionVisibility(midway, 'after meaningful scrolling');
+
+    await body.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect.poll(
+      () => body.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop),
+    ).toBeLessThanOrEqual(1);
+    const atBottom = await readActionVisibility(body, actions, panel);
+    await expectActionVisibility(atBottom, 'at the bottom of the scroll range');
   });
 }
 

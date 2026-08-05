@@ -6716,9 +6716,12 @@
     max-width: 36rem;
   }
 
-  .c-dialog__header,
-  .c-dialog__actions {
+  .c-dialog__header {
     position: relative;
+    z-index: 1;
+  }
+
+  .c-dialog__actions {
     z-index: 1;
   }
 
