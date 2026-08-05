@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-const { RELEASE_STATES } = require('../browser/helpers/release_manifest');
+const { RELEASE_STATES, loginAs } = require('../browser/helpers/release_manifest');
 const {
   rebuildArtifactCatalog,
   runPageCapture,
@@ -214,6 +214,41 @@ test.describe('release page visual captures', () => {
       await expectNarrowReflow(page, result, { stateName });
     });
   }
+
+  test('You rows reserve arrow space for long labels at 320px and 200% text', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name.includes('mobile'), 'One canonical narrow-text geometry check');
+    await page.setViewportSize({ width: 320, height: 900 });
+    await page.addInitScript(() => localStorage.setItem('nicotine-tracker-theme', 'light'));
+    await loginAs(page, 'release-settings@example.com');
+    await page.goto('/you/');
+    await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+    await page.locator('.you-links > a strong').evaluateAll((labels) => {
+      labels.forEach((label, index) => {
+        label.textContent = `A deliberately long account preference label ${index + 1}`;
+      });
+    });
+
+    const geometry = await page.locator('.you-links > a').evaluateAll((links) => ({
+      documentOverflow: document.documentElement.scrollWidth
+        - document.documentElement.clientWidth,
+      rows: links.map((link) => {
+        const copy = link.querySelector(':scope > span:nth-child(2)').getBoundingClientRect();
+        const arrow = link.querySelector(':scope > span[aria-hidden="true"]').getBoundingClientRect();
+        const row = link.getBoundingClientRect();
+        return {
+          arrowLeft: arrow.left,
+          arrowRight: arrow.right,
+          copyRight: copy.right,
+          rowRight: row.right,
+        };
+      }),
+    }));
+    expect(geometry.documentOverflow).toBeLessThanOrEqual(1);
+    for (const row of geometry.rows) {
+      expect(row.copyRight).toBeLessThanOrEqual(row.arrowLeft + 1);
+      expect(row.arrowRight).toBeLessThanOrEqual(row.rowRight + 1);
+    }
+  });
 
   test.afterAll(async ({ browser }, testInfo) => {
     await rebuildArtifactCatalog({ browser, projectName: testInfo.project.name });

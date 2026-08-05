@@ -380,7 +380,7 @@ test('Add Log explicit cancel recovers to main when its opener is disconnected',
 });
 
 
-test('Today, Insights, Profile, and Logbook support 200% text and reduced motion', async ({ page }) => {
+test('Today, Insights, You, Profile, and Logbook support 200% text and reduced motion', async ({ page }) => {
   test.setTimeout(60_000);
   const errors = collectBrowserErrors(page);
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -391,6 +391,7 @@ test('Today, Insights, Profile, and Logbook support 200% text and reduced motion
   for (const [path, heading] of [
     ['/today', 'Today'],
     ['/insights/', 'Insights'],
+    ['/you/', 'You'],
     ['/settings/profile', 'Profile'],
     ['/log/view', 'Logbook'],
   ]) {
@@ -400,6 +401,31 @@ test('Today, Insights, Profile, and Logbook support 200% text and reduced motion
     await expectNoUncontainedHorizontalOverflow(page);
     await expectNoWcagViolations(page);
     expectNoUnexpectedBrowserErrors(errors);
+  }
+
+  await page.goto('/you/');
+  await page.locator('.you-links > a strong').evaluateAll((labels) => {
+    labels.forEach((label, index) => {
+      label.textContent = `A deliberately long account preference label ${index + 1}`;
+    });
+  });
+  const youLinkGeometry = await page.locator('.you-links > a').evaluateAll((links) => ({
+    overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    rows: links.map((link) => {
+      const copy = link.querySelector(':scope > span:nth-child(2)').getBoundingClientRect();
+      const arrow = link.querySelector(':scope > span[aria-hidden="true"]').getBoundingClientRect();
+      return {
+        copyRight: copy.right,
+        arrowLeft: arrow.left,
+        linkRight: link.getBoundingClientRect().right,
+        arrowRight: arrow.right,
+      };
+    }),
+  }));
+  expect(youLinkGeometry.overflow).toBeLessThanOrEqual(1);
+  for (const row of youLinkGeometry.rows) {
+    expect(row.copyRight).toBeLessThanOrEqual(row.arrowLeft + 1);
+    expect(row.arrowRight).toBeLessThanOrEqual(row.linkRight + 1);
   }
 
   await page.goto('/today');

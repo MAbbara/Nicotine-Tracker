@@ -73,6 +73,46 @@ test('five-item primary navigation stays touchable at 320px and 200 percent text
   }
 });
 
+test('primary navigation hands focus to main without hiding the next keyboard focus', async ({ page }) => {
+  const today = page.getByRole('navigation', { name: 'Primary' })
+    .getByRole('link', { name: 'Today', exact: true });
+  await today.focus();
+  await page.keyboard.press('Enter');
+
+  const main = page.locator('#main-content');
+  await expect(page).toHaveURL(/\/today\/#main-content$/);
+  await expect(main).toHaveAttribute('tabindex', '-1');
+  await expect(main).toBeFocused();
+  const mainFocus = await main.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      outlineStyle: style.outlineStyle,
+      outlineWidth: parseFloat(style.outlineWidth),
+    };
+  });
+  expect(mainFocus.outlineStyle).toBe('none');
+
+  await page.keyboard.press('Tab');
+  const nextFocus = page.locator(':focus');
+  expect(await nextFocus.evaluate((element) => element.matches([
+    'a[href]',
+    'button:not([disabled])',
+    'input:not([disabled])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    '[role="button"]',
+  ].join(',')))).toBe(true);
+  const nextFocusStyle = await nextFocus.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      outlineStyle: style.outlineStyle,
+      outlineWidth: parseFloat(style.outlineWidth),
+    };
+  });
+  expect(nextFocusStyle.outlineStyle).not.toBe('none');
+  expect(nextFocusStyle.outlineWidth).toBeGreaterThanOrEqual(3);
+});
+
 test('theme choice publishes one effective contract and System alone follows the device', async ({ page }) => {
   const recorder = createBehaviorRecorder(OWNER_TITLES.theme, expect);
   await page.emulateMedia({ colorScheme: 'light' });

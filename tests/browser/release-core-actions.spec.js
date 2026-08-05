@@ -30,6 +30,40 @@ async function keyboardActivate(page, locator) {
 }
 
 
+async function resolvedTokenColor(page, token) {
+  return page.locator('body').evaluate((body, property) => {
+    const probe = document.createElement('span');
+    probe.style.cssText = `position:fixed;visibility:hidden;background:${property}`;
+    body.append(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  }, `var(${token})`);
+}
+
+
+async function readYouRowState(link) {
+  return link.evaluate((element) => {
+    const icon = element.querySelector(':scope > svg');
+    const arrow = element.querySelector(':scope > span[aria-hidden="true"]');
+    const style = getComputedStyle(element);
+    const accent = getComputedStyle(element, '::before');
+    return {
+      accentLeft: accent.left,
+      accentOpacity: parseFloat(accent.opacity),
+      accentRight: accent.right,
+      arrowTransform: getComputedStyle(arrow).transform,
+      background: style.backgroundColor,
+      iconColor: getComputedStyle(icon).color,
+      outlineStyle: style.outlineStyle,
+      outlineWidth: parseFloat(style.outlineWidth),
+      transform: style.transform,
+      transitionDuration: style.transitionDuration,
+    };
+  });
+}
+
+
 async function signOut(page) {
   const response = await page.request.get('/auth/logout');
   expect(response.status()).toBe(200);
@@ -376,6 +410,89 @@ test('public and authenticated chrome actions reach focus and navigation targets
   await expectGuardClean(insightsGuard, page, 'Insights chrome activation', {
     allowAnalytics: true,
   });
+});
+
+
+test('every You link has restrained theme-aware keyboard, pointer, and touch states', async ({ page }, testInfo) => {
+  await loginAs(page, 'release-settings@example.com');
+  const touchProject = testInfo.project.name.includes('mobile');
+
+  for (const theme of ['light', 'dark']) {
+    await page.goto('/you/');
+    await page.evaluate((value) => localStorage.setItem('nicotine-tracker-theme', value), theme);
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+
+    const rows = page.locator('.you-links > a');
+    await expect(rows).toHaveCount(5);
+    const raisedSurface = await resolvedTokenColor(page, '--color-surface-raised');
+
+    for (let index = 0; index < await rows.count(); index += 1) {
+      const row = rows.nth(index);
+      await row.scrollIntoViewIfNeeded();
+      const rest = await readYouRowState(row);
+
+      await row.focus();
+      await page.keyboard.press('Shift+Tab');
+      await page.keyboard.press('Tab');
+      await expect(row).toBeFocused();
+      expect(await row.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
+      const focused = await readYouRowState(row);
+      expect(focused.outlineStyle).not.toBe('none');
+      expect(focused.outlineWidth).toBeGreaterThanOrEqual(3);
+
+      if (touchProject) {
+        await row.evaluate((element) => {
+          element.addEventListener('click', (event) => event.preventDefault(), { once: true });
+        });
+        await row.tap();
+        const afterTap = await readYouRowState(row);
+        expect(afterTap.background).toBe(rest.background);
+        expect(afterTap.arrowTransform).toBe(rest.arrowTransform);
+        continue;
+      }
+
+      await row.hover();
+      await expect.poll(async () => (await readYouRowState(row)).accentOpacity).toBe(1);
+      const hovered = await readYouRowState(row);
+      expect(hovered.background).not.toBe(rest.background);
+      expect(hovered.background).not.toBe(raisedSurface);
+      expect(hovered.iconColor).not.toBe(rest.iconColor);
+      expect(hovered.arrowTransform).not.toBe(rest.arrowTransform);
+
+      const box = await row.boundingBox();
+      expect(box).not.toBeNull();
+      await row.evaluate((element) => {
+        element.addEventListener('click', (event) => event.preventDefault(), { once: true });
+      });
+      await page.mouse.move(box.x + (box.width / 2), box.y + (box.height / 2));
+      await page.mouse.down();
+      await expect.poll(async () => (await readYouRowState(row)).transform)
+        .not.toBe(rest.transform);
+      await page.mouse.up();
+
+      await row.evaluate((element) => { document.documentElement.dir = 'rtl'; });
+      const rtlAccent = await readYouRowState(row);
+      expect(parseFloat(rtlAccent.accentRight)).toBeLessThanOrEqual(1);
+      expect(parseFloat(rtlAccent.accentLeft)).toBeGreaterThan(1);
+      await row.evaluate(() => { document.documentElement.dir = 'ltr'; });
+    }
+  }
+});
+
+
+test('You link motion collapses under the reduced-motion preference', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await loginAs(page, 'release-settings@example.com');
+  await page.goto('/you/');
+
+  const rows = page.locator('.you-links > a');
+  for (let index = 0; index < await rows.count(); index += 1) {
+    const durations = (await readYouRowState(rows.nth(index))).transitionDuration
+      .split(',')
+      .map((value) => parseFloat(value) * (value.includes('ms') ? 0.001 : 1));
+    expect(Math.max(...durations)).toBeLessThanOrEqual(0.001);
+  }
 });
 
 

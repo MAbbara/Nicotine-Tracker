@@ -827,6 +827,11 @@
     outline-offset: 0.1875rem;
   }
 
+  #main-content[tabindex="-1"]:focus,
+  #main-content[tabindex="-1"]:focus-visible {
+    outline: none;
+  }
+
   ::selection {
     background: var(--color-milestone-soft);
     color: var(--color-ink);
@@ -2185,18 +2190,57 @@
   }
 
   .you-links > a {
+    position: relative;
     display: grid;
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: auto minmax(0, 1fr) 1.5rem;
     gap: var(--space-4);
     align-items: center;
     min-height: 5rem;
     padding-block: var(--space-4);
+    padding-inline: var(--space-3);
     border-block-end: 1px solid var(--color-border);
+    border-radius: var(--radius-control);
     text-decoration: none;
+    transition:
+      background-color var(--duration-feedback) var(--ease-out-expo),
+      transform var(--duration-feedback) var(--ease-out-expo);
+  }
+
+  .you-links > a::before {
+    content: '';
+    position: absolute;
+    inset-block: var(--space-3);
+    inset-inline-start: 0;
+    inline-size: 0.1875rem;
+    border-radius: 999px;
+    background: var(--color-constructive);
+    opacity: 0;
+    transition: opacity var(--duration-feedback) var(--ease-out-expo);
+  }
+
+  .you-links > a > .c-icon {
+    color: var(--color-text-muted);
+    transition: color var(--duration-feedback) var(--ease-out-expo);
   }
 
   .you-links > a > span:nth-child(2) {
     display: grid;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .you-links > a > span[aria-hidden="true"] {
+    display: inline-grid;
+    inline-size: 1.5rem;
+    place-items: center;
+    transition:
+      color var(--duration-feedback) var(--ease-out-expo),
+      transform var(--duration-feedback) var(--ease-out-expo);
+  }
+
+  .you-links > a:active {
+    background: var(--color-constructive-soft);
+    transform: translateY(1px);
   }
 
   .you-signout {
@@ -2206,10 +2250,33 @@
   @media (hover: hover) {
     .primary-nav__link:hover,
     .quick-pouch:hover,
-    .theme-choice:hover,
-    .you-links > a:hover {
+    .theme-choice:hover {
       background: var(--color-constructive-soft);
       color: var(--color-ink);
+    }
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .you-links > a:hover {
+      background: color-mix(in srgb, var(--color-constructive-soft) 48%, transparent);
+      color: var(--color-ink);
+    }
+
+    .you-links > a:hover::before {
+      opacity: 1;
+    }
+
+    .you-links > a:hover > .c-icon,
+    .you-links > a:hover > span[aria-hidden="true"] {
+      color: var(--color-constructive);
+    }
+
+    .you-links > a:hover > span[aria-hidden="true"] {
+      transform: translateX(0.2rem);
+    }
+
+    .you-links > a:dir(rtl):hover > span[aria-hidden="true"] {
+      transform: translateX(-0.2rem);
     }
   }
 
