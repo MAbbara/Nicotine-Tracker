@@ -266,8 +266,15 @@ def test_global_javascript_never_overwrites_logging_time_fields():
 def test_add_modal_and_logging_forms_preserve_submission_contracts(
         logged_in_client, test_log):
     view = BeautifulSoup(logged_in_client.get('/log/view').data, 'html.parser')
-    modal = view.select_one('#addLogModal form.logging-form')
+    dialog = view.select_one('dialog#addLogModal')
+    assert dialog is not None
+    assert 'c-dialog' in dialog.get('class', [])
+    modal = dialog.select_one('form.logging-form[data-dialog-panel].c-dialog__panel')
     assert modal is not None
+    assert dialog.select_one('.c-dialog__header')
+    assert dialog.select_one('.c-dialog__body')
+    assert dialog.select_one('.c-dialog__actions')
+    assert dialog.select_one('.c-dialog__close[aria-label]')
     assert modal.get('action') == '/log/add'
     assert modal.select_one('input[name="csrf_token"]')
     assert modal.select_one('input[name="log_date"][required]')

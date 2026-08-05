@@ -1,21 +1,21 @@
 <dialog
-  class="craving-flow"
+  class="craving-flow c-dialog"
   id="today-craving-flow"
   aria-labelledby="today-craving-flow-title"
   data-craving-flow-dialog
 >
-  <div class="craving-flow__panel">
-    <header class="craving-flow__header">
+  <div class="craving-flow__panel c-dialog__panel" data-dialog-panel>
+    <header class="craving-flow__header c-dialog__header">
       <div>
         <p class="eyebrow">Craving support</p>
         <h2 id="today-craving-flow-title">Take the next useful step</h2>
       </div>
-      <button class="craving-flow__close" type="button" aria-label="Close craving support" data-craving-close>
+      <button class="craving-flow__close c-dialog__close" type="button" aria-label="Close craving support" data-craving-close>
         <span aria-hidden="true">×</span>
       </button>
     </header>
 
-    <div class="craving-flow__body">
+    <div class="craving-flow__body c-dialog__body">
       <section class="craving-flow__step" data-craving-step="check_in">
         <div class="craving-flow__step-heading">
           <p class="eyebrow">Check in</p>
@@ -43,7 +43,7 @@
             <p class="craving-flow__field-error" id="craving-trigger-error" data-craving-error="trigger" hidden></p>
           </div>
           <p class="craving-flow__request-error" data-craving-request-error hidden></p>
-          <div class="craving-flow__actions">
+          <div class="craving-flow__actions c-dialog__actions">
             <button class="c-button c-button--primary" type="submit" data-craving-create>Record craving</button>
             <button class="c-button c-button--secondary" type="button" data-craving-retry-create hidden>Retry</button>
             <button class="text-link" type="button" data-craving-cancel-check-in>Keep tracking without saving</button>
@@ -105,7 +105,7 @@
             <p class="craving-flow__field-error" id="craving-outcome-error" data-craving-error="outcome" hidden></p>
           </fieldset>
           <p class="craving-flow__request-error" data-craving-request-error hidden></p>
-          <div class="craving-flow__actions">
+          <div class="craving-flow__actions c-dialog__actions">
             <button class="c-button c-button--primary" type="submit" data-craving-save-outcome>Save outcome</button>
             <button class="c-button c-button--secondary" type="button" data-craving-retry-outcome hidden>Retry</button>
           </div>
@@ -167,7 +167,7 @@
             </div>
           </details>
           <p class="craving-flow__request-error" data-craving-request-error hidden></p>
-          <div class="craving-flow__actions">
+          <div class="craving-flow__actions c-dialog__actions">
             <button class="c-button c-button--primary" type="submit" data-craving-save-details>Save details</button>
             <button class="c-button c-button--secondary" type="button" data-craving-retry-details hidden>Retry</button>
             <button class="text-link" type="button" data-craving-skip-details>Skip for now</button>
@@ -182,7 +182,7 @@
           <p data-craving-complete-copy>You can return to Today whenever you are ready.</p>
         </div>
         <p class="craving-flow__link-status" data-craving-link-status hidden></p>
-        <div class="craving-flow__actions">
+        <div class="craving-flow__actions c-dialog__actions">
           <button class="c-button c-button--primary" type="button" data-craving-retry-quick-log hidden>Try logging nicotine again</button>
           <a class="text-link" href="{{ url_for('logging.add_log') }}" data-craving-detailed-log>Use the detailed nicotine log</a>
           <button class="c-button c-button--secondary" type="button" data-craving-done>Done</button>

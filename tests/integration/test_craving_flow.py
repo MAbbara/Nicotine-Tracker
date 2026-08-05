@@ -38,6 +38,12 @@ def test_today_renders_one_native_craving_dialog_while_preserving_the_no_js_link
     assert fallback is not None
     assert fallback["href"] == "/cravings/cravings"
     assert dialog is not None
+    assert "c-dialog" in dialog.get("class", [])
+    assert dialog.select_one("[data-dialog-panel].c-dialog__panel")
+    assert dialog.select_one(".c-dialog__header")
+    assert dialog.select_one(".c-dialog__body")
+    assert dialog.select_one(".c-dialog__actions")
+    assert dialog.select_one(".c-dialog__close[aria-label]")
     assert dialog["aria-labelledby"] == "today-craving-flow-title"
     assert len(soup.select("dialog[data-craving-flow-dialog]")) == 1
     scripts = [script.get("src", "") for script in soup.select("script[type='module']")]

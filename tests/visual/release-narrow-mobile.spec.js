@@ -46,6 +46,31 @@ function stateNamed(name) {
 }
 
 
+async function expectBottomSheetGeometry(page) {
+  const geometry = await page.locator('dialog[open] [data-dialog-panel]').evaluate((panel) => {
+    const rect = panel.getBoundingClientRect();
+    const style = getComputedStyle(panel);
+    return {
+      x: rect.x,
+      bottom: rect.bottom,
+      width: rect.width,
+      height: rect.height,
+      viewportWidth: innerWidth,
+      viewportHeight: innerHeight,
+      topRadius: Number.parseFloat(style.borderTopLeftRadius),
+      bottomRadius: Number.parseFloat(style.borderBottomLeftRadius),
+    };
+  });
+
+  expect(geometry.x).toBeLessThanOrEqual(1);
+  expect(geometry.width).toBeGreaterThanOrEqual(geometry.viewportWidth - 2);
+  expect(geometry.bottom).toBeGreaterThanOrEqual(geometry.viewportHeight - 2);
+  expect(geometry.height).toBeLessThanOrEqual(geometry.viewportHeight - 16);
+  expect(geometry.topRadius).toBeGreaterThan(0);
+  expect(geometry.bottomRadius).toBeLessThanOrEqual(1);
+}
+
+
 for (const width of WIDTHS) {
   for (const stateName of PAGE_STATES) {
     test(`${stateName} normal text at ${width}px`, async ({ page }, testInfo) => {
@@ -79,6 +104,7 @@ for (const width of WIDTHS) {
       });
 
       expect(result.bytes).toBeGreaterThan(1_000);
+      await expectBottomSheetGeometry(page);
       await expectNarrowMobileReflow(page, result, {
         kind: 'dialog',
         stateName: workflow.name,

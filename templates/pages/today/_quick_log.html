@@ -1,21 +1,21 @@
 <dialog
-  class="quick-log"
+  class="quick-log c-dialog"
   id="today-quick-log"
   aria-labelledby="today-quick-log-title"
   data-quick-log-dialog
 >
-  <div class="quick-log__panel">
-    <header class="quick-log__header">
+  <div class="quick-log__panel c-dialog__panel" data-dialog-panel>
+    <header class="quick-log__header c-dialog__header">
       <div>
         <p class="eyebrow">Quick log</p>
         <h2 id="today-quick-log-title">Log nicotine use</h2>
       </div>
-      <button class="quick-log__close" type="button" aria-label="Close quick log" data-quick-log-close>
+      <button class="quick-log__close c-dialog__close" type="button" aria-label="Close quick log" data-quick-log-close>
         <span aria-hidden="true">×</span>
       </button>
     </header>
 
-    <form class="quick-log__form" data-quick-log-form novalidate>
+    <form class="quick-log__form c-dialog__body" data-quick-log-form novalidate>
       <div class="quick-log__default" aria-label="Current quick-log details">
         <span class="quick-log__brand" data-quick-log-summary-brand>{{ summary.smart_default.brand }}</span>
         <span data-quick-log-summary-detail>{{ '%.2f'|format(summary.smart_default.nicotine_mg|float) }} mg · 1 pouch · now</span>
@@ -65,7 +65,7 @@
 
       <p class="quick-log__request-error" data-quick-log-request-error hidden></p>
 
-      <div class="quick-log__actions">
+      <div class="quick-log__actions c-dialog__actions">
         <button class="c-button c-button--primary quick-log__confirm" type="submit" data-quick-log-confirm>Log one pouch</button>
         <div class="quick-log__recovery" data-quick-log-recovery hidden>
           <button class="c-button c-button--primary" type="button" data-quick-log-retry>Retry</button>

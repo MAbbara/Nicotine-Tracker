@@ -37,6 +37,35 @@ const DIALOG_WORKFLOWS = [
 ];
 
 
+async function expectSharedDialogGeometry(page) {
+  const geometry = await page.locator('dialog[open] [data-dialog-panel]').evaluate((panel) => {
+    const panelRect = panel.getBoundingClientRect();
+    const dialog = panel.closest('dialog');
+    return {
+      x: panelRect.x,
+      y: panelRect.y,
+      width: panelRect.width,
+      height: panelRect.height,
+      viewportWidth: innerWidth,
+      viewportHeight: innerHeight,
+      compact: dialog.matches('.quick-log, .craving-flow'),
+    };
+  });
+
+  if (geometry.viewportWidth < 768) {
+    expect(geometry.x).toBeLessThanOrEqual(1);
+    expect(geometry.width).toBeGreaterThanOrEqual(geometry.viewportWidth - 2);
+    expect(geometry.y + geometry.height).toBeGreaterThanOrEqual(geometry.viewportHeight - 2);
+    expect(geometry.height).toBeLessThanOrEqual(geometry.viewportHeight - 16);
+  } else {
+    const center = geometry.x + geometry.width / 2;
+    expect(Math.abs(center - geometry.viewportWidth / 2)).toBeLessThanOrEqual(2);
+    expect(geometry.width).toBeLessThanOrEqual(geometry.compact ? 576 : 672);
+    expect(geometry.height).toBeLessThanOrEqual(geometry.viewportHeight - 48);
+  }
+}
+
+
 for (const workflow of DIALOG_WORKFLOWS) {
   for (const theme of ['light', 'dark']) {
     test(`${workflow.name} ${theme} dialog/sheet`, async ({ page, context }, testInfo) => {
@@ -54,6 +83,7 @@ for (const workflow of DIALOG_WORKFLOWS) {
       expect(result.bytes).toBeGreaterThan(1_000);
       expect(result.geometry.openDialogs).toHaveLength(1);
       expect(result.geometry.theme).toBe(theme);
+      await expectSharedDialogGeometry(page);
     });
   }
 
@@ -72,6 +102,7 @@ for (const workflow of DIALOG_WORKFLOWS) {
     expect(result.bytes).toBeGreaterThan(1_000);
     expect(result.geometry.reducedMotion).toBe(true);
     expect(result.geometry.openDialogs).toHaveLength(1);
+    await expectSharedDialogGeometry(page);
   });
 
   test(`${workflow.name} at 320px and 200% text`, async ({ page, context }, testInfo) => {
@@ -90,6 +121,7 @@ for (const workflow of DIALOG_WORKFLOWS) {
 
     expect(result.bytes).toBeGreaterThan(1_000);
     expect(result.geometry.openDialogs).toHaveLength(1);
+    await expectSharedDialogGeometry(page);
     await expectNarrowReflow(page, result, { kind: 'dialog', stateName: workflow.name });
   });
 }

@@ -287,6 +287,15 @@ def test_smart_default_action_slots_pair_visible_fallback_with_hidden_enhanced(
         "craving",
     )
 
+    dialog = soup.select_one('dialog[data-quick-log-dialog]')
+    assert dialog is not None
+    assert 'c-dialog' in dialog.get('class', [])
+    assert dialog.select_one('[data-dialog-panel].c-dialog__panel')
+    assert dialog.select_one('.c-dialog__header')
+    assert dialog.select_one('.c-dialog__body')
+    assert dialog.select_one('.c-dialog__actions')
+    assert dialog.select_one('.c-dialog__close[aria-label]')
+
 
 def test_log_action_without_smart_default_renders_only_the_usable_fallback(
     logged_in_client,

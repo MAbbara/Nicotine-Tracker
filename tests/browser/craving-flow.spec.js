@@ -136,13 +136,14 @@ test('initial check-in creates one canonical unresolved craving row', async ({ p
   expect(payloads[0].trigger).toBe('after lunch');
 });
 
-test('one dialog adapts to a mobile bottom sheet and desktop support panel', async ({ page }, testInfo) => {
+test('one dialog adapts to a mobile bottom sheet and centered desktop panel', async ({ page }, testInfo) => {
   await login(page);
   await page.locator('#today-craving-action').click();
   const dialog = page.getByRole('dialog', { name: 'Take the next useful step' });
   await expect(dialog).toBeVisible();
 
-  const geometry = await dialog.evaluate((element) => {
+  const panel = dialog.locator('[data-dialog-panel]');
+  const geometry = await panel.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const style = getComputedStyle(element);
     return {
@@ -154,21 +155,24 @@ test('one dialog adapts to a mobile bottom sheet and desktop support panel', asy
       height: rect.height,
       viewportWidth: innerWidth,
       viewportHeight: innerHeight,
-      radius: parseFloat(style.borderTopLeftRadius),
+      topRadius: parseFloat(style.borderTopLeftRadius),
+      bottomRadius: parseFloat(style.borderBottomLeftRadius),
     };
   });
   if (testInfo.project.name.includes('mobile')) {
     expect(geometry.left).toBeLessThanOrEqual(1);
     expect(geometry.right).toBeGreaterThanOrEqual(geometry.viewportWidth - 1);
     expect(geometry.bottom).toBeGreaterThanOrEqual(geometry.viewportHeight - 1);
-    expect(geometry.height).toBeLessThan(geometry.viewportHeight);
+    expect(geometry.height).toBeLessThanOrEqual(geometry.viewportHeight - 15);
+    expect(geometry.bottomRadius).toBeLessThanOrEqual(1);
   } else {
-    expect(geometry.top).toBeLessThanOrEqual(1);
-    expect(geometry.right).toBeGreaterThanOrEqual(geometry.viewportWidth - 1);
-    expect(geometry.height).toBeGreaterThanOrEqual(geometry.viewportHeight - 1);
-    expect(geometry.width).toBeLessThan(geometry.viewportWidth * 0.6);
+    expect(Math.abs((geometry.left + geometry.right) / 2 - geometry.viewportWidth / 2)).toBeLessThanOrEqual(1);
+    expect(Math.abs((geometry.top + geometry.bottom) / 2 - geometry.viewportHeight / 2)).toBeLessThanOrEqual(1);
+    expect(geometry.width).toBeLessThanOrEqual(36 * 16 + 1);
+    expect(geometry.width).toBeLessThanOrEqual(geometry.viewportWidth - 47);
+    expect(geometry.height).toBeLessThanOrEqual(geometry.viewportHeight - 47);
   }
-  expect(geometry.radius).toBeGreaterThanOrEqual(20);
+  expect(geometry.topRadius).toBeGreaterThanOrEqual(18);
   const targets = await dialog.locator('button, input[type="radio"] + span').evaluateAll(
     (elements) => elements
       .map((element) => {
