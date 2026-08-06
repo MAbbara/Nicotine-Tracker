@@ -45,7 +45,8 @@ _REVISION_REASONS = {
     'user_edit', 'difficulty_adjustment', 'resume', 'boundary_change', 'other'
 }
 _REVISION_CHANGE_FIELDS = {
-    'pace', 'target_date', 'duration_days', 'end_target_pouches', 'stage_targets'
+    'pace', 'target_date', 'duration_days', 'end_target_pouches',
+    'end_target_mg', 'stage_targets'
 }
 _ACTIVATION_WINNER_CONFIRM_SECONDS = 0.25
 _ACTIVATION_WINNER_POLL_SECONDS = 0.01
@@ -380,7 +381,21 @@ def _canonical_generation_inputs(
             generation_input.baseline_mg_per_pouch
         ),
         'pace': generation_input.pace,
+        'target_basis': (
+            'nicotine_mg'
+            if generation_input.end_target_mg is not None
+            else (
+                'legacy_pouches'
+                if generation_input.end_target_pouches is not None
+                else 'observe'
+            )
+        ),
         'end_target_pouches': generation_input.end_target_pouches,
+        'end_target_mg': _fixed_decimal(
+            generation_input.end_target_mg
+            if generation_input.end_target_mg is not None
+            else preview.days[-1].nicotine_ceiling_mg
+        ),
         'target_date': preview.days[-1].local_date.isoformat(),
         'duration_days': len(preview.days),
         'stage_targets': explicit_stages,
@@ -433,6 +448,7 @@ def _add_new_plan(user, generation_input, baseline_source, preview):
         baseline_source=baseline_source,
         pace=generation_input.pace,
         end_target_pouches=generation_input.end_target_pouches,
+        end_target_mg=preview.days[-1].nicotine_ceiling_mg,
     )
     db.session.add(plan)
     db.session.flush()
@@ -443,6 +459,7 @@ def _add_new_plan(user, generation_input, baseline_source, preview):
         pace=generation_input.pace,
         target_date=preview.days[-1].local_date,
         end_target_pouches=generation_input.end_target_pouches,
+        end_target_mg=preview.days[-1].nicotine_ceiling_mg,
         generation_inputs=canonical_inputs,
         preview_digest=preview.digest,
         reason='initial',
@@ -485,29 +502,51 @@ def _revision_preview(user, plan, changes, effective_date, now=None):
         raise PlanValidationError({
             'effective_date': 'must fall within the existing schedule'
         })
-    if anchor.target_pouches is None:
+    if plan.mode == 'observe':
         raise PlanStateError('observe plans do not support targeted revisions')
 
-    strength = Decimal(plan.baseline_mg_per_pouch)
     duration_days = changes.get('duration_days')
     target_date = changes.get('target_date')
     if 'duration_days' not in changes and 'target_date' not in changes:
         duration_days = (plan.target_date - effective_date).days + 1
         target_date = plan.target_date
-    generation_input = PlanGenerationInput(
-        mode=plan.mode,
-        start_date=effective_date,
-        baseline_pouches=Decimal(anchor.target_pouches),
-        baseline_mg=(strength * anchor.target_pouches).quantize(_TWO_PLACES),
-        baseline_mg_per_pouch=strength,
-        pace=changes.get('pace', plan.pace),
-        end_target_pouches=changes.get(
-            'end_target_pouches', plan.end_target_pouches
-        ),
-        target_date=target_date,
-        duration_days=duration_days,
-        stage_targets=changes.get('stage_targets'),
+    nicotine_first = (
+        'end_target_mg' in changes or anchor.target_pouches is None
     )
+    if nicotine_first:
+        generation_input = PlanGenerationInput(
+            mode=plan.mode,
+            start_date=effective_date,
+            baseline_pouches=(
+                Decimal(anchor.target_pouches)
+                if anchor.target_pouches is not None else None
+            ),
+            baseline_mg=Decimal(anchor.nicotine_ceiling_mg),
+            baseline_mg_per_pouch=(
+                Decimal(plan.baseline_mg_per_pouch)
+                if plan.baseline_mg_per_pouch is not None else None
+            ),
+            pace=changes.get('pace', plan.pace),
+            end_target_mg=changes.get('end_target_mg', plan.end_target_mg),
+            target_date=target_date,
+            duration_days=duration_days,
+        )
+    else:
+        strength = Decimal(plan.baseline_mg_per_pouch)
+        generation_input = PlanGenerationInput(
+            mode=plan.mode,
+            start_date=effective_date,
+            baseline_pouches=Decimal(anchor.target_pouches),
+            baseline_mg=Decimal(anchor.nicotine_ceiling_mg),
+            baseline_mg_per_pouch=strength,
+            pace=changes.get('pace', plan.pace),
+            end_target_pouches=changes.get(
+                'end_target_pouches', plan.end_target_pouches
+            ),
+            target_date=target_date,
+            duration_days=duration_days,
+            stage_targets=changes.get('stage_targets'),
+        )
     generated = PlanScheduleGenerator.generate(
         generation_input, reference_date=current_local_date
     )
@@ -653,18 +692,29 @@ def _resume_preview(user, plan, resume_date, now=None):
             duration_days=len(days),
         )
     else:
-        strength = Decimal(plan.baseline_mg_per_pouch)
-        generation_input = PlanGenerationInput(
-            mode=plan.mode,
-            start_date=resume_date,
-            baseline_pouches=Decimal(days[0].target_pouches),
-            baseline_mg=(strength * days[0].target_pouches).quantize(_TWO_PLACES),
-            baseline_mg_per_pouch=strength,
-            pace=plan.pace,
-            end_target_pouches=days[-1].target_pouches,
-            target_date=days[-1].local_date,
-            duration_days=len(days),
-        )
+        if days[0].target_pouches is None:
+            generation_input = PlanGenerationInput(
+                mode=plan.mode,
+                start_date=resume_date,
+                baseline_mg=Decimal(days[0].nicotine_ceiling_mg),
+                pace=plan.pace,
+                end_target_mg=Decimal(days[-1].nicotine_ceiling_mg),
+                target_date=days[-1].local_date,
+                duration_days=len(days),
+            )
+        else:
+            strength = Decimal(plan.baseline_mg_per_pouch)
+            generation_input = PlanGenerationInput(
+                mode=plan.mode,
+                start_date=resume_date,
+                baseline_pouches=Decimal(days[0].target_pouches),
+                baseline_mg=Decimal(days[0].nicotine_ceiling_mg),
+                baseline_mg_per_pouch=strength,
+                pace=plan.pace,
+                end_target_pouches=days[-1].target_pouches,
+                target_date=days[-1].local_date,
+                duration_days=len(days),
+            )
     return preview, generation_input
 
 
@@ -1130,6 +1180,7 @@ class PlanService:
                 pace=generation_input.pace,
                 target_date=preview.days[-1].local_date,
                 end_target_pouches=generation_input.end_target_pouches,
+                end_target_mg=preview.days[-1].nicotine_ceiling_mg,
                 generation_inputs=canonical_inputs,
                 preview_digest=preview.digest,
                 reason=reason,
@@ -1150,7 +1201,9 @@ class PlanService:
             plan.active_revision_id = revision.id
             plan.pace = generation_input.pace
             plan.target_date = preview.days[-1].local_date
-            plan.end_target_pouches = generation_input.end_target_pouches
+            plan.end_target_mg = preview.days[-1].nicotine_ceiling_mg
+            if generation_input.end_target_mg is None:
+                plan.end_target_pouches = generation_input.end_target_pouches
             db.session.flush()
             built_result = (
                 result_builder(plan) if result_builder is not None else None
@@ -1237,6 +1290,7 @@ class PlanService:
                 pace=plan.pace,
                 target_date=preview.days[-1].local_date,
                 end_target_pouches=preview.days[-1].target_pouches,
+                end_target_mg=preview.days[-1].nicotine_ceiling_mg,
                 generation_inputs=_canonical_generation_inputs(
                     generation_input, preview
                 ),
@@ -1258,7 +1312,9 @@ class PlanService:
             effective_at_utc, local_date = _event_clock(user, now=now)
             plan.active_revision_id = revision.id
             plan.target_date = preview.days[-1].local_date
-            plan.end_target_pouches = preview.days[-1].target_pouches
+            plan.end_target_mg = preview.days[-1].nicotine_ceiling_mg
+            if preview.days[-1].target_pouches is not None:
+                plan.end_target_pouches = preview.days[-1].target_pouches
             plan.status = 'active'
             plan.active_slot = 1
             db.session.add(PlanStatusEvent(
@@ -1435,6 +1491,21 @@ class PlanService:
                     target_date=redated_days[-1].local_date,
                     duration_days=len(redated_days),
                 )
+            elif redated_days[0].target_pouches is None:
+                normalized_stages = _normalized_stages(redated_days)
+                generation_input = PlanGenerationInput(
+                    mode=plan.mode,
+                    start_date=redated_days[0].local_date,
+                    baseline_mg=Decimal(
+                        redated_days[0].nicotine_ceiling_mg
+                    ),
+                    pace=plan.pace,
+                    end_target_mg=Decimal(
+                        redated_days[-1].nicotine_ceiling_mg
+                    ),
+                    target_date=redated_days[-1].local_date,
+                    duration_days=len(redated_days),
+                )
             else:
                 normalized_stages = _normalized_stages(redated_days)
                 generation_input = PlanGenerationInput(
@@ -1463,6 +1534,7 @@ class PlanService:
                 pace=plan.pace,
                 target_date=redated_days[-1].local_date,
                 end_target_pouches=redated_days[-1].target_pouches,
+                end_target_mg=redated_days[-1].nicotine_ceiling_mg,
                 generation_inputs=_canonical_generation_inputs(
                     generation_input, preview
                 ),
@@ -1483,6 +1555,7 @@ class PlanService:
             ])
             plan.active_revision_id = revision.id
             plan.target_date = redated_days[-1].local_date
+            plan.end_target_mg = redated_days[-1].nicotine_ceiling_mg
             _apply_pending_preferences(user, preferences)
             db.session.commit()
             return revision

@@ -12,7 +12,7 @@ from typing import Literal
 class StageTarget:
     start_date: date
     end_date: date
-    target_pouches: int
+    target_pouches: int | None
     nicotine_ceiling_mg: Decimal
 
 
@@ -25,6 +25,7 @@ class PlanGenerationInput:
     baseline_mg_per_pouch: Decimal | None = None
     pace: Literal['gentle', 'steady', 'focused'] | None = None
     end_target_pouches: int | None = None
+    end_target_mg: Decimal | None = None
     target_date: date | None = None
     duration_days: int | None = None
     stage_targets: tuple[StageTarget, ...] | None = None
@@ -85,6 +86,12 @@ class PlanScheduleGenerator:
             return cls._generate_observe(generation_input)
         if generation_input.mode not in {'reduce', 'quit_by_date'}:
             raise PlanValidationError({'mode': 'unsupported mode'})
+        if generation_input.end_target_mg is not None:
+            return cls._generate_nicotine_first(generation_input)
+        if generation_input.end_target_pouches is None:
+            raise PlanValidationError({
+                'end_target_mg': 'is required for nicotine-first plans'
+            })
         errors = {}
         for field in (
             'baseline_pouches', 'baseline_mg', 'baseline_mg_per_pouch'
@@ -269,6 +276,142 @@ class PlanScheduleGenerator:
             digest=cls._digest(generation_input, days, stages),
         )
 
+    @classmethod
+    def _generate_nicotine_first(
+        cls, generation_input: PlanGenerationInput
+    ) -> GeneratedPlanPreview:
+        errors = {}
+        if generation_input.stage_targets is not None:
+            errors['stage_targets'] = (
+                'is supported only by the legacy pouch compatibility path'
+            )
+        if generation_input.pace not in cls.DEFAULT_DURATIONS:
+            errors['pace'] = 'must be gentle, steady, or focused'
+
+        baseline = generation_input.baseline_mg
+        if (
+            not isinstance(baseline, Decimal)
+            or not baseline.is_finite()
+            or baseline <= 0
+            or baseline > Decimal('999999.99')
+        ):
+            errors['baseline_mg'] = 'must be a finite Decimal greater than zero'
+        target = generation_input.end_target_mg
+        if (
+            not isinstance(target, Decimal)
+            or not target.is_finite()
+            or target < 0
+            or target > Decimal('999999.99')
+        ):
+            errors['end_target_mg'] = (
+                'must be a finite nonnegative Decimal'
+            )
+        for field in ('baseline_pouches', 'baseline_mg_per_pouch'):
+            value = getattr(generation_input, field)
+            if value is not None and (
+                not isinstance(value, Decimal)
+                or not value.is_finite()
+                or value <= 0
+            ):
+                errors[field] = 'must be a finite Decimal greater than zero'
+        if (
+            generation_input.duration_days is not None
+            and type(generation_input.duration_days) is not int
+        ):
+            errors['duration_days'] = 'must be a whole number of days'
+        if (
+            generation_input.target_date is not None
+            and type(generation_input.target_date) is not date
+        ):
+            errors['target_date'] = 'must be a date'
+        if generation_input.mode == 'quit_by_date':
+            if generation_input.target_date is None:
+                errors['target_date'] = 'is required for quit-by-date plans'
+        if errors:
+            raise PlanValidationError(errors)
+
+        baseline = baseline.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        target = target.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        if generation_input.mode == 'reduce' and target >= baseline:
+            raise PlanValidationError({
+                'end_target_mg': 'must be lower than the baseline'
+            })
+        if generation_input.mode == 'quit_by_date' and target != Decimal('0.00'):
+            raise PlanValidationError({
+                'end_target_mg': 'must be zero for quit-by-date plans'
+            })
+
+        if generation_input.mode == 'quit_by_date':
+            duration = (
+                generation_input.target_date - generation_input.start_date
+            ).days + 1
+            if duration <= 0:
+                raise PlanValidationError({
+                    'target_date': 'must be on or after the start date'
+                })
+            if (
+                generation_input.duration_days is not None
+                and generation_input.duration_days != duration
+            ):
+                raise PlanValidationError({
+                    'duration_days': (
+                        'is inconsistent with the selected target date'
+                    )
+                })
+        else:
+            duration = (
+                generation_input.duration_days
+                if generation_input.duration_days is not None
+                else cls.DEFAULT_DURATIONS[generation_input.pace]
+            )
+        minimum, maximum = cls.DURATION_RANGES[generation_input.pace]
+        if not minimum <= duration <= maximum:
+            raise PlanValidationError({
+                'duration_days': (
+                    f'must be between {minimum} and {maximum} days for this pace'
+                )
+            })
+        try:
+            expected_end = generation_input.start_date + timedelta(
+                days=duration - 1
+            )
+        except OverflowError as exc:
+            raise PlanValidationError({
+                'start_date': 'the generated schedule exceeds the date range'
+            }) from exc
+        if (
+            generation_input.target_date is not None
+            and generation_input.target_date != expected_end
+        ):
+            raise PlanValidationError({
+                'target_date': 'is inconsistent with the selected duration'
+            })
+
+        delta = baseline - target
+        denominator = Decimal(duration - 1)
+        generated_days = []
+        for index in range(duration):
+            if index == 0:
+                ceiling = baseline
+            elif index == duration - 1:
+                ceiling = target
+            else:
+                ceiling = (
+                    baseline - (delta * Decimal(index) / denominator)
+                ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            generated_days.append(GeneratedPlanDay(
+                local_date=generation_input.start_date + timedelta(days=index),
+                target_pouches=None,
+                nicotine_ceiling_mg=ceiling,
+            ))
+        days = tuple(generated_days)
+        stages = cls._stages_from_days(days)
+        return GeneratedPlanPreview(
+            days=days,
+            normalized_stages=stages,
+            digest=cls._digest(generation_input, days, stages),
+        )
+
     @staticmethod
     def _validate_stages(
         stages, start_date, start_target, end_target, strength
@@ -411,22 +554,30 @@ class PlanScheduleGenerator:
             normalized = Decimal(value).normalize()
             return format(normalized, 'f')
 
+        input_payload = {
+            'mode': generation_input.mode,
+            'start_date': days[0].local_date.isoformat(),
+            'baseline_pouches': canonical_decimal(
+                generation_input.baseline_pouches
+            ),
+            'baseline_mg': canonical_decimal(generation_input.baseline_mg),
+            'baseline_mg_per_pouch': canonical_decimal(
+                generation_input.baseline_mg_per_pouch
+            ),
+            'pace': generation_input.pace,
+            'end_target_pouches': generation_input.end_target_pouches,
+            'target_date': days[-1].local_date.isoformat(),
+            'duration_days': len(days),
+        }
+        if generation_input.end_target_mg is not None:
+            input_payload.update({
+                'target_basis': 'nicotine_mg',
+                'end_target_mg': canonical_decimal(
+                    generation_input.end_target_mg
+                ),
+            })
         payload = {
-            'input': {
-                'mode': generation_input.mode,
-                'start_date': days[0].local_date.isoformat(),
-                'baseline_pouches': canonical_decimal(
-                    generation_input.baseline_pouches
-                ),
-                'baseline_mg': canonical_decimal(generation_input.baseline_mg),
-                'baseline_mg_per_pouch': canonical_decimal(
-                    generation_input.baseline_mg_per_pouch
-                ),
-                'pace': generation_input.pace,
-                'end_target_pouches': generation_input.end_target_pouches,
-                'target_date': days[-1].local_date.isoformat(),
-                'duration_days': len(days),
-            },
+            'input': input_payload,
             'days': [
                 {
                     'local_date': day.local_date.isoformat(),

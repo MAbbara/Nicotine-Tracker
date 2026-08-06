@@ -19,8 +19,8 @@ class PlanDay(db.Model):
         ),
         db.CheckConstraint(
             '(target_pouches IS NULL AND nicotine_ceiling_mg IS NULL) OR '
-            '(target_pouches IS NOT NULL AND target_pouches >= 0 AND '
-            'nicotine_ceiling_mg IS NOT NULL AND nicotine_ceiling_mg >= 0)',
+            '(target_pouches IS NULL AND nicotine_ceiling_mg >= 0) OR '
+            '(target_pouches >= 0 AND nicotine_ceiling_mg >= 0)',
             name='ck_plan_day_target_pair',
         ),
     )

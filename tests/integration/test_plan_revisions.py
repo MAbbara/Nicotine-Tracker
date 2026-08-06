@@ -2181,6 +2181,101 @@ def _active_targeted_plan(test_user):
     return plan, initial
 
 
+def test_nicotine_first_plan_persists_exact_target_and_null_pouch_days(
+    db_session, test_user,
+):
+    generation_input = PlanGenerationInput(
+        mode='reduce',
+        start_date=date(2099, 1, 1),
+        baseline_mg=Decimal('40.00'),
+        pace='steady',
+        end_target_mg=Decimal('20.00'),
+    )
+
+    plan = PlanService.create_draft(
+        test_user.id, generation_input, baseline_source='manual'
+    )
+    revision = PlanRevision.query.filter_by(plan_id=plan.id).one()
+    days = PlanDay.query.filter_by(plan_id=plan.id).order_by(
+        PlanDay.local_date
+    ).all()
+
+    assert plan.end_target_mg == Decimal('20.00')
+    assert plan.end_target_pouches is None
+    assert revision.end_target_mg == Decimal('20.00')
+    assert revision.end_target_pouches is None
+    assert revision.generation_inputs['target_basis'] == 'nicotine_mg'
+    assert revision.generation_inputs['end_target_mg'] == '20.00'
+    assert days[0].nicotine_ceiling_mg == Decimal('40.00')
+    assert days[-1].nicotine_ceiling_mg == Decimal('20.00')
+    assert {day.target_pouches for day in days} == {None}
+
+    activated = PlanService.activate(
+        test_user.id, plan.id, revision.preview_digest
+    )
+    assert activated.status == 'active'
+
+
+def test_first_nicotine_revision_preserves_started_rows_and_legacy_metadata(
+    db_session, test_user,
+):
+    initial_input = PlanGenerationInput(
+        mode='reduce',
+        start_date=date(2099, 1, 1),
+        baseline_pouches=Decimal('8.00'),
+        baseline_mg=Decimal('48.00'),
+        baseline_mg_per_pouch=Decimal('6.00'),
+        pace='steady',
+        end_target_pouches=2,
+    )
+    plan = PlanService.create_draft(
+        test_user.id, initial_input, baseline_source='manual'
+    )
+    initial_revision = PlanRevision.query.filter_by(plan_id=plan.id).one()
+    assert initial_revision.end_target_mg == Decimal('12.00')
+    assert plan.end_target_mg == Decimal('12.00')
+    PlanService.activate(
+        test_user.id, plan.id, initial_revision.preview_digest,
+    )
+    effective_date = date(2099, 1, 3)
+    protected_before = _day_snapshot(
+        plan.id, lambda row: row.local_date < effective_date
+    )
+    changes = {'end_target_mg': Decimal('10.00')}
+    preview = PlanService.preview_revision(
+        test_user.id,
+        plan.id,
+        changes,
+        effective_date,
+        now=datetime(2099, 1, 1, 12, tzinfo=timezone.utc),
+    )
+
+    revised = PlanService.apply_revision(
+        test_user.id,
+        plan.id,
+        changes,
+        effective_date,
+        preview.digest,
+        reason='user_edit',
+        now=datetime(2099, 1, 1, 12, tzinfo=timezone.utc),
+    )
+
+    assert _day_snapshot(
+        plan.id, lambda row: row.local_date < effective_date
+    ) == protected_before
+    future = PlanDay.query.filter(
+        PlanDay.plan_id == plan.id,
+        PlanDay.local_date >= effective_date,
+    ).order_by(PlanDay.local_date).all()
+    assert future[0].nicotine_ceiling_mg == Decimal('48.00')
+    assert future[-1].nicotine_ceiling_mg == Decimal('10.00')
+    assert {day.target_pouches for day in future} == {None}
+    assert revised.end_target_mg == Decimal('10.00')
+    assert plan.end_target_mg == Decimal('10.00')
+    assert initial_revision.end_target_pouches == 2
+    assert initial_revision.end_target_mg == Decimal('12.00')
+
+
 def _day_snapshot(plan_id, predicate=None):
     query = PlanDay.query.filter_by(plan_id=plan_id)
     rows = query.order_by(PlanDay.local_date).all()

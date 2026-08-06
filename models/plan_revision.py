@@ -22,6 +22,11 @@ class PlanRevision(db.Model):
             'end_target_pouches IS NULL OR end_target_pouches >= 0',
             name='ck_plan_revision_end_target_nonnegative',
         ),
+        db.CheckConstraint(
+            'end_target_mg IS NULL OR '
+            '(end_target_mg >= 0 AND end_target_mg <= 999999.99)',
+            name='ck_plan_revision_end_target_mg_nonnegative',
+        ),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -34,6 +39,7 @@ class PlanRevision(db.Model):
     pace = db.Column(db.String(16), nullable=True)
     target_date = db.Column(db.Date, nullable=True)
     end_target_pouches = db.Column(db.Integer, nullable=True)
+    end_target_mg = db.Column(db.Numeric(8, 2), nullable=True)
     generation_inputs = db.Column(db.JSON, nullable=False, default=dict)
     preview_digest = db.Column(db.String(64), nullable=False)
     reason = db.Column(db.String(32), nullable=False)

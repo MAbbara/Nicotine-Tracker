@@ -10,6 +10,8 @@ by editing the fixtures.
 import hashlib
 import io
 import json
+from datetime import date, datetime
+from decimal import Decimal
 
 import pytest
 import sqlalchemy as sa
@@ -20,6 +22,137 @@ from sqlalchemy.dialects import mysql
 from tests.migrations import harness
 
 FIXTURE_IDS = [spec.key for spec in harness.FIXTURES]
+NICOTINE_FIRST_REVISION = 'c8f2d3a4b5e6'
+NICOTINE_FIRST_DOWN_REVISION = 'd4f1a6b8c902'
+
+
+def _seed_targeted_plan(db, *, with_days=True):
+    now = datetime(2026, 8, 6, 12, 0)
+    plan = sa.table(
+        'reduction_plan',
+        sa.column('id', sa.Integer()),
+        sa.column('user_id', sa.Integer()),
+        sa.column('mode', sa.String()),
+        sa.column('status', sa.String()),
+        sa.column('start_date', sa.Date()),
+        sa.column('target_date', sa.Date()),
+        sa.column('baseline_pouches', sa.Numeric(6, 2)),
+        sa.column('baseline_mg', sa.Numeric(8, 2)),
+        sa.column('baseline_mg_per_pouch', sa.Numeric(8, 2)),
+        sa.column('baseline_source', sa.String()),
+        sa.column('pace', sa.String()),
+        sa.column('end_target_pouches', sa.Integer()),
+        sa.column('active_revision_id', sa.Integer()),
+        sa.column('active_slot', sa.Integer()),
+        sa.column('migration_fingerprint', sa.String()),
+        sa.column('legacy_goal_ids', sa.JSON()),
+        sa.column('created_at', sa.DateTime()),
+        sa.column('updated_at', sa.DateTime()),
+    )
+    revision = sa.table(
+        'plan_revision',
+        sa.column('id', sa.Integer()),
+        sa.column('plan_id', sa.Integer()),
+        sa.column('effective_date', sa.Date()),
+        sa.column('pace', sa.String()),
+        sa.column('target_date', sa.Date()),
+        sa.column('end_target_pouches', sa.Integer()),
+        sa.column('generation_inputs', sa.JSON()),
+        sa.column('preview_digest', sa.String()),
+        sa.column('reason', sa.String()),
+        sa.column('note', sa.Text()),
+        sa.column('created_at', sa.DateTime()),
+    )
+    plan_day = sa.table(
+        'plan_day',
+        sa.column('id', sa.Integer()),
+        sa.column('plan_id', sa.Integer()),
+        sa.column('revision_id', sa.Integer()),
+        sa.column('local_date', sa.Date()),
+        sa.column('target_pouches', sa.Integer()),
+        sa.column('nicotine_ceiling_mg', sa.Numeric(8, 2)),
+        sa.column('created_at', sa.DateTime()),
+    )
+    connection = db.connection
+    connection.execute(plan.insert().values(
+        id=200,
+        user_id=1,
+        mode='reduce',
+        status='active',
+        start_date=date(2026, 8, 10),
+        target_date=date(2026, 9, 27),
+        baseline_pouches=Decimal('8.00'),
+        baseline_mg=Decimal('40.00'),
+        baseline_mg_per_pouch=Decimal('5.00'),
+        baseline_source='manual',
+        pace='steady',
+        end_target_pouches=3,
+        active_revision_id=None,
+        active_slot=1,
+        migration_fingerprint=None,
+        legacy_goal_ids=None,
+        created_at=now,
+        updated_at=now,
+    ))
+    connection.execute(revision.insert().values(
+        id=200,
+        plan_id=200,
+        effective_date=date(2026, 8, 10),
+        pace='steady',
+        target_date=date(2026, 9, 27),
+        end_target_pouches=3,
+        generation_inputs={'catalog_strength_at_creation': '5.00'},
+        preview_digest='a' * 64,
+        reason='initial',
+        note='immutable historical revision',
+        created_at=now,
+    ))
+    connection.execute(
+        plan.update().where(plan.c.id == 200).values(active_revision_id=200)
+    )
+    if with_days:
+        connection.execute(plan_day.insert(), [
+            {
+                'id': 200,
+                'plan_id': 200,
+                'revision_id': 200,
+                'local_date': date(2026, 8, 10),
+                'target_pouches': 8,
+                'nicotine_ceiling_mg': Decimal('40.00'),
+                'created_at': now,
+            },
+            {
+                'id': 201,
+                'plan_id': 200,
+                'revision_id': 200,
+                'local_date': date(2026, 9, 27),
+                'target_pouches': 3,
+                'nicotine_ceiling_mg': Decimal('17.35'),
+                'created_at': now,
+            },
+        ])
+    connection.commit()
+
+
+def _historical_target_snapshot(db):
+    return {
+        'plan': tuple(db.rows(
+            'SELECT id, mode, status, start_date, target_date, '
+            'baseline_pouches, baseline_mg, baseline_mg_per_pouch, '
+            'end_target_pouches, active_revision_id FROM reduction_plan '
+            'WHERE id = 200'
+        )[0]),
+        'revision': tuple(db.rows(
+            'SELECT id, plan_id, effective_date, target_date, '
+            'end_target_pouches, preview_digest, reason, note '
+            'FROM plan_revision WHERE id = 200'
+        )[0]),
+        'days': [tuple(row) for row in db.rows(
+            'SELECT id, plan_id, revision_id, local_date, target_pouches, '
+            'nicotine_ceiling_mg FROM plan_day WHERE plan_id = 200 '
+            'ORDER BY local_date, id'
+        )],
+    }
 
 
 def _wrong_server_default_defect(op, conn):
@@ -117,6 +250,84 @@ class TestHeadParity:
             'migration_fingerprint': expected_fingerprint,
             'legacy_goal_ids': [1],
         }
+
+
+class TestNicotineFirstTargetMigration:
+    def test_upgrade_uses_final_persisted_ceiling_and_downgrade_is_additive(
+        self, prepare,
+    ):
+        db = prepare(harness.SPECS_BY_KEY['legacy'])
+        db.upgrade(NICOTINE_FIRST_DOWN_REVISION)
+        _seed_targeted_plan(db)
+        before = _historical_target_snapshot(db)
+        db.execute(
+            'UPDATE pouch SET nicotine_mg = :mutable_catalog_value WHERE id = 1',
+            {'mutable_catalog_value': '99.00'},
+        )
+
+        db.upgrade(NICOTINE_FIRST_REVISION)
+
+        plan_target = db.select_typed('reduction_plan', [
+            ('id', sa.Integer()),
+            ('end_target_mg', sa.Numeric(8, 2)),
+        ])
+        revision_target = db.select_typed('plan_revision', [
+            ('id', sa.Integer()),
+            ('end_target_mg', sa.Numeric(8, 2)),
+        ])
+        assert next(row for row in plan_target if row['id'] == 200)[
+            'end_target_mg'
+        ] == Decimal('17.35')
+        assert next(row for row in revision_target if row['id'] == 200)[
+            'end_target_mg'
+        ] == Decimal('17.35')
+        assert _historical_target_snapshot(db) == before
+        checks = {
+            check['name']
+            for table in ('reduction_plan', 'plan_revision', 'plan_day')
+            for check in sa.inspect(db.connection).get_check_constraints(table)
+        }
+        assert {
+            'ck_reduction_plan_end_target_mg_nonnegative',
+            'ck_plan_revision_end_target_mg_nonnegative',
+            'ck_plan_day_target_pair',
+        } <= checks
+
+        db.execute(
+            'INSERT INTO plan_day '
+            '(id, plan_id, revision_id, local_date, target_pouches, '
+            'nicotine_ceiling_mg, created_at) VALUES '
+            '(202, 200, 200, :local_date, NULL, :ceiling, :created_at)',
+            {
+                'local_date': '2026-09-28',
+                'ceiling': '17.00',
+                'created_at': '2026-08-06 12:00:00',
+            },
+        )
+        assert db.scalar(
+            'SELECT target_pouches FROM plan_day WHERE id = 202'
+        ) is None
+        db.execute('DELETE FROM plan_day WHERE id = 202')
+
+        db.downgrade(NICOTINE_FIRST_DOWN_REVISION)
+
+        assert 'end_target_mg' not in db.columns('reduction_plan')
+        assert 'end_target_mg' not in db.columns('plan_revision')
+        assert _historical_target_snapshot(db) == before
+
+    def test_upgrade_aborts_before_ddl_without_authoritative_final_ceiling(
+        self, prepare,
+    ):
+        db = prepare(harness.SPECS_BY_KEY['legacy'])
+        db.upgrade(NICOTINE_FIRST_DOWN_REVISION)
+        _seed_targeted_plan(db, with_days=False)
+
+        with pytest.raises(RuntimeError, match='authoritative final ceiling'):
+            db.upgrade(NICOTINE_FIRST_REVISION)
+
+        assert db.stamp() == NICOTINE_FIRST_DOWN_REVISION
+        assert 'end_target_mg' not in db.columns('reduction_plan')
+        assert 'end_target_mg' not in db.columns('plan_revision')
 
 
 class TestNegativeCanaries:

@@ -50,12 +50,15 @@ class ReductionPlan(db.Model):
             name='ck_reduction_plan_end_target_nonnegative',
         ),
         db.CheckConstraint(
+            'end_target_mg IS NULL OR '
+            '(end_target_mg >= 0 AND end_target_mg <= 999999.99)',
+            name='ck_reduction_plan_end_target_mg_nonnegative',
+        ),
+        db.CheckConstraint(
             "NOT (status = 'active' AND mode IN ('reduce', 'quit_by_date')) OR "
             '(start_date IS NOT NULL AND baseline_source IS NOT NULL AND '
-            'baseline_pouches IS NOT NULL AND baseline_pouches > 0 AND '
             'baseline_mg IS NOT NULL AND baseline_mg > 0 AND '
-            'baseline_mg_per_pouch IS NOT NULL AND baseline_mg_per_pouch > 0 AND '
-            'pace IS NOT NULL AND end_target_pouches IS NOT NULL)',
+            'pace IS NOT NULL AND end_target_mg IS NOT NULL)',
             name='ck_reduction_plan_targeted_activation_complete',
         ),
         db.ForeignKeyConstraint(
@@ -81,6 +84,7 @@ class ReductionPlan(db.Model):
     baseline_source = db.Column(db.String(20), nullable=True)
     pace = db.Column(db.String(16), nullable=True)
     end_target_pouches = db.Column(db.Integer, nullable=True)
+    end_target_mg = db.Column(db.Numeric(8, 2), nullable=True)
     active_revision_id = db.Column(db.Integer, nullable=True)
     active_slot = db.Column(db.Integer, nullable=True)
     migration_fingerprint = db.Column(db.String(64), nullable=True, unique=True)
