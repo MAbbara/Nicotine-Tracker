@@ -19,7 +19,24 @@ from models import (
 )
 
 
-CONSTRAINT_ERRORS = (IntegrityError, OperationalError)
+def _assert_check_constraint_violation(error):
+    if isinstance(error, IntegrityError):
+        return
+    assert isinstance(error, OperationalError)
+    driver_args = getattr(error.orig, 'args', ())
+    errno = driver_args[0] if driver_args else None
+    assert errno == 3819, (
+        f'expected MySQL CHECK-constraint errno 3819, got {errno!r}'
+    )
+
+
+def test_check_constraint_helper_rejects_non_3819_operational_error():
+    error = OperationalError(
+        'SELECT 1', {}, Exception(2006, 'server has gone away')
+    )
+
+    with pytest.raises(AssertionError, match='3819'):
+        _assert_check_constraint_violation(error)
 
 
 def test_plan_models_are_registered_with_expected_table_names():
@@ -37,8 +54,9 @@ def test_reduction_plan_rejects_unknown_mode(db_session, test_user):
         mode='punitive',
         status='draft',
     ))
-    with pytest.raises(CONSTRAINT_ERRORS):
+    with pytest.raises((IntegrityError, OperationalError)) as caught:
         db.session.commit()
+    _assert_check_constraint_violation(caught.value)
 
 
 def test_active_plan_requires_the_single_active_slot(db_session, test_user):
@@ -48,8 +66,9 @@ def test_active_plan_requires_the_single_active_slot(db_session, test_user):
         status='active',
         active_slot=None,
     ))
-    with pytest.raises(CONSTRAINT_ERRORS):
+    with pytest.raises((IntegrityError, OperationalError)) as caught:
         db.session.commit()
+    _assert_check_constraint_violation(caught.value)
 
 
 def test_targeted_activation_requires_complete_confirmed_baseline(
@@ -67,8 +86,9 @@ def test_targeted_activation_requires_complete_confirmed_baseline(
         pace='steady',
         end_target_pouches=2,
     ))
-    with pytest.raises(CONSTRAINT_ERRORS):
+    with pytest.raises((IntegrityError, OperationalError)) as caught:
         db.session.commit()
+    _assert_check_constraint_violation(caught.value)
 
 
 def test_plan_day_is_unique_per_plan_and_local_date(db_session, test_user):
@@ -101,7 +121,7 @@ def test_plan_day_is_unique_per_plan_and_local_date(db_session, test_user):
             nicotine_ceiling_mg=Decimal('42.00'),
         ),
     ])
-    with pytest.raises(CONSTRAINT_ERRORS):
+    with pytest.raises(IntegrityError):
         db.session.commit()
 
 
@@ -120,7 +140,7 @@ def test_active_revision_cannot_belong_to_another_plan(db_session, test_user):
     db.session.add(foreign_revision)
     db.session.flush()
     first.active_revision_id = foreign_revision.id
-    with pytest.raises(CONSTRAINT_ERRORS):
+    with pytest.raises(IntegrityError):
         db.session.commit()
 
 
@@ -133,7 +153,7 @@ def test_daily_check_in_is_unique_per_user_day(db_session, test_user):
             user_id=test_user.id, local_date=date(2026, 8, 2), confidence=4
         ),
     ])
-    with pytest.raises(CONSTRAINT_ERRORS):
+    with pytest.raises(IntegrityError):
         db.session.commit()
 
 
@@ -143,8 +163,9 @@ def test_onboarding_draft_rejects_unknown_step(db_session, test_user):
         current_step='diagnosis',
         structured_payload={'intention': 'reduce'},
     ))
-    with pytest.raises(CONSTRAINT_ERRORS):
+    with pytest.raises((IntegrityError, OperationalError)) as caught:
         db.session.commit()
+    _assert_check_constraint_violation(caught.value)
 
 
 def test_status_event_rejects_non_lifecycle_status(db_session, test_user):
@@ -158,8 +179,9 @@ def test_status_event_rejects_non_lifecycle_status(db_session, test_user):
         local_date=date(2026, 8, 2),
         reason='created',
     ))
-    with pytest.raises(CONSTRAINT_ERRORS):
+    with pytest.raises((IntegrityError, OperationalError)) as caught:
         db.session.commit()
+    _assert_check_constraint_violation(caught.value)
 
 
 def test_log_client_event_id_is_unique_per_user(db_session, test_user):
@@ -174,7 +196,7 @@ def test_log_client_event_id_is_unique_per_user(db_session, test_user):
             client_event_id='same-log-event',
         ),
     ])
-    with pytest.raises(CONSTRAINT_ERRORS):
+    with pytest.raises(IntegrityError):
         db.session.commit()
 
 
@@ -190,7 +212,7 @@ def test_craving_client_event_id_is_unique_per_user(db_session, test_user):
             client_event_id='same-craving-event',
         ),
     ])
-    with pytest.raises(CONSTRAINT_ERRORS):
+    with pytest.raises(IntegrityError):
         db.session.commit()
 
 
@@ -240,7 +262,7 @@ def test_database_allows_only_one_active_plan_per_user(db_session, test_user):
             user_id=test_user.id, mode='observe', status='active', active_slot=1
         ),
     ])
-    with pytest.raises(CONSTRAINT_ERRORS):
+    with pytest.raises(IntegrityError):
         db.session.commit()
 
 
@@ -287,7 +309,7 @@ def test_onboarding_draft_is_unique_per_user(db_session, test_user):
             user_id=test_user.id, current_step='baseline', structured_payload={}
         ),
     ])
-    with pytest.raises(CONSTRAINT_ERRORS):
+    with pytest.raises(IntegrityError):
         db.session.commit()
 
 
@@ -312,7 +334,7 @@ def test_plan_day_cannot_use_revision_from_another_plan(db_session, test_user):
         target_pouches=None,
         nicotine_ceiling_mg=None,
     ))
-    with pytest.raises(CONSTRAINT_ERRORS):
+    with pytest.raises(IntegrityError):
         db.session.commit()
 
 
@@ -369,16 +391,18 @@ def test_plan_day_target_pair_truth_table(
         db.session.commit()
         assert PlanDay.query.filter_by(plan_id=plan.id).count() == 1
         return
-    with pytest.raises(CONSTRAINT_ERRORS):
+    with pytest.raises((IntegrityError, OperationalError)) as caught:
         db.session.commit()
+    _assert_check_constraint_violation(caught.value)
 
 
 def test_check_in_rejects_out_of_range_mood(db_session, test_user):
     db.session.add(DailyCheckIn(
         user_id=test_user.id, local_date=date(2026, 8, 3), mood=6
     ))
-    with pytest.raises(CONSTRAINT_ERRORS):
+    with pytest.raises((IntegrityError, OperationalError)) as caught:
         db.session.commit()
+    _assert_check_constraint_violation(caught.value)
 
 
 def test_status_event_history_is_append_only_data(db_session, test_user):
