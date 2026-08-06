@@ -376,25 +376,19 @@ def _canonical_generation_inputs(
         'mode': generation_input.mode,
         'start_date': preview.days[0].local_date.isoformat(),
         'baseline_pouches': _fixed_decimal(generation_input.baseline_pouches),
-        'baseline_mg': _fixed_decimal(generation_input.baseline_mg),
+        'baseline_mg': _fixed_decimal(
+            preview.days[0].nicotine_ceiling_mg
+            if generation_input.target_basis == 'nicotine_mg'
+            else generation_input.baseline_mg
+        ),
         'baseline_mg_per_pouch': _fixed_decimal(
             generation_input.baseline_mg_per_pouch
         ),
         'pace': generation_input.pace,
-        'target_basis': (
-            'nicotine_mg'
-            if generation_input.end_target_mg is not None
-            else (
-                'legacy_pouches'
-                if generation_input.end_target_pouches is not None
-                else 'observe'
-            )
-        ),
-        'end_target_pouches': generation_input.end_target_pouches,
+        'target_basis': generation_input.target_basis or 'observe',
+        'end_target_pouches': preview.days[-1].target_pouches,
         'end_target_mg': _fixed_decimal(
-            generation_input.end_target_mg
-            if generation_input.end_target_mg is not None
-            else preview.days[-1].nicotine_ceiling_mg
+            preview.days[-1].nicotine_ceiling_mg
         ),
         'target_date': preview.days[-1].local_date.isoformat(),
         'duration_days': len(preview.days),
@@ -443,11 +437,15 @@ def _add_new_plan(user, generation_input, baseline_source, preview):
         start_date=preview.days[0].local_date,
         target_date=preview.days[-1].local_date,
         baseline_pouches=generation_input.baseline_pouches,
-        baseline_mg=generation_input.baseline_mg,
+        baseline_mg=(
+            preview.days[0].nicotine_ceiling_mg
+            if generation_input.target_basis == 'nicotine_mg'
+            else generation_input.baseline_mg
+        ),
         baseline_mg_per_pouch=generation_input.baseline_mg_per_pouch,
         baseline_source=baseline_source,
         pace=generation_input.pace,
-        end_target_pouches=generation_input.end_target_pouches,
+        end_target_pouches=preview.days[-1].target_pouches,
         end_target_mg=preview.days[-1].nicotine_ceiling_mg,
     )
     db.session.add(plan)
@@ -458,7 +456,7 @@ def _add_new_plan(user, generation_input, baseline_source, preview):
         effective_date=preview.days[0].local_date,
         pace=generation_input.pace,
         target_date=preview.days[-1].local_date,
-        end_target_pouches=generation_input.end_target_pouches,
+        end_target_pouches=preview.days[-1].target_pouches,
         end_target_mg=preview.days[-1].nicotine_ceiling_mg,
         generation_inputs=canonical_inputs,
         preview_digest=preview.digest,
@@ -516,6 +514,7 @@ def _revision_preview(user, plan, changes, effective_date, now=None):
     if nicotine_first:
         generation_input = PlanGenerationInput(
             mode=plan.mode,
+            target_basis='nicotine_mg',
             start_date=effective_date,
             baseline_pouches=(
                 Decimal(anchor.target_pouches)
@@ -535,6 +534,7 @@ def _revision_preview(user, plan, changes, effective_date, now=None):
         strength = Decimal(plan.baseline_mg_per_pouch)
         generation_input = PlanGenerationInput(
             mode=plan.mode,
+            target_basis='legacy_pouches',
             start_date=effective_date,
             baseline_pouches=Decimal(anchor.target_pouches),
             baseline_mg=Decimal(anchor.nicotine_ceiling_mg),
@@ -687,6 +687,7 @@ def _resume_preview(user, plan, resume_date, now=None):
     if plan.mode == 'observe':
         generation_input = PlanGenerationInput(
             mode='observe',
+            target_basis='observe',
             start_date=resume_date,
             target_date=days[-1].local_date,
             duration_days=len(days),
@@ -695,6 +696,7 @@ def _resume_preview(user, plan, resume_date, now=None):
         if days[0].target_pouches is None:
             generation_input = PlanGenerationInput(
                 mode=plan.mode,
+                target_basis='nicotine_mg',
                 start_date=resume_date,
                 baseline_mg=Decimal(days[0].nicotine_ceiling_mg),
                 pace=plan.pace,
@@ -706,6 +708,7 @@ def _resume_preview(user, plan, resume_date, now=None):
             strength = Decimal(plan.baseline_mg_per_pouch)
             generation_input = PlanGenerationInput(
                 mode=plan.mode,
+                target_basis='legacy_pouches',
                 start_date=resume_date,
                 baseline_pouches=Decimal(days[0].target_pouches),
                 baseline_mg=Decimal(days[0].nicotine_ceiling_mg),
@@ -1202,8 +1205,7 @@ class PlanService:
             plan.pace = generation_input.pace
             plan.target_date = preview.days[-1].local_date
             plan.end_target_mg = preview.days[-1].nicotine_ceiling_mg
-            if generation_input.end_target_mg is None:
-                plan.end_target_pouches = generation_input.end_target_pouches
+            plan.end_target_pouches = preview.days[-1].target_pouches
             db.session.flush()
             built_result = (
                 result_builder(plan) if result_builder is not None else None
@@ -1313,8 +1315,7 @@ class PlanService:
             plan.active_revision_id = revision.id
             plan.target_date = preview.days[-1].local_date
             plan.end_target_mg = preview.days[-1].nicotine_ceiling_mg
-            if preview.days[-1].target_pouches is not None:
-                plan.end_target_pouches = preview.days[-1].target_pouches
+            plan.end_target_pouches = preview.days[-1].target_pouches
             plan.status = 'active'
             plan.active_slot = 1
             db.session.add(PlanStatusEvent(
@@ -1487,6 +1488,7 @@ class PlanService:
                 normalized_stages = ()
                 generation_input = PlanGenerationInput(
                     mode='observe',
+                    target_basis='observe',
                     start_date=redated_days[0].local_date,
                     target_date=redated_days[-1].local_date,
                     duration_days=len(redated_days),
@@ -1495,6 +1497,7 @@ class PlanService:
                 normalized_stages = _normalized_stages(redated_days)
                 generation_input = PlanGenerationInput(
                     mode=plan.mode,
+                    target_basis='nicotine_mg',
                     start_date=redated_days[0].local_date,
                     baseline_mg=Decimal(
                         redated_days[0].nicotine_ceiling_mg
@@ -1510,6 +1513,7 @@ class PlanService:
                 normalized_stages = _normalized_stages(redated_days)
                 generation_input = PlanGenerationInput(
                     mode=plan.mode,
+                    target_basis='legacy_pouches',
                     start_date=redated_days[0].local_date,
                     baseline_pouches=Decimal(redated_days[0].target_pouches),
                     baseline_mg=Decimal(redated_days[0].nicotine_ceiling_mg),
@@ -1556,6 +1560,7 @@ class PlanService:
             plan.active_revision_id = revision.id
             plan.target_date = redated_days[-1].local_date
             plan.end_target_mg = redated_days[-1].nicotine_ceiling_mg
+            plan.end_target_pouches = redated_days[-1].target_pouches
             _apply_pending_preferences(user, preferences)
             db.session.commit()
             return revision

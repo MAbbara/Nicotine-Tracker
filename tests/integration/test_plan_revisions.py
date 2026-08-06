@@ -304,6 +304,7 @@ def test_activation_contention_classifier_rejects_near_miss_operational_error(
 def _contention_test_input(start_date):
     return PlanGenerationInput(
         mode='reduce',
+        target_basis='legacy_pouches',
         start_date=start_date,
         baseline_pouches=Decimal('8.00'),
         baseline_mg=Decimal('48.00'),
@@ -1141,6 +1142,7 @@ def test_two_independent_connections_map_activation_race_to_one_conflict(
         test_user.id,
         PlanGenerationInput(
             mode='reduce',
+            target_basis='legacy_pouches',
             start_date=date(2099, 1, 1),
             baseline_pouches=Decimal('8.00'),
             baseline_mg=Decimal('48.00'),
@@ -1154,6 +1156,7 @@ def test_two_independent_connections_map_activation_race_to_one_conflict(
         test_user.id,
         PlanGenerationInput(
             mode='reduce',
+            target_basis='legacy_pouches',
             start_date=date(2099, 3, 1),
             baseline_pouches=Decimal('6.00'),
             baseline_mg=Decimal('36.00'),
@@ -1398,6 +1401,7 @@ def test_status_history_is_append_only_and_derives_all_paused_intervals(
         test_user.id,
         PlanGenerationInput(
             mode='reduce',
+            target_basis='legacy_pouches',
             start_date=date(2099, 1, 1),
             baseline_pouches=Decimal('8.00'),
             baseline_mg=Decimal('48.00'),
@@ -1491,6 +1495,7 @@ def test_completing_a_paused_plan_closes_its_interval_without_resume(
         test_user.id,
         PlanGenerationInput(
             mode='reduce',
+            target_basis='legacy_pouches',
             start_date=date(2099, 2, 1),
             baseline_pouches=Decimal('5.00'),
             baseline_mg=Decimal('30.00'),
@@ -1609,6 +1614,7 @@ def test_cross_user_lifecycle_matrix_is_not_found_and_mutation_free(
         test_user.id,
         PlanGenerationInput(
             mode='reduce',
+            target_basis='legacy_pouches',
             start_date=date(2099, 1, 1),
             baseline_pouches=Decimal('8.00'),
             baseline_mg=Decimal('48.00'),
@@ -1688,6 +1694,7 @@ def test_create_from_preview_generator_failure_preserves_onboarding_atomically(
 ):
     generation_input = PlanGenerationInput(
         mode='reduce',
+        target_basis='legacy_pouches',
         start_date=date(2099, 5, 1),
         baseline_pouches=Decimal('8.00'),
         baseline_mg=Decimal('48.00'),
@@ -1750,6 +1757,7 @@ def test_resume_preview_detects_source_day_drift_without_partial_resume(
         test_user.id,
         PlanGenerationInput(
             mode='reduce',
+            target_basis='legacy_pouches',
             start_date=date(2099, 1, 1),
             baseline_pouches=Decimal('8.00'),
             baseline_mg=Decimal('48.00'),
@@ -1843,6 +1851,7 @@ def test_revision_at_exact_non_midnight_reset_protects_the_new_day(
         test_user.id,
         PlanGenerationInput(
             mode='reduce',
+            target_basis='legacy_pouches',
             start_date=date(2099, 1, 1),
             baseline_pouches=Decimal('8.00'),
             baseline_mg=Decimal('48.00'),
@@ -2166,6 +2175,7 @@ def test_apply_boundary_change_before_effective_instant_is_mutation_free(
 def _active_targeted_plan(test_user):
     generation_input = PlanGenerationInput(
         mode='reduce',
+        target_basis='legacy_pouches',
         start_date=date(2099, 1, 1),
         baseline_pouches=Decimal('8.00'),
         baseline_mg=Decimal('48.00'),
@@ -2186,6 +2196,7 @@ def test_nicotine_first_plan_persists_exact_target_and_null_pouch_days(
 ):
     generation_input = PlanGenerationInput(
         mode='reduce',
+        target_basis='nicotine_mg',
         start_date=date(2099, 1, 1),
         baseline_mg=Decimal('40.00'),
         pace='steady',
@@ -2216,11 +2227,46 @@ def test_nicotine_first_plan_persists_exact_target_and_null_pouch_days(
     assert activated.status == 'active'
 
 
+def test_nicotine_plan_normalizes_once_for_digest_json_and_orm(
+    db_session, test_user,
+):
+    raw_input = PlanGenerationInput(
+        mode='reduce',
+        target_basis='nicotine_mg',
+        start_date=date(2099, 1, 1),
+        baseline_mg=Decimal('40.004'),
+        pace='steady',
+        end_target_mg=Decimal('20.004'),
+    )
+    normalized_input = PlanGenerationInput(
+        mode='reduce',
+        target_basis='nicotine_mg',
+        start_date=date(2099, 1, 1),
+        baseline_mg=Decimal('40.00'),
+        pace='steady',
+        end_target_mg=Decimal('20.00'),
+    )
+    normalized_preview = PlanScheduleGenerator.generate(normalized_input)
+
+    plan = PlanService.create_draft(
+        test_user.id, raw_input, baseline_source='manual'
+    )
+    revision = PlanRevision.query.filter_by(plan_id=plan.id).one()
+
+    assert plan.baseline_mg == Decimal('40.00')
+    assert plan.end_target_mg == Decimal('20.00')
+    assert revision.end_target_mg == Decimal('20.00')
+    assert revision.generation_inputs['baseline_mg'] == '40.00'
+    assert revision.generation_inputs['end_target_mg'] == '20.00'
+    assert revision.preview_digest == normalized_preview.digest
+
+
 def test_first_nicotine_revision_preserves_started_rows_and_legacy_metadata(
     db_session, test_user,
 ):
     initial_input = PlanGenerationInput(
         mode='reduce',
+        target_basis='legacy_pouches',
         start_date=date(2099, 1, 1),
         baseline_pouches=Decimal('8.00'),
         baseline_mg=Decimal('48.00'),
@@ -2272,8 +2318,59 @@ def test_first_nicotine_revision_preserves_started_rows_and_legacy_metadata(
     assert {day.target_pouches for day in future} == {None}
     assert revised.end_target_mg == Decimal('10.00')
     assert plan.end_target_mg == Decimal('10.00')
+    assert plan.end_target_pouches is None
     assert initial_revision.end_target_pouches == 2
     assert initial_revision.end_target_mg == Decimal('12.00')
+
+
+def test_nicotine_resume_clears_stale_current_pouch_target(
+    db_session, test_user, monkeypatch,
+):
+    plan = PlanService.create_draft(
+        test_user.id,
+        PlanGenerationInput(
+            mode='reduce',
+            target_basis='nicotine_mg',
+            start_date=date(2099, 1, 1),
+            baseline_mg=Decimal('40.00'),
+            pace='steady',
+            end_target_mg=Decimal('20.00'),
+        ),
+        baseline_source='manual',
+    )
+    initial = PlanRevision.query.filter_by(plan_id=plan.id).one()
+    _activate_at(
+        monkeypatch,
+        test_user.id,
+        plan.id,
+        initial.preview_digest,
+        datetime(2099, 1, 1, 12, tzinfo=timezone.utc),
+    )
+    PlanService.pause(
+        test_user.id,
+        plan.id,
+        reason='test nicotine resume',
+        now=datetime(2099, 1, 10, 12, tzinfo=timezone.utc),
+    )
+    plan.end_target_pouches = 9
+    db_session.commit()
+    resume_date = date(2099, 1, 15)
+    now = datetime(2099, 1, 12, 12, tzinfo=timezone.utc)
+    preview = PlanService.preview_resume(
+        test_user.id, plan.id, resume_date, now=now
+    )
+
+    PlanService.resume(
+        test_user.id,
+        plan.id,
+        resume_date,
+        preview.digest,
+        now=now,
+    )
+
+    db_session.refresh(plan)
+    assert plan.end_target_pouches is None
+    assert plan.end_target_mg == preview.days[-1].nicotine_ceiling_mg
 
 
 def _day_snapshot(plan_id, predicate=None):
@@ -2291,6 +2388,49 @@ def _day_snapshot(plan_id, predicate=None):
         )
         for row in rows
     ]
+
+
+def test_nicotine_boundary_change_clears_stale_current_pouch_target(
+    db_session, test_user,
+):
+    test_user.timezone = 'Asia/Riyadh'
+    preferences = UserPreferences(
+        user_id=test_user.id, daily_reset_time=time(4, 0)
+    )
+    db_session.add(preferences)
+    db_session.commit()
+    plan = PlanService.create_draft(
+        test_user.id,
+        PlanGenerationInput(
+            mode='reduce',
+            target_basis='nicotine_mg',
+            start_date=date(2099, 1, 1),
+            baseline_mg=Decimal('40.00'),
+            pace='steady',
+            end_target_mg=Decimal('20.00'),
+        ),
+        baseline_source='manual',
+    )
+    initial = PlanRevision.query.filter_by(plan_id=plan.id).one()
+    PlanService.activate(test_user.id, plan.id, initial.preview_digest)
+    plan.end_target_pouches = 9
+    db_session.commit()
+    PreferenceService().schedule_day_boundary_change(
+        test_user.id,
+        'America/Los_Angeles',
+        '04:00',
+        now=datetime(2099, 1, 10, 12, tzinfo=timezone.utc),
+    )
+
+    revision = PlanService.apply_boundary_change(
+        test_user.id,
+        now=datetime(2099, 1, 11, 12, tzinfo=timezone.utc),
+    )
+
+    db_session.refresh(plan)
+    assert revision.end_target_pouches is None
+    assert plan.end_target_pouches is None
+    assert plan.end_target_mg == revision.end_target_mg
 
 
 def test_due_targeted_boundary_change_preserves_started_days_and_redates_future(
@@ -2505,6 +2645,7 @@ def test_boundary_change_renormalizes_an_explicit_stage_cut_by_protected_day(
     db_session.commit()
     generation_input = PlanGenerationInput(
         mode='reduce',
+        target_basis='legacy_pouches',
         start_date=date(2099, 1, 1),
         baseline_pouches=Decimal('8.00'),
         baseline_mg=Decimal('48.00'),

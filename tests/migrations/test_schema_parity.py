@@ -155,6 +155,130 @@ def _historical_target_snapshot(db):
     }
 
 
+def _seed_draft_targeted_plan(db, *, with_days):
+    now = datetime(2026, 8, 6, 12, 30)
+    plan = sa.table(
+        'reduction_plan',
+        sa.column('id', sa.Integer()),
+        sa.column('user_id', sa.Integer()),
+        sa.column('mode', sa.String()),
+        sa.column('status', sa.String()),
+        sa.column('start_date', sa.Date()),
+        sa.column('target_date', sa.Date()),
+        sa.column('baseline_pouches', sa.Numeric(6, 2)),
+        sa.column('baseline_mg', sa.Numeric(8, 2)),
+        sa.column('baseline_mg_per_pouch', sa.Numeric(8, 2)),
+        sa.column('baseline_source', sa.String()),
+        sa.column('pace', sa.String()),
+        sa.column('end_target_pouches', sa.Integer()),
+        sa.column('active_revision_id', sa.Integer()),
+        sa.column('active_slot', sa.Integer()),
+        sa.column('migration_fingerprint', sa.String()),
+        sa.column('legacy_goal_ids', sa.JSON()),
+        sa.column('created_at', sa.DateTime()),
+        sa.column('updated_at', sa.DateTime()),
+    )
+    revision = sa.table(
+        'plan_revision',
+        sa.column('id', sa.Integer()),
+        sa.column('plan_id', sa.Integer()),
+        sa.column('effective_date', sa.Date()),
+        sa.column('pace', sa.String()),
+        sa.column('target_date', sa.Date()),
+        sa.column('end_target_pouches', sa.Integer()),
+        sa.column('generation_inputs', sa.JSON()),
+        sa.column('preview_digest', sa.String()),
+        sa.column('reason', sa.String()),
+        sa.column('note', sa.Text()),
+        sa.column('created_at', sa.DateTime()),
+    )
+    plan_day = sa.table(
+        'plan_day',
+        sa.column('id', sa.Integer()),
+        sa.column('plan_id', sa.Integer()),
+        sa.column('revision_id', sa.Integer()),
+        sa.column('local_date', sa.Date()),
+        sa.column('target_pouches', sa.Integer()),
+        sa.column('nicotine_ceiling_mg', sa.Numeric(8, 2)),
+        sa.column('created_at', sa.DateTime()),
+    )
+    connection = db.connection
+    connection.execute(plan.insert().values(
+        id=300,
+        user_id=1,
+        mode='reduce',
+        status='draft',
+        start_date=None,
+        target_date=date(2026, 9, 27),
+        baseline_pouches=Decimal('6.00'),
+        baseline_mg=Decimal('30.00'),
+        baseline_mg_per_pouch=Decimal('5.00'),
+        baseline_source='manual',
+        pace='steady',
+        end_target_pouches=2,
+        active_revision_id=None,
+        active_slot=None,
+        migration_fingerprint=None,
+        legacy_goal_ids=None,
+        created_at=now,
+        updated_at=now,
+    ))
+    connection.execute(revision.insert().values(
+        id=300,
+        plan_id=300,
+        effective_date=date(2026, 8, 10),
+        pace='steady',
+        target_date=date(2026, 9, 27),
+        end_target_pouches=2,
+        generation_inputs={'compatibility': 'legacy_pouches'},
+        preview_digest='b' * 64,
+        reason='initial',
+        note='draft targeted plan without active revision marker',
+        created_at=now,
+    ))
+    if with_days:
+        connection.execute(plan_day.insert(), [
+            {
+                'id': 300,
+                'plan_id': 300,
+                'revision_id': 300,
+                'local_date': date(2026, 8, 10),
+                'target_pouches': 6,
+                'nicotine_ceiling_mg': Decimal('30.00'),
+                'created_at': now,
+            },
+            {
+                'id': 301,
+                'plan_id': 300,
+                'revision_id': 300,
+                'local_date': date(2026, 9, 27),
+                'target_pouches': 2,
+                'nicotine_ceiling_mg': Decimal('10.00'),
+                'created_at': now,
+            },
+        ])
+    connection.commit()
+
+
+def _nicotine_schema_signature(db):
+    inspector = sa.inspect(db.connection)
+    signature = {}
+    for table in ('plan_day', 'reduction_plan', 'plan_revision'):
+        columns = tuple(
+            (column['name'], str(column['type']), column['nullable'])
+            for column in inspector.get_columns(table)
+        )
+        checks = tuple(sorted(
+            (
+                check['name'],
+                ' '.join((check.get('sqltext') or '').split()),
+            )
+            for check in inspector.get_check_constraints(table)
+        ))
+        signature[table] = (columns, checks)
+    return signature
+
+
 def _wrong_server_default_defect(op, conn):
     # Scalar INTEGER defaults are accepted by SQLite and default MySQL 8.4;
     # unlike a bare JSON literal, this reaches the parity comparison on both.
@@ -328,6 +452,62 @@ class TestNicotineFirstTargetMigration:
         assert db.stamp() == NICOTINE_FIRST_DOWN_REVISION
         assert 'end_target_mg' not in db.columns('reduction_plan')
         assert 'end_target_mg' not in db.columns('plan_revision')
+
+    def test_upgrade_backfills_targeted_draft_without_schedule_markers(
+        self, prepare,
+    ):
+        db = prepare(harness.SPECS_BY_KEY['legacy'])
+        db.upgrade(NICOTINE_FIRST_DOWN_REVISION)
+        _seed_draft_targeted_plan(db, with_days=True)
+
+        db.upgrade(NICOTINE_FIRST_REVISION)
+
+        assert db.scalar(
+            'SELECT end_target_mg FROM reduction_plan WHERE id = 300'
+        ) == Decimal('10.00')
+        assert db.scalar(
+            'SELECT end_target_mg FROM plan_revision WHERE id = 300'
+        ) is None
+
+    def test_upgrade_aborts_targeted_draft_without_final_day_before_ddl(
+        self, prepare,
+    ):
+        db = prepare(harness.SPECS_BY_KEY['legacy'])
+        db.upgrade(NICOTINE_FIRST_DOWN_REVISION)
+        _seed_draft_targeted_plan(db, with_days=False)
+
+        with pytest.raises(RuntimeError, match='authoritative final ceiling'):
+            db.upgrade(NICOTINE_FIRST_REVISION)
+
+        assert db.stamp() == NICOTINE_FIRST_DOWN_REVISION
+        assert 'end_target_mg' not in db.columns('reduction_plan')
+        assert 'end_target_mg' not in db.columns('plan_revision')
+
+    def test_downgrade_preflight_preserves_schema_for_nicotine_first_data(
+        self, prepare,
+    ):
+        db = prepare(harness.SPECS_BY_KEY['legacy'])
+        db.upgrade(NICOTINE_FIRST_DOWN_REVISION)
+        _seed_targeted_plan(db)
+        db.upgrade(NICOTINE_FIRST_REVISION)
+        db.execute(
+            'UPDATE reduction_plan SET baseline_pouches = NULL, '
+            'baseline_mg_per_pouch = NULL, end_target_pouches = NULL '
+            'WHERE id = 200'
+        )
+        db.execute(
+            'UPDATE plan_day SET target_pouches = NULL WHERE plan_id = 200'
+        )
+        schema_before = _nicotine_schema_signature(db)
+        data_before = _historical_target_snapshot(db)
+
+        with pytest.raises(RuntimeError, match='legacy-compatible'):
+            db.downgrade(NICOTINE_FIRST_DOWN_REVISION)
+
+        assert db.stamp() == NICOTINE_FIRST_REVISION
+        assert _nicotine_schema_signature(db) == schema_before
+        assert _historical_target_snapshot(db) == data_before
+        assert harness.schema_diffs(db.connection) == []
 
 
 class TestNegativeCanaries:

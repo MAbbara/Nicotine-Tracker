@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 import pytest
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 
 from extensions import db
 from models import (
@@ -17,6 +17,9 @@ from models import (
     PlanStatusEvent,
     ReductionPlan,
 )
+
+
+CONSTRAINT_ERRORS = (IntegrityError, OperationalError)
 
 
 def test_plan_models_are_registered_with_expected_table_names():
@@ -34,7 +37,7 @@ def test_reduction_plan_rejects_unknown_mode(db_session, test_user):
         mode='punitive',
         status='draft',
     ))
-    with pytest.raises(IntegrityError):
+    with pytest.raises(CONSTRAINT_ERRORS):
         db.session.commit()
 
 
@@ -45,7 +48,7 @@ def test_active_plan_requires_the_single_active_slot(db_session, test_user):
         status='active',
         active_slot=None,
     ))
-    with pytest.raises(IntegrityError):
+    with pytest.raises(CONSTRAINT_ERRORS):
         db.session.commit()
 
 
@@ -64,7 +67,7 @@ def test_targeted_activation_requires_complete_confirmed_baseline(
         pace='steady',
         end_target_pouches=2,
     ))
-    with pytest.raises(IntegrityError):
+    with pytest.raises(CONSTRAINT_ERRORS):
         db.session.commit()
 
 
@@ -98,7 +101,7 @@ def test_plan_day_is_unique_per_plan_and_local_date(db_session, test_user):
             nicotine_ceiling_mg=Decimal('42.00'),
         ),
     ])
-    with pytest.raises(IntegrityError):
+    with pytest.raises(CONSTRAINT_ERRORS):
         db.session.commit()
 
 
@@ -117,7 +120,7 @@ def test_active_revision_cannot_belong_to_another_plan(db_session, test_user):
     db.session.add(foreign_revision)
     db.session.flush()
     first.active_revision_id = foreign_revision.id
-    with pytest.raises(IntegrityError):
+    with pytest.raises(CONSTRAINT_ERRORS):
         db.session.commit()
 
 
@@ -130,7 +133,7 @@ def test_daily_check_in_is_unique_per_user_day(db_session, test_user):
             user_id=test_user.id, local_date=date(2026, 8, 2), confidence=4
         ),
     ])
-    with pytest.raises(IntegrityError):
+    with pytest.raises(CONSTRAINT_ERRORS):
         db.session.commit()
 
 
@@ -140,7 +143,7 @@ def test_onboarding_draft_rejects_unknown_step(db_session, test_user):
         current_step='diagnosis',
         structured_payload={'intention': 'reduce'},
     ))
-    with pytest.raises(IntegrityError):
+    with pytest.raises(CONSTRAINT_ERRORS):
         db.session.commit()
 
 
@@ -155,7 +158,7 @@ def test_status_event_rejects_non_lifecycle_status(db_session, test_user):
         local_date=date(2026, 8, 2),
         reason='created',
     ))
-    with pytest.raises(IntegrityError):
+    with pytest.raises(CONSTRAINT_ERRORS):
         db.session.commit()
 
 
@@ -171,7 +174,7 @@ def test_log_client_event_id_is_unique_per_user(db_session, test_user):
             client_event_id='same-log-event',
         ),
     ])
-    with pytest.raises(IntegrityError):
+    with pytest.raises(CONSTRAINT_ERRORS):
         db.session.commit()
 
 
@@ -187,7 +190,7 @@ def test_craving_client_event_id_is_unique_per_user(db_session, test_user):
             client_event_id='same-craving-event',
         ),
     ])
-    with pytest.raises(IntegrityError):
+    with pytest.raises(CONSTRAINT_ERRORS):
         db.session.commit()
 
 
@@ -237,7 +240,7 @@ def test_database_allows_only_one_active_plan_per_user(db_session, test_user):
             user_id=test_user.id, mode='observe', status='active', active_slot=1
         ),
     ])
-    with pytest.raises(IntegrityError):
+    with pytest.raises(CONSTRAINT_ERRORS):
         db.session.commit()
 
 
@@ -284,7 +287,7 @@ def test_onboarding_draft_is_unique_per_user(db_session, test_user):
             user_id=test_user.id, current_step='baseline', structured_payload={}
         ),
     ])
-    with pytest.raises(IntegrityError):
+    with pytest.raises(CONSTRAINT_ERRORS):
         db.session.commit()
 
 
@@ -309,11 +312,40 @@ def test_plan_day_cannot_use_revision_from_another_plan(db_session, test_user):
         target_pouches=None,
         nicotine_ceiling_mg=None,
     ))
-    with pytest.raises(IntegrityError):
+    with pytest.raises(CONSTRAINT_ERRORS):
         db.session.commit()
 
 
-def test_plan_day_rejects_half_known_target(db_session, test_user):
+@pytest.mark.parametrize(
+    ('target_pouches', 'nicotine_ceiling_mg', 'allowed'),
+    (
+        (None, None, True),
+        (None, Decimal('0.00'), True),
+        (None, Decimal('12.50'), True),
+        (0, Decimal('0.00'), True),
+        (4, Decimal('24.00'), True),
+        (4, None, False),
+        (-1, None, False),
+        (-1, Decimal('0.00'), False),
+        (None, Decimal('-0.01'), False),
+        (4, Decimal('-0.01'), False),
+    ),
+    ids=(
+        'untargeted',
+        'nicotine-zero',
+        'nicotine-positive',
+        'legacy-zero',
+        'legacy-positive',
+        'legacy-half-known',
+        'negative-pouches-half-known',
+        'negative-pouches',
+        'negative-nicotine-only',
+        'negative-legacy-nicotine',
+    ),
+)
+def test_plan_day_target_pair_truth_table(
+    db_session, test_user, target_pouches, nicotine_ceiling_mg, allowed,
+):
     plan = ReductionPlan(user_id=test_user.id, mode='reduce', status='draft')
     db.session.add(plan)
     db.session.flush()
@@ -330,10 +362,14 @@ def test_plan_day_rejects_half_known_target(db_session, test_user):
         plan_id=plan.id,
         revision_id=revision.id,
         local_date=date(2026, 8, 3),
-        target_pouches=4,
-        nicotine_ceiling_mg=None,
+        target_pouches=target_pouches,
+        nicotine_ceiling_mg=nicotine_ceiling_mg,
     ))
-    with pytest.raises(IntegrityError):
+    if allowed:
+        db.session.commit()
+        assert PlanDay.query.filter_by(plan_id=plan.id).count() == 1
+        return
+    with pytest.raises(CONSTRAINT_ERRORS):
         db.session.commit()
 
 
@@ -341,7 +377,7 @@ def test_check_in_rejects_out_of_range_mood(db_session, test_user):
     db.session.add(DailyCheckIn(
         user_id=test_user.id, local_date=date(2026, 8, 3), mood=6
     ))
-    with pytest.raises(IntegrityError):
+    with pytest.raises(CONSTRAINT_ERRORS):
         db.session.commit()
 
 

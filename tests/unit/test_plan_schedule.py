@@ -19,6 +19,7 @@ from services.plan_schedule import (
 def test_schedule_contracts_are_immutable_values():
     generation_input = PlanGenerationInput(
         mode='reduce',
+        target_basis='legacy_pouches',
         start_date=date(2027, 1, 1),
         baseline_pouches=Decimal('8.00'),
         baseline_mg=Decimal('48.00'),
@@ -44,6 +45,7 @@ def test_observe_mode_produces_seven_honestly_untargeted_days():
 def test_steady_reduce_uses_default_duration_and_exact_endpoints():
     preview = PlanScheduleGenerator.generate(PlanGenerationInput(
         mode='reduce',
+        target_basis='legacy_pouches',
         start_date=date(2027, 1, 1),
         baseline_pouches=Decimal('8.20'),
         baseline_mg=Decimal('49.20'),
@@ -67,6 +69,7 @@ def test_steady_reduce_uses_default_duration_and_exact_endpoints():
 def test_quit_by_date_derives_inclusive_duration_and_ends_at_zero():
     preview = PlanScheduleGenerator.generate(PlanGenerationInput(
         mode='quit_by_date',
+        target_basis='legacy_pouches',
         start_date=date(2027, 1, 1),
         target_date=date(2027, 1, 30),
         baseline_pouches=Decimal('5.00'),
@@ -89,6 +92,7 @@ def test_explicit_contiguous_stages_are_expanded_exactly():
     )
     preview = PlanScheduleGenerator.generate(PlanGenerationInput(
         mode='reduce',
+        target_basis='legacy_pouches',
         start_date=date(2027, 1, 1),
         target_date=date(2027, 1, 21),
         duration_days=21,
@@ -109,7 +113,8 @@ def test_explicit_contiguous_stages_are_expanded_exactly():
 ))
 def test_each_pace_has_the_approved_default_duration(pace, expected_days):
     preview = PlanScheduleGenerator.generate(PlanGenerationInput(
-        mode='reduce', start_date=date(2027, 1, 1),
+        mode='reduce', target_basis='legacy_pouches',
+        start_date=date(2027, 1, 1),
         baseline_pouches=Decimal('10.00'), baseline_mg=Decimal('60.00'),
         baseline_mg_per_pouch=Decimal('6.00'), pace=pace,
         end_target_pouches=3,
@@ -129,7 +134,8 @@ def test_each_pace_has_the_approved_default_duration(pace, expected_days):
 ))
 def test_targeted_modes_return_structured_field_errors(overrides, field):
     values = {
-        'mode': 'reduce', 'start_date': date(2027, 1, 1),
+        'mode': 'reduce', 'target_basis': 'legacy_pouches',
+        'start_date': date(2027, 1, 1),
         'baseline_pouches': Decimal('10.00'),
         'baseline_mg': Decimal('60.00'),
         'baseline_mg_per_pouch': Decimal('6.00'),
@@ -175,7 +181,8 @@ def test_observe_duration_must_be_a_whole_number_when_supplied():
 def test_explicit_stages_reject_gaps_and_increases(stages):
     with pytest.raises(PlanValidationError) as caught:
         PlanScheduleGenerator.generate(PlanGenerationInput(
-            mode='reduce', start_date=date(2027, 1, 1),
+            mode='reduce', target_basis='legacy_pouches',
+            start_date=date(2027, 1, 1),
             baseline_pouches=Decimal('8'), baseline_mg=Decimal('48'),
             baseline_mg_per_pouch=Decimal('6'), pace='focused',
             end_target_pouches=stages[-1].target_pouches,
@@ -193,7 +200,8 @@ def test_explicit_stages_reject_gaps_and_increases(stages):
 def test_explicit_stages_must_define_the_full_schedule_from_baseline(stages):
     with pytest.raises(PlanValidationError) as caught:
         PlanScheduleGenerator.generate(PlanGenerationInput(
-            mode='reduce', start_date=date(2027, 1, 1),
+            mode='reduce', target_basis='legacy_pouches',
+            start_date=date(2027, 1, 1),
             baseline_pouches=Decimal('8'), baseline_mg=Decimal('48'),
             baseline_mg_per_pouch=Decimal('6'), pace='focused',
             end_target_pouches=7, stage_targets=stages,
@@ -256,7 +264,8 @@ def test_injected_reference_date_rejects_past_starts_without_clock_reads():
 def test_quit_target_date_cannot_precede_start_date():
     with pytest.raises(PlanValidationError) as caught:
         PlanScheduleGenerator.generate(PlanGenerationInput(
-            mode='quit_by_date', start_date=date(2027, 2, 1),
+            mode='quit_by_date', target_basis='legacy_pouches',
+            start_date=date(2027, 2, 1),
             target_date=date(2027, 1, 31),
             baseline_pouches=Decimal('5'), baseline_mg=Decimal('30'),
             baseline_mg_per_pouch=Decimal('6'), pace='focused',
@@ -268,7 +277,8 @@ def test_quit_target_date_cannot_precede_start_date():
 def test_duration_must_fit_every_requested_whole_pouch_drop():
     with pytest.raises(PlanValidationError) as caught:
         PlanScheduleGenerator.generate(PlanGenerationInput(
-            mode='reduce', start_date=date(2027, 1, 1),
+            mode='reduce', target_basis='legacy_pouches',
+            start_date=date(2027, 1, 1),
             baseline_pouches=Decimal('30'), baseline_mg=Decimal('180'),
             baseline_mg_per_pouch=Decimal('6'), pace='focused',
             end_target_pouches=0, duration_days=21,
@@ -281,7 +291,8 @@ def test_duration_must_fit_every_requested_whole_pouch_drop():
 def test_explicit_stages_cannot_bypass_minimum_reduction_duration():
     with pytest.raises(PlanValidationError) as caught:
         PlanScheduleGenerator.generate(PlanGenerationInput(
-            mode='reduce', start_date=date(2027, 1, 1),
+            mode='reduce', target_basis='legacy_pouches',
+            start_date=date(2027, 1, 1),
             baseline_pouches=Decimal('30'), baseline_mg=Decimal('180'),
             baseline_mg_per_pouch=Decimal('6'), pace='focused',
             end_target_pouches=0,
@@ -304,7 +315,8 @@ def test_explicit_stages_cannot_bypass_minimum_reduction_duration():
 def test_explicit_stage_ceilings_must_match_strength_times_target():
     with pytest.raises(PlanValidationError) as caught:
         PlanScheduleGenerator.generate(PlanGenerationInput(
-            mode='reduce', start_date=date(2027, 1, 1),
+            mode='reduce', target_basis='legacy_pouches',
+            start_date=date(2027, 1, 1),
             baseline_pouches=Decimal('8'), baseline_mg=Decimal('48'),
             baseline_mg_per_pouch=Decimal('6'), pace='focused',
             end_target_pouches=6,
@@ -326,7 +338,8 @@ def test_explicit_stage_ceilings_must_match_strength_times_target():
 
 def test_explicit_stage_ceilings_are_normalized_before_preview_and_hashing():
     preview = PlanScheduleGenerator.generate(PlanGenerationInput(
-        mode='reduce', start_date=date(2027, 1, 1),
+        mode='reduce', target_basis='legacy_pouches',
+        start_date=date(2027, 1, 1),
         baseline_pouches=Decimal('8'), baseline_mg=Decimal('48'),
         baseline_mg_per_pouch=Decimal('6'), pace='focused',
         end_target_pouches=6,
@@ -365,7 +378,8 @@ def test_explicit_stage_runtime_types_fail_as_structured_validation(
 ):
     with pytest.raises(PlanValidationError) as caught:
         PlanScheduleGenerator.generate(PlanGenerationInput(
-            mode='reduce', start_date=date(2027, 1, 1),
+            mode='reduce', target_basis='legacy_pouches',
+            start_date=date(2027, 1, 1),
             baseline_pouches=Decimal('8'), baseline_mg=Decimal('48'),
             baseline_mg_per_pouch=Decimal('6'), pace='focused',
             end_target_pouches=8, stage_targets=stage_targets,
@@ -382,7 +396,8 @@ def test_top_level_runtime_types_fail_as_structured_validation(
     overrides, field,
 ):
     values = {
-        'mode': 'reduce', 'start_date': date(2027, 1, 1),
+        'mode': 'reduce', 'target_basis': 'legacy_pouches',
+        'start_date': date(2027, 1, 1),
         'baseline_pouches': Decimal('8'), 'baseline_mg': Decimal('48'),
         'baseline_mg_per_pouch': Decimal('6'), 'pace': 'steady',
         'end_target_pouches': 2,
@@ -395,7 +410,8 @@ def test_top_level_runtime_types_fail_as_structured_validation(
 
 def test_digest_covers_reviewed_baseline_inputs_not_only_generated_days():
     common = dict(
-        mode='reduce', start_date=date(2027, 1, 1),
+        mode='reduce', target_basis='legacy_pouches',
+        start_date=date(2027, 1, 1),
         baseline_pouches=Decimal('8'), baseline_mg_per_pouch=Decimal('6'),
         pace='steady', end_target_pouches=2,
     )
@@ -420,7 +436,8 @@ def test_observe_date_horizon_overflow_is_structured_validation():
 def test_generated_reduce_date_horizon_overflow_is_structured_validation():
     with pytest.raises(PlanValidationError) as caught:
         PlanScheduleGenerator.generate(PlanGenerationInput(
-            mode='reduce', start_date=date.max,
+            mode='reduce', target_basis='legacy_pouches',
+            start_date=date.max,
             baseline_pouches=Decimal('2'), baseline_mg=Decimal('2'),
             baseline_mg_per_pouch=Decimal('1'), pace='focused',
             end_target_pouches=1,
@@ -431,7 +448,8 @@ def test_generated_reduce_date_horizon_overflow_is_structured_validation():
 def test_explicit_stage_adjacency_at_date_max_is_structured_validation():
     with pytest.raises(PlanValidationError) as caught:
         PlanScheduleGenerator.generate(PlanGenerationInput(
-            mode='reduce', start_date=date.max - timedelta(days=1),
+            mode='reduce', target_basis='legacy_pouches',
+            start_date=date.max - timedelta(days=1),
             baseline_pouches=Decimal('2'), baseline_mg=Decimal('2'),
             baseline_mg_per_pouch=Decimal('1'), pace='focused',
             end_target_pouches=1,
@@ -449,6 +467,7 @@ def test_explicit_stage_adjacency_at_date_max_is_structured_validation():
 def test_nicotine_first_reduce_interpolates_exact_decimal_endpoints():
     preview = PlanScheduleGenerator.generate(PlanGenerationInput(
         mode='reduce',
+        target_basis='nicotine_mg',
         start_date=date(2026, 8, 10),
         baseline_mg=Decimal('40.00'),
         pace='steady',
@@ -479,6 +498,7 @@ def test_nicotine_first_reduce_interpolates_exact_decimal_endpoints():
 def test_nicotine_first_rounds_half_up_once_and_pins_final_day():
     preview = PlanScheduleGenerator.generate(PlanGenerationInput(
         mode='reduce',
+        target_basis='nicotine_mg',
         start_date=date(2026, 8, 10),
         baseline_mg=Decimal('10.005'),
         pace='focused',
@@ -494,6 +514,7 @@ def test_nicotine_first_rounds_half_up_once_and_pins_final_day():
 def test_nicotine_first_progress_is_independent_of_pouch_count_and_strength():
     preview = PlanScheduleGenerator.generate(PlanGenerationInput(
         mode='reduce',
+        target_basis='nicotine_mg',
         start_date=date(2026, 8, 10),
         baseline_pouches=Decimal('8.00'),
         baseline_mg=Decimal('48.00'),
@@ -521,6 +542,7 @@ def test_nicotine_first_target_validation_is_exact_and_mode_specific(
     with pytest.raises(PlanValidationError) as caught:
         PlanScheduleGenerator.generate(PlanGenerationInput(
             mode=mode,
+            target_basis='nicotine_mg',
             start_date=date(2026, 8, 10),
             target_date=(
                 date(2026, 9, 6) if mode == 'quit_by_date' else None
@@ -537,6 +559,7 @@ def test_nicotine_first_target_validation_is_exact_and_mode_specific(
 def test_legacy_pouch_generation_requires_explicit_basis_and_keeps_digest():
     values = dict(
         mode='reduce',
+        target_basis='legacy_pouches',
         start_date=date(2027, 1, 1),
         baseline_pouches=Decimal('8.20'),
         baseline_mg=Decimal('49.20'),
@@ -550,7 +573,7 @@ def test_legacy_pouch_generation_requires_explicit_basis_and_keeps_digest():
         PlanScheduleGenerator.generate(PlanGenerationInput(
             **missing_legacy_field
         ))
-    assert 'end_target_mg' in caught.value.field_errors
+    assert 'end_target_pouches' in caught.value.field_errors
 
     preview = PlanScheduleGenerator.generate(PlanGenerationInput(**values))
     assert preview.days[-1].target_pouches == 2
@@ -563,6 +586,7 @@ def test_legacy_pouch_generation_requires_explicit_basis_and_keeps_digest():
 def test_nicotine_digest_changes_when_only_end_target_changes():
     common = dict(
         mode='reduce',
+        target_basis='nicotine_mg',
         start_date=date(2026, 8, 10),
         baseline_mg=Decimal('40.00'),
         pace='steady',
@@ -576,3 +600,148 @@ def test_nicotine_digest_changes_when_only_end_target_changes():
     ))
 
     assert first.digest != second.digest
+
+
+@pytest.mark.parametrize(
+    ('overrides', 'expected_field'),
+    (
+        ({
+            'baseline_mg': Decimal('40.00'),
+            'end_target_mg': Decimal('20.00'),
+        }, 'target_basis'),
+        ({
+            'target_basis': 'nicotine_mg',
+            'baseline_mg': Decimal('40.00'),
+            'end_target_mg': Decimal('20.00'),
+            'end_target_pouches': 2,
+        }, 'target_basis'),
+        ({
+            'target_basis': 'legacy_pouches',
+            'baseline_pouches': Decimal('8.00'),
+            'baseline_mg': Decimal('48.00'),
+            'baseline_mg_per_pouch': Decimal('6.00'),
+            'end_target_pouches': 2,
+            'end_target_mg': Decimal('12.00'),
+        }, 'target_basis'),
+        ({
+            'target_basis': 'nicotine_mg',
+            'baseline_mg': Decimal('40.00'),
+        }, 'end_target_mg'),
+        ({
+            'target_basis': 'legacy_pouches',
+            'baseline_pouches': Decimal('8.00'),
+            'baseline_mg': Decimal('48.00'),
+            'baseline_mg_per_pouch': Decimal('6.00'),
+        }, 'end_target_pouches'),
+    ),
+)
+def test_targeted_generation_requires_one_explicit_unambiguous_basis(
+    overrides, expected_field,
+):
+    values = {
+        'mode': 'reduce',
+        'start_date': date(2026, 8, 10),
+        'pace': 'steady',
+    }
+    values.update(overrides)
+
+    with pytest.raises(PlanValidationError) as caught:
+        PlanScheduleGenerator.generate(PlanGenerationInput(**values))
+
+    assert expected_field in caught.value.field_errors
+
+
+@pytest.mark.parametrize(
+    ('field', 'value'),
+    (
+        ('baseline_pouches', 8.0),
+        ('baseline_mg', 48.0),
+        ('baseline_mg_per_pouch', 6.0),
+    ),
+)
+def test_legacy_compatibility_rejects_non_decimal_nicotine_values(field, value):
+    values = {
+        'mode': 'reduce',
+        'target_basis': 'legacy_pouches',
+        'start_date': date(2027, 1, 1),
+        'baseline_pouches': Decimal('8.00'),
+        'baseline_mg': Decimal('48.00'),
+        'baseline_mg_per_pouch': Decimal('6.00'),
+        'pace': 'steady',
+        'end_target_pouches': 2,
+    }
+    values[field] = value
+
+    with pytest.raises(PlanValidationError) as caught:
+        PlanScheduleGenerator.generate(PlanGenerationInput(**values))
+
+    assert field in caught.value.field_errors
+
+
+def test_nicotine_normalization_is_reproducible_across_digest_and_days():
+    common = {
+        'mode': 'reduce',
+        'target_basis': 'nicotine_mg',
+        'start_date': date(2026, 8, 10),
+        'pace': 'steady',
+        'duration_days': 49,
+    }
+    raw = PlanScheduleGenerator.generate(PlanGenerationInput(
+        **common,
+        baseline_mg=Decimal('40.004'),
+        end_target_mg=Decimal('20.004'),
+    ))
+    normalized = PlanScheduleGenerator.generate(PlanGenerationInput(
+        **common,
+        baseline_mg=Decimal('40.00'),
+        end_target_mg=Decimal('20.00'),
+    ))
+
+    assert raw.days == normalized.days
+    assert raw.normalized_stages == normalized.normalized_stages
+    assert raw.digest == normalized.digest
+
+
+@pytest.mark.parametrize(
+    ('baseline', 'target', 'expected_field'),
+    (
+        (Decimal('0.004'), Decimal('0.00'), 'baseline_mg'),
+        (Decimal('10.004'), Decimal('10.003'), 'end_target_mg'),
+    ),
+)
+def test_reduce_revalidates_targets_after_two_decimal_normalization(
+    baseline, target, expected_field,
+):
+    with pytest.raises(PlanValidationError) as caught:
+        PlanScheduleGenerator.generate(PlanGenerationInput(
+            mode='reduce',
+            target_basis='nicotine_mg',
+            start_date=date(2026, 8, 10),
+            baseline_mg=baseline,
+            pace='steady',
+            end_target_mg=target,
+        ))
+
+    assert expected_field in caught.value.field_errors
+
+
+def test_quit_target_that_normalizes_to_zero_has_canonical_digest():
+    common = {
+        'mode': 'quit_by_date',
+        'target_basis': 'nicotine_mg',
+        'start_date': date(2026, 8, 10),
+        'target_date': date(2026, 9, 6),
+        'pace': 'focused',
+        'duration_days': 28,
+    }
+    raw = PlanScheduleGenerator.generate(PlanGenerationInput(
+        **common,
+        baseline_mg=Decimal('40.004'),
+        end_target_mg=Decimal('0.004'),
+    ))
+    normalized = PlanScheduleGenerator.generate(PlanGenerationInput(
+        **common, baseline_mg=Decimal('40.00'), end_target_mg=Decimal('0.00')
+    ))
+
+    assert raw.days == normalized.days
+    assert raw.digest == normalized.digest

@@ -25,6 +25,7 @@ def valid_focused_plan_inputs(draw):
     duration = draw(st.integers(max(21, reduction + 1), 35))
     return PlanGenerationInput(
         mode='reduce',
+        target_basis='legacy_pouches',
         start_date=date(2035, 1, 1),
         baseline_pouches=baseline_pouches,
         baseline_mg=(baseline_pouches * strength).quantize(Decimal('0.01')),
@@ -102,7 +103,7 @@ def test_valid_stage_partitions_expand_without_gaps(split_day, end_target):
         ),
     )
     preview = PlanScheduleGenerator.generate(PlanGenerationInput(
-        mode='reduce', start_date=start,
+        mode='reduce', target_basis='legacy_pouches', start_date=start,
         baseline_pouches=Decimal('10'), baseline_mg=Decimal('60'),
         baseline_mg_per_pouch=Decimal('6'), pace='focused',
         end_target_pouches=end_target, duration_days=21,
@@ -131,7 +132,7 @@ def test_invalid_stage_partitions_are_rejected(gap_days):
 
     with pytest.raises(PlanValidationError) as caught:
         PlanScheduleGenerator.generate(PlanGenerationInput(
-            mode='reduce', start_date=start,
+            mode='reduce', target_basis='legacy_pouches', start_date=start,
             baseline_pouches=Decimal('10'), baseline_mg=Decimal('60'),
             baseline_mg_per_pouch=Decimal('6'), pace='focused',
             end_target_pouches=5, stage_targets=stages,

@@ -1,6 +1,6 @@
 """Pure, deterministic reduction-plan schedule generation."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_HALF_UP
 import hashlib
@@ -20,6 +20,9 @@ class StageTarget:
 class PlanGenerationInput:
     mode: Literal['reduce', 'quit_by_date', 'observe']
     start_date: date
+    target_basis: (
+        Literal['nicotine_mg', 'legacy_pouches', 'observe'] | None
+    ) = None
     baseline_pouches: Decimal | None = None
     baseline_mg: Decimal | None = None
     baseline_mg_per_pouch: Decimal | None = None
@@ -83,30 +86,58 @@ class PlanScheduleGenerator:
                 'start_date': 'cannot be before the current user day'
             })
         if generation_input.mode == 'observe':
+            basis_errors = {}
+            if generation_input.target_basis not in (None, 'observe'):
+                basis_errors['target_basis'] = (
+                    'must be observe for observe plans'
+                )
+            if (
+                generation_input.end_target_mg is not None
+                or generation_input.end_target_pouches is not None
+            ):
+                basis_errors['target_basis'] = (
+                    'observe plans cannot include a target value'
+                )
+            if basis_errors:
+                raise PlanValidationError(basis_errors)
             return cls._generate_observe(generation_input)
         if generation_input.mode not in {'reduce', 'quit_by_date'}:
             raise PlanValidationError({'mode': 'unsupported mode'})
-        if generation_input.end_target_mg is not None:
-            return cls._generate_nicotine_first(generation_input)
-        if generation_input.end_target_pouches is None:
+        if generation_input.target_basis is None:
             raise PlanValidationError({
-                'end_target_mg': 'is required for nicotine-first plans'
+                'target_basis': 'is required for targeted plans'
             })
+        if generation_input.target_basis == 'nicotine_mg':
+            if generation_input.end_target_pouches is not None:
+                raise PlanValidationError({
+                    'target_basis': 'cannot mix nicotine and pouch targets'
+                })
+            if generation_input.end_target_mg is None:
+                raise PlanValidationError({
+                    'end_target_mg': 'is required for nicotine-first plans'
+                })
+            return cls._generate_nicotine_first(generation_input)
+        if generation_input.target_basis != 'legacy_pouches':
+            raise PlanValidationError({
+                'target_basis': 'must be nicotine_mg or legacy_pouches'
+            })
+        if generation_input.end_target_mg is not None:
+            raise PlanValidationError({
+                'target_basis': 'cannot mix nicotine and pouch targets'
+            })
+        if generation_input.end_target_pouches is None:
+            raise PlanValidationError({'end_target_pouches': 'is required'})
         errors = {}
         for field in (
             'baseline_pouches', 'baseline_mg', 'baseline_mg_per_pouch'
         ):
             value = getattr(generation_input, field)
-            try:
-                decimal_value = Decimal(value) if value is not None else None
-            except (InvalidOperation, TypeError, ValueError):
-                decimal_value = None
             if (
-                decimal_value is None
-                or not decimal_value.is_finite()
-                or decimal_value <= 0
+                not isinstance(value, Decimal)
+                or not value.is_finite()
+                or value <= 0
             ):
-                errors[field] = 'must be greater than zero'
+                errors[field] = 'must be a finite Decimal greater than zero'
         if generation_input.pace not in cls.DEFAULT_DURATIONS:
             errors['pace'] = 'must be gentle, steady, or focused'
         if generation_input.end_target_pouches is None:
@@ -133,8 +164,8 @@ class PlanScheduleGenerator:
         if errors:
             raise PlanValidationError(errors)
 
-        baseline_pouches = Decimal(generation_input.baseline_pouches)
-        strength = Decimal(generation_input.baseline_mg_per_pouch)
+        baseline_pouches = generation_input.baseline_pouches
+        strength = generation_input.baseline_mg_per_pouch
         start_target = int(baseline_pouches.to_integral_value(rounding=ROUND_CEILING))
         end_target = generation_input.end_target_pouches
         if end_target > start_target:
@@ -330,8 +361,28 @@ class PlanScheduleGenerator:
         if errors:
             raise PlanValidationError(errors)
 
-        baseline = baseline.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-        target = target.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        try:
+            baseline = baseline.quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP
+            )
+        except InvalidOperation:
+            raise PlanValidationError({
+                'baseline_mg': 'cannot be represented at two decimal places'
+            })
+        try:
+            target = target.quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP
+            )
+        except InvalidOperation:
+            raise PlanValidationError({
+                'end_target_mg': 'cannot be represented at two decimal places'
+            })
+        if baseline <= Decimal('0.00'):
+            raise PlanValidationError({
+                'baseline_mg': (
+                    'must remain greater than zero after normalization'
+                )
+            })
         if generation_input.mode == 'reduce' and target >= baseline:
             raise PlanValidationError({
                 'end_target_mg': 'must be lower than the baseline'
@@ -406,10 +457,15 @@ class PlanScheduleGenerator:
             ))
         days = tuple(generated_days)
         stages = cls._stages_from_days(days)
+        normalized_input = replace(
+            generation_input,
+            baseline_mg=baseline,
+            end_target_mg=target,
+        )
         return GeneratedPlanPreview(
             days=days,
             normalized_stages=stages,
-            digest=cls._digest(generation_input, days, stages),
+            digest=cls._digest(normalized_input, days, stages),
         )
 
     @staticmethod
@@ -569,7 +625,7 @@ class PlanScheduleGenerator:
             'target_date': days[-1].local_date.isoformat(),
             'duration_days': len(days),
         }
-        if generation_input.end_target_mg is not None:
+        if generation_input.target_basis == 'nicotine_mg':
             input_payload.update({
                 'target_basis': 'nicotine_mg',
                 'end_target_mg': canonical_decimal(

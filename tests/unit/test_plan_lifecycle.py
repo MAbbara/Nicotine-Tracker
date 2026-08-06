@@ -36,11 +36,13 @@ from services.plan_service import (
 def _steady_input(**overrides):
     values = {
         'mode': 'reduce',
+        'target_basis': 'legacy_pouches',
         'start_date': date(2099, 1, 1),
         'baseline_pouches': Decimal('8.00'),
         'baseline_mg': Decimal('48.00'),
         'baseline_mg_per_pouch': Decimal('6.00'),
         'pace': 'steady',
+        'target_basis': 'legacy_pouches',
         'end_target_pouches': 2,
     }
     values.update(overrides)
@@ -82,7 +84,9 @@ def test_create_draft_persists_one_initial_revision_and_its_days(
         'baseline_mg': '48.00',
         'baseline_mg_per_pouch': '6.00',
         'pace': 'steady',
+        'target_basis': 'legacy_pouches',
         'end_target_pouches': 2,
+        'end_target_mg': '12.00',
         'target_date': '2099-02-18',
         'duration_days': 49,
         'stage_targets': None,
