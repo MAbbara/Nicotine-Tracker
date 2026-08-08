@@ -565,6 +565,7 @@ def test_expensive_analytics_routes_share_one_read_inventory(
 def test_every_analytics_route_uses_the_shared_expensive_read_inventory(
         app, logged_in_client):
     analytics_routes = [
+        '/dashboard/?days=365',
         '/dashboard/api/daily_intake_chart',
         '/dashboard/api/weekly_averages',
         '/dashboard/api/hourly_distribution',
@@ -588,6 +589,21 @@ def test_every_analytics_route_uses_the_shared_expensive_read_inventory(
         assert response.get_json(silent=True) is not None or (
             'take a short pause' in response.get_data(as_text=True).casefold()
         )
+
+
+def test_dashboard_analytics_allows_normal_access_before_shared_exhaustion(
+        app, logged_in_client):
+    _set_test_limits(app, ANALYTICS_READ='1/minute')
+
+    anonymous = app.test_client().get('/dashboard/')
+    first = logged_in_client.get('/dashboard/?days=365')
+    limited = logged_in_client.get('/insights/api/insights?days=365')
+
+    assert anonymous.status_code == 302
+    assert '/auth/login' in anonymous.headers['Location']
+    assert first.status_code == 200
+    assert limited.status_code == 429
+    assert limited.get_json()['error']['code'] == 'rate_limited'
 
 
 def _redis_test_app(monkeypatch, endpoint):

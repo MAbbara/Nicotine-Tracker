@@ -129,6 +129,7 @@ def _logs_for_local_days(
     )
 
 @dashboard_bp.route('/')
+@analytics_read_limit()
 @login_required
 def index():
     """Main dashboard page"""
