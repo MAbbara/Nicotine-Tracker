@@ -224,6 +224,23 @@ def test_field_positional_signature_places_disabled_after_min_max_step(app):
     assert control.has_attr("disabled")
 
 
+def test_field_appends_maxlength_as_a_keyword_without_shifting_legacy_flags(app):
+    html = render_field(
+        app,
+        name="email",
+        label="Email address",
+        maxlength=120,
+        disabled=True,
+        autofocus=True,
+    )
+    soup = BeautifulSoup(html, "html.parser")
+    control = soup.select_one("input#email")
+    assert control is not None
+    assert control["maxlength"] == "120"
+    assert control.has_attr("disabled")
+    assert control.has_attr("autofocus")
+
+
 def test_select_field_connects_descriptions_and_errors(app):
     html = render_field(
         app,

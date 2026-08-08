@@ -1,4 +1,4 @@
-{% macro field(name, label, type='text', value='', description=None, error=None, placeholder=None, autocomplete=None, required=False, min=None, max=None, step=None, maxlength=None, disabled=False, autofocus=False) -%}
+{% macro field(name, label, type='text', value='', description=None, error=None, placeholder=None, autocomplete=None, required=False, min=None, max=None, step=None, disabled=False, autofocus=False, maxlength=None) -%}
   {% set described = [name ~ '-description' if description else none,
                       name ~ '-error' if error else none]
                       | reject('equalto', none) | join(' ') %}
