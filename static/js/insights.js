@@ -655,6 +655,7 @@ export async function startInsights(scope = document) {
   ) => {
     if (![7, 30, 90, 365].includes(Number(days))) return false;
     if (historyMode === 'push' && Number(days) === currentRange) return true;
+    presentationGeneration += 1;
     rangeController?.abort();
     rangeController = new AbortController();
     const controller = rangeController;

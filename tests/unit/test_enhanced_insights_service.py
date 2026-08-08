@@ -139,6 +139,30 @@ def test_nicotine_distributions_preserve_fractional_snapshot_precision_and_unkno
     assert result["strength_coverage"]["known_pouches"] == 6
 
 
+def test_nicotine_distribution_preserves_distinct_nonblank_snapshot_whitespace(
+        db_session, test_user, test_pouch, monkeypatch):
+    boundary = datetime(2026, 8, 8, 0, 0)
+    _freeze_utcnow(monkeypatch, boundary)
+    for brand, strength, hour in (
+        (" Exact snapshot ", Decimal("4.00"), 8),
+        ("Exact snapshot", Decimal("3.00"), 9),
+    ):
+        row = _add_log(
+            db_session, test_user, test_pouch,
+            at=boundary - timedelta(days=1, hours=-hour), quantity=1,
+        )
+        row.product_brand_snapshot = brand
+        row.nicotine_mg_snapshot = strength
+    db_session.commit()
+
+    result = insights_service.get_enhanced_insights(test_user.id, 7)
+
+    assert result["nicotine_by_product"] == {
+        " Exact snapshot ": Decimal("4.00"),
+        "Exact snapshot": Decimal("3.00"),
+    }
+
+
 def _freeze_utcnow(monkeypatch, value):
     class FrozenDateTime(datetime):
         @classmethod

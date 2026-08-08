@@ -22,7 +22,9 @@ async function setActualTwoHundredPercentZoom(page) {
 }
 
 async function rangeGeometry(page) {
-  return page.locator('[data-days]').evaluateAll((controls) => Object.fromEntries(
+  return page.locator(
+    '[data-insights-root]:not([data-insights-candidate]) [data-days]',
+  ).evaluateAll((controls) => Object.fromEntries(
     controls.map((control) => {
       const rect = control.getBoundingClientRect();
       return [control.dataset.days, {
@@ -42,6 +44,84 @@ function expectStableRangeGeometry(actual, expected) {
       expect(Math.abs(actual[days][key] - expected[days][key])).toBeLessThanOrEqual(1);
     }
   }
+}
+
+async function fullInsightsSnapshot(page) {
+  return page.evaluate(() => {
+    const root = document.querySelector('[data-insights-root]:not([data-insights-candidate])');
+    const attributes = (node, names) => Object.fromEntries(
+      names.map((name) => [name, node?.getAttribute(name) ?? null]),
+    );
+    const described = (selector) => [...root.querySelectorAll(selector)].map((node) => ({
+      selector: node.id || [...node.attributes]
+        .find((attribute) => attribute.name.startsWith('data-'))?.name || node.tagName,
+      text: node.textContent,
+      hidden: node.hidden,
+      attributes: attributes(node, [
+        'aria-busy', 'aria-current', 'aria-hidden', 'aria-pressed',
+        'aria-live', 'role', 'href', 'open', 'disabled',
+      ]),
+      classes: node.className?.baseVal ?? node.className ?? '',
+    }));
+    return {
+      url: window.location.href,
+      root: {
+        state: root.dataset.insightsState,
+        pendingDays: root.dataset.pendingDays || null,
+        attributes: attributes(root, ['aria-busy']),
+      },
+      metrics: described('.insights-measures dt, .insights-measures dd'),
+      narratives: described([
+        '[data-insights-headline]', '[data-insights-interpretation]',
+        '[data-insights-plan-context]', '[data-insights-time-copy]',
+        '[data-insights-time-nicotine-copy]', '[data-insights-weekly-copy]',
+        '[data-insights-product-copy]', '[data-insights-product-nicotine-copy]',
+        '[data-insights-craving-copy]', '[data-insights-hourly-copy]',
+      ].join(',')),
+      nextStep: described('[data-insights-next-step]'),
+      craving: described([
+        '[data-craving-pattern]', '[data-craving-leading-trigger]',
+        '[data-craving-resolved-pattern]', '[data-craving-non-nicotine-rate]',
+      ].join(',')),
+      tables: [...root.querySelectorAll('[data-analytics-key]')].map((body) => ({
+        key: body.dataset.analyticsKey,
+        rows: [...body.rows].map((row) => [...row.cells].map((cell) => cell.textContent)),
+      })),
+      charts: [...root.querySelectorAll('.analytics-chart')].map((node) => ({
+        id: node.id,
+        text: node.textContent,
+        hidden: node.hidden,
+        attributes: attributes(node, ['aria-label', 'aria-labelledby', 'role']),
+        values: [...node.querySelectorAll('[val]')].map((item) => item.getAttribute('val')),
+        titles: [...node.querySelectorAll('title')].map((title) => title.textContent),
+      })),
+      chartStatuses: described('.analytics-chart__status'),
+      details: described('details'),
+      trendControls: described('.trend-toggle'),
+      rangeControls: described('[data-days]'),
+      export: described('#export-data').map((item) => ({
+        ...item,
+        href: root.querySelector('#export-data')?.dataset.exportHref || null,
+      })),
+    };
+  });
+}
+
+function committedSnapshot(snapshot) {
+  return {
+    ...snapshot,
+    root: { ...snapshot.root, pendingDays: null, attributes: { 'aria-busy': null } },
+    chartStatuses: snapshot.chartStatuses.map((status) => (
+      status.selector === 'data-insights-load-status'
+        ? { ...status, text: '', hidden: true }
+        : status
+    )),
+    rangeControls: snapshot.rangeControls.map((control) => ({
+      ...control,
+      classes: control.classes.replace(/\bis-pending\b/g, '').replace(/\s+/g, ' ').trim(),
+      attributes: { ...control.attributes, 'aria-busy': null },
+    })),
+  };
 }
 
 test('Insights server fallback keeps neutral plan states neutral and reveals only sufficient cravings', async ({ page }) => {
@@ -226,24 +306,7 @@ test('Insights range transaction retains geometry, content, focus, and atomic hi
   const headline = page.locator('[data-insights-headline]');
   const before = await actions.boundingBox();
   const controlGeometry = await rangeGeometry(page);
-  const snapshot = await page.evaluate(() => ({
-    metrics: [...document.querySelectorAll('.insights-measures dt, .insights-measures dd')].map((node) => node.textContent),
-    narratives: [...document.querySelectorAll('[data-insights-headline], [data-insights-interpretation], [data-insights-plan-context], [data-insights-time-copy], [data-insights-time-nicotine-copy], [data-insights-weekly-copy], [data-insights-product-copy], [data-insights-product-nicotine-copy], [data-insights-hourly-copy]')].map((node) => ({ text: node.textContent, hidden: node.hidden })),
-    timeRows: document.querySelector('[data-analytics-key="timeOfDay"]')?.textContent,
-    productRows: document.querySelector('[data-analytics-key="brands"]')?.textContent,
-    charts: [...document.querySelectorAll('#time-of-day-chart, #brand-chart')].map((node) => ({
-      text: node.textContent,
-      values: [...node.querySelectorAll('.apexcharts-bar-area')].map((bar) => bar.getAttribute('val')),
-      labels: [...node.querySelectorAll('.apexcharts-yaxis-label title')].map((title) => title.textContent),
-      hidden: node.hidden,
-    })),
-    aria: {
-      busy: document.querySelector('[data-insights-root]')?.getAttribute('aria-busy'),
-      current: document.querySelector('[data-days][aria-current="true"]')?.dataset.days,
-      controlBusy: [...document.querySelectorAll('[data-days]')].map((node) => node.getAttribute('aria-busy')),
-    },
-    exportHref: document.querySelector('#export-data')?.dataset.exportHref,
-  }));
+  const snapshot = await fullInsightsSnapshot(page);
   await page.evaluate(() => {
     window.__insightsLayoutShifts = [];
     new PerformanceObserver((list) => {
@@ -273,29 +336,17 @@ test('Insights range transaction retains geometry, content, focus, and atomic hi
   expect(Math.abs(pending.y - before.y)).toBeLessThanOrEqual(1);
   expectStableRangeGeometry(await rangeGeometry(page), controlGeometry);
   expect(await headline.textContent()).toBe(snapshot.narratives[0].text);
+  expect(committedSnapshot(await fullInsightsSnapshot(page))).toEqual(
+    committedSnapshot(snapshot),
+  );
   await expect(seven).toBeFocused();
   await failed;
   await expect(page.locator('[data-insights-load-status]')).toContainText('could not refresh');
   await expect(page).toHaveURL(/days=30/);
   await expect(page.locator('[data-days="30"]')).toHaveAttribute('aria-current', 'true');
-  expect(await page.evaluate(() => ({
-    metrics: [...document.querySelectorAll('.insights-measures dt, .insights-measures dd')].map((node) => node.textContent),
-    narratives: [...document.querySelectorAll('[data-insights-headline], [data-insights-interpretation], [data-insights-plan-context], [data-insights-time-copy], [data-insights-time-nicotine-copy], [data-insights-weekly-copy], [data-insights-product-copy], [data-insights-product-nicotine-copy], [data-insights-hourly-copy]')].map((node) => ({ text: node.textContent, hidden: node.hidden })),
-    timeRows: document.querySelector('[data-analytics-key="timeOfDay"]')?.textContent,
-    productRows: document.querySelector('[data-analytics-key="brands"]')?.textContent,
-    charts: [...document.querySelectorAll('#time-of-day-chart, #brand-chart')].map((node) => ({
-      text: node.textContent,
-      values: [...node.querySelectorAll('.apexcharts-bar-area')].map((bar) => bar.getAttribute('val')),
-      labels: [...node.querySelectorAll('.apexcharts-yaxis-label title')].map((title) => title.textContent),
-      hidden: node.hidden,
-    })),
-    aria: {
-      busy: document.querySelector('[data-insights-root]')?.getAttribute('aria-busy'),
-      current: document.querySelector('[data-days][aria-current="true"]')?.dataset.days,
-      controlBusy: [...document.querySelectorAll('[data-days]')].map((node) => node.getAttribute('aria-busy')),
-    },
-    exportHref: document.querySelector('#export-data')?.dataset.exportHref,
-  }))).toEqual(snapshot);
+  expect(committedSnapshot(await fullInsightsSnapshot(page))).toEqual(
+    committedSnapshot(snapshot),
+  );
   expectStableRangeGeometry(await rangeGeometry(page), controlGeometry);
   expect(await page.evaluate(() => window.__insightsLayoutShifts
     .filter((entry) => entry.sources.includes('insights-actions')))).toEqual([]);
@@ -320,6 +371,7 @@ test('latest range wins after abort and long snapshot labels stay contained at 3
     fetch('/insights/api/insights?days=7').then((response) => response.json())
   ));
   const longLabel = 'An intentionally long immutable nicotine product snapshot label';
+  const spacedLabel = ' Exact snapshot ';
   await page.route('**/insights/api/insights?days=7', async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 600));
     await route.fulfill({
@@ -329,7 +381,12 @@ test('latest range wins after abort and long snapshot labels stay contained at 3
   await page.route('**/insights/api/insights?days=90', async (route) => {
     const response = await route.fetch();
     const payload = await response.json();
-    payload.nicotine_by_product = { [longLabel]: 90, 'Accessible zero category': 0 };
+    payload.nicotine_by_product = {
+      'Third product': 30,
+      [spacedLabel]: 60,
+      [longLabel]: 90,
+      'Accessible zero category': 0,
+    };
     payload.data_sufficiency.brand_pattern = true;
     await route.fulfill({
       response, contentType: 'application/json', body: JSON.stringify(payload),
@@ -344,11 +401,16 @@ test('latest range wins after abort and long snapshot labels stay contained at 3
   await page.getByRole('link', { name: '90 days', exact: true }).click();
   await expect(page).toHaveURL(/days=90/);
   await expect(page.locator('[data-analytics-key="brands"]')).toContainText(longLabel);
+  await expect(page.locator('[data-analytics-key="brands"] th')).toHaveText([
+    'Third product', spacedLabel, longLabel, 'Accessible zero category',
+  ]);
   await expect(page.locator('[data-analytics-key="brands"]')).toContainText('Accessible zero category');
   const productLabels = page.locator('#brand-chart .apexcharts-yaxis-label');
-  await expect(productLabels).toHaveCount(1);
-  await expect(productLabels.locator('title')).toHaveText(longLabel);
-  await expect(productLabels).not.toContainText('Accessible zero category');
+  await expect(productLabels).toHaveCount(3);
+  await expect(productLabels.locator('title')).toHaveText([
+    longLabel, spacedLabel, 'Third product',
+  ]);
+  await expect(page.locator('#brand-chart .apexcharts-bar-area')).toHaveCount(3);
   await page.waitForTimeout(700);
   await expect(page).toHaveURL(/days=90/);
   await expect(page.locator('[data-days="90"]')).toHaveAttribute('aria-current', 'true');
@@ -359,6 +421,49 @@ test('latest range wins after abort and long snapshot labels stay contained at 3
   expect(await page.evaluate(() => (
     document.documentElement.scrollWidth - document.documentElement.clientWidth
   ))).toBe(0);
+});
+
+test('range request invalidates an already-running live presentation before pending begins', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await login(page, 'insights-range@example.com');
+  await page.goto('/insights/?days=30');
+  const before = await fullInsightsSnapshot(page);
+  const geometry = await rangeGeometry(page);
+  let releaseRange;
+  const rangeHeld = new Promise((resolve) => { releaseRange = resolve; });
+  await page.route('**/insights/api/insights?days=90', async (route) => {
+    await rangeHeld;
+    await route.continue();
+  });
+  await page.evaluate(() => {
+    const original = window.ApexCharts.prototype.render;
+    window.ApexCharts.prototype.render = function heldLiveRender(...args) {
+      if (window.__heldLiveRenderOnce) return original.apply(this, args);
+      window.__heldLiveRenderOnce = true;
+      return new Promise((resolve) => {
+        window.__releaseHeldLiveRender = async () => resolve(await original.apply(this, args));
+      });
+    };
+  });
+
+  await page.getByRole('button', { name: 'Weekly' }).click();
+  await expect.poll(() => page.evaluate(() => (
+    typeof window.__releaseHeldLiveRender
+  ))).toBe('function');
+  await page.getByRole('link', { name: '90 days', exact: true }).click();
+  const liveRoot = page.locator('[data-insights-root]:not([data-insights-candidate])');
+  await expect(liveRoot).toHaveAttribute('aria-busy', 'true');
+  await page.evaluate(() => window.__releaseHeldLiveRender());
+  await page.waitForTimeout(100);
+
+  await expect(liveRoot).toHaveAttribute('aria-busy', 'true');
+  expect(committedSnapshot(await fullInsightsSnapshot(page))).toEqual(
+    committedSnapshot(before),
+  );
+  expectStableRangeGeometry(await rangeGeometry(page), geometry);
+  releaseRange();
+  await expect(page).toHaveURL(/days=90/);
+  await expect(page.locator('[data-days="90"]')).toHaveAttribute('aria-current', 'true');
 });
 
 test('range response builds offscreen and chart delay or failure cannot partially commit live state', async ({ page }) => {
@@ -476,8 +581,8 @@ test('known-zero and unknown-only nicotine states stay truthful with authoritati
       payload.nicotine_by_time_of_day = { Morning: 0 };
       payload.nicotine_by_product = { 'Known zero product': 0 };
       payload.strength_coverage = {
-        known_pouches: 2, unknown_pouches: 0, total_pouches: 2,
-        known_percent: 100, complete: true,
+        known_pouches: 2, unknown_pouches: 1, total_pouches: 3,
+        known_percent: 66.7, complete: false,
       };
     } else {
       payload.nicotine_by_time_of_day = {};
@@ -492,6 +597,7 @@ test('known-zero and unknown-only nicotine states stay truthful with authoritati
 
   await page.getByRole('link', { name: '90 days', exact: true }).click();
   await expect(page.locator('[data-insights-product-nicotine-copy]')).toContainText('add up to 0 mg');
+  await expect(page.locator('[data-insights-product-nicotine-copy]')).toContainText('incomplete');
   await expect(page.locator('[data-analytics-key="brands"]')).toContainText('Known zero product0');
   await expect(page.locator('#brand-chart')).toBeHidden();
 
@@ -503,6 +609,37 @@ test('known-zero and unknown-only nicotine states stay truthful with authoritati
     'No known-strength product data',
   );
   await expect(page.locator('#brand-chart')).toBeHidden();
+});
+
+test('client refresh keeps mixed unknown-strength coverage visible for a single positive bar', async ({ page }) => {
+  await login(page, 'insights-range@example.com');
+  await page.goto('/insights/?days=30');
+  await page.route('**/insights/api/insights?days=90', async (route) => {
+    const response = await route.fetch();
+    const payload = await response.json();
+    payload.data_sufficiency.time_pattern = true;
+    payload.data_sufficiency.brand_pattern = true;
+    payload.nicotine_by_time_of_day = { Morning: 8, Evening: 0 };
+    payload.nicotine_by_product = { 'Only positive product': 8, 'Known zero': 0 };
+    payload.strength_coverage = {
+      known_pouches: 2, unknown_pouches: 1, total_pouches: 3,
+      known_percent: 66.7, complete: false,
+    };
+    await route.fulfill({ response, contentType: 'application/json', body: JSON.stringify(payload) });
+  });
+
+  await page.getByRole('link', { name: '90 days', exact: true }).click();
+
+  await expect(page.locator('[data-insights-time-nicotine-copy]')).toContainText('one time category');
+  await expect(page.locator('[data-insights-product-nicotine-copy]')).toContainText('one product category');
+  await expect(page.locator('[data-insights-time-nicotine-copy]')).toContainText('incomplete');
+  await expect(page.locator('[data-insights-product-nicotine-copy]')).toContainText('incomplete');
+  await expect(page.locator('#brand-chart .apexcharts-yaxis-label title')).toHaveText(
+    'Only positive product',
+  );
+  await expect(page.locator('#brand-chart .apexcharts-yaxis-label title')).not.toContainText(
+    'Known zero',
+  );
 });
 
 

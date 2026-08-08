@@ -130,9 +130,8 @@ def _nicotine_distribution(df):
         hour = int(row.user_time.hour)
         time_label = time_labels[min(hour // 6, 3)]
         by_time_raw[time_label] += nicotine_total
-        brand = (
-            '' if pd.isna(row.brand) else str(row.brand).strip()
-        ) or 'Unknown product'
+        snapshot_brand = '' if pd.isna(row.brand) else str(row.brand)
+        brand = snapshot_brand if snapshot_brand.strip() else 'Unknown product'
         by_product_raw[brand] = (
             by_product_raw.get(brand, Decimal('0.00')) + nicotine_total
         )

@@ -300,6 +300,80 @@ def test_insights_live_chain_hides_insufficient_craving_evidence(
     assert payload["craving_pattern"]["resolved_count"] == 2
 
 
+@pytest.mark.parametrize(
+    "known_strength, state_copies",
+    [
+        (Decimal("0.00"), ("add up to 0 mg", "add up to 0 mg")),
+        (Decimal("4.00"), ("one time category", "one product category")),
+    ],
+)
+def test_insights_server_fallback_keeps_mixed_strength_coverage_explicit(
+        logged_in_client, db_session, test_user, known_strength, state_copies):
+    logged_at = datetime.now(timezone.utc) - timedelta(days=1)
+    db_session.add_all([
+        Log(
+            user_id=test_user.id,
+            quantity=1,
+            log_time=logged_at,
+            product_brand_snapshot="Known snapshot",
+            nicotine_mg_snapshot=known_strength,
+        ),
+        Log(
+            user_id=test_user.id,
+            quantity=2,
+            log_time=logged_at + timedelta(minutes=1),
+            product_brand_snapshot="Unknown strength",
+            nicotine_mg_snapshot=None,
+        ),
+    ])
+    db_session.commit()
+
+    soup = _soup(logged_in_client.get("/insights/?days=7"))
+
+    for selector, state_copy in zip((
+            "[data-insights-time-nicotine-copy]",
+            "[data-insights-product-nicotine-copy]",
+    ), state_copies):
+        copy = soup.select_one(selector).get_text(" ", strip=True)
+        assert state_copy in copy
+        assert "incomplete" in copy.casefold()
+
+
+def test_insights_json_and_fallback_table_preserve_distinct_snapshot_whitespace_labels(
+        logged_in_client, db_session, test_user):
+    logged_at = datetime.now(timezone.utc) - timedelta(days=1)
+    db_session.add_all([
+        Log(
+            user_id=test_user.id,
+            quantity=1,
+            log_time=logged_at,
+            product_brand_snapshot=" Exact snapshot ",
+            nicotine_mg_snapshot=Decimal("4.00"),
+        ),
+        Log(
+            user_id=test_user.id,
+            quantity=1,
+            log_time=logged_at + timedelta(minutes=1),
+            product_brand_snapshot="Exact snapshot",
+            nicotine_mg_snapshot=Decimal("3.00"),
+        ),
+    ])
+    db_session.commit()
+
+    response = logged_in_client.get("/insights/?days=7")
+    soup = _soup(response)
+    payload = logged_in_client.get("/insights/api/insights?days=7").get_json()
+
+    assert payload["nicotine_by_product"] == {
+        " Exact snapshot ": "4.00",
+        "Exact snapshot": "3.00",
+    }
+    labels = [cell.string for cell in soup.select(
+        '[data-analytics-key="brands"] th[scope="row"]',
+    )]
+    assert labels == [" Exact snapshot ", "Exact snapshot"]
+
+
 def test_insights_renders_local_enhancement_and_semantic_values(
         logged_in_client, db_session, test_user, test_pouch):
     logged_at = (datetime.now(timezone.utc) - timedelta(days=1)).replace(
