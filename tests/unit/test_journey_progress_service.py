@@ -158,6 +158,70 @@ def test_journey_progress_finds_first_future_ceiling_change(
     progress = service.get(test_user.id)
 
     assert progress.next_change is not None
+    assert progress.next_change.kind == 'ceiling_change'
     assert progress.next_change.local_date == now.date() + timedelta(days=2)
     assert progress.next_change.ceiling_mg == Decimal('24.00')
     assert progress.next_change.change_mg == Decimal('-6.00')
+
+
+def test_journey_progress_labels_first_ceiling_before_plan_start(
+    db_session, test_user
+):
+    """A future first ceiling is not a change from today's neutral tracking."""
+    now = datetime.now(timezone.utc)
+    test_user.timezone = 'UTC'
+    db_session.commit()
+    start_date = now.date() + timedelta(days=2)
+    _mg_plan(db_session, test_user, start_date, ['30.00', '24.00'])
+
+    service = import_module(
+        'services.journey_progress_service'
+    ).JourneyProgressService
+    progress = service.get(test_user.id)
+
+    assert progress.status == 'no_ceiling'
+    assert progress.ceiling_mg is None
+    assert progress.next_change is not None
+    assert progress.next_change.kind == 'first_ceiling'
+    assert progress.next_change.local_date == start_date
+    assert progress.next_change.ceiling_mg == Decimal('30.00')
+    assert progress.next_change.change_mg is None
+
+
+def test_journey_progress_paused_transition_has_no_future_date(
+    db_session, test_user
+):
+    """Persisted future rows must not imply that a paused schedule will proceed."""
+    now = datetime.now(timezone.utc)
+    test_user.timezone = 'UTC'
+    db_session.commit()
+    plan = _mg_plan(
+        db_session,
+        test_user,
+        now.date(),
+        ['30.00', '24.00', '18.00'],
+    )
+    plan.status = 'paused'
+    plan.active_slot = None
+    db_session.commit()
+    _log(
+        db_session,
+        test_user,
+        now,
+        quantity=1,
+        strength=None,
+    )
+
+    service = import_module(
+        'services.journey_progress_service'
+    ).JourneyProgressService
+    progress = service.get(test_user.id)
+
+    assert progress.status == 'no_ceiling'
+    assert progress.total_complete is False
+    assert progress.remaining_mg is None
+    assert progress.next_change is not None
+    assert progress.next_change.kind == 'resume_required'
+    assert progress.next_change.local_date is None
+    assert progress.next_change.ceiling_mg is None
+    assert progress.next_change.change_mg is None

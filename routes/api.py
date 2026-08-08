@@ -640,7 +640,11 @@ def pause_plan(plan_id):
         return invalid_plan_state_response()
     except Exception:
         return internal_error_response()
-    return jsonify({'plan': plan_payload, 'paused': True})
+    return _plan_compatibility_response(
+        {'plan': plan_payload, 'paused': True},
+        target_basis=plan_payload.get('target_basis'),
+        successor_path=f'/api/plans/{plan_id}/pause',
+    )
 
 
 @api_bp.route('/plans/<int:plan_id>/resume/preview', methods=['POST'])
@@ -668,7 +672,11 @@ def preview_plan_resume(plan_id):
     except Exception:
         db.session.rollback()
         return internal_error_response()
-    return jsonify(serialize_resume_preview(resume_date, preview))
+    return _plan_compatibility_response(
+        serialize_resume_preview(resume_date, preview),
+        target_basis=preview_target_basis(preview),
+        successor_path=f'/api/plans/{plan_id}/resume/preview',
+    )
 
 
 @api_bp.route('/plans/<int:plan_id>/resume', methods=['POST'])
@@ -700,7 +708,11 @@ def resume_plan(plan_id):
         return active_plan_conflict_response()
     except Exception:
         return internal_error_response()
-    return jsonify({'plan': plan_payload, 'resumed': True})
+    return _plan_compatibility_response(
+        {'plan': plan_payload, 'resumed': True},
+        target_basis=plan_payload.get('target_basis'),
+        successor_path=f'/api/plans/{plan_id}/resume',
+    )
 
 
 @api_bp.route('/onboarding-draft', methods=['PUT'])

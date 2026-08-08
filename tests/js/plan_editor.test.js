@@ -53,7 +53,9 @@ test('revision bodies include only supported nonblank canonical changes', async 
     end_target_mg: '',
   }), {
     effective_date: '2099-02-01',
-    changes: { pace: 'steady', duration_days: 49 },
+    changes: {
+      pace: 'steady', duration_days: 49, target_basis: 'nicotine_mg',
+    },
   });
   assert.deepEqual(revisionApplyBody(revisionValues, digestA), {
     effective_date: '2099-02-01',
@@ -67,6 +69,30 @@ test('revision bodies include only supported nonblank canonical changes', async 
   });
 });
 
+test('every canonical revision change set declares the nicotine target basis', async () => {
+  const { revisionPreviewBody } = await loadEditor();
+
+  for (const [values, expectedChanges] of [
+    [{ pace: 'focused', duration_days: '', end_target_mg: '' }, {
+      pace: 'focused', target_basis: 'nicotine_mg',
+    }],
+    [{ pace: '', duration_days: '28', end_target_mg: '' }, {
+      duration_days: 28, target_basis: 'nicotine_mg',
+    }],
+    [{ target_basis: 'nicotine_mg', pace: '', duration_days: '', end_target_mg: '0' }, {
+      target_basis: 'nicotine_mg', end_target_mg: '0.00',
+    }],
+  ]) {
+    assert.deepEqual(revisionPreviewBody({
+      effective_date: '2099-02-01',
+      ...values,
+    }), {
+      effective_date: '2099-02-01',
+      changes: expectedChanges,
+    });
+  }
+});
+
 test('client validation rejects unsupported keys, booleans, invalid decimals, and empty changes', async () => {
   const { revisionPreviewBody, resumePreviewBody } = await loadEditor();
 
@@ -77,6 +103,10 @@ test('client validation rejects unsupported keys, booleans, invalid decimals, an
     [{ effective_date: '2099-02-01', pace: '', duration_days: '', end_target_mg: false }, 'end_target_mg'],
     [{ effective_date: '2099-02-01', pace: '', duration_days: '', end_target_mg: '-0.01' }, 'end_target_mg'],
     [{ effective_date: '2099-02-01', pace: '', duration_days: '', end_target_mg: '1000000.00' }, 'end_target_mg'],
+    [{ effective_date: '2099-02-01', target_basis: 'legacy_pouches', pace: 'steady', duration_days: '', end_target_mg: '' }, 'target_basis'],
+    [{ effective_date: '2099-02-01', target_basis: false, pace: 'steady', duration_days: '', end_target_mg: '' }, 'target_basis'],
+    [{ effective_date: '2099-02-01', pace: '', duration_days: '', end_target_mg: '', end_target_pouches: 2 }, 'end_target_pouches'],
+    [{ effective_date: '2099-02-01', pace: '', duration_days: '', end_target_mg: '', stage_targets: [] }, 'stage_targets'],
     [{ effective_date: '2099-02-01', pace: '', duration_days: '', end_target_mg: '', target_date: '2099-03-01' }, 'target_date'],
   ]) {
     assert.throws(() => revisionPreviewBody(values), (error) => Boolean(error.fieldErrors?.[field]));

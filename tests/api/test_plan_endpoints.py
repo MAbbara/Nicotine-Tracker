@@ -269,6 +269,29 @@ class TestInitialPlanPreviewAndCreate:
             'drafts': OnboardingDraft.query.count(),
         } == before
 
+    def test_preview_half_cent_mg_rounds_half_up_and_reuses_digest(
+            self, logged_in_client):
+        half_cent = logged_in_client.post(
+            '/api/plans/preview',
+            json=_plan_payload(end_target_mg='12.345'),
+        )
+        canonical = logged_in_client.post(
+            '/api/plans/preview',
+            json=_plan_payload(end_target_mg='12.35'),
+        )
+
+        assert half_cent.status_code == 200, half_cent.get_json()
+        assert canonical.status_code == 200, canonical.get_json()
+        half_cent_payload = half_cent.get_json()
+        canonical_payload = canonical.get_json()
+        assert half_cent_payload['normalized_input']['end_target_mg'] == '12.35'
+        assert half_cent_payload['days'][-1]['nicotine_ceiling_mg'] == '12.35'
+        assert half_cent_payload['stages'] == canonical_payload['stages']
+        assert half_cent_payload['days'] == canonical_payload['days']
+        assert half_cent_payload['preview_digest'] == (
+            canonical_payload['preview_digest']
+        )
+
     def test_preview_observe_has_null_targets_and_derived_window(
             self, logged_in_client):
         body = {
@@ -838,13 +861,16 @@ class TestPlanLifecycleApi:
         assert payload['target_basis'] == 'legacy_pouches'
         assert payload['revisions'][0]['target_basis'] == 'legacy_pouches'
 
-    def test_implicit_legacy_revision_emits_deprecation_headers(
+    def test_explicit_legacy_revision_emits_deprecation_headers(
             self, logged_in_client, db_session, test_user):
         plan = _legacy_active_plan_for_lifecycle(db_session, test_user)
         preview_response = logged_in_client.post(
             f'/api/plans/{plan.id}/revisions/preview', json={
                 'effective_date': '2099-01-15',
-                'changes': {'duration_days': 42},
+                'changes': {
+                    'target_basis': 'legacy_pouches',
+                    'duration_days': 42,
+                },
             },
         )
 
@@ -858,7 +884,10 @@ class TestPlanLifecycleApi:
         apply_response = logged_in_client.post(
             f'/api/plans/{plan.id}/revisions', json={
                 'effective_date': '2099-01-15',
-                'changes': {'duration_days': 42},
+                'changes': {
+                    'target_basis': 'legacy_pouches',
+                    'duration_days': 42,
+                },
                 'preview_digest': preview_response.get_json()['preview_digest'],
                 'reason': 'user_edit',
                 'note': None,
@@ -906,6 +935,38 @@ class TestPlanLifecycleApi:
         error = _assert_error_envelope(response, 422, 'validation_error')
         assert 'changes.notes' in error['field_errors']
 
+    @pytest.mark.parametrize('changes,field', [
+        ({'pace': 'focused'}, 'changes.target_basis'),
+        ({
+            'target_basis': 'nicotine_mg',
+            'end_target_pouches': 2,
+        }, 'changes.end_target_pouches'),
+        ({
+            'target_basis': 'nicotine_mg',
+            'stage_targets': [{
+                'start_date': '2099-01-15',
+                'end_date': '2099-01-21',
+                'target_pouches': 4,
+                'nicotine_ceiling_mg': '24.00',
+            }],
+        }, 'changes.stage_targets'),
+        ({
+            'target_basis': 'legacy_pouches',
+            'end_target_mg': '6.00',
+        }, 'changes.end_target_mg'),
+    ])
+    def test_revision_requires_basis_and_isolates_compatibility_fields(
+            self, logged_in_client, changes, field):
+        response = logged_in_client.post(
+            '/api/plans/1/revisions/preview', json={
+                'effective_date': '2099-01-15',
+                'changes': changes,
+            },
+        )
+
+        error = _assert_error_envelope(response, 422, 'validation_error')
+        assert field in error['field_errors']
+
     def test_pause_and_resume_round_trip(self, logged_in_client,
                                          db_session, test_user):
         plan = _active_plan_for_lifecycle(db_session, test_user)
@@ -935,6 +996,40 @@ class TestPlanLifecycleApi:
         resumed_body = resumed.get_json()
         assert resumed_body['resumed'] is True
         assert resumed_body['plan']['status'] == 'active'
+
+    def test_legacy_pause_and_resume_lifecycle_emits_deprecation_headers(
+            self, logged_in_client, db_session, test_user):
+        plan = _legacy_active_plan_for_lifecycle(db_session, test_user)
+
+        paused = logged_in_client.post(f'/api/plans/{plan.id}/pause')
+        assert paused.status_code == 200
+        assert paused.headers['Deprecation'] == 'true'
+        assert paused.headers['Link'] == (
+            f'</api/plans/{plan.id}/pause>; rel="successor-version"'
+        )
+
+        preview = logged_in_client.post(
+            f'/api/plans/{plan.id}/resume/preview',
+            json={'resume_date': '2099-03-01'},
+        )
+        assert preview.status_code == 200, preview.get_json()
+        assert preview.headers['Deprecation'] == 'true'
+        assert preview.headers['Link'] == (
+            f'</api/plans/{plan.id}/resume/preview>; '
+            'rel="successor-version"'
+        )
+
+        resumed = logged_in_client.post(
+            f'/api/plans/{plan.id}/resume', json={
+                'resume_date': '2099-03-01',
+                'preview_digest': preview.get_json()['preview_digest'],
+            },
+        )
+        assert resumed.status_code == 200, resumed.get_json()
+        assert resumed.headers['Deprecation'] == 'true'
+        assert resumed.headers['Link'] == (
+            f'</api/plans/{plan.id}/resume>; rel="successor-version"'
+        )
 
     def test_resume_preview_date_overflow_is_validation_error(
             self, logged_in_client, db_session, test_user):
@@ -988,11 +1083,16 @@ class TestPlanLifecycleApi:
         endpoints = [
             (f'/api/plans/{{}}/revisions/preview', {
                 'effective_date': '2099-01-15',
-                'changes': {'pace': 'focused'},
+                'changes': {
+                    'target_basis': 'nicotine_mg', 'pace': 'focused',
+                },
             }),
             (f'/api/plans/{{}}/revisions', {
                 'effective_date': '2099-01-15',
-                'changes': {'pace': 'gentle'}, 'preview_digest': '0' * 64,
+                'changes': {
+                    'target_basis': 'nicotine_mg', 'pace': 'gentle',
+                },
+                'preview_digest': '0' * 64,
                 'reason': 'user_edit', 'note': None,
             }),
             (f'/api/plans/{{}}/pause', None),
@@ -1028,10 +1128,16 @@ class TestPlanLifecycleApi:
         )
         bodies = [
             (f'/api/plans/{draft.id}/revisions/preview', {
-                'effective_date': '2099-01-15', 'changes': {'pace': 'gentle'},
+                'effective_date': '2099-01-15',
+                'changes': {
+                    'target_basis': 'nicotine_mg', 'pace': 'gentle',
+                },
             }),
             (f'/api/plans/{draft.id}/revisions', {
-                'effective_date': '2099-01-15', 'changes': {'pace': 'gentle'},
+                'effective_date': '2099-01-15',
+                'changes': {
+                    'target_basis': 'nicotine_mg', 'pace': 'gentle',
+                },
                 'preview_digest': '0' * 64, 'reason': 'user_edit', 'note': None,
             }),
             (f'/api/plans/{draft.id}/pause', None),
@@ -1052,13 +1158,17 @@ class TestPlanLifecycleApi:
         preview = logged_in_client.post(
             f'/api/plans/{plan.id}/revisions/preview', json={
                 'effective_date': '2099-01-15',
-                'changes': {'pace': 'focused'},
+                'changes': {
+                    'target_basis': 'nicotine_mg', 'pace': 'focused',
+                },
             }).get_json()
         before = _lifecycle_graph(test_user.id)
         response = logged_in_client.post(
             f'/api/plans/{plan.id}/revisions', json={
                 'effective_date': '2099-01-15',
-                'changes': {'pace': 'focused'},
+                'changes': {
+                    'target_basis': 'nicotine_mg', 'pace': 'focused',
+                },
                 'preview_digest': 'f' * 64,
                 'reason': 'user_edit',
                 'note': None,
@@ -1066,6 +1176,62 @@ class TestPlanLifecycleApi:
         _assert_error_envelope(response, 409, 'preview_stale')
         assert preview['preview_digest'] != 'f' * 64
         assert _lifecycle_graph(test_user.id) == before
+
+    def test_intervening_confirmed_revision_stales_real_preview_digest(
+            self, logged_in_client, db_session, test_user):
+        plan = _active_plan_for_lifecycle(db_session, test_user)
+        flow_a_changes = {
+            'target_basis': 'nicotine_mg',
+            'pace': 'focused',
+            'duration_days': 28,
+            'end_target_mg': '6.00',
+        }
+        flow_b_changes = {
+            'target_basis': 'nicotine_mg',
+            'pace': 'focused',
+            'duration_days': 21,
+            'end_target_mg': '9.00',
+        }
+        flow_a = logged_in_client.post(
+            f'/api/plans/{plan.id}/revisions/preview', json={
+                'effective_date': '2099-01-15',
+                'changes': flow_a_changes,
+            },
+        )
+        flow_b = logged_in_client.post(
+            f'/api/plans/{plan.id}/revisions/preview', json={
+                'effective_date': '2099-01-22',
+                'changes': flow_b_changes,
+            },
+        )
+        assert flow_a.status_code == 200, flow_a.get_json()
+        assert flow_b.status_code == 200, flow_b.get_json()
+
+        applied_b = logged_in_client.post(
+            f'/api/plans/{plan.id}/revisions', json={
+                'effective_date': '2099-01-22',
+                'changes': flow_b_changes,
+                'preview_digest': flow_b.get_json()['preview_digest'],
+                'reason': 'user_edit',
+                'note': None,
+            },
+        )
+        assert applied_b.status_code == 200, applied_b.get_json()
+        db_session.expire_all()
+        winner_graph = _lifecycle_graph(test_user.id)
+
+        stale_a = logged_in_client.post(
+            f'/api/plans/{plan.id}/revisions', json={
+                'effective_date': '2099-01-15',
+                'changes': flow_a_changes,
+                'preview_digest': flow_a.get_json()['preview_digest'],
+                'reason': 'user_edit',
+                'note': None,
+            },
+        )
+        _assert_error_envelope(stale_a, 409, 'preview_stale')
+        db_session.expire_all()
+        assert _lifecycle_graph(test_user.id) == winner_graph
 
     def test_stale_resume_preserves_complete_graph(
             self, logged_in_client, db_session, test_user):
@@ -1111,7 +1277,9 @@ class TestPlanLifecycleApi:
         (
             '/api/plans/{}/revisions/preview',
             {'effective_date': '2099-01-15',
-             'changes': {'pace': 'gentle'}},
+             'changes': {
+                 'target_basis': 'nicotine_mg', 'pace': 'gentle',
+             }},
             'preview_revision',
         ),
         (
@@ -1163,12 +1331,16 @@ class TestPlanLifecycleApi:
             preview_response = logged_in_client.post(
                 f'/api/plans/{plan.id}/revisions/preview', json={
                     'effective_date': '2099-01-15',
-                    'changes': {'pace': 'focused'},
+                    'changes': {
+                        'target_basis': 'nicotine_mg', 'pace': 'focused',
+                    },
                 })
             digest = preview_response.get_json()['preview_digest']
             body = {
                 'effective_date': '2099-01-15',
-                'changes': {'pace': 'focused'},
+                'changes': {
+                    'target_basis': 'nicotine_mg', 'pace': 'focused',
+                },
                 'preview_digest': digest,
                 'reason': 'user_edit',
                 'note': None,

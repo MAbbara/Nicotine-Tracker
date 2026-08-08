@@ -104,6 +104,11 @@ def _plan_target_basis(plan, days):
 
 def preview_target_basis(preview):
     """Return the effective targeted basis from generated preview rows."""
+    if all(
+        day.target_pouches is None and day.nicotine_ceiling_mg is None
+        for day in preview.days
+    ):
+        return 'observe'
     return (
         'legacy_pouches'
         if any(day.target_pouches is not None for day in preview.days)

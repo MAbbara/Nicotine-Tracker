@@ -16,6 +16,7 @@ from models import (
     User,
 )
 from services import log_service
+from services.today_service import TodayService
 
 
 def _revision(session, plan, effective_date, *, pace='steady', target_date=None,
@@ -173,6 +174,42 @@ class TestJourneyComposition:
         assert 'Create a plan' in text
         assert 'Continue neutral tracking' in text
 
+    def test_journey_uses_one_canonical_today_summary_date(
+            self, logged_in_client, db_session, test_user, monkeypatch):
+        from routes import journey as journey_routes
+
+        original_get_summary = TodayService.get_summary
+        plan = _plan(db_session, test_user, start=date.today())
+        summary = original_get_summary(test_user.id)
+        assert summary.plan is not None and summary.plan.id == plan.id
+        calls = []
+
+        def tracked_get_summary(user_id):
+            calls.append(user_id)
+            return summary
+
+        monkeypatch.setattr(
+            TodayService, 'get_summary', staticmethod(tracked_get_summary)
+        )
+        monkeypatch.setattr(
+            journey_routes,
+            '_today_for',
+            lambda _user: (_ for _ in ()).throw(
+                AssertionError('Journey must not read a second date authority')
+            ),
+        )
+
+        response = logged_in_client.get('/journey/')
+
+        assert response.status_code == 200
+        assert calls == [test_user.id]
+        soup = BeautifulSoup(response.data, 'html.parser')
+        current = soup.select_one(
+            'table[data-complete-schedule] tr[aria-current="date"] th'
+        )
+        assert current is not None
+        assert current.get_text(strip=True) == summary.local_date.isoformat()
+
     def test_active_plan_preserves_exact_form_and_editor_hook_contracts(
             self, logged_in_client, db_session, test_user):
         plan = _plan(db_session, test_user)
@@ -260,6 +297,34 @@ class TestJourneyComposition:
             comparison in status
             for comparison in ('Below', 'At today', 'Above')
         )
+        assert soup.select_one('[data-ceiling-mg]').get_text(
+            ' ', strip=True
+        ) == 'Paused — not in effect'
+        next_change = soup.select_one('[data-next-change]')
+        assert 'Resume this plan before future ceiling dates are scheduled' in (
+            next_change.get_text(' ', strip=True)
+        )
+        assert next_change.select_one('time') is None
+
+    def test_pre_start_plan_names_first_ceiling_without_comparison(
+            self, logged_in_client, db_session, test_user):
+        start_date = date.today() + timedelta(days=2)
+        _plan(db_session, test_user, start=start_date)
+
+        soup = BeautifulSoup(
+            logged_in_client.get('/journey/').data, 'html.parser'
+        )
+        next_change = soup.select_one('[data-next-change]')
+
+        assert 'First ceiling begins at 48.00 mg' in next_change.get_text(
+            ' ', strip=True
+        )
+        assert next_change.select_one('time')['datetime'] == (
+            start_date.isoformat()
+        )
+        assert 'final scheduled ceiling' not in next_change.get_text(
+            ' ', strip=True
+        ).lower()
 
     def test_plan_flow_wraps_overview_schedule_maintenance_and_revision_fields(
             self, logged_in_client, db_session, test_user):

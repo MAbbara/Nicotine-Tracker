@@ -57,7 +57,9 @@ def _parse_positive_decimal(value, path, errors):
         _invalid(errors, path, 'Enter a number greater than zero.')
         return None
     try:
-        normalized = parsed.quantize(Decimal('0.01'))
+        normalized = parsed.quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP
+        )
     except InvalidOperation:
         _invalid(errors, path, 'Enter a valid number.')
         return None
@@ -92,7 +94,9 @@ def _parse_bounded_decimal(value, path, errors, *, maximum,
         _invalid(errors, path, 'Enter a number within the supported range.')
         return None
     try:
-        normalized = parsed.quantize(Decimal('0.01'))
+        normalized = parsed.quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP
+        )
     except InvalidOperation:
         _invalid(errors, path, 'Enter a valid number.')
         return None
@@ -652,6 +656,13 @@ _REVISION_CHANGE_KEYS = {
     'end_target_pouches', 'end_target_mg',
     'stage_targets',
 }
+_NICOTINE_REVISION_CHANGE_KEYS = {
+    'pace', 'target_date', 'duration_days', 'target_basis', 'end_target_mg',
+}
+_LEGACY_REVISION_CHANGE_KEYS = {
+    'pace', 'target_date', 'duration_days', 'target_basis',
+    'end_target_pouches', 'stage_targets',
+}
 
 
 def _parse_revision_changes(value, path, errors):
@@ -661,6 +672,12 @@ def _parse_revision_changes(value, path, errors):
     if not value:
         _invalid(errors, path, 'Choose at least one change.')
         return None
+    if 'target_basis' not in value:
+        _invalid(
+            errors,
+            '{}.target_basis'.format(path),
+            'This field is required for every revision.',
+        )
     changes = {}
     for key in sorted(set(value) - _REVISION_CHANGE_KEYS):
         _invalid(errors, '{}.{}'.format(path, key),
@@ -692,20 +709,21 @@ def _parse_revision_changes(value, path, errors):
             if key == 'target_date':
                 parsed = date.fromisoformat(parsed)
             changes[key] = parsed
-    if 'end_target_mg' in changes and changes.get('target_basis') != 'nicotine_mg':
+    target_basis = changes.get('target_basis')
+    allowed_for_basis = (
+        _NICOTINE_REVISION_CHANGE_KEYS
+        if target_basis == 'nicotine_mg'
+        else _LEGACY_REVISION_CHANGE_KEYS
+        if target_basis == 'legacy_pouches'
+        else _REVISION_CHANGE_KEYS
+    )
+    for key in sorted(set(value) & (_REVISION_CHANGE_KEYS - allowed_for_basis)):
         _invalid(
             errors,
-            '{}.target_basis'.format(path),
-            'Use nicotine_mg when changing the nicotine target.',
-        )
-    if (
-        'end_target_pouches' in changes
-        and changes.get('target_basis') != 'legacy_pouches'
-    ):
-        _invalid(
-            errors,
-            '{}.target_basis'.format(path),
-            'Use legacy_pouches for pouch-target compatibility.',
+            '{}.{}'.format(path, key),
+            'This field is not supported for {} revisions.'.format(
+                target_basis
+            ),
         )
     return changes
 

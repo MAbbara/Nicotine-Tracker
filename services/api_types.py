@@ -22,6 +22,9 @@ JourneyProgressStatus = Literal[
     "no_ceiling",
     "nicotine_total_incomplete",
 ]
+JourneyNextChangeKind = Literal[
+    "ceiling_change", "first_ceiling", "resume_required"
+]
 
 
 def _require_aware(name: str, value: datetime) -> None:
@@ -225,9 +228,10 @@ class TodaySummary:
 
 @dataclass(frozen=True)
 class JourneyNextChange:
-    """The first future day whose nicotine ceiling differs from today."""
+    """The next user-meaningful transition in the plan schedule."""
 
-    local_date: date
+    kind: JourneyNextChangeKind
+    local_date: date | None
     ceiling_mg: Decimal | None
     change_mg: Decimal | None
 

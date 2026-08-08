@@ -514,9 +514,24 @@ def _revision_preview(user, plan, changes, effective_date, now=None):
     )
     requested_basis = changes.get('target_basis')
     expected_basis = 'nicotine_mg' if nicotine_first else 'legacy_pouches'
-    if requested_basis is not None and requested_basis != expected_basis:
+    if requested_basis is None:
+        raise PlanValidationError({
+            'target_basis': 'is required for every revision'
+        })
+    if requested_basis != expected_basis:
         raise PlanValidationError({
             'target_basis': f'must be {expected_basis} for this revision'
+        })
+    incompatible_fields = (
+        {'end_target_pouches', 'stage_targets'}
+        if requested_basis == 'nicotine_mg'
+        else {'end_target_mg'}
+    )
+    present_incompatible = sorted(incompatible_fields & set(changes))
+    if present_incompatible:
+        raise PlanValidationError({
+            field: f'is not supported for {requested_basis} revisions'
+            for field in present_incompatible
         })
     if nicotine_first:
         generation_input = PlanGenerationInput(
@@ -561,21 +576,20 @@ def _revision_preview(user, plan, changes, effective_date, now=None):
         PlanDay.plan_id == plan.id,
         PlanDay.local_date < effective_date,
     ).order_by(PlanDay.local_date).all()
+    replaceable_rows = PlanDay.query.filter(
+        PlanDay.plan_id == plan.id,
+        PlanDay.local_date >= effective_date,
+    ).order_by(PlanDay.local_date, PlanDay.id).all()
     lifecycle_payload = {
         'plan_id': plan.id,
+        'active_revision_id': plan.active_revision_id,
         'earliest_effective_date': earliest_effective_date.isoformat(),
         'pure_digest': generated.digest,
         'protected_days': [
-            {
-                'id': row.id,
-                'revision_id': row.revision_id,
-                'local_date': row.local_date.isoformat(),
-                'target_pouches': row.target_pouches,
-                'nicotine_ceiling_mg': _fixed_decimal(
-                    row.nicotine_ceiling_mg
-                ),
-            }
-            for row in protected_rows
+            _boundary_day_payload(row) for row in protected_rows
+        ],
+        'replaceable_days': [
+            _boundary_day_payload(row) for row in replaceable_rows
         ],
     }
     digest = hashlib.sha256(json.dumps(

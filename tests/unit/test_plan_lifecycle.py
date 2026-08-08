@@ -648,6 +648,7 @@ def test_apply_revision_preserves_started_days_and_replaces_only_future_rows(
         ).order_by(PlanDay.local_date)
     ]
     changes = {
+        'target_basis': 'nicotine_mg',
         'pace': 'focused',
         'duration_days': 28,
         'end_target_mg': Decimal('6.00'),
@@ -701,6 +702,7 @@ def test_revision_rejects_started_effective_date_and_stale_digest(
     PlanService.activate(test_user.id, plan.id, revision.preview_digest)
     now = datetime(2099, 1, 10, 12, tzinfo=timezone.utc)
     changes = {
+        'target_basis': 'nicotine_mg',
         'pace': 'focused', 'duration_days': 28,
         'end_target_mg': Decimal('6.00'),
     }

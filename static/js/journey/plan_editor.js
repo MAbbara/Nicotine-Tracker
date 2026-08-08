@@ -1,5 +1,5 @@
 const REVISION_KEYS = new Set([
-  'effective_date', 'pace', 'duration_days', 'end_target_mg',
+  'effective_date', 'target_basis', 'pace', 'duration_days', 'end_target_mg',
 ]);
 const RESUME_KEYS = new Set(['resume_date']);
 const PACES = new Set(['gentle', 'steady', 'focused']);
@@ -88,6 +88,12 @@ export function revisionPreviewBody(values) {
   const errors = {};
   rejectUnknown(values, REVISION_KEYS, errors);
   const effectiveDate = dateValue(values.effective_date, 'effective_date', errors);
+  if (
+    Object.prototype.hasOwnProperty.call(values, 'target_basis')
+    && values.target_basis !== 'nicotine_mg'
+  ) {
+    errors.target_basis = ['Only nicotine-based revisions are supported.'];
+  }
   const changes = {};
   if (values.pace !== '' && values.pace !== null && values.pace !== undefined) {
     if (typeof values.pace !== 'string' || !PACES.has(values.pace.trim())) {
@@ -101,11 +107,9 @@ export function revisionPreviewBody(values) {
     values.end_target_mg, 'end_target_mg', 99999999n, errors,
   );
   if (duration !== undefined) changes.duration_days = duration;
-  if (target !== undefined) {
-    changes.target_basis = 'nicotine_mg';
-    changes.end_target_mg = target;
-  }
+  if (target !== undefined) changes.end_target_mg = target;
   if (!Object.keys(changes).length) errors.changes = ['Choose at least one change.'];
+  else changes.target_basis = 'nicotine_mg';
   throwErrors(errors);
   return { effective_date: effectiveDate, changes };
 }

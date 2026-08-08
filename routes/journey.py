@@ -51,6 +51,7 @@ from services.plan_service import (
     PlanStateError,
     PreviewStaleError,
 )
+from services.today_service import TodayService
 from services.timezone_service import get_current_user_day, resolve_timezone
 
 
@@ -268,8 +269,9 @@ def _field_errors(errors):
 
 
 def _journey_context(user, *, editor=None):
-    today = _today_for(user)
-    progress = JourneyProgressService.get(user.id)
+    today_summary = TodayService.get_summary(user.id)
+    today = today_summary.local_date
+    progress = JourneyProgressService.from_summary(today_summary)
     primary = _primary_plan(user.id)
     historical_rows = ReductionPlan.query.filter(
         ReductionPlan.user_id == user.id,
@@ -744,8 +746,9 @@ def _revision_changes(values):
     if values['duration_days']:
         changes['duration_days'] = _int_or_raw(values['duration_days'])
     if values['end_target_mg']:
-        changes['target_basis'] = 'nicotine_mg'
         changes['end_target_mg'] = values['end_target_mg']
+    if changes:
+        changes['target_basis'] = 'nicotine_mg'
     return changes
 
 

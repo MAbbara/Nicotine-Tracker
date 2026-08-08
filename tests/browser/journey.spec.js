@@ -52,7 +52,7 @@ async function loginReviewFixture(page, testInfo) {
   await page.goto('/journey/');
 }
 
-async function createPlan(page) {
+async function createPlan(page, { startDays = 0 } = {}) {
   await page.locator('input[name="intention"][value="reduce"]').check();
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.locator('input[name="baseline_source"][value="manual"]').check();
@@ -63,7 +63,7 @@ async function createPlan(page) {
   await page.getByLabel(/End target nicotine per day/).fill('12');
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByLabel('No reminder').check();
-  await page.getByLabel('Plan start date').fill(await isoDate(page));
+  await page.getByLabel('Plan start date').fill(await isoDate(page, startDays));
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Activate this reviewed plan' }).click();
   await expect(page).toHaveURL(/\/today\/?$/);
@@ -160,6 +160,30 @@ test('first viewport explains nicotine progress and next change before technical
   await expect(page.locator('[data-complete-schedule]')).toBeVisible();
   await expect(page.locator('.journey-history')).toBeVisible();
   await expect(summary).toBeFocused();
+  expect(errors).toEqual([]);
+});
+
+test('pre-start and paused Journey explain neutral schedule transitions', async ({ page }, testInfo) => {
+  await register(page, testInfo, 'neutral-transitions');
+  const startDate = await isoDate(page, 2);
+  await createPlan(page, { startDays: 2 });
+  const errors = watchForErrors(page);
+
+  const nextChange = page.locator('[data-next-change]');
+  await expect(nextChange).toContainText(/First ceiling begins/i);
+  await expect(nextChange).toContainText(/48\.00 mg/i);
+  await expect(nextChange.locator('time')).toHaveAttribute('datetime', startDate);
+  await expect(nextChange).not.toContainText(/final scheduled ceiling/i);
+
+  await page.getByText('Plan details and history').click();
+  await keyboardPost(page, page.getByRole('button', { name: 'Pause plan' }), '/pause');
+
+  const progress = page.locator('[data-journey-progress]');
+  await expect(progress).toContainText(/Plan paused/i);
+  await expect(progress.locator('[data-ceiling-mg]')).toHaveText(/Paused.*not in effect/i);
+  await expect(nextChange).toContainText(/Resume this plan before future ceiling dates are scheduled/i);
+  await expect(nextChange.locator('time')).toHaveCount(0);
+  await expect(nextChange).not.toContainText(/final scheduled ceiling|mg on/i);
   expect(errors).toEqual([]);
 });
 

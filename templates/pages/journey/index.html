@@ -42,7 +42,7 @@
           </div>
           <div>
             <dt>Today’s ceiling</dt>
-            <dd data-ceiling-mg>{% if progress.ceiling_mg is not none %}{{ '%.2f'|format(progress.ceiling_mg) }} mg{% else %}Not scheduled{% endif %}</dd>
+            <dd data-ceiling-mg>{% if plan.row.status == 'paused' %}Paused — not in effect{% elif progress.ceiling_mg is not none %}{{ '%.2f'|format(progress.ceiling_mg) }} mg{% else %}Not scheduled{% endif %}</dd>
           </div>
           {% if progress.total_complete %}
             <div>
@@ -73,13 +73,21 @@
       <section class="journey-next-change" data-next-change aria-labelledby="journey-next-change-title">
         <h2 id="journey-next-change-title">What changes next</h2>
         <p class="journey-next-change__value">
-          {% if progress.next_change and progress.next_change.ceiling_mg is not none %}
+          {% if progress.next_change and progress.next_change.kind == 'resume_required' %}
+            Resume this plan before future ceiling dates are scheduled
+          {% elif progress.next_change and progress.next_change.kind == 'first_ceiling' %}
+            First ceiling begins at {{ '%.2f'|format(progress.next_change.ceiling_mg) }} mg on <time datetime="{{ progress.next_change.local_date.isoformat() }}">{{ progress.next_change.local_date.strftime('%B %-d') }}</time>
+          {% elif progress.next_change and progress.next_change.ceiling_mg is not none %}
             {{ '%.2f'|format(progress.next_change.ceiling_mg) }} mg on <time datetime="{{ progress.next_change.local_date.isoformat() }}">{{ progress.next_change.local_date.strftime('%B %-d') }}</time>
           {% else %}
             No further ceiling change is scheduled
           {% endif %}
         </p>
-        {% if progress.next_change and progress.next_change.change_mg is not none %}
+        {% if progress.next_change and progress.next_change.kind == 'resume_required' %}
+          <p>Choose a resume date, preview the shifted schedule, and confirm it before any future ceiling date exists.</p>
+        {% elif progress.next_change and progress.next_change.kind == 'first_ceiling' %}
+          <p>The plan has not started yet. Today’s tracking stays neutral until the first ceiling begins.</p>
+        {% elif progress.next_change and progress.next_change.change_mg is not none %}
           <p>
             {% if progress.next_change.change_mg < 0 %}
               {{ '%.2f'|format(-progress.next_change.change_mg) }} mg lower than today. The daily ceiling changes; pouch count is not the target.
