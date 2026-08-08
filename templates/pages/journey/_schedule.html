@@ -1,37 +1,29 @@
 <section class="journey-schedule" aria-labelledby="journey-schedule-title">
-  <h3 id="journey-schedule-title">Schedule</h3>
-  {% if plan.days %}
-    <h4>Next seven scheduled days</h4>
+  <div class="journey-section-heading">
+    <div>
+      <p class="eyebrow">Plan ahead</p>
+      <h2 id="journey-schedule-title">Your next seven days</h2>
+    </div>
+    <p>Nicotine ceilings, day by day</p>
+  </div>
+  {% if plan.next_days %}
     <p id="journey-schedule-scroll-help" class="sr-only">Scroll horizontally to see every schedule column.</p>
-    <div class="journey-table-scroll horizontal-scroll-region" tabindex="0" role="region" aria-label="Schedule" aria-describedby="journey-schedule-scroll-help">
+    <div class="journey-table-scroll horizontal-scroll-region" tabindex="0" role="region" aria-label="Seven-day plan" aria-describedby="journey-schedule-scroll-help">
       <table data-mobile-schedule>
-        <caption>The next seven persisted schedule rows from today</caption>
-        <thead><tr><th scope="col">Date</th><th scope="col">Target</th><th scope="col">Revision</th></tr></thead>
+        <caption>The next seven confirmed schedule days</caption>
+        <thead><tr><th scope="col">Day</th><th scope="col">Nicotine ceiling</th><th scope="col">Context</th></tr></thead>
         <tbody>
           {% for day in plan.next_days %}
-            <tr{% if day.local_date == today %} aria-current="date"{% endif %}><th scope="row">{{ day.local_date.isoformat() }}</th><td>{% if day.target_pouches is none %}Observe · target unknown{% else %}{{ day.target_pouches }} pouches · {{ '%.2f'|format(day.nicotine_ceiling_mg) }} mg{% endif %}</td><td>Revision {{ day.revision_id }}</td></tr>
+            <tr{% if day.local_date == today %} aria-current="date"{% endif %}>
+              <th scope="row"><span>{{ day.local_date.strftime('%a') }}</span><time datetime="{{ day.local_date.isoformat() }}">{{ day.local_date.strftime('%b %-d') }}</time></th>
+              <td>{% if day.nicotine_ceiling_mg is none %}No ceiling{% else %}<strong>{{ '%.2f'|format(day.nicotine_ceiling_mg) }} mg</strong>{% endif %}</td>
+              <td>{% if day.target_pouches is not none %}Historical pouch guide: {{ day.target_pouches }}{% elif day.local_date == today %}Today{% else %}Nicotine-first{% endif %}</td>
+            </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-    <details>
-      <summary>Show the complete schedule</summary>
-      <table data-complete-schedule>
-        <caption>Complete persisted daily schedule</caption>
-        <thead><tr><th scope="col">Date</th><th scope="col">Target</th><th scope="col">Revision</th></tr></thead>
-        <tbody>
-          {% for day in plan.days %}
-            <tr{% if day.local_date == today %} aria-current="date"{% endif %}><th scope="row">{{ day.local_date.isoformat() }}</th><td>{% if day.target_pouches is none %}Observe · target unknown{% else %}{{ day.target_pouches }} pouches · {{ '%.2f'|format(day.nicotine_ceiling_mg) }} mg{% endif %}</td><td>Revision {{ day.revision_id }}</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </details>
-    <ol class="journey-stage-list">
-      {% for stage in plan.stages %}
-        <li><strong>{{ stage.start_date.isoformat() }} to {{ stage.end_date.isoformat() }}</strong> — {% if stage.target_pouches is none %}Observe; target unknown{% else %}{{ stage.target_pouches }} pouches · {{ stage.nicotine_ceiling_mg }} mg{% endif %} · Revision {{ stage.revision_id }}</li>
-      {% endfor %}
-    </ol>
   {% else %}
-    <p>No persisted daily schedule exists for this plan yet.</p>
+    <p>No future days are scheduled. Your current plan and history remain available below.</p>
   {% endif %}
 </section>

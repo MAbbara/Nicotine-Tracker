@@ -8,12 +8,12 @@
     <dl class="review-decisions">
       <div><dt>Intention</dt><dd>{{ plan.mode|replace('_', ' ')|title }}</dd></div>
       <div><dt>Baseline source</dt><dd>{{ plan.baseline_source|replace('_', ' ')|title }}{% if plan.baseline_source == 'recent_logs' %} · {{ baseline.logged_days_used }} logged days{% endif %}</dd></div>
-      <div><dt>Starting pouches</dt><dd>{{ plan.baseline_pouches if plan.baseline_pouches is not none else 'Unknown during observation' }}</dd></div>
-      <div><dt>Direct median strength</dt><dd>{% if plan.baseline_mg_per_pouch is not none %}{{ plan.baseline_mg_per_pouch }} mg per pouch{% else %}Unknown during observation{% endif %}</dd></div>
+      <div><dt>Historical pouch context</dt><dd>{{ plan.baseline_pouches if plan.baseline_pouches is not none else 'Not used for this plan' }}</dd></div>
+      <div><dt>Usual pouch strength</dt><dd>{% if plan.baseline_mg_per_pouch is not none %}{{ plan.baseline_mg_per_pouch }} mg per pouch{% else %}Not provided{% endif %}</dd></div>
       <div><dt>Starting nicotine</dt><dd>{% if plan.baseline_mg is not none %}{{ plan.baseline_mg }} mg per day{% else %}Unknown during observation{% endif %}</dd></div>
       <div><dt>Pace and duration</dt><dd>{% if plan.pace %}{{ plan.pace|title }} · {{ plan.duration_days }} days{% else %}No reduction pace · {{ plan.duration_days }} observation days{% endif %}</dd></div>
       <div><dt>Dates</dt><dd>{{ plan.start_date }} to {{ plan.target_date }}</dd></div>
-      <div><dt>End target</dt><dd>{{ plan.end_target_pouches if plan.end_target_pouches is not none else 'No target during observation' }}</dd></div>
+      <div><dt>End target nicotine</dt><dd>{% if plan.end_target_mg is not none %}{{ plan.end_target_mg }} mg per day{% else %}No target during observation{% endif %}</dd></div>
       <div><dt>Difficult times</dt><dd>{% if values.get('difficult_times') %}{% for value in values.get('difficult_times') %}{{ difficult_time_labels.get(value, value) }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}None selected{% endif %}</dd></div>
       <div><dt>Triggers</dt><dd>{% if values.get('common_triggers') %}{% for value in values.get('common_triggers') %}{{ trigger_labels.get(value, value) }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}None selected{% endif %}</dd></div>
       <div><dt>Pouches</dt><dd>{% if values.get('preferred_pouch_ids') %}{% for pouch_id in values.get('preferred_pouch_ids') %}{% set pouch = pouch_by_id.get(pouch_id|string) %}{% if pouch %}{{ pouch.brand }} · {{ pouch.nicotine_mg_display() }} mg{% if not loop.last %}, {% endif %}{% endif %}{% endfor %}{% else %}None selected{% endif %}</dd></div>
@@ -23,7 +23,7 @@
     <section aria-labelledby="review-stages-title">
       <h3 id="review-stages-title">Contiguous stages</h3>
       {% if preview.stages %}
-        <ol class="review-stages">{% for stage in preview.stages %}<li><strong>{{ stage.start_date }} to {{ stage.end_date }}</strong><span>{{ stage.target_pouches }} pouches · {{ stage.nicotine_ceiling_mg }} mg ceiling</span></li>{% endfor %}</ol>
+        <ol class="review-stages">{% for stage in preview.stages %}<li><strong>{{ stage.start_date }} to {{ stage.end_date }}</strong><span>{{ stage.nicotine_ceiling_mg }} mg ceiling{% if stage.target_pouches is not none %} · historical pouch guide {{ stage.target_pouches }}{% endif %}</span></li>{% endfor %}</ol>
       {% else %}<p>Observation has no reduction stages.</p>{% endif %}
     </section>
 
@@ -31,8 +31,8 @@
       <h3 id="review-days-title">Complete daily schedule</h3>
       <div class="table-scroll" tabindex="0" aria-label="Complete daily schedule">
         <table>
-          <thead><tr><th scope="col">Date</th><th scope="col">Pouch target</th><th scope="col">Nicotine ceiling</th></tr></thead>
-          <tbody>{% for day in preview.days %}<tr><th scope="row">{{ day.local_date }}</th><td>{{ day.target_pouches if day.target_pouches is not none else 'Observe' }}</td><td>{% if day.nicotine_ceiling_mg is not none %}{{ day.nicotine_ceiling_mg }} mg{% else %}Unknown{% endif %}</td></tr>{% endfor %}</tbody>
+          <thead><tr><th scope="col">Date</th><th scope="col">Nicotine ceiling</th><th scope="col">Historical pouch guide</th></tr></thead>
+          <tbody>{% for day in preview.days %}<tr><th scope="row">{{ day.local_date }}</th><td>{% if day.nicotine_ceiling_mg is not none %}{{ day.nicotine_ceiling_mg }} mg{% else %}No ceiling{% endif %}</td><td>{{ day.target_pouches if day.target_pouches is not none else 'Not used' }}</td></tr>{% endfor %}</tbody>
         </table>
       </div>
     </section>

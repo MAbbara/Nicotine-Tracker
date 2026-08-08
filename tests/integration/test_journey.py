@@ -19,13 +19,17 @@ from services import log_service
 
 
 def _revision(session, plan, effective_date, *, pace='steady', target_date=None,
-              end_target=2, reason='initial', created_at=None):
+              end_target=2, end_target_mg='48.00', reason='initial',
+              created_at=None):
     row = PlanRevision(
         plan_id=plan.id,
         effective_date=effective_date,
         pace=pace,
         target_date=target_date,
         end_target_pouches=end_target,
+        end_target_mg=(
+            None if end_target_mg is None else Decimal(end_target_mg)
+        ),
         generation_inputs={},
         preview_digest=(str(plan.id) * 64)[:64],
         reason=reason,
@@ -58,6 +62,9 @@ def _plan(session, user, *, status='active', mode='reduce', start=None,
         ),
         pace=pace,
         end_target_pouches=end_target,
+        end_target_mg=(
+            None if mode == 'observe' else Decimal('48.00')
+        ),
         created_at=datetime(2026, 1, 1, 8),
         updated_at=datetime(2026, 1, 1, 8),
     )
@@ -66,7 +73,7 @@ def _plan(session, user, *, status='active', mode='reduce', start=None,
     if with_revision:
         revision = _revision(
             session, plan, start, pace=pace, target_date=plan.target_date,
-            end_target=end_target,
+            end_target=end_target, end_target_mg=plan.end_target_mg,
         )
         plan.active_revision_id = revision.id
         for offset in range(length):
@@ -201,7 +208,7 @@ class TestJourneyComposition:
                 ('input', 'date', 'effective_date', ''),
                 ('select', None, 'pace', ''),
                 ('input', 'number', 'duration_days', ''),
-                ('input', 'number', 'end_target_pouches', ''),
+                ('input', 'number', 'end_target_mg', ''),
                 ('button', 'submit', 'form_action', 'preview'),
             ],
         }
@@ -245,6 +252,14 @@ class TestJourneyComposition:
         assert form.select_one('input[data-plan-editor-digest]') is not None
         assert form.select_one('[data-plan-editor-preview-button]') is not None
         assert form.select_one('[data-plan-editor-confirm]') is not None
+        status = soup.select_one('.journey-progress-status').get_text(
+            ' ', strip=True
+        )
+        assert status == '● Plan paused'
+        assert not any(
+            comparison in status
+            for comparison in ('Below', 'At today', 'Above')
+        )
 
     def test_plan_flow_wraps_overview_schedule_maintenance_and_revision_fields(
             self, logged_in_client, db_session, test_user):
@@ -254,19 +269,23 @@ class TestJourneyComposition:
             logged_in_client.get('/journey/').data, 'html.parser'
         )
         plan = soup.select_one('.journey-plan')
-        overview = plan.select_one(':scope > .journey-plan__overview')
+        today_panel = plan.select_one(':scope > .journey-today')
+        next_change = plan.select_one(':scope > .journey-next-change')
         schedule = plan.select_one(':scope > .journey-plan__schedule')
         maintenance = plan.select_one(':scope > .journey-plan__maintenance')
-        assert overview.select_one('#current-plan-title') is not None
-        assert overview.select_one('.journey-current') is not None
-        assert overview.select_one('#plan-facts-title') is not None
+        details = plan.select_one(':scope > .journey-details')
+        assert today_panel.select_one('#journey-today-title') is not None
+        assert next_change.select_one('#journey-next-change-title') is not None
         assert schedule.select_one('.journey-schedule') is not None
-        assert maintenance.select_one('.journey-actions') is not None
+        assert details.select_one('.journey-actions') is not None
         editor = maintenance.select_one('[data-plan-editor="revision"]')
         assert editor is not None
 
         direct_children = [child for child in plan.children if child.name]
+        assert direct_children.index(today_panel) < direct_children.index(next_change)
+        assert direct_children.index(next_change) < direct_children.index(schedule)
         assert direct_children.index(schedule) < direct_children.index(maintenance)
+        assert direct_children.index(maintenance) < direct_children.index(details)
         assert plan.select_one('.journey-schedule').find_next(
             attrs={'data-plan-editor': 'revision'}
         ) == editor
@@ -276,7 +295,7 @@ class TestJourneyComposition:
             'input[name], select[name]'
         )] == [
             'effective_date', 'pace', 'duration_days',
-            'end_target_pouches',
+            'end_target_mg',
         ]
         assert len(fields.find_all('div', recursive=False)) == 4
         assert editor.select_one('.journey-editor__fields p') is None
@@ -284,6 +303,97 @@ class TestJourneyComposition:
         assert editor.select_one('.journey-editor__fields .journey-editor__buttons') is None
         assert editor.select_one('.journey-editor__fields [data-plan-editor-status]') is None
         assert editor.select_one('.journey-editor__fields [data-plan-editor-preview]') is None
+
+    def test_today_progress_and_next_change_are_immediately_comprehensible(
+            self, logged_in_client, db_session, test_user):
+        today = date.today()
+        plan = _plan(db_session, test_user, start=today - timedelta(days=1))
+        days = PlanDay.query.filter_by(plan_id=plan.id).order_by(
+            PlanDay.local_date
+        ).all()
+        for row in days:
+            row.target_pouches = None
+        days[1].nicotine_ceiling_mg = Decimal('36.00')
+        days[2].nicotine_ceiling_mg = Decimal('36.00')
+        days[3].nicotine_ceiling_mg = Decimal('30.00')
+        plan.end_target_pouches = None
+        plan.end_target_mg = Decimal('30.00')
+        plan.active_revision.end_target_pouches = None
+        plan.active_revision.end_target_mg = Decimal('30.00')
+        plan.active_revision.generation_inputs = {
+            'target_basis': 'nicotine_mg',
+            'end_target_mg': '30.00',
+        }
+        db_session.add(Log(
+            user_id=test_user.id,
+            log_time=datetime.now(),
+            quantity=2,
+            nicotine_mg_snapshot=Decimal('6.00'),
+            product_brand_snapshot='Known fixture',
+        ))
+        db_session.commit()
+
+        soup = BeautifulSoup(
+            logged_in_client.get('/journey/').data, 'html.parser'
+        )
+        progress = soup.select_one('[data-journey-progress]')
+        assert progress is not None
+        assert progress.select_one('[data-known-mg]').get_text(strip=True) == '12.00 mg'
+        assert progress.select_one('[data-ceiling-mg]').get_text(strip=True) == '36.00 mg'
+        assert progress.select_one('[data-remaining-mg]').get_text(strip=True) == '24.00 mg'
+        assert 'Below today’s ceiling' in progress.get_text(' ', strip=True)
+        assert 'Pouches logged 2' in progress.get_text(' ', strip=True)
+
+        next_change = soup.select_one('[data-next-change]')
+        assert next_change is not None
+        assert next_change.select_one('time')['datetime'] == (
+            today + timedelta(days=2)
+        ).isoformat()
+        assert '30.00 mg' in next_change.get_text(' ', strip=True)
+        assert '6.00 mg lower' in next_change.get_text(' ', strip=True)
+
+    def test_unknown_strength_shows_known_subtotal_without_false_remaining(
+            self, logged_in_client, db_session, test_user):
+        today = date.today()
+        plan = _plan(db_session, test_user, start=today)
+        for row in PlanDay.query.filter_by(plan_id=plan.id):
+            row.target_pouches = None
+        plan.end_target_pouches = None
+        plan.end_target_mg = Decimal('48.00')
+        plan.active_revision.end_target_pouches = None
+        plan.active_revision.end_target_mg = Decimal('48.00')
+        plan.active_revision.generation_inputs = {
+            'target_basis': 'nicotine_mg',
+            'end_target_mg': '48.00',
+        }
+        db_session.add_all([
+            Log(
+                user_id=test_user.id,
+                log_time=datetime.now(),
+                quantity=1,
+                nicotine_mg_snapshot=Decimal('6.00'),
+                product_brand_snapshot='Known fixture',
+            ),
+            Log(
+                user_id=test_user.id,
+                log_time=datetime.now(),
+                quantity=1,
+                nicotine_mg_snapshot=None,
+                product_brand_snapshot='Unknown fixture',
+            ),
+        ])
+        db_session.commit()
+
+        soup = BeautifulSoup(
+            logged_in_client.get('/journey/').data, 'html.parser'
+        )
+        progress = soup.select_one('[data-journey-progress]')
+        text = progress.get_text(' ', strip=True)
+        assert 'Known nicotine 6.00 mg' in text
+        assert 'Nicotine total incomplete' in text
+        assert progress.select_one('[data-remaining-mg]') is None
+        assert '%' not in text
+        assert 'on track' not in text.lower()
 
     def test_active_plan_renders_truthful_baseline_schedule_history_and_milestones(
             self, logged_in_client, db_session, test_user):
@@ -328,22 +438,22 @@ class TestJourneyComposition:
         soup = BeautifulSoup(response.data, 'html.parser')
         text = soup.get_text(' ', strip=True)
         assert soup.select_one('.journey-plan') is not None
-        assert soup.select_one('.journey-current') is not None
+        assert soup.select_one('.journey-today') is not None
+        assert soup.select_one('.journey-next-change') is not None
         assert soup.select_one('.journey-schedule') is not None
         assert soup.select_one('.journey-history') is not None
         assert 'Manual baseline' in text
-        assert '8.00 pouches per day' in text
+        assert 'Historical pouch baseline 8.00 pouches per day' in text
         assert '48.00 mg per day' in text
         assert '6.00 mg per pouch' in text
-        assert 'Current stage' in text
-        assert 'Next seven scheduled days' in text
+        assert 'Today in this plan' in text
+        assert 'Your next seven days' in text
         assert len(soup.select('[data-mobile-schedule] tbody tr')) == 7
         assert len(soup.select('[data-complete-schedule] tbody tr')) == 10
-        assert len(soup.select('.journey-stage-list > li')) == 3
-        assert f'Revision {second.id}' in text
-        assert 'Target changes to 6 pouches' in text
-        assert text.count('Target changes to 6 pouches') == 1
-        assert f'Revision {third.id} stage continues at 6 pouches' in text
+        assert len(soup.select('.journey-history-list > li')) >= 3
+        assert 'Plan change 2' in text
+        assert 'Plan change 3' in text
+        assert 'Historical pouch guide: 6' in text
         assert 'paused' in text.lower()
         assert '2026-01-03 10:00' in text
         assert '2026-01-05 11:00' in text
@@ -362,8 +472,8 @@ class TestJourneyComposition:
         text = _text(response)
         assert 'Proposed baseline' in text
         assert 'needs pace and target review' in text.lower()
-        assert 'Nicotine baseline Unknown' in text
-        assert 'Direct median strength Unknown' in text
+        assert 'Starting nicotine Not known' in text
+        assert 'Usual pouch strength Not provided' in text
         assert '0.00 mg' not in text
 
     def test_persisted_zero_draft_values_are_not_mislabeled_unknown(
@@ -377,9 +487,9 @@ class TestJourneyComposition:
 
         text = _text(logged_in_client.get('/journey/'))
 
-        assert 'Pouch baseline 0.00 pouches per day' in text
-        assert 'Nicotine baseline 0.00 mg per day' in text
-        assert 'Direct median strength 0.00 mg per pouch' in text
+        assert 'Historical pouch baseline 0.00 pouches per day' in text
+        assert 'Starting nicotine 0.00 mg per day' in text
+        assert 'Usual pouch strength 0.00 mg per pouch' in text
 
     def test_paused_beats_newer_draft_and_completed_archived_are_history(
             self, logged_in_client, db_session, test_user):
@@ -514,7 +624,7 @@ class TestJourneyLifecycleActions:
             'effective_date': effective.isoformat(),
             'pace': 'focused',
             'duration_days': '28',
-            'end_target_pouches': '3',
+            'end_target_mg': '12.00',
         }
         preview_response = logged_in_client.post(
             f'/journey/plans/{plan.id}/revision', data=data
@@ -543,6 +653,15 @@ class TestJourneyLifecycleActions:
             f'/journey/plans/{plan.id}/revision', data=confirm
         )
         assert response.status_code == 302
+        assert [row.target_pouches for row in historical] == [
+            row[3] for row in historical_bytes
+        ]
+        new_future = PlanDay.query.filter(
+            PlanDay.plan_id == plan.id,
+            PlanDay.local_date >= effective,
+        ).all()
+        assert new_future
+        assert all(row.target_pouches is None for row in new_future)
         after_history = PlanDay.query.filter(
             PlanDay.plan_id == plan.id,
             PlanDay.local_date < effective,

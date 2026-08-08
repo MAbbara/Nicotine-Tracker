@@ -1,5 +1,5 @@
 const REVISION_KEYS = new Set([
-  'effective_date', 'pace', 'duration_days', 'end_target_pouches',
+  'effective_date', 'pace', 'duration_days', 'end_target_mg',
 ]);
 const RESUME_KEYS = new Set(['resume_date']);
 const PACES = new Set(['gentle', 'steady', 'focused']);
@@ -55,6 +55,31 @@ function optionalInteger(value, field, minimum, maximum, errors) {
   return parsed;
 }
 
+function optionalDecimal(value, field, maximumCents, errors) {
+  if (value === '' || value === null || value === undefined) return undefined;
+  if (typeof value === 'boolean') {
+    errors[field] = ['Enter a nicotine amount in mg.'];
+    return undefined;
+  }
+  const source = typeof value === 'number' ? String(value) : value;
+  const match = typeof source === 'string'
+    ? /^(\d+)(?:\.(\d+))?$/.exec(source.trim())
+    : null;
+  if (!match) {
+    errors[field] = ['Enter a nicotine amount in mg.'];
+    return undefined;
+  }
+  const fraction = match[2] || '';
+  let cents = BigInt(match[1]) * 100n
+    + BigInt((fraction.slice(0, 2) || '').padEnd(2, '0'));
+  if (fraction.length > 2 && Number(fraction[2]) >= 5) cents += 1n;
+  if (cents > maximumCents) {
+    errors[field] = ['Enter an amount from 0.00 to 999999.99 mg.'];
+    return undefined;
+  }
+  return `${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`;
+}
+
 function throwErrors(errors) {
   if (Object.keys(errors).length) throw new ClientValidationError(errors);
 }
@@ -72,11 +97,14 @@ export function revisionPreviewBody(values) {
     }
   }
   const duration = optionalInteger(values.duration_days, 'duration_days', 1, 365, errors);
-  const target = optionalInteger(
-    values.end_target_pouches, 'end_target_pouches', 0, 1000, errors,
+  const target = optionalDecimal(
+    values.end_target_mg, 'end_target_mg', 99999999n, errors,
   );
   if (duration !== undefined) changes.duration_days = duration;
-  if (target !== undefined) changes.end_target_pouches = target;
+  if (target !== undefined) {
+    changes.target_basis = 'nicotine_mg';
+    changes.end_target_mg = target;
+  }
   if (!Object.keys(changes).length) errors.changes = ['Choose at least one change.'];
   throwErrors(errors);
   return { effective_date: effectiveDate, changes };
@@ -271,14 +299,14 @@ function text(value) {
   return value === null || value === undefined ? 'Unknown' : String(value);
 }
 
-function previewTable(documentObject, caption, rows, dateKey) {
+export function previewTable(documentObject, caption, rows, dateKey) {
   const wrapper = documentObject.createElement('div');
   wrapper.className = 'journey-table-scroll';
   const table = documentObject.createElement('table');
   const tableCaption = documentObject.createElement('caption');
   tableCaption.textContent = caption;
   const head = documentObject.createElement('thead');
-  head.innerHTML = '<tr><th scope="col">Date</th><th scope="col">Pouches</th><th scope="col">Nicotine ceiling</th></tr>';
+  head.innerHTML = '<tr><th scope="col">Date</th><th scope="col">Nicotine ceiling</th><th scope="col">Historical pouch guide</th></tr>';
   const body = documentObject.createElement('tbody');
   for (const row of rows || []) {
     const tr = documentObject.createElement('tr');
@@ -288,13 +316,15 @@ function previewTable(documentObject, caption, rows, dateKey) {
     const th = documentObject.createElement('th');
     th.scope = 'row';
     th.textContent = date;
-    const target = documentObject.createElement('td');
-    target.textContent = text(row.target_pouches);
     const ceiling = documentObject.createElement('td');
     ceiling.textContent = row.nicotine_ceiling_mg == null
-      ? 'Unknown'
+      ? 'Not scheduled'
       : `${row.nicotine_ceiling_mg} mg`;
-    tr.append(th, target, ceiling);
+    const target = documentObject.createElement('td');
+    target.textContent = row.target_pouches == null
+      ? 'Not used'
+      : String(row.target_pouches);
+    tr.append(th, ceiling, target);
     body.append(tr);
   }
   table.append(tableCaption, head, body);
@@ -346,7 +376,7 @@ export function createDomPlanEditorView(root, { documentObject = document } = {}
         effective_date: data.get('effective_date') || '',
         pace: data.get('pace') || '',
         duration_days: data.get('duration_days') || '',
-        end_target_pouches: data.get('end_target_pouches') || '',
+        end_target_mg: data.get('end_target_mg') || '',
       };
     },
     readDigest() { return digest.value; },

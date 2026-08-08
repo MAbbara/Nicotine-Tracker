@@ -104,23 +104,26 @@ class TodayService:
             today_plan is not None
             and today_plan.status == "active"
             and today_plan.mode != "observe"
-            and today_plan.target_pouches is not None
             and today_plan.nicotine_ceiling_mg is not None
         )
         if targeted:
-            pouch_status = cls._guardrail_state(
-                Decimal(actual_pouches), Decimal(today_plan.target_pouches)
+            pouch_status = (
+                cls._guardrail_state(
+                    Decimal(actual_pouches), Decimal(today_plan.target_pouches)
+                )
+                if today_plan.target_pouches is not None
+                else "neutral"
             )
             nicotine_state = cls._guardrail_state(
                 known_nicotine, Decimal(today_plan.nicotine_ceiling_mg)
             )
-            if unknown_strength_events and nicotine_state != "exceeded":
+            if unknown_strength_events:
                 nicotine_state = "unknown"
             component_states = {pouch_status, nicotine_state}
-            if "exceeded" in component_states:
-                status = "exceeded"
-            elif unknown_strength_events:
+            if unknown_strength_events:
                 status = "unknown"
+            elif "exceeded" in component_states:
+                status = "exceeded"
             elif "met" in component_states:
                 status = "met"
             elif "approaching" in component_states:
@@ -131,7 +134,7 @@ class TodayService:
             status = pouch_status = nicotine_state = "neutral"
         remaining_pouches = (
             max(today_plan.target_pouches - actual_pouches, 0)
-            if targeted else None
+            if targeted and today_plan.target_pouches is not None else None
         )
         remaining_nicotine = (
             max(today_plan.nicotine_ceiling_mg - known_nicotine, Decimal("0"))

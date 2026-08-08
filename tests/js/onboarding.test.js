@@ -38,8 +38,8 @@ test('context rules require only controls relevant to the selected path', async 
     showEndTarget: true,
     showTargetDate: false,
     required: [
-      'intention', 'baseline_source', 'baseline_pouches',
-      'baseline_mg_per_pouch', 'pace', 'end_target_pouches', 'start_date',
+      'intention', 'baseline_source', 'baseline_mg',
+      'pace', 'end_target_mg', 'start_date',
     ],
   });
   assert.deepEqual(deriveContext({ intention: 'quit_by_date', baseline_source: 'recent_logs' }), {
@@ -92,10 +92,10 @@ test('manual reduce serialization preserves exact arrays and canonical JSON type
   const answers = {
     intention: 'reduce',
     baseline_source: 'manual',
-    baseline_pouches: '8.4',
+    baseline_mg: '50.4',
     baseline_mg_per_pouch: '6',
     pace: 'steady',
-    end_target_pouches: '2',
+    end_target_mg: '12.5',
     target_date: '',
     start_date: '2026-08-01',
     ...support,
@@ -103,14 +103,14 @@ test('manual reduce serialization preserves exact arrays and canonical JSON type
 
   assert.deepEqual(serializeDraft(answers, suggestion), {
     intention: 'reduce',
+    target_basis: 'nicotine_mg',
     baseline_source: 'manual',
-    baseline_pouches: '8.40',
     baseline_mg: '50.40',
     baseline_mg_per_pouch: '6.00',
     pace: 'steady',
     start_date: '2026-08-01',
     duration_days: 49,
-    end_target_pouches: 2,
+    end_target_mg: '12.50',
     difficult_times: ['morning', 'after_meals'],
     common_triggers: ['stress', 'routine'],
     preferred_pouch_ids: [17, 4],
@@ -118,15 +118,16 @@ test('manual reduce serialization preserves exact arrays and canonical JSON type
   });
   assert.deepEqual(serializePlan(answers, suggestion), {
     mode: 'reduce',
+    target_basis: 'nicotine_mg',
     baseline_source: 'manual',
-    baseline_pouches: '8.40',
+    baseline_pouches: null,
     baseline_mg: '50.40',
     baseline_mg_per_pouch: '6.00',
     pace: 'steady',
     start_date: '2026-08-01',
     target_date: null,
     duration_days: 49,
-    end_target_pouches: 2,
+    end_target_mg: '12.50',
     stage_targets: null,
   });
 });
@@ -136,17 +137,18 @@ test('recent-log quit serialization uses the authoritative suggestion and a zero
   const answers = {
     intention: 'quit_by_date',
     baseline_source: 'recent_logs',
-    baseline_pouches: '99',
+    baseline_mg: '99',
     baseline_mg_per_pouch: '99',
     pace: 'focused',
     target_date: '2026-08-29',
-    end_target_pouches: '7',
+    end_target_mg: '7',
     start_date: '2026-08-01',
     ...support,
   };
 
   assert.deepEqual(serializeDraft(answers, suggestion), {
     intention: 'quit_by_date',
+    target_basis: 'nicotine_mg',
     baseline_source: 'recent_logs',
     baseline_pouches: '8.40',
     baseline_mg: '50.40',
@@ -155,7 +157,7 @@ test('recent-log quit serialization uses the authoritative suggestion and a zero
     start_date: '2026-08-01',
     target_date: '2026-08-29',
     duration_days: 28,
-    end_target_pouches: 0,
+    end_target_mg: '0.00',
     difficult_times: ['morning', 'after_meals'],
     common_triggers: ['stress', 'routine'],
     preferred_pouch_ids: [17, 4],
@@ -163,6 +165,7 @@ test('recent-log quit serialization uses the authoritative suggestion and a zero
   });
   assert.deepEqual(serializePlan(answers, suggestion), {
     mode: 'quit_by_date',
+    target_basis: 'nicotine_mg',
     baseline_source: 'recent_logs',
     baseline_pouches: '8.40',
     baseline_mg: '50.40',
@@ -171,7 +174,7 @@ test('recent-log quit serialization uses the authoritative suggestion and a zero
     start_date: '2026-08-01',
     target_date: '2026-08-29',
     duration_days: null,
-    end_target_pouches: 0,
+    end_target_mg: '0.00',
     stage_targets: null,
   });
 });
@@ -181,10 +184,10 @@ test('observe serialization cannot leak prior targeted-plan answers', async () =
   const answers = {
     intention: 'observe',
     baseline_source: 'manual',
-    baseline_pouches: '8.4',
+    baseline_mg: '50.4',
     baseline_mg_per_pouch: '6',
     pace: 'gentle',
-    end_target_pouches: '2',
+    end_target_mg: '12.5',
     target_date: '2026-10-01',
     start_date: '2026-08-01',
     ...support,
@@ -192,6 +195,7 @@ test('observe serialization cannot leak prior targeted-plan answers', async () =
 
   assert.deepEqual(serializeDraft(answers, suggestion), {
     intention: 'observe',
+    target_basis: 'observe',
     baseline_source: 'observe',
     start_date: '2026-08-01',
     duration_days: 7,
@@ -202,6 +206,7 @@ test('observe serialization cannot leak prior targeted-plan answers', async () =
   });
   assert.deepEqual(serializePlan(answers, suggestion), {
     mode: 'observe',
+    target_basis: 'observe',
     baseline_source: 'observe',
     baseline_pouches: null,
     baseline_mg: null,
@@ -210,7 +215,7 @@ test('observe serialization cannot leak prior targeted-plan answers', async () =
     start_date: '2026-08-01',
     target_date: null,
     duration_days: 7,
-    end_target_pouches: null,
+    end_target_mg: null,
     stage_targets: null,
   });
 });
@@ -220,10 +225,10 @@ test('an early-step draft omits unanswered future fields rejected by the strict 
   assert.deepEqual(serializeDraft({
     intention: 'reduce',
     baseline_source: '',
-    baseline_pouches: '',
+    baseline_mg: '',
     baseline_mg_per_pouch: '',
     pace: '',
-    end_target_pouches: '',
+    end_target_mg: '',
     target_date: '',
     start_date: '2026-08-01',
     difficult_times: [],
@@ -232,6 +237,7 @@ test('an early-step draft omits unanswered future fields rejected by the strict 
     reminder_window: 'none',
   }, suggestion), {
     intention: 'reduce',
+    target_basis: 'nicotine_mg',
     start_date: '2026-08-01',
     difficult_times: [],
     common_triggers: [],
@@ -244,11 +250,13 @@ test('field-error normalization points nested API paths at the nearest form cont
   const { normalizeFieldErrors } = await loadOnboarding();
   assert.deepEqual(normalizeFieldErrors({
     'structured_payload.baseline_mg': ['Recalculate the nicotine total.'],
+    'structured_payload.end_target_mg': ['Choose a lower daily target.'],
     'structured_payload.preferred_pouch_ids[1]': ['That pouch is unavailable.'],
     'stage_targets[0].end_date': ['The stage is not contiguous.'],
     target_date: ['Choose a later date.'],
   }), {
-    baseline_mg_per_pouch: ['Recalculate the nicotine total.'],
+    baseline_mg: ['Recalculate the nicotine total.'],
+    end_target_mg: ['Choose a lower daily target.'],
     preferred_pouch_ids: ['That pouch is unavailable.'],
     pace: ['The stage is not contiguous.'],
     target_date: ['Choose a later date.'],
@@ -306,10 +314,10 @@ function makeView(initialAnswers, { digest = '' } = {}) {
 const baseAnswers = Object.freeze({
   intention: 'reduce',
   baseline_source: 'manual',
-  baseline_pouches: '8.4',
+  baseline_mg: '50.4',
   baseline_mg_per_pouch: '6',
   pace: 'steady',
-  end_target_pouches: '2',
+  end_target_mg: '12.5',
   target_date: '',
   start_date: '2026-08-01',
   ...support,
@@ -318,10 +326,10 @@ const baseAnswers = Object.freeze({
 const preview = Object.freeze({
   preview_digest: 'a'.repeat(64),
   normalized_input: {
-    mode: 'reduce', baseline_source: 'manual', baseline_pouches: '8.40',
+    mode: 'reduce', target_basis: 'nicotine_mg', baseline_source: 'manual', baseline_pouches: null,
     baseline_mg: '50.40', baseline_mg_per_pouch: '6.00', pace: 'steady',
     start_date: '2026-08-01', target_date: '2026-09-18', duration_days: 49,
-    end_target_pouches: 2, stage_targets: null,
+    end_target_mg: '12.50', stage_targets: null,
   },
   stages: [{
     start_date: '2026-08-01', end_date: '2026-08-07', target_pouches: 9,
@@ -354,12 +362,12 @@ test('five-step controller saves valid forward transitions and preserves answers
 
   await controller.continue();
   assert.equal(view.step, 'baseline');
-  view.answers.baseline_pouches = '10.25';
+  view.answers.baseline_mg = '51.25';
   await controller.continue();
   assert.equal(view.step, 'pace');
   controller.back();
   assert.equal(view.step, 'baseline');
-  assert.equal(view.answers.baseline_pouches, '10.25');
+  assert.equal(view.answers.baseline_mg, '51.25');
 
   assert.equal(requests.length, 2);
   assert.equal(requests[0][0], '/api/onboarding-draft');
@@ -389,7 +397,7 @@ test('a failed draft save retains answers and keeps the user on the current step
   controller.initialize();
   await controller.continue();
   assert.equal(view.step, 'intention');
-  assert.equal(view.answers.baseline_pouches, '8.4');
+  assert.equal(view.answers.baseline_mg, '50.4');
   assert.match(view.announcements.at(-1), /could not save|try again/i);
 });
 

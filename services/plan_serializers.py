@@ -59,6 +59,58 @@ def _day_payload(day):
     }
 
 
+def _revision_target_basis(plan_mode, revision, days):
+    """Resolve explicit basis for revisions persisted before the basis key."""
+    generation_inputs = revision.generation_inputs
+    stored = (
+        generation_inputs.get('target_basis')
+        if isinstance(generation_inputs, dict) else None
+    )
+    if stored in {'nicotine_mg', 'legacy_pouches', 'observe'}:
+        return stored
+    if plan_mode == 'observe':
+        return 'observe'
+    owned_days = [row for row in days if row.revision_id == revision.id]
+    if (
+        revision.end_target_pouches is not None
+        or any(row.target_pouches is not None for row in owned_days)
+    ):
+        return 'legacy_pouches'
+    if (
+        revision.end_target_mg is not None
+        or any(row.nicotine_ceiling_mg is not None for row in owned_days)
+    ):
+        return 'nicotine_mg'
+    return None
+
+
+def _plan_target_basis(plan, days):
+    if plan.active_revision is not None:
+        return _revision_target_basis(plan.mode, plan.active_revision, days)
+    if plan.mode == 'observe':
+        return 'observe'
+    if (
+        plan.end_target_pouches is not None
+        or any(row.target_pouches is not None for row in days)
+    ):
+        return 'legacy_pouches'
+    if (
+        plan.end_target_mg is not None
+        or any(row.nicotine_ceiling_mg is not None for row in days)
+    ):
+        return 'nicotine_mg'
+    return None
+
+
+def preview_target_basis(preview):
+    """Return the effective targeted basis from generated preview rows."""
+    return (
+        'legacy_pouches'
+        if any(day.target_pouches is not None for day in preview.days)
+        else 'nicotine_mg'
+    )
+
+
 def serialize_initial_preview(
     generation_input: PlanGenerationInput,
     baseline_source: str,
@@ -71,6 +123,7 @@ def serialize_initial_preview(
     )
     normalized_input = {
         'mode': generation_input.mode,
+        'target_basis': generation_input.target_basis or 'observe',
         'baseline_source': baseline_source,
         'baseline_pouches': _decimal(generation_input.baseline_pouches),
         'baseline_mg': _decimal(generation_input.baseline_mg),
@@ -81,9 +134,16 @@ def serialize_initial_preview(
         'start_date': generation_input.start_date.isoformat(),
         'target_date': preview.days[-1].local_date.isoformat(),
         'duration_days': len(preview.days),
-        'end_target_pouches': generation_input.end_target_pouches,
         'stage_targets': explicit_stages,
     }
+    if generation_input.target_basis == 'legacy_pouches':
+        normalized_input['end_target_pouches'] = (
+            generation_input.end_target_pouches
+        )
+    elif generation_input.target_basis == 'nicotine_mg':
+        normalized_input['end_target_mg'] = _decimal(
+            preview.days[-1].nicotine_ceiling_mg
+        )
     return {
         'preview_digest': preview.digest,
         'normalized_input': normalized_input,
@@ -133,7 +193,9 @@ def serialize_plan(plan):
         'baseline_mg': _decimal(plan.baseline_mg),
         'baseline_mg_per_pouch': _decimal(plan.baseline_mg_per_pouch),
         'pace': plan.pace,
+        'target_basis': _plan_target_basis(plan, days),
         'end_target_pouches': plan.end_target_pouches,
+        'end_target_mg': _decimal(plan.end_target_mg),
         'active_revision_id': plan.active_revision_id,
         'created_at': _timestamp(plan.created_at),
         'updated_at': _timestamp(plan.updated_at),
@@ -157,6 +219,10 @@ def serialize_plan(plan):
                     row.target_date.isoformat() if row.target_date else None
                 ),
                 'end_target_pouches': row.end_target_pouches,
+                'end_target_mg': _decimal(row.end_target_mg),
+                'target_basis': _revision_target_basis(
+                    plan.mode, row, days
+                ),
                 'generation_inputs': _canonical_json(row.generation_inputs),
                 'preview_digest': row.preview_digest,
                 'reason': row.reason,

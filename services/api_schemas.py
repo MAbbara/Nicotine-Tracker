@@ -249,6 +249,17 @@ def _parse_nonnegative_decimal(value, path, errors):
     return str(normalized)
 
 
+def _parse_onboarding_target_mg(value, path, errors):
+    parsed = _parse_bounded_decimal(
+        value,
+        path,
+        errors,
+        maximum=Decimal('999999.99'),
+        allow_zero=True,
+    )
+    return None if parsed is None else format(parsed, '.2f')
+
+
 _STRUCTURED_PARSERS = {
     'intention': lambda v, p, e: _parse_enum(v, _INTENTIONS, p, e),
     'baseline_source': lambda v, p, e: _parse_enum(v, _BASELINE_SOURCES, p, e),
@@ -260,6 +271,10 @@ _STRUCTURED_PARSERS = {
     'target_date': _parse_date,
     'duration_days': lambda v, p, e: _parse_int(v, 1, 365, p, e),
     'end_target_pouches': lambda v, p, e: _parse_int(v, 0, 1000, p, e),
+    'end_target_mg': _parse_onboarding_target_mg,
+    'target_basis': lambda v, p, e: _parse_enum(
+        v, ('nicotine_mg', 'legacy_pouches', 'observe'), p, e
+    ),
     'stage_targets': _parse_stage_targets,
     'difficult_times': lambda v, p, e: _parse_choice_list(
         v, _DIFFICULT_TIMES, p, e),
@@ -318,7 +333,13 @@ def parse_onboarding_draft_payload(body):
 _PLAN_KEYS = {
     'mode', 'baseline_source', 'baseline_pouches', 'baseline_mg',
     'baseline_mg_per_pouch', 'pace', 'start_date', 'target_date',
-    'duration_days', 'end_target_pouches', 'stage_targets',
+    'duration_days', 'target_basis', 'end_target_pouches', 'end_target_mg',
+    'stage_targets',
+}
+_PLAN_REQUIRED_KEYS = {
+    'mode', 'target_basis', 'baseline_source', 'baseline_pouches',
+    'baseline_mg', 'baseline_mg_per_pouch', 'pace', 'start_date',
+    'target_date', 'duration_days', 'stage_targets',
 }
 _PLAN_MODES = ('reduce', 'quit_by_date', 'observe')
 _PLAN_BASELINE_SOURCES = ('manual', 'recent_logs', 'observe', 'legacy_goal')
@@ -402,8 +423,10 @@ def _parse_plan_payload(body, *, include_create):
         allowed.update({'preview_digest', 'activation'})
     for key in sorted(set(body) - allowed):
         _invalid(errors, key, 'This field is not supported.')
-    for key in sorted(_PLAN_KEYS | ({'preview_digest', 'activation'}
-                                    if include_create else set())):
+    required_keys = _PLAN_REQUIRED_KEYS | (
+        {'preview_digest', 'activation'} if include_create else set()
+    )
+    for key in sorted(required_keys):
         if key not in body:
             _invalid(errors, key, 'This field is required.')
 
@@ -411,6 +434,12 @@ def _parse_plan_payload(body, *, include_create):
         return body.get(key)
 
     mode = _parse_enum(value('mode'), _PLAN_MODES, 'mode', errors)
+    target_basis = _parse_enum(
+        value('target_basis'),
+        ('nicotine_mg', 'legacy_pouches', 'observe'),
+        'target_basis',
+        errors,
+    )
     source = _parse_enum(value('baseline_source'), _PLAN_BASELINE_SOURCES,
                          'baseline_source', errors)
     start_raw = value('start_date')
@@ -424,6 +453,16 @@ def _parse_plan_payload(body, *, include_create):
     end_raw = value('end_target_pouches')
     end_target = None if end_raw is None else _parse_int(
         end_raw, 0, 1000, 'end_target_pouches', errors)
+    end_mg_raw = value('end_target_mg')
+    end_target_mg = (
+        None if end_mg_raw is None else _parse_bounded_decimal(
+            end_mg_raw,
+            'end_target_mg',
+            errors,
+            maximum=_PLAN_MG_MAX,
+            allow_zero=True,
+        )
+    )
     baseline_pouches = (
         None if value('baseline_pouches') is None else _parse_bounded_decimal(
             value('baseline_pouches'), 'baseline_pouches', errors,
@@ -447,20 +486,62 @@ def _parse_plan_payload(body, *, include_create):
                                        'stage_targets', errors)
 
     if mode in {'reduce', 'quit_by_date'}:
-        for key, parsed in (
-            ('baseline_pouches', baseline_pouches),
-            ('baseline_mg', baseline_mg),
-            ('baseline_mg_per_pouch', baseline_strength),
-            ('pace', pace),
-            ('end_target_pouches', end_target),
-        ):
+        for key, parsed in (('baseline_mg', baseline_mg), ('pace', pace)):
             if parsed is None and key not in errors:
                 _invalid(errors, key, 'This field is required for targeted plans.')
+        if target_basis == 'nicotine_mg':
+            if 'end_target_mg' not in body or end_target_mg is None:
+                if 'end_target_mg' not in errors:
+                    _invalid(
+                        errors,
+                        'end_target_mg',
+                        'This field is required for nicotine-first plans.',
+                    )
+            if 'end_target_pouches' in body:
+                _invalid(
+                    errors,
+                    'end_target_pouches',
+                    'Use end_target_mg for nicotine-first plans.',
+                )
+            if stages is not None:
+                _invalid(
+                    errors,
+                    'stage_targets',
+                    'Nicotine-first schedules are generated from the mg target.',
+                )
+        elif target_basis == 'legacy_pouches':
+            for key, parsed in (
+                ('baseline_pouches', baseline_pouches),
+                ('baseline_mg_per_pouch', baseline_strength),
+                ('end_target_pouches', end_target),
+            ):
+                if parsed is None and key not in errors:
+                    _invalid(
+                        errors, key,
+                        'This field is required for legacy pouch compatibility.',
+                    )
+            if 'end_target_mg' in body:
+                _invalid(
+                    errors,
+                    'end_target_mg',
+                    'Legacy pouch compatibility uses end_target_pouches.',
+                )
+        elif target_basis is not None:
+            _invalid(
+                errors,
+                'target_basis',
+                'Targeted plans use nicotine_mg or legacy_pouches.',
+            )
         if mode == 'quit_by_date':
             if target is None and 'target_date' not in errors:
                 _invalid(errors, 'target_date',
                          'This field is required for quit-by-date plans.')
-            if end_target is not None and end_target != 0:
+            if target_basis == 'nicotine_mg' and end_target_mg not in (
+                None, Decimal('0.00')
+            ):
+                _invalid(errors, 'end_target_mg',
+                         'Quit-by-date plans must end at 0.00 mg.')
+            if target_basis == 'legacy_pouches' and end_target not in (None, 0):
                 _invalid(errors, 'end_target_pouches',
                          'Quit-by-date plans must end at zero pouches.')
         if mode == 'reduce' and start is not None and stages is None:
@@ -488,12 +569,16 @@ def _parse_plan_payload(body, *, include_create):
                     'The generated nicotine ceiling exceeds the supported range.',
                 )
     elif mode == 'observe':
+        if target_basis is not None and target_basis != 'observe':
+            _invalid(errors, 'target_basis',
+                     'Observe plans must use the observe target basis.')
         for key, parsed in (
             ('baseline_pouches', baseline_pouches),
             ('baseline_mg', baseline_mg),
             ('baseline_mg_per_pouch', baseline_strength),
             ('pace', pace),
             ('end_target_pouches', end_target),
+            ('end_target_mg', end_target_mg),
         ):
             if parsed is not None:
                 _invalid(errors, key, 'Observe plans do not use this field.')
@@ -537,12 +622,14 @@ def _parse_plan_payload(body, *, include_create):
         raise ApiValidationError(errors)
     generation_input = PlanGenerationInput(
         mode=mode,
+        target_basis=target_basis,
         start_date=date.fromisoformat(start),
         baseline_pouches=baseline_pouches,
         baseline_mg=baseline_mg,
         baseline_mg_per_pouch=baseline_strength,
         pace=pace,
         end_target_pouches=end_target,
+        end_target_mg=end_target_mg,
         target_date=None if target is None else date.fromisoformat(target),
         duration_days=duration,
         stage_targets=stages,
@@ -561,7 +648,8 @@ def parse_plan_create_payload(body):
 
 
 _REVISION_CHANGE_KEYS = {
-    'pace', 'target_date', 'duration_days', 'end_target_pouches',
+    'pace', 'target_date', 'duration_days', 'target_basis',
+    'end_target_pouches', 'end_target_mg',
     'stage_targets',
 }
 
@@ -589,12 +677,36 @@ def _parse_revision_changes(value, path, errors):
             parsed = _parse_int(raw, 1, 365, field_path, errors)
         elif key == 'end_target_pouches':
             parsed = _parse_int(raw, 0, 1000, field_path, errors)
+        elif key == 'end_target_mg':
+            parsed = _parse_bounded_decimal(
+                raw, field_path, errors,
+                maximum=_PLAN_MG_MAX, allow_zero=True,
+            )
+        elif key == 'target_basis':
+            parsed = _parse_enum(
+                raw, ('nicotine_mg', 'legacy_pouches'), field_path, errors
+            )
         else:
             parsed = _parse_plan_stage_targets(raw, field_path, errors)
         if parsed is not None:
             if key == 'target_date':
                 parsed = date.fromisoformat(parsed)
             changes[key] = parsed
+    if 'end_target_mg' in changes and changes.get('target_basis') != 'nicotine_mg':
+        _invalid(
+            errors,
+            '{}.target_basis'.format(path),
+            'Use nicotine_mg when changing the nicotine target.',
+        )
+    if (
+        'end_target_pouches' in changes
+        and changes.get('target_basis') != 'legacy_pouches'
+    ):
+        _invalid(
+            errors,
+            '{}.target_basis'.format(path),
+            'Use legacy_pouches for pouch-target compatibility.',
+        )
     return changes
 
 

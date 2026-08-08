@@ -27,7 +27,7 @@ const revisionValues = Object.freeze({
   effective_date: '2099-02-01',
   pace: 'steady',
   duration_days: '49',
-  end_target_pouches: '2',
+  end_target_mg: '12.5',
 });
 
 const revisionPreview = Object.freeze({
@@ -50,29 +50,34 @@ test('revision bodies include only supported nonblank canonical changes', async 
     effective_date: '2099-02-01',
     pace: ' steady ',
     duration_days: '49',
-    end_target_pouches: '',
+    end_target_mg: '',
   }), {
     effective_date: '2099-02-01',
     changes: { pace: 'steady', duration_days: 49 },
   });
   assert.deepEqual(revisionApplyBody(revisionValues, digestA), {
     effective_date: '2099-02-01',
-    changes: { pace: 'steady', duration_days: 49, end_target_pouches: 2 },
+    changes: {
+      pace: 'steady', duration_days: 49,
+      target_basis: 'nicotine_mg', end_target_mg: '12.50',
+    },
     preview_digest: digestA,
     reason: 'user_edit',
     note: null,
   });
 });
 
-test('client validation rejects unsupported keys, booleans, fractions, and empty changes', async () => {
+test('client validation rejects unsupported keys, booleans, invalid decimals, and empty changes', async () => {
   const { revisionPreviewBody, resumePreviewBody } = await loadEditor();
 
   for (const [values, field] of [
-    [{ effective_date: '2099-02-01', pace: '', duration_days: '', end_target_pouches: '' }, 'changes'],
-    [{ effective_date: '2099-02-01', pace: '', duration_days: true, end_target_pouches: '' }, 'duration_days'],
-    [{ effective_date: '2099-02-01', pace: '', duration_days: '4.5', end_target_pouches: '' }, 'duration_days'],
-    [{ effective_date: '2099-02-01', pace: '', duration_days: '', end_target_pouches: false }, 'end_target_pouches'],
-    [{ effective_date: '2099-02-01', pace: '', duration_days: '', end_target_pouches: '', target_date: '2099-03-01' }, 'target_date'],
+    [{ effective_date: '2099-02-01', pace: '', duration_days: '', end_target_mg: '' }, 'changes'],
+    [{ effective_date: '2099-02-01', pace: '', duration_days: true, end_target_mg: '' }, 'duration_days'],
+    [{ effective_date: '2099-02-01', pace: '', duration_days: '4.5', end_target_mg: '' }, 'duration_days'],
+    [{ effective_date: '2099-02-01', pace: '', duration_days: '', end_target_mg: false }, 'end_target_mg'],
+    [{ effective_date: '2099-02-01', pace: '', duration_days: '', end_target_mg: '-0.01' }, 'end_target_mg'],
+    [{ effective_date: '2099-02-01', pace: '', duration_days: '', end_target_mg: '1000000.00' }, 'end_target_mg'],
+    [{ effective_date: '2099-02-01', pace: '', duration_days: '', end_target_mg: '', target_date: '2099-03-01' }, 'target_date'],
   ]) {
     assert.throws(() => revisionPreviewBody(values), (error) => Boolean(error.fieldErrors?.[field]));
   }
@@ -90,6 +95,40 @@ test('resume bodies remain minimal and apply adds only the displayed digest', as
   assert.deepEqual(resumeApplyBody({ resume_date: '2099-02-01' }, digestA), {
     resume_date: '2099-02-01', preview_digest: digestA,
   });
+});
+
+test('enhanced preview keeps nicotine primary and null pouch targets historical', async () => {
+  const { previewTable } = await loadEditor();
+  class Element {
+    constructor(tagName) {
+      this.tagName = tagName;
+      this.children = [];
+      this.textContent = '';
+      this.innerHTML = '';
+    }
+    append(...children) { this.children.push(...children); }
+  }
+  const documentObject = {
+    createElement(tagName) { return new Element(tagName); },
+  };
+
+  const wrapper = previewTable(documentObject, 'Future days', [{
+    local_date: '2099-02-01',
+    target_pouches: null,
+    nicotine_ceiling_mg: '12.50',
+  }], 'day');
+  const table = wrapper.children[0];
+  const head = table.children[1];
+  const row = table.children[2].children[0];
+
+  assert.equal(
+    head.innerHTML,
+    '<tr><th scope="col">Date</th><th scope="col">Nicotine ceiling</th><th scope="col">Historical pouch guide</th></tr>',
+  );
+  assert.deepEqual(
+    row.children.map((cell) => cell.textContent),
+    ['2099-02-01', '12.50 mg', 'Not used'],
+  );
 });
 
 function makeView(kind, values) {
@@ -160,7 +199,10 @@ test('preview renders every returned stage and day and stores only the returned 
   assert.equal(requests[0][0], '/api/plans/7/revisions/preview');
   assert.deepEqual(JSON.parse(requests[0][1].body), {
     effective_date: '2099-02-01',
-    changes: { pace: 'steady', duration_days: 49, end_target_pouches: 2 },
+    changes: {
+      pace: 'steady', duration_days: 49,
+      target_basis: 'nicotine_mg', end_target_mg: '12.50',
+    },
   });
   assert.equal(requests[0][1].headers['X-CSRFToken'], 'csrf-value');
   assert.equal(view.digest, digestA);
@@ -187,7 +229,10 @@ test('confirmation posts exact normalized inputs plus displayed digest and preve
   assert.equal(requests.length, 1);
   assert.deepEqual(JSON.parse(requests[0][1].body), {
     effective_date: '2099-02-01',
-    changes: { pace: 'steady', duration_days: 49, end_target_pouches: 2 },
+    changes: {
+      pace: 'steady', duration_days: 49,
+      target_basis: 'nicotine_mg', end_target_mg: '12.50',
+    },
     preview_digest: digestA,
     reason: 'user_edit',
     note: null,

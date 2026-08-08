@@ -1,7 +1,7 @@
 """Journey destinations, including plan history and plan onboarding."""
 
 from datetime import timedelta, time
-from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from flask import (
     Blueprint,
@@ -36,6 +36,7 @@ from services.api_schemas import (
 )
 from services.baseline_service import BaselineService
 from services.legacy_goal_service import LegacyGoalService
+from services.journey_progress_service import JourneyProgressService
 from services.onboarding_draft_service import OnboardingDraftService
 from services.plan_schedule import PlanValidationError
 from services.plan_serializers import (
@@ -85,6 +86,13 @@ _BASELINE_LABELS = {
     'recent_logs': 'Recent-log baseline',
     'observe': 'Observed baseline',
     'legacy_goal': 'Legacy Goal baseline',
+}
+_PROGRESS_STATUS_LABELS = {
+    'below_ceiling': 'Below today’s ceiling',
+    'at_ceiling': "At today's ceiling",
+    'above_ceiling': "Above today's ceiling",
+    'no_ceiling': 'No ceiling scheduled today',
+    'nicotine_total_incomplete': 'Nicotine total incomplete',
 }
 
 
@@ -164,25 +172,23 @@ def _plan_presentation(plan, today):
     milestones = []
     for index, stage in enumerate(stages[1:], start=1):
         previous_stage = stages[index - 1]
-        if stage['target_pouches'] == previous_stage['target_pouches']:
+        if (
+            stage['nicotine_ceiling_value']
+            == previous_stage['nicotine_ceiling_value']
+        ):
             milestone_label = (
-                'Revision {} stage continues without a target'.format(
-                    stage['revision_id']
-                )
-                if stage['target_pouches'] is None
-                else 'Revision {} stage continues at {} pouch{}'.format(
-                    stage['revision_id'],
-                    stage['target_pouches'],
-                    '' if stage['target_pouches'] == 1 else 'es',
+                'Scheduled ceiling continues without a target'
+                if stage['nicotine_ceiling_value'] is None
+                else 'Scheduled ceiling continues at {} mg'.format(
+                    stage['nicotine_ceiling_mg']
                 )
             )
         else:
             milestone_label = (
                 'Observation continues without a target'
-                if stage['target_pouches'] is None
-                else 'Target changes to {} pouch{}'.format(
-                    stage['target_pouches'],
-                    '' if stage['target_pouches'] == 1 else 'es',
+                if stage['nicotine_ceiling_value'] is None
+                else 'Nicotine ceiling changes to {} mg'.format(
+                    stage['nicotine_ceiling_mg'],
                 )
             )
         milestones.append({
@@ -263,6 +269,7 @@ def _field_errors(errors):
 
 def _journey_context(user, *, editor=None):
     today = _today_for(user)
+    progress = JourneyProgressService.get(user.id)
     primary = _primary_plan(user.id)
     historical_rows = ReductionPlan.query.filter(
         ReductionPlan.user_id == user.id,
@@ -275,6 +282,8 @@ def _journey_context(user, *, editor=None):
     return {
         'user': user,
         'today': today,
+        'progress': progress,
+        'progress_status_label': _PROGRESS_STATUS_LABELS[progress.status],
         'plan': (
             _plan_presentation(primary, today) if primary is not None else None
         ),
@@ -312,10 +321,10 @@ def _initial_values(user, draft):
     values = {
         'intention': '',
         'baseline_source': '',
-        'baseline_pouches': '',
+        'baseline_mg': '',
         'baseline_mg_per_pouch': '',
         'pace': '',
-        'end_target_pouches': '',
+        'end_target_mg': '',
         'target_date': '',
         'start_date': _today_for(user).isoformat(),
         'difficult_times': [],
@@ -338,8 +347,8 @@ def _submitted_values():
     values = {
         key: request.form.get(key, '')
         for key in (
-            'intention', 'baseline_source', 'baseline_pouches',
-            'baseline_mg_per_pouch', 'pace', 'end_target_pouches',
+            'intention', 'baseline_source', 'baseline_mg',
+            'baseline_mg_per_pouch', 'pace', 'end_target_mg',
             'target_date', 'start_date', 'reminder_window',
             'preview_digest',
         )
@@ -366,6 +375,9 @@ def _draft_candidate(values, suggestion):
     intention = values.get('intention', '')
     structured = {
         'intention': intention,
+        'target_basis': (
+            'observe' if intention == 'observe' else 'nicotine_mg'
+        ),
         'start_date': values.get('start_date', ''),
         'difficult_times': list(values.get('difficult_times') or []),
         'common_triggers': list(values.get('common_triggers') or []),
@@ -400,20 +412,21 @@ def _draft_candidate(values, suggestion):
         })
     else:
         structured.update({
-            'baseline_pouches': values.get('baseline_pouches', ''),
-            'baseline_mg_per_pouch': values.get('baseline_mg_per_pouch', ''),
+            'baseline_mg': values.get('baseline_mg', ''),
         })
+        if values.get('baseline_mg_per_pouch'):
+            structured['baseline_mg_per_pouch'] = values[
+                'baseline_mg_per_pouch'
+            ]
 
     structured['pace'] = values.get('pace', '')
     if structured['pace'] in _DURATION_BY_PACE:
         structured['duration_days'] = _DURATION_BY_PACE[structured['pace']]
     if intention == 'quit_by_date':
         structured['target_date'] = values.get('target_date', '')
-        structured['end_target_pouches'] = 0
+        structured['end_target_mg'] = '0.00'
     else:
-        structured['end_target_pouches'] = _int_or_raw(
-            values.get('end_target_pouches', '')
-        )
+        structured['end_target_mg'] = values.get('end_target_mg', '')
     return structured
 
 
@@ -423,32 +436,14 @@ def _normalize_draft(values, suggestion):
         'current_step': 'review',
         'structured_payload': candidate,
     })
-    if normalized.get('baseline_source') == 'manual':
-        try:
-            baseline_mg = (
-                Decimal(normalized['baseline_pouches'])
-                * Decimal(normalized['baseline_mg_per_pouch'])
-            ).quantize(Decimal('0.01'))
-        except (InvalidOperation, KeyError):
-            baseline_mg = None
-        if baseline_mg is not None:
-            normalized['baseline_mg'] = format(baseline_mg, '.2f')
-            _, normalized = parse_onboarding_draft_payload({
-                'current_step': 'review',
-                'structured_payload': normalized,
-            })
-
     if normalized.get('intention') == 'reduce':
-        baseline = normalized.get('baseline_pouches')
-        end_target = normalized.get('end_target_pouches')
-        if baseline is not None and isinstance(end_target, int):
-            starting_ceiling = int(
-                Decimal(baseline).to_integral_value(rounding=ROUND_CEILING)
-            )
-            if end_target >= starting_ceiling:
+        baseline = normalized.get('baseline_mg')
+        end_target = normalized.get('end_target_mg')
+        if baseline is not None and end_target is not None:
+            if Decimal(end_target) >= Decimal(baseline):
                 raise ApiValidationError({
-                    'end_target_pouches': [
-                        'Choose an end target less than your starting pouch ceiling.'
+                    'end_target_mg': [
+                        'Choose an end target below your starting daily nicotine.'
                     ],
                 })
     return normalized
@@ -459,6 +454,7 @@ def _plan_payload(structured):
     observe = mode == 'observe'
     return {
         'mode': mode,
+        'target_basis': structured['target_basis'],
         'baseline_source': structured['baseline_source'],
         'baseline_pouches': None if observe else structured.get('baseline_pouches'),
         'baseline_mg': None if observe else structured.get('baseline_mg'),
@@ -474,9 +470,7 @@ def _plan_payload(structured):
                 else structured.get('duration_days')
             )
         ),
-        'end_target_pouches': (
-            None if observe else structured.get('end_target_pouches')
-        ),
+        'end_target_mg': None if observe else structured.get('end_target_mg'),
         'stage_targets': None,
     }
 
@@ -485,8 +479,6 @@ def _normalize_field_errors(field_errors):
     normalized = {}
     for path, messages in field_errors.items():
         key = path.removeprefix('structured_payload.')
-        if key == 'baseline_mg':
-            key = 'baseline_mg_per_pouch'
         value = messages if isinstance(messages, list) else [messages]
         normalized.setdefault(key, []).extend(value)
     return normalized
@@ -740,7 +732,7 @@ def _revision_values():
         'effective_date': request.form.get('effective_date', ''),
         'pace': request.form.get('pace', ''),
         'duration_days': request.form.get('duration_days', ''),
-        'end_target_pouches': request.form.get('end_target_pouches', ''),
+        'end_target_mg': request.form.get('end_target_mg', ''),
         'preview_digest': request.form.get('preview_digest', ''),
     }
 
@@ -751,10 +743,9 @@ def _revision_changes(values):
         changes['pace'] = values['pace']
     if values['duration_days']:
         changes['duration_days'] = _int_or_raw(values['duration_days'])
-    if values['end_target_pouches']:
-        changes['end_target_pouches'] = _int_or_raw(
-            values['end_target_pouches']
-        )
+    if values['end_target_mg']:
+        changes['target_basis'] = 'nicotine_mg'
+        changes['end_target_mg'] = values['end_target_mg']
     return changes
 
 

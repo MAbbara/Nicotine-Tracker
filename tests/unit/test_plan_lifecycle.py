@@ -36,14 +36,13 @@ from services.plan_service import (
 def _steady_input(**overrides):
     values = {
         'mode': 'reduce',
-        'target_basis': 'legacy_pouches',
+        'target_basis': 'nicotine_mg',
         'start_date': date(2099, 1, 1),
         'baseline_pouches': Decimal('8.00'),
         'baseline_mg': Decimal('48.00'),
         'baseline_mg_per_pouch': Decimal('6.00'),
         'pace': 'steady',
-        'target_basis': 'legacy_pouches',
-        'end_target_pouches': 2,
+        'end_target_mg': Decimal('12.00'),
     }
     values.update(overrides)
     return PlanGenerationInput(**values)
@@ -67,7 +66,8 @@ def test_create_draft_persists_one_initial_revision_and_its_days(
     assert plan.baseline_mg == Decimal('48.00')
     assert plan.baseline_mg_per_pouch == Decimal('6.00')
     assert plan.pace == 'steady'
-    assert plan.end_target_pouches == 2
+    assert plan.end_target_pouches is None
+    assert plan.end_target_mg == Decimal('12.00')
 
     revisions = PlanRevision.query.filter_by(plan_id=plan.id).all()
     assert len(revisions) == 1
@@ -84,8 +84,8 @@ def test_create_draft_persists_one_initial_revision_and_its_days(
         'baseline_mg': '48.00',
         'baseline_mg_per_pouch': '6.00',
         'pace': 'steady',
-        'target_basis': 'legacy_pouches',
-        'end_target_pouches': 2,
+        'target_basis': 'nicotine_mg',
+        'end_target_pouches': None,
         'end_target_mg': '12.00',
         'target_date': '2099-02-18',
         'duration_days': 49,
@@ -97,10 +97,10 @@ def test_create_draft_persists_one_initial_revision_and_its_days(
     ).all()
     assert len(days) == 49
     assert days[0].revision_id == revision.id
-    assert days[0].target_pouches == 8
+    assert days[0].target_pouches is None
     assert days[0].nicotine_ceiling_mg == Decimal('48.00')
     assert days[-1].local_date == date(2099, 2, 18)
-    assert days[-1].target_pouches == 2
+    assert days[-1].target_pouches is None
     assert days[-1].nicotine_ceiling_mg == Decimal('12.00')
     assert PlanStatusEvent.query.filter_by(plan_id=plan.id).count() == 0
 
@@ -111,7 +111,7 @@ def test_create_draft_rolls_back_everything_when_generation_fails(
     with pytest.raises(PlanValidationError):
         PlanService.create_draft(
             test_user.id,
-            _steady_input(end_target_pouches=9),
+            _steady_input(end_target_mg=Decimal('49.00')),
             baseline_source='manual',
         )
 
@@ -650,15 +650,16 @@ def test_apply_revision_preserves_started_days_and_replaces_only_future_rows(
     changes = {
         'pace': 'focused',
         'duration_days': 28,
-        'end_target_pouches': 1,
+        'end_target_mg': Decimal('6.00'),
     }
 
     preview = PlanService.preview_revision(
         test_user.id, plan.id, changes, effective_date, now=now
     )
     assert preview.days[0].local_date == effective_date
-    assert preview.days[0].target_pouches == 7
-    assert preview.days[-1].target_pouches == 1
+    assert preview.days[0].target_pouches is None
+    assert preview.days[-1].target_pouches is None
+    assert preview.days[-1].nicotine_ceiling_mg == Decimal('6.00')
 
     revision = PlanService.apply_revision(
         test_user.id,
@@ -701,7 +702,7 @@ def test_revision_rejects_started_effective_date_and_stale_digest(
     now = datetime(2099, 1, 10, 12, tzinfo=timezone.utc)
     changes = {
         'pace': 'focused', 'duration_days': 28,
-        'end_target_pouches': 1,
+        'end_target_mg': Decimal('6.00'),
     }
 
     with pytest.raises(PlanValidationError) as caught:

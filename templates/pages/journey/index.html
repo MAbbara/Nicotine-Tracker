@@ -5,237 +5,256 @@
 
 {% block content %}
 <div class="journey-page">
-  <header class="page-intro page-intro--wide">
+  <header class="page-intro page-intro--wide journey-intro{% if plan %} journey-intro--plan{% endif %}">
     <p class="eyebrow">Your direction</p>
-    <h1>Journey</h1>
-    <p>See what today belongs to, inspect the schedule ahead, and change future days without rewriting your history.</p>
+    <h1{% if plan %} class="sr-only"{% endif %}>Journey</h1>
+    <p>See today clearly, then look ahead. Your history stays intact when you adjust future days.</p>
   </header>
 
   {% if plan %}
-    <article class="journey-plan" data-plan-id="{{ plan.row.id }}" aria-labelledby="current-plan-title">
-      <div class="journey-plan__overview">
-        <header>
-        <p class="eyebrow">{% if plan.is_observe_proposal %}Proposed baseline{% else %}Current plan{% endif %}</p>
-        <h2 id="current-plan-title">
-          {% if plan.is_observe_proposal %}
-            A proposed baseline that needs pace and target review
-          {% elif plan.row.mode == 'observe' %}
-            Observe your current pattern
-          {% elif plan.row.mode == 'quit_by_date' %}
-            Quit by {{ plan.row.target_date.isoformat() if plan.row.target_date else 'a date to review' }}
-          {% else %}
-            Reduce toward {{ plan.row.end_target_pouches if plan.row.end_target_pouches is not none else 'a target to review' }} pouches per day
-          {% endif %}
-        </h2>
-        <p><span class="status-shape" aria-hidden="true">●</span> Status: <strong>{{ plan.row.status|title }}</strong></p>
-        </header>
-
-        <section class="journey-current" aria-labelledby="current-stage-title">
-        <p class="eyebrow">Today, {{ today.isoformat() }}</p>
-        <h3 id="current-stage-title">Current stage</h3>
-        {% if plan.current_stage %}
-          <p>
-            {% if plan.current_stage.target_pouches is none %}
-              Observe and keep tracking honestly; there is no reduction target today.
-            {% else %}
-              {{ plan.current_stage.target_pouches }} pouch{% if plan.current_stage.target_pouches != 1 %}es{% endif %} per day · {{ plan.current_stage.nicotine_ceiling_mg }} mg ceiling
-            {% endif %}
-          </p>
-          <p>{{ plan.current_stage.start_date.isoformat() }} to {{ plan.current_stage.end_date.isoformat() }} · Revision {{ plan.current_stage.revision_id }}</p>
-        {% else %}
-          <p>Today is outside this persisted schedule. Review the dated rows below before choosing a next action.</p>
-        {% endif %}
-        {% if plan.row.status == 'paused' %}
-          <p>The schedule is paused. Previewing a resume date changes nothing until you confirm it.</p>
-        {% elif plan.is_observe_proposal %}
-          <p>Choose pace and target details before activation. Nothing was activated automatically.</p>
+    <article class="journey-plan" data-plan-id="{{ plan.row.id }}" aria-label="Current reduction plan">
+      <section class="journey-today" data-journey-progress aria-labelledby="journey-today-title">
+        {% if plan.is_observe_proposal %}
+          <header class="journey-section-heading">
+            <div>
+              <p class="eyebrow">Proposed baseline</p>
+              <h2 id="journey-today-title">A proposed baseline that needs pace and target review</h2>
+            </div>
+          </header>
+          <p>Nothing was activated automatically. Review the known daily nicotine evidence, then choose a pace and end target.</p>
           <a class="c-button c-button--primary" href="{{ url_for('journey.onboarding') }}">Review proposed baseline</a>
         {% else %}
-          <a class="text-link" href="{{ url_for('today.index') }}">Go to Today’s next useful action</a>
-        {% endif %}
-        </section>
+        <header class="journey-section-heading">
+          <div>
+            <p class="eyebrow">{{ today.strftime('%A, %B %-d') }}</p>
+            <h2 id="journey-today-title">Today in this plan</h2>
+          </div>
+          <p class="journey-progress-status journey-progress-status--{{ 'no_ceiling' if plan.row.status == 'paused' else progress.status }}">
+            <span class="status-shape" aria-hidden="true">{% if progress.status == 'nicotine_total_incomplete' %}■{% else %}●{% endif %}</span>
+            {{ 'Plan paused' if plan.row.status == 'paused' else progress_status_label }}
+          </p>
+        </header>
 
-        <section aria-labelledby="plan-facts-title">
-        <h3 id="plan-facts-title">Plan facts</h3>
-        <dl class="journey-facts">
-          <div><dt>Mode</dt><dd>{{ plan.row.mode|replace('_', ' ')|title }}</dd></div>
-          <div><dt>Status</dt><dd>{{ plan.row.status|title }}</dd></div>
-          <div><dt>Pace</dt><dd>{{ plan.row.pace|title if plan.row.pace else 'Unknown' }}</dd></div>
-          <div><dt>Start date</dt><dd>{{ plan.row.start_date.isoformat() if plan.row.start_date else 'Unknown' }}</dd></div>
-          <div><dt>Target date</dt><dd>{{ plan.row.target_date.isoformat() if plan.row.target_date else 'Unknown' }}</dd></div>
-          <div><dt>Baseline source</dt><dd>{{ plan.baseline_source_label }}</dd></div>
-          <div><dt>Pouch baseline</dt><dd>{{ plan.baseline_pouches ~ ' pouches per day' if plan.baseline_pouches else 'Unknown' }}</dd></div>
-          <div><dt>Nicotine baseline</dt><dd>{{ plan.baseline_mg ~ ' mg per day' if plan.baseline_mg else 'Unknown' }}</dd></div>
-          <div><dt>Direct median strength</dt><dd>{{ plan.baseline_mg_per_pouch ~ ' mg per pouch' if plan.baseline_mg_per_pouch else 'Unknown' }}</dd></div>
-          <div><dt>End target</dt><dd>{{ plan.row.end_target_pouches if plan.row.end_target_pouches is not none else 'Unknown' }}</dd></div>
+        <dl class="journey-progress-readout">
+          <div class="journey-progress-readout__primary">
+            <dt>{% if progress.total_complete %}Nicotine logged{% else %}Known nicotine{% endif %}</dt>
+            <dd data-known-mg>{{ '%.2f'|format(progress.known_mg) }} mg</dd>
+          </div>
+          <div>
+            <dt>Today’s ceiling</dt>
+            <dd data-ceiling-mg>{% if progress.ceiling_mg is not none %}{{ '%.2f'|format(progress.ceiling_mg) }} mg{% else %}Not scheduled{% endif %}</dd>
+          </div>
+          {% if progress.total_complete %}
+            <div>
+              <dt>Remaining</dt>
+              <dd data-remaining-mg>{% if progress.remaining_mg is not none %}{{ '%.2f'|format(progress.remaining_mg) }} mg{% else %}Not scheduled{% endif %}</dd>
+            </div>
+          {% else %}
+            <div>
+              <dt>Total</dt>
+              <dd>Incomplete</dd>
+            </div>
+          {% endif %}
         </dl>
-        </section>
-      </div>
+
+        <div class="journey-today__context">
+          <p><strong>Pouches logged</strong> {{ progress.pouches_logged }}</p>
+          {% if not progress.total_complete %}
+            <p>At least one pouch has no strength recorded, so remaining nicotine and pace are not claimed.</p>
+          {% elif plan.row.status == 'paused' %}
+            <p>This plan is paused. Today’s logs remain useful without being judged against a pace.</p>
+          {% else %}
+            <a class="text-link" href="{{ url_for('today.index') }}">Log nicotine or respond to a craving</a>
+          {% endif %}
+        </div>
+        {% endif %}
+      </section>
+
+      <section class="journey-next-change" data-next-change aria-labelledby="journey-next-change-title">
+        <h2 id="journey-next-change-title">What changes next</h2>
+        <p class="journey-next-change__value">
+          {% if progress.next_change and progress.next_change.ceiling_mg is not none %}
+            {{ '%.2f'|format(progress.next_change.ceiling_mg) }} mg on <time datetime="{{ progress.next_change.local_date.isoformat() }}">{{ progress.next_change.local_date.strftime('%B %-d') }}</time>
+          {% else %}
+            No further ceiling change is scheduled
+          {% endif %}
+        </p>
+        {% if progress.next_change and progress.next_change.change_mg is not none %}
+          <p>
+            {% if progress.next_change.change_mg < 0 %}
+              {{ '%.2f'|format(-progress.next_change.change_mg) }} mg lower than today. The daily ceiling changes; pouch count is not the target.
+            {% elif progress.next_change.change_mg > 0 %}
+              {{ '%.2f'|format(progress.next_change.change_mg) }} mg higher than today after your confirmed adjustment.
+            {% else %}
+              The ceiling stays level on the next scheduled day.
+            {% endif %}
+          </p>
+        {% elif plan.row.mode == 'observe' %}
+          <p>Keep logging what happens. Observation does not impose a nicotine ceiling.</p>
+        {% else %}
+          <p>This is the final scheduled ceiling. You can still review future days before making a change.</p>
+        {% endif %}
+      </section>
 
       <div class="journey-plan__schedule">
         {% include "pages/journey/_schedule.html" %}
+      </div>
 
-        {% if plan.milestones %}
-          <section aria-labelledby="journey-milestones-title">
-            <h3 id="journey-milestones-title">Scheduled milestones</h3>
-            <ol>
-              {% for milestone in plan.milestones %}
-                <li><time datetime="{{ milestone.date.isoformat() }}">{{ milestone.date.isoformat() }}</time> — {{ milestone.label }}{% if milestone.revision_id %} · Revision {{ milestone.revision_id }}{% endif %}</li>
-              {% endfor %}
-            </ol>
+      <div class="journey-plan__maintenance">
+        {% if plan.row.status == 'paused' %}
+          <section class="journey-editor" data-plan-editor="resume" data-plan-id="{{ plan.row.id }}" aria-labelledby="resume-plan-title">
+            <p class="eyebrow">Resume carefully</p>
+            <h2 id="resume-plan-title">Choose when future days restart</h2>
+            <form method="post" action="{{ url_for('journey.resume_plan', plan_id=plan.row.id) }}" data-plan-editor-form>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <label for="resume-date">Required resume date</label>
+              <input id="resume-date" name="resume_date" type="date" required value="{{ editor['values'].resume_date if editor.kind == 'resume' else '' }}">
+              <p>Previewing moves only the remaining schedule. Nothing resumes until you confirm.</p>
+              <input type="hidden" value="" data-plan-editor-digest>
+              <div class="journey-editor__buttons">
+                <button class="c-button c-button--primary" type="submit" name="form_action" value="preview" data-plan-editor-preview-button>Preview resume</button>
+                <button class="c-button c-button--primary" type="button" data-plan-editor-confirm hidden>Confirm resume</button>
+              </div>
+            </form>
+            <p class="journey-editor__status" role="status" aria-live="polite" aria-atomic="true" data-plan-editor-status></p>
+            <div class="journey-editor__preview" data-plan-editor-preview hidden></div>
+          </section>
+        {% endif %}
+
+        {% if plan.row.status in ('active', 'paused') and plan.row.mode != 'observe' %}
+          <section class="journey-editor" data-plan-editor="revision" data-plan-id="{{ plan.row.id }}" aria-labelledby="revise-plan-title">
+            <p class="eyebrow">Adjust future days</p>
+            <h2 id="revise-plan-title">Change what comes next</h2>
+            <p>Changing product strength can lower nicotine exposure even when pouch count stays the same.</p>
+            <form method="post" action="{{ url_for('journey.revise_plan', plan_id=plan.row.id) }}" data-plan-editor-form>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <div class="journey-editor__fields">
+                <div>
+                  <label for="revision-effective-date">Effective date</label>
+                  <input id="revision-effective-date" name="effective_date" type="date" required value="{{ editor['values'].effective_date if editor.kind == 'revision' else '' }}">
+                </div>
+                <div>
+                  <label for="revision-pace">Pace change</label>
+                  <select id="revision-pace" name="pace">
+                    <option value="">Keep current pace</option>
+                    {% for pace in ('gentle', 'steady', 'focused') %}<option value="{{ pace }}"{% if editor.kind == 'revision' and editor['values'].pace == pace %} selected{% endif %}>{{ pace|title }}</option>{% endfor %}
+                  </select>
+                </div>
+                <div>
+                  <label for="revision-duration">Duration days</label>
+                  <input id="revision-duration" name="duration_days" type="number" min="1" max="365" inputmode="numeric" value="{{ editor['values'].duration_days if editor.kind == 'revision' else '' }}">
+                </div>
+                <div>
+                  <label for="revision-end-target">End target nicotine per day (mg)</label>
+                  <input id="revision-end-target" name="end_target_mg" type="number" min="0" max="999999.99" step="0.01" inputmode="decimal" value="{{ editor['values'].end_target_mg if editor.kind == 'revision' else '' }}">
+                </div>
+              </div>
+              {% if editor.kind == 'revision' and editor.field_errors %}
+                <div role="alert"><p>Check these fields:</p><ul>{% for field, messages in editor.field_errors.items() %}<li>{{ field }}: {{ messages|join(' ') }}</li>{% endfor %}</ul></div>
+              {% endif %}
+              <p>Choose at least one change. Previewing leaves every plan day unchanged.</p>
+              <input type="hidden" value="" data-plan-editor-digest>
+              <div class="journey-editor__buttons">
+                <button class="c-button c-button--primary" type="submit" name="form_action" value="preview" data-plan-editor-preview-button>Preview revision</button>
+                <button class="c-button c-button--primary" type="button" data-plan-editor-confirm hidden>Confirm revision</button>
+              </div>
+            </form>
+            <p class="journey-editor__status" role="status" aria-live="polite" aria-atomic="true" data-plan-editor-status></p>
+            <div class="journey-editor__preview" data-plan-editor-preview hidden></div>
+          </section>
+        {% endif %}
+
+        {% if editor and editor.plan_id == plan.row.id %}
+          <section class="journey-editor-preview" aria-labelledby="editor-preview-title">
+            <h3 id="editor-preview-title">Future schedule preview</h3>
+            {% if editor.error_message %}<p role="alert">{{ editor.error_message }}</p>{% endif %}
+            {% if editor.message %}<p role="status">{{ editor.message }}</p>{% endif %}
+            {% if editor.preview %}
+              <table data-{{ editor.kind }}-preview-stages>
+                <caption>Future ceiling stages in this preview</caption>
+                <thead><tr><th scope="col">Dates</th><th scope="col">Nicotine ceiling</th><th scope="col">Historical pouch guide</th></tr></thead>
+                <tbody>{% for stage in editor.preview.stages %}<tr><th scope="row">{{ stage.start_date }} to {{ stage.end_date }}</th><td>{{ stage.nicotine_ceiling_mg ~ ' mg' if stage.nicotine_ceiling_mg is not none else 'Not scheduled' }}</td><td>{{ stage.target_pouches if stage.target_pouches is not none else 'Not used' }}</td></tr>{% endfor %}</tbody>
+              </table>
+              <table data-{{ editor.kind }}-preview>
+                <caption>Every future day in this preview</caption>
+                <thead><tr><th scope="col">Date</th><th scope="col">Nicotine ceiling</th><th scope="col">Historical pouch guide</th></tr></thead>
+                <tbody>{% for day in editor.preview.days %}<tr><th scope="row">{{ day.local_date }}</th><td>{{ day.nicotine_ceiling_mg ~ ' mg' if day.nicotine_ceiling_mg is not none else 'Not scheduled' }}</td><td>{{ day.target_pouches if day.target_pouches is not none else 'Not used' }}</td></tr>{% endfor %}</tbody>
+              </table>
+              <form method="post" action="{{ url_for('journey.resume_plan' if editor.kind == 'resume' else 'journey.revise_plan', plan_id=plan.row.id) }}" data-{{ editor.kind }}-confirm>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                {% for key, value in editor['values'].items() %}{% if key != 'preview_digest' %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}{% endfor %}
+                <input type="hidden" name="preview_digest" value="{{ editor.preview.preview_digest }}">
+                <p>The schedule is unchanged until you confirm this preview.</p>
+                <button class="c-button c-button--primary" type="submit" name="form_action" value="confirm">Confirm {{ 'resume' if editor.kind == 'resume' else 'revision' }}</button>
+              </form>
+            {% endif %}
           </section>
         {% endif %}
       </div>
 
-      <div class="journey-plan__maintenance">
+      <details class="journey-details">
+        <summary>Plan details and history</summary>
+        <div class="journey-details__body">
+          <section aria-labelledby="plan-facts-title">
+            <h2 id="plan-facts-title">Plan assumptions</h2>
+            <dl class="journey-facts">
+              <div><dt>Direction</dt><dd>{{ plan.row.mode|replace('_', ' ')|title }}</dd></div>
+              <div><dt>Status</dt><dd>{{ plan.row.status|title }}</dd></div>
+              <div><dt>Pace</dt><dd>{{ plan.row.pace|title if plan.row.pace else 'Not set' }}</dd></div>
+              <div><dt>Start</dt><dd>{{ plan.row.start_date.isoformat() if plan.row.start_date else 'Not set' }}</dd></div>
+              <div><dt>Target date</dt><dd>{{ plan.row.target_date.isoformat() if plan.row.target_date else 'Not set' }}</dd></div>
+              <div><dt>Baseline source</dt><dd>{{ plan.baseline_source_label }}</dd></div>
+              <div><dt>Starting nicotine</dt><dd>{{ plan.baseline_mg ~ ' mg per day' if plan.baseline_mg is not none else 'Not known' }}</dd></div>
+              <div><dt>End target nicotine</dt><dd>{{ '%.2f mg per day'|format(plan.row.end_target_mg) if plan.row.end_target_mg is not none else 'Not set' }}</dd></div>
+              <div><dt>Usual pouch strength</dt><dd>{{ plan.baseline_mg_per_pouch ~ ' mg per pouch' if plan.baseline_mg_per_pouch is not none else 'Not provided' }}</dd></div>
+              <div><dt>Historical pouch baseline</dt><dd>{{ plan.baseline_pouches ~ ' pouches per day' if plan.baseline_pouches is not none else 'Not used' }}</dd></div>
+            </dl>
+          </section>
 
-      {% if plan.row.status == 'paused' %}
-        <section class="journey-editor" data-plan-editor="resume" data-plan-id="{{ plan.row.id }}" aria-labelledby="resume-plan-title">
-          <h3 id="resume-plan-title">Preview a resumed schedule</h3>
-          <form method="post" action="{{ url_for('journey.resume_plan', plan_id=plan.row.id) }}" data-plan-editor-form>
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <label for="resume-date">Required resume date</label>
-            <input id="resume-date" name="resume_date" type="date" required value="{{ editor['values'].resume_date if editor.kind == 'resume' else '' }}"{% if editor.kind == 'resume' and editor.field_errors.resume_date %} aria-describedby="resume-date-error"{% endif %}>
-            {% if editor.kind == 'resume' and editor.field_errors.resume_date %}<p id="resume-date-error" role="alert">{{ editor.field_errors.resume_date|join(' ') }}</p>{% endif %}
-            <p>Previewing moves only the remaining future schedule. It does not resume the plan.</p>
-            <input type="hidden" value="" data-plan-editor-digest>
-            <div class="journey-editor__buttons">
-              <button class="c-button c-button--primary" type="submit" name="form_action" value="preview" data-plan-editor-preview-button>Preview resume</button>
-              <button class="c-button c-button--primary" type="button" data-plan-editor-confirm hidden>Confirm resume</button>
-            </div>
-          </form>
-          <p class="journey-editor__status" role="status" aria-live="polite" aria-atomic="true" data-plan-editor-status></p>
-          <div class="journey-editor__preview" data-plan-editor-preview hidden></div>
-        </section>
-      {% endif %}
-
-      {% if plan.row.status in ('active', 'paused') and plan.row.mode != 'observe' %}
-        <section class="journey-editor" data-plan-editor="revision" data-plan-id="{{ plan.row.id }}" aria-labelledby="revise-plan-title">
-          <h3 id="revise-plan-title">Preview a future revision</h3>
-          <form method="post" action="{{ url_for('journey.revise_plan', plan_id=plan.row.id) }}" data-plan-editor-form>
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div class="journey-editor__fields">
-              <div>
-                <label for="revision-effective-date">Effective date</label>
-                <input id="revision-effective-date" name="effective_date" type="date" required value="{{ editor['values'].effective_date if editor.kind == 'revision' else '' }}">
+          {% if plan.days %}
+            <section aria-labelledby="complete-schedule-title">
+              <h2 id="complete-schedule-title">Complete schedule</h2>
+              <p id="journey-complete-scroll-help" class="sr-only">Scroll horizontally to see every schedule column.</p>
+              <div class="journey-table-scroll horizontal-scroll-region" tabindex="0" role="region" aria-label="Complete schedule" aria-describedby="journey-complete-scroll-help">
+                <table data-complete-schedule>
+                  <caption>Every confirmed daily ceiling in this plan</caption>
+                  <thead><tr><th scope="col">Date</th><th scope="col">Nicotine ceiling</th><th scope="col">Historical pouch guide</th></tr></thead>
+                  <tbody>{% for day in plan.days %}<tr{% if day.local_date == today %} aria-current="date"{% endif %}><th scope="row">{{ day.local_date.isoformat() }}</th><td>{% if day.nicotine_ceiling_mg is none %}Not scheduled{% else %}{{ '%.2f'|format(day.nicotine_ceiling_mg) }} mg{% endif %}</td><td>{{ day.target_pouches if day.target_pouches is not none else 'Not used' }}</td></tr>{% endfor %}</tbody>
+                </table>
               </div>
-              <div>
-                <label for="revision-pace">Pace change</label>
-                <select id="revision-pace" name="pace">
-                  <option value="">Keep current pace</option>
-                  {% for pace in ('gentle', 'steady', 'focused') %}<option value="{{ pace }}"{% if editor.kind == 'revision' and editor['values'].pace == pace %} selected{% endif %}>{{ pace|title }}</option>{% endfor %}
-                </select>
-              </div>
-              <div>
-                <label for="revision-duration">Duration days</label>
-                <input id="revision-duration" name="duration_days" type="number" min="1" max="365" value="{{ editor['values'].duration_days if editor.kind == 'revision' else '' }}">
-              </div>
-              <div>
-                <label for="revision-end-target">End target pouches</label>
-                <input id="revision-end-target" name="end_target_pouches" type="number" min="0" max="1000" value="{{ editor['values'].end_target_pouches if editor.kind == 'revision' else '' }}">
-              </div>
-            </div>
-            {% if editor.kind == 'revision' and editor.field_errors %}
-              <div role="alert"><p>Check these fields:</p><ul>{% for field, messages in editor.field_errors.items() %}<li>{{ field }}: {{ messages|join(' ') }}</li>{% endfor %}</ul></div>
-            {% endif %}
-            <p>Choose at least one change. Previewing does not mutate any plan day.</p>
-            <input type="hidden" value="" data-plan-editor-digest>
-            <div class="journey-editor__buttons">
-              <button class="c-button c-button--primary" type="submit" name="form_action" value="preview" data-plan-editor-preview-button>Preview revision</button>
-              <button class="c-button c-button--primary" type="button" data-plan-editor-confirm hidden>Confirm revision</button>
-            </div>
-          </form>
-          <p class="journey-editor__status" role="status" aria-live="polite" aria-atomic="true" data-plan-editor-status></p>
-          <div class="journey-editor__preview" data-plan-editor-preview hidden></div>
-        </section>
-      {% endif %}
+            </section>
+          {% endif %}
 
-      {% if editor and editor.plan_id == plan.row.id %}
-        <section class="journey-editor-preview" aria-labelledby="editor-preview-title">
-          <h3 id="editor-preview-title">Future schedule preview</h3>
-          {% if editor.error_message %}<p role="alert">{{ editor.error_message }}</p>{% endif %}
-          {% if editor.message %}<p role="status">{{ editor.message }}</p>{% endif %}
-          {% if editor.preview %}
-            <table data-{{ editor.kind }}-preview-stages>
-              <caption>Every future stage in this preview</caption>
-              <thead><tr><th scope="col">Dates</th><th scope="col">Pouches</th><th scope="col">Nicotine ceiling</th></tr></thead>
-              <tbody>{% for stage in editor.preview.stages %}<tr><th scope="row">{{ stage.start_date }} to {{ stage.end_date }}</th><td>{{ stage.target_pouches if stage.target_pouches is not none else 'Unknown' }}</td><td>{{ stage.nicotine_ceiling_mg ~ ' mg' if stage.nicotine_ceiling_mg is not none else 'Unknown' }}</td></tr>{% endfor %}</tbody>
-            </table>
-            <table data-{{ editor.kind }}-preview>
-              <caption>All future day differences in this preview</caption>
-              <thead><tr><th scope="col">Date</th><th scope="col">Pouches</th><th scope="col">Nicotine ceiling</th></tr></thead>
-              <tbody>{% for day in editor.preview.days %}<tr><th scope="row">{{ day.local_date }}</th><td>{{ day.target_pouches if day.target_pouches is not none else 'Unknown' }}</td><td>{{ day.nicotine_ceiling_mg ~ ' mg' if day.nicotine_ceiling_mg is not none else 'Unknown' }}</td></tr>{% endfor %}</tbody>
-            </table>
-            <form method="post" action="{{ url_for('journey.resume_plan' if editor.kind == 'resume' else 'journey.revise_plan', plan_id=plan.row.id) }}" data-{{ editor.kind }}-confirm>
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              {% for key, value in editor['values'].items() %}{% if key != 'preview_digest' %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}{% endfor %}
-              <input type="hidden" name="preview_digest" value="{{ editor.preview.preview_digest }}">
-              <p>Confirm only this displayed digest. Any stale schedule returns a fresh, unconfirmed preview.</p>
-              <button class="c-button c-button--primary" type="submit" name="form_action" value="confirm">Confirm {{ 'resume' if editor.kind == 'resume' else 'revision' }}</button>
-            </form>
-          {% endif %}
-        </section>
-      {% endif %}
+          {% include "pages/journey/_revision_history.html" %}
 
-        <section class="journey-actions" aria-labelledby="plan-actions-title">
-          <h3 id="plan-actions-title">Plan actions</h3>
-          {% if plan.row.status == 'active' %}
-            <form method="post" action="{{ url_for('journey.pause_plan', plan_id=plan.row.id) }}">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <p>Pause changes status only. Your persisted schedule and history remain available.</p>
-              <button class="c-button c-button--secondary" type="submit">Pause plan</button>
-            </form>
-          {% endif %}
-          {% if plan.row.status in ('active', 'paused') %}
-            <form method="post" action="{{ url_for('journey.complete_plan', plan_id=plan.row.id) }}">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <p>Mark complete changes status only; it does not rewrite earlier days.</p>
-              <button class="c-button c-button--secondary" type="submit">Mark complete</button>
-            </form>
-          {% endif %}
-          {% if plan.row.status in ('draft', 'active', 'paused', 'completed') %}
-            <form method="post" action="{{ url_for('journey.archive_plan', plan_id=plan.row.id) }}">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <p>Archive removes the plan from current work while keeping its history.</p>
-              <button class="c-button c-button--secondary" type="submit">Archive plan</button>
-            </form>
-          {% endif %}
-          {% if plan.row.mode == 'observe' and plan.row.status in ('active', 'paused') %}
-            <form method="post" action="{{ url_for('journey.finish_observe_plan', plan_id=plan.row.id) }}">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <p>Finish Observe completes this status. Adequate evidence may create a separate proposed baseline, never an active plan.</p>
-              <button class="c-button c-button--secondary" type="submit">Finish Observe</button>
-            </form>
-          {% endif %}
-        </section>
-      </div>
-
-      {% include "pages/journey/_revision_history.html" %}
+          <section class="journey-actions" aria-labelledby="plan-actions-title">
+            <h2 id="plan-actions-title">Plan maintenance</h2>
+            {% if plan.row.status == 'active' %}<form method="post" action="{{ url_for('journey.pause_plan', plan_id=plan.row.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><p>Pause the pace while keeping every log and planned day.</p><button class="c-button c-button--secondary" type="submit">Pause plan</button></form>{% endif %}
+            {% if plan.row.status in ('active', 'paused') %}<form method="post" action="{{ url_for('journey.complete_plan', plan_id=plan.row.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><p>Mark this plan complete without rewriting earlier days.</p><button class="c-button c-button--secondary" type="submit">Mark complete</button></form>{% endif %}
+            {% if plan.row.status in ('draft', 'active', 'paused', 'completed') %}<form method="post" action="{{ url_for('journey.archive_plan', plan_id=plan.row.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><p>Move this plan out of current work while keeping its history.</p><button class="c-button c-button--secondary" type="submit">Archive plan</button></form>{% endif %}
+            {% if plan.row.mode == 'observe' and plan.row.status in ('active', 'paused') %}<form method="post" action="{{ url_for('journey.finish_observe_plan', plan_id=plan.row.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><p>Finish observation and review whether the evidence supports a baseline.</p><button class="c-button c-button--secondary" type="submit">Finish Observe</button></form>{% endif %}
+          </section>
+        </div>
+      </details>
     </article>
   {% else %}
     <section class="journey-empty" aria-labelledby="journey-empty-title">
       <p class="eyebrow">No current plan</p>
       <h2 id="journey-empty-title">A plan can turn what you track into a clear next step</h2>
-      <p>You can set a transparent reduction schedule, quit by a chosen date, or observe for seven days first. Existing tracking remains useful either way.</p>
+      <p>Choose a nicotine target, plan a quit date, or observe for seven days. Tracking remains useful either way.</p>
       <a class="c-button c-button--primary" href="{{ url_for('journey.onboarding') }}">Create a plan</a>
       <a class="c-button c-button--secondary" href="{{ url_for('today.index') }}">Continue neutral tracking</a>
     </section>
   {% endif %}
 
   {% if historical_plans %}
-    <section aria-labelledby="historical-plans-title">
+    <section class="journey-archive" aria-labelledby="historical-plans-title">
       <h2 id="historical-plans-title">Completed and archived plans</h2>
       {% for historical in historical_plans %}
         <article data-historical-plan data-plan-id="{{ historical.row.id }}">
           <h3>{{ historical.row.mode|replace('_', ' ')|title }} plan · {{ historical.row.status|title }}</h3>
           <p>{{ historical.row.start_date.isoformat() if historical.row.start_date else 'Unknown start' }} to {{ historical.row.target_date.isoformat() if historical.row.target_date else 'Unknown target date' }}</p>
-          {% if historical.row.status == 'completed' %}
-            <form method="post" action="{{ url_for('journey.archive_plan', plan_id=historical.row.id) }}">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <p>Archive keeps every revision, day, and status event available here.</p>
-              <button class="c-button c-button--secondary" type="submit">Archive plan</button>
-            </form>
-          {% endif %}
+          {% if historical.row.status == 'completed' %}<form method="post" action="{{ url_for('journey.archive_plan', plan_id=historical.row.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="c-button c-button--secondary" type="submit">Archive plan</button></form>{% endif %}
           {% with plan=historical %}{% include "pages/journey/_revision_history.html" %}{% endwith %}
         </article>
       {% endfor %}
@@ -247,7 +266,4 @@
 {% endblock %}
 
 {% block preline_js %}{% endblock %}
-
-{% block extra_js %}
-  <script type="module" src="{{ url_for('static', filename='js/journey/plan_editor.js') }}"></script>
-{% endblock %}
+{% block extra_js %}<script type="module" src="{{ url_for('static', filename='js/journey/plan_editor.js') }}"></script>{% endblock %}

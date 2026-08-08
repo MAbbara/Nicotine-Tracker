@@ -11,29 +11,21 @@ const BASELINE_LABELS = Object.freeze({
   observe: 'Seven-day observation',
 });
 const PLAN_FIELDS = new Set([
-  'intention', 'baseline_source', 'baseline_pouches',
-  'baseline_mg_per_pouch', 'pace', 'end_target_pouches',
+  'intention', 'baseline_source', 'baseline_mg',
+  'baseline_mg_per_pouch', 'pace', 'end_target_mg',
   'target_date', 'start_date',
 ]);
 
 function canonicalDecimal(value) {
   const source = String(value ?? '').trim();
-  if (!/^\d+(?:\.\d+)?$/.test(source)) return source;
-  const numeric = Number(source);
-  return Number.isFinite(numeric) ? numeric.toFixed(2) : source;
-}
-
-function multiplyDecimals(left, right) {
-  const leftValue = canonicalDecimal(left);
-  const rightValue = canonicalDecimal(right);
-  if (!/^\d+\.\d{2}$/.test(leftValue) || !/^\d+\.\d{2}$/.test(rightValue)) {
-    return '';
-  }
-  const leftCents = BigInt(leftValue.replace('.', ''));
-  const rightCents = BigInt(rightValue.replace('.', ''));
-  const productCents = (leftCents * rightCents + 50n) / 100n;
-  const whole = productCents / 100n;
-  const cents = String(productCents % 100n).padStart(2, '0');
+  const match = /^(\d+)(?:\.(\d+))?$/.exec(source);
+  if (!match) return source;
+  const fraction = match[2] || '';
+  let centsValue = BigInt(match[1]) * 100n
+    + BigInt((fraction.slice(0, 2) || '').padEnd(2, '0'));
+  if (fraction.length > 2 && Number(fraction[2]) >= 5) centsValue += 1n;
+  const whole = centsValue / 100n;
+  const cents = String(centsValue % 100n).padStart(2, '0');
   return `${whole}.${cents}`;
 }
 
@@ -59,9 +51,9 @@ export function deriveContext(answers) {
   const manual = targeted && answers.baseline_source === 'manual';
   const required = ['intention'];
   if (targeted) required.push('baseline_source');
-  if (manual) required.push('baseline_pouches', 'baseline_mg_per_pouch');
+  if (manual) required.push('baseline_mg');
   if (targeted) required.push('pace');
-  if (intention === 'reduce') required.push('end_target_pouches');
+  if (intention === 'reduce') required.push('end_target_mg');
   if (intention === 'quit_by_date') required.push('target_date');
   required.push('start_date');
   return {
@@ -98,6 +90,7 @@ export function serializeDraft(answers, suggestion = {}) {
   if (intention === 'observe') {
     return {
       intention: 'observe',
+      target_basis: 'observe',
       baseline_source: 'observe',
       start_date: common.start_date,
       duration_days: 7,
@@ -110,17 +103,19 @@ export function serializeDraft(answers, suggestion = {}) {
 
   const source = answers.baseline_source || '';
   const recent = source === 'recent_logs';
-  const baselinePouches = canonicalDecimal(
-    recent ? suggestion.baselinePouches : answers.baseline_pouches,
-  );
+  const baselinePouches = recent ? canonicalDecimal(suggestion.baselinePouches) : '';
   const baselineStrength = canonicalDecimal(
     recent ? suggestion.baselineMgPerPouch : answers.baseline_mg_per_pouch,
   );
   const baselineMg = recent
     ? canonicalDecimal(suggestion.baselineMg)
-    : multiplyDecimals(baselinePouches, baselineStrength);
+    : canonicalDecimal(answers.baseline_mg);
   const pace = answers.pace || '';
-  const payload = { intention, start_date: answers.start_date || '' };
+  const payload = {
+    intention,
+    target_basis: 'nicotine_mg',
+    start_date: answers.start_date || '',
+  };
   if (source) payload.baseline_source = source;
   if (baselinePouches) payload.baseline_pouches = baselinePouches;
   if (baselineMg) payload.baseline_mg = baselineMg;
@@ -130,9 +125,9 @@ export function serializeDraft(answers, suggestion = {}) {
     payload.target_date = answers.target_date || '';
   }
   if (pace in DURATIONS) payload.duration_days = DURATIONS[pace];
-  if (intention === 'quit_by_date') payload.end_target_pouches = 0;
-  if (intention === 'reduce' && String(answers.end_target_pouches ?? '').trim()) {
-    payload.end_target_pouches = integerOrValue(answers.end_target_pouches);
+  if (intention === 'quit_by_date') payload.end_target_mg = '0.00';
+  if (intention === 'reduce' && String(answers.end_target_mg ?? '').trim()) {
+    payload.end_target_mg = canonicalDecimal(answers.end_target_mg);
   }
   return { ...payload, ...supportPayload(answers) };
 }
@@ -142,17 +137,18 @@ export function serializePlan(answers, suggestion = {}) {
   const observe = draft.intention === 'observe';
   return {
     mode: draft.intention,
+    target_basis: draft.target_basis,
     baseline_source: draft.baseline_source,
-    baseline_pouches: observe ? null : draft.baseline_pouches,
+    baseline_pouches: observe ? null : (draft.baseline_pouches ?? null),
     baseline_mg: observe ? null : draft.baseline_mg,
-    baseline_mg_per_pouch: observe ? null : draft.baseline_mg_per_pouch,
+    baseline_mg_per_pouch: observe ? null : (draft.baseline_mg_per_pouch ?? null),
     pace: observe ? null : draft.pace,
     start_date: draft.start_date,
     target_date: observe ? null : (draft.target_date || null),
     duration_days: observe ? 7 : (
       draft.intention === 'quit_by_date' ? null : (draft.duration_days ?? null)
     ),
-    end_target_pouches: observe ? null : draft.end_target_pouches,
+    end_target_mg: observe ? null : draft.end_target_mg,
     stage_targets: null,
   };
 }
@@ -161,7 +157,6 @@ export function normalizeFieldErrors(fieldErrors = {}) {
   const normalized = {};
   for (const [path, messages] of Object.entries(fieldErrors)) {
     let field = path.replace(/^structured_payload\./, '').replace(/\[\d+\].*$/, '');
-    if (field === 'baseline_mg') field = 'baseline_mg_per_pouch';
     if (field === 'stage_targets') field = 'pace';
     const values = Array.isArray(messages) ? messages : [messages];
     normalized[field] = [...(normalized[field] || []), ...values];
@@ -435,10 +430,10 @@ function createDomView(form, documentRef) {
     return {
       intention: readOne('intention'),
       baseline_source: readOne('baseline_source'),
-      baseline_pouches: readOne('baseline_pouches'),
+      baseline_mg: readOne('baseline_mg'),
       baseline_mg_per_pouch: readOne('baseline_mg_per_pouch'),
       pace: readOne('pace'),
-      end_target_pouches: readOne('end_target_pouches'),
+      end_target_mg: readOne('end_target_mg'),
       target_date: readOne('target_date'),
       start_date: readOne('start_date'),
       difficult_times: readMany('difficult_times'),
@@ -468,8 +463,8 @@ function createDomView(form, documentRef) {
     setHidden(endTarget, !context.showEndTarget);
     setHidden(targetDate, !context.showTargetDate);
     for (const name of [
-      'intention', 'baseline_source', 'baseline_pouches',
-      'baseline_mg_per_pouch', 'pace', 'end_target_pouches',
+      'intention', 'baseline_source', 'baseline_mg',
+      'baseline_mg_per_pouch', 'pace', 'end_target_mg',
       'target_date', 'start_date',
     ]) {
       setRequired(name, context.required.includes(name));
@@ -562,12 +557,12 @@ function createDomView(form, documentRef) {
     const baselineDays = plan.baseline_source === 'recent_logs' && suggestion.loggedDaysUsed
       ? ` · ${suggestion.loggedDaysUsed} logged days` : '';
     appendDefinition(documentRef, decisions, 'Baseline source', `${plan.baseline_source.replaceAll('_', ' ')}${baselineDays}`);
-    appendDefinition(documentRef, decisions, 'Starting pouches', plan.baseline_pouches ?? 'Unknown during observation');
-    appendDefinition(documentRef, decisions, 'Direct median strength', plan.baseline_mg_per_pouch == null ? 'Unknown during observation' : `${plan.baseline_mg_per_pouch} mg per pouch`);
+    appendDefinition(documentRef, decisions, 'Starting pouches', plan.baseline_pouches ?? 'Not used for this plan');
+    appendDefinition(documentRef, decisions, 'Usual pouch strength', plan.baseline_mg_per_pouch == null ? 'Not provided' : `${plan.baseline_mg_per_pouch} mg per pouch`);
     appendDefinition(documentRef, decisions, 'Starting nicotine', plan.baseline_mg == null ? 'Unknown during observation' : `${plan.baseline_mg} mg per day`);
     appendDefinition(documentRef, decisions, 'Pace and duration', plan.pace ? `${plan.pace} · ${plan.duration_days} days` : `No reduction pace · ${plan.duration_days} observation days`);
     appendDefinition(documentRef, decisions, 'Dates', `${plan.start_date} to ${plan.target_date}`);
-    appendDefinition(documentRef, decisions, 'End target', plan.end_target_pouches ?? 'No target during observation');
+    appendDefinition(documentRef, decisions, 'End target nicotine', plan.end_target_mg == null ? 'No target during observation' : `${plan.end_target_mg} mg per day`);
     appendDefinition(documentRef, decisions, 'Difficult times', selectedLabels('difficult_times').join(', ') || 'None selected');
     appendDefinition(documentRef, decisions, 'Triggers', selectedLabels('common_triggers').join(', ') || 'None selected');
     appendDefinition(documentRef, decisions, 'Pouches', selectedLabels('preferred_pouch_ids').join(', ') || 'None selected');

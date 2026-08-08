@@ -53,6 +53,10 @@ def _active_plan(
         baseline_source=None if mode == "observe" else "manual",
         pace=pace,
         end_target_pouches=None if mode == "observe" else targets[-1][0],
+        end_target_mg=(
+            None if mode == "observe" or targets[-1][1] is None
+            else Decimal(targets[-1][1])
+        ),
     )
     session.add(plan)
     session.flush()
@@ -62,6 +66,7 @@ def _active_plan(
         pace=pace,
         target_date=plan.target_date,
         end_target_pouches=plan.end_target_pouches,
+        end_target_mg=plan.end_target_mg,
         generation_inputs={"stage_targets": stages},
         preview_digest=(str(plan.id) * 64)[:64],
         reason="initial",

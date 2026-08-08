@@ -22,10 +22,10 @@ def _manual_form(**overrides):
     data = {
         'intention': 'reduce',
         'baseline_source': 'manual',
-        'baseline_pouches': '8',
+        'baseline_mg': '48',
         'baseline_mg_per_pouch': '6',
         'pace': 'steady',
-        'end_target_pouches': '2',
+        'end_target_mg': '12',
         'target_date': '',
         'start_date': '2099-01-01',
         'difficult_times': ['morning', 'evening'],
@@ -110,13 +110,13 @@ class TestOnboardingPage:
         db_session.commit()
         OnboardingDraftService().save(test_user.id, 'support', {
             'intention': 'reduce',
+            'target_basis': 'nicotine_mg',
             'baseline_source': 'manual',
-            'baseline_pouches': '7.00',
             'baseline_mg': '35.00',
             'baseline_mg_per_pouch': '5.00',
             'pace': 'gentle',
             'start_date': '2099-01-01',
-            'end_target_pouches': 1,
+            'end_target_mg': '5.00',
             'difficult_times': ['after_meals'],
             'preferred_pouch_ids': [owned.id],
             'reminder_window': 'evening',
@@ -124,7 +124,9 @@ class TestOnboardingPage:
 
         response = logged_in_client.get('/journey/onboarding')
         soup = BeautifulSoup(response.data, 'html.parser')
-        assert soup.select_one('input[name="baseline_pouches"]')['value'] == '7.00'
+        assert soup.select_one('input[name="baseline_mg"]')['value'] == '35.00'
+        assert soup.select_one('input[name="baseline_pouches"]') is None
+        assert soup.select_one('input[name="end_target_mg"]')['value'] == '5.00'
         assert soup.select_one('input[name="pace"][value="gentle"]').has_attr(
             'checked'
         )
@@ -144,12 +146,12 @@ class TestOnboardingPage:
         _seed_complete_days(db_session, test_user, test_pouch)
         response, _ = _preview(logged_in_client, _manual_form(
             baseline_source='recent_logs',
-            baseline_pouches='',
+            baseline_mg='',
             baseline_mg_per_pouch='',
         ))
         text = BeautifulSoup(response.data, 'html.parser').get_text(' ', strip=True)
-        assert 'Based on 4 logged days' in text
-        assert '8.00 pouches per day' in text
+        assert 'Based on 4 complete logged days' in text
+        assert '32.00 mg nicotine per day' in text
         assert '4.00 mg per pouch' in text
 
 
@@ -161,7 +163,9 @@ class TestNoJavascriptPreviewAndConfirm:
         assert ReductionPlan.query.filter_by(user_id=test_user.id).count() == 0
         draft = OnboardingDraft.query.filter_by(user_id=test_user.id).one()
         assert draft.current_step == 'review'
+        assert draft.structured_payload['target_basis'] == 'nicotine_mg'
         assert draft.structured_payload['baseline_mg'] == '48.00'
+        assert draft.structured_payload['end_target_mg'] == '12.00'
         assert draft.structured_payload['difficult_times'] == [
             'morning', 'evening'
         ]
@@ -170,17 +174,17 @@ class TestNoJavascriptPreviewAndConfirm:
             self, logged_in_client):
         response = logged_in_client.post(
             '/journey/onboarding',
-            data=_manual_form(end_target_pouches='8'),
+            data=_manual_form(end_target_mg='48'),
         )
         assert response.status_code == 422
         soup = BeautifulSoup(response.data, 'html.parser')
-        control = soup.select_one('input[name="end_target_pouches"]')
-        assert control['value'] == '8'
+        control = soup.select_one('input[name="end_target_mg"]')
+        assert control['value'] == '48'
         error_id = control.get('aria-describedby', '').split()[-1]
         assert error_id
         error = soup.select_one(f'#{error_id}')
         assert error is not None
-        assert 'less than' in error.get_text(' ', strip=True).lower()
+        assert 'below' in error.get_text(' ', strip=True).lower()
         assert soup.select_one('[role="alert"]') is not None
 
     def test_explicit_confirm_activates_and_promotes_support_preferences(
@@ -196,6 +200,8 @@ class TestNoJavascriptPreviewAndConfirm:
         plan = ReductionPlan.query.filter_by(user_id=test_user.id).one()
         assert plan.status == 'active'
         assert plan.active_slot == 1
+        assert plan.end_target_mg == Decimal('12.00')
+        assert plan.end_target_pouches is None
         assert OnboardingDraft.query.filter_by(user_id=test_user.id).count() == 0
         db_session.refresh(test_user.preferences)
         assert test_user.preferences.difficult_times == ['morning', 'evening']
@@ -246,4 +252,3 @@ class TestRegistrationOnboardingRedirect:
             assert browser_session['user_id'] == user.id
             assert browser_session['user_email'] == user.email
             assert browser_session['user_timezone'] == 'UTC'
-

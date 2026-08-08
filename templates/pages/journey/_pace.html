@@ -13,10 +13,10 @@
   <fieldset data-plan-target-fields>
     <legend>Where the schedule ends</legend>
     <div class="field-row" data-end-target-fields>
-      <label for="field-end_target_pouches">End target in pouches per day <small>For Reduce steadily</small></label>
-      <input id="field-end_target_pouches" name="end_target_pouches" type="number" min="0" step="1" inputmode="numeric" value="{{ values.get('end_target_pouches', '') }}"{% if field_errors.get('end_target_pouches') %} aria-invalid="true" aria-describedby="end-target-help error-end_target_pouches"{% else %} aria-describedby="end-target-help"{% endif %}>
-      <p id="end-target-help">Choose a whole number below your starting pouch ceiling.</p>
-      {% if field_errors.get('end_target_pouches') %}<p class="field-error" id="error-end_target_pouches">{{ field_errors['end_target_pouches']|join(' ') }}</p>{% endif %}
+      <label for="field-end_target_mg">End target nicotine per day (mg) <small>For Reduce</small></label>
+      <input id="field-end_target_mg" name="end_target_mg" type="number" min="0" max="999999.99" step="0.01" inputmode="decimal" value="{{ values.get('end_target_mg', '') }}"{% if field_errors.get('end_target_mg') %} aria-invalid="true" aria-describedby="end-target-help error-end_target_mg"{% else %} aria-describedby="end-target-help"{% endif %}>
+      <p id="end-target-help">Choose a daily nicotine amount below your starting baseline. Changing strength can lower exposure even when pouch count stays the same.</p>
+      {% if field_errors.get('end_target_mg') %}<p class="field-error" id="error-end_target_mg">{{ field_errors['end_target_mg']|join(' ') }}</p>{% endif %}
     </div>
     <div class="field-row" data-target-date-fields>
       <label for="field-target_date">Quit date <small>For Quit by a date</small></label>

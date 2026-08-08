@@ -35,6 +35,7 @@ def _plan_for_day(session, user, local_date):
         baseline_source="manual",
         pace="steady",
         end_target_pouches=5,
+        end_target_mg=Decimal("30.00"),
     )
     session.add(plan)
     session.flush()
@@ -44,6 +45,7 @@ def _plan_for_day(session, user, local_date):
         pace="steady",
         target_date=local_date,
         end_target_pouches=5,
+        end_target_mg=Decimal("30.00"),
         generation_inputs={},
         preview_digest="c" * 64,
         reason="initial",

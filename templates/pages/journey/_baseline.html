@@ -1,13 +1,13 @@
 <section class="onboarding-step" data-onboarding-step="baseline" aria-labelledby="step-baseline-title">
   <p class="eyebrow">Step 2 of 5</p>
   <h2 id="step-baseline-title" tabindex="-1">Set an honest starting point</h2>
-  <p>Nicotine totals are calculated from pouches per day and milligrams per pouch.</p>
+  <p>Daily nicotine in milligrams is the plan’s starting point. Pouch strength is optional context, not the target.</p>
 
   <fieldset id="field-baseline_source"{% if field_errors.get('baseline_source') %} aria-describedby="baseline-suggestion-note error-baseline_source"{% else %} aria-describedby="baseline-suggestion-note"{% endif %}>
     <legend>Choose a baseline source</legend>
     <label>
       <input type="radio" name="baseline_source" value="recent_logs"{% if values.get('baseline_source') == 'recent_logs' %} checked{% endif %}{% if not baseline.available %} aria-disabled="true"{% endif %}>
-      <span><strong>Use my recent logs</strong><small>{% if baseline.available %}Based on {{ baseline.logged_days_used }} logged days: {{ '%.2f'|format(baseline.pouches_per_day) }} pouches per day and a direct median of {{ '%.2f'|format(baseline.median_mg_per_pouch) }} mg per pouch.{% elif baseline.reason == 'unknown_strength' and baseline.pouches_per_day is not none %}{{ baseline.logged_days_used }} logged days suggest {{ '%.2f'|format(baseline.pouches_per_day) }} pouches per day, but strength is unknown, so no nicotine value is assumed.{% else %}{{ baseline.explanation }}{% endif %}</small></span>
+      <span><strong>Use my recent logs</strong><small>{% if baseline.available %}Based on {{ baseline.logged_days_used }} complete logged days: {{ '%.2f'|format(baseline.nicotine_mg_per_day) }} mg nicotine per day. Usual strength was {{ '%.2f'|format(baseline.median_mg_per_pouch) }} mg per pouch.{% elif baseline.reason == 'unknown_strength' and baseline.pouches_per_day is not none %}Some logged strength is missing, so no daily nicotine baseline is assumed.{% else %}{{ baseline.explanation }}{% endif %}</small></span>
     </label>
     <label><input type="radio" name="baseline_source" value="manual"{% if values.get('baseline_source') == 'manual' %} checked{% endif %}> <span><strong>Enter it myself</strong><small>Use your best candid estimate.</small></span></label>
   </fieldset>
@@ -17,15 +17,16 @@
   <fieldset data-manual-baseline-fields>
     <legend>Manual baseline</legend>
     <div class="field-row">
-      <label for="field-baseline_pouches">Pouches per day</label>
-      <input id="field-baseline_pouches" name="baseline_pouches" type="number" min="0.01" step="0.01" inputmode="decimal" value="{{ values.get('baseline_pouches', '') }}"{% if field_errors.get('baseline_pouches') %} aria-invalid="true" aria-describedby="error-baseline_pouches"{% endif %}>
-      {% if field_errors.get('baseline_pouches') %}<p class="field-error" id="error-baseline_pouches">{{ field_errors['baseline_pouches']|join(' ') }}</p>{% endif %}
+      <label for="field-baseline_mg">Daily nicotine (mg)</label>
+      <input id="field-baseline_mg" name="baseline_mg" type="number" min="0.01" max="999999.99" step="0.01" inputmode="decimal" value="{{ values.get('baseline_mg', '') }}"{% if field_errors.get('baseline_mg') %} aria-invalid="true" aria-describedby="baseline-mg-help error-baseline_mg"{% else %} aria-describedby="baseline-mg-help"{% endif %}>
+      <p id="baseline-mg-help">Use the total nicotine you typically use across one day.</p>
+      {% if field_errors.get('baseline_mg') %}<p class="field-error" id="error-baseline_mg">{{ field_errors['baseline_mg']|join(' ') }}</p>{% endif %}
     </div>
     <div class="field-row">
-      <label for="field-baseline_mg_per_pouch">Milligrams per pouch</label>
+      <label for="field-baseline_mg_per_pouch">Usual pouch strength (mg) <small>Optional context</small></label>
       <input id="field-baseline_mg_per_pouch" name="baseline_mg_per_pouch" type="number" min="0.01" step="0.01" inputmode="decimal" value="{{ values.get('baseline_mg_per_pouch', '') }}"{% if field_errors.get('baseline_mg_per_pouch') %} aria-invalid="true" aria-describedby="error-baseline_mg_per_pouch"{% endif %}>
       {% if field_errors.get('baseline_mg_per_pouch') %}<p class="field-error" id="error-baseline_mg_per_pouch">{{ field_errors['baseline_mg_per_pouch']|join(' ') }}</p>{% endif %}
     </div>
   </fieldset>
-  <p>Choosing “Understand my baseline first” uses a seven-day observation period and keeps baseline nicotine unknown.</p>
+  <p>Choosing “Understand my baseline first” uses seven days of observation and does not invent a nicotine value.</p>
 </section>

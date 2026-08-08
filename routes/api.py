@@ -42,6 +42,7 @@ from services.plan_service import (
     PreviewStaleError,
 )
 from services.plan_serializers import (
+    preview_target_basis,
     serialize_initial_preview,
     serialize_plan,
     serialize_resume_preview,
@@ -487,9 +488,10 @@ def preview_initial_plan():
     except Exception:
         db.session.rollback()
         return internal_error_response()
-    return jsonify(serialize_initial_preview(
+    return _plan_compatibility_response(serialize_initial_preview(
         generation_input, baseline_source, preview
-    ))
+    ), target_basis=generation_input.target_basis,
+       successor_path='/api/plans/preview')
 
 
 @api_bp.route('/plans', methods=['POST'])
@@ -521,7 +523,12 @@ def create_initial_plan():
         return active_plan_conflict_response()
     except Exception:
         return internal_error_response()
-    return jsonify({'plan': plan_payload, 'created': True}), 201
+    return _plan_compatibility_response(
+        {'plan': plan_payload, 'created': True},
+        status=201,
+        target_basis=generation_input.target_basis,
+        successor_path='/api/plans',
+    )
 
 
 @api_bp.route('/plans/<int:plan_id>/revisions/preview', methods=['POST'])
@@ -549,7 +556,11 @@ def preview_plan_revision(plan_id):
     except Exception:
         db.session.rollback()
         return internal_error_response()
-    return jsonify(serialize_revision_preview(effective_date, preview))
+    return _plan_compatibility_response(
+        serialize_revision_preview(effective_date, preview),
+        target_basis=preview_target_basis(preview),
+        successor_path=f'/api/plans/{plan_id}/revisions/preview',
+    )
 
 
 @api_bp.route('/plans/<int:plan_id>/revisions', methods=['POST'])
@@ -582,7 +593,28 @@ def apply_plan_revision(plan_id):
         return preview_stale_response()
     except Exception:
         return internal_error_response()
-    return jsonify({'plan': plan_payload, 'updated': True})
+    return _plan_compatibility_response(
+        {'plan': plan_payload, 'updated': True},
+        target_basis=plan_payload.get('target_basis'),
+        successor_path=f'/api/plans/{plan_id}/revisions',
+    )
+
+
+def _plan_compatibility_response(
+    payload,
+    *,
+    status=200,
+    target_basis=None,
+    successor_path,
+):
+    response = jsonify(payload)
+    response.status_code = status
+    if target_basis == 'legacy_pouches':
+        response.headers['Deprecation'] = 'true'
+        response.headers['Link'] = (
+            f'<{successor_path}>; rel="successor-version"'
+        )
+    return response
 
 
 @api_bp.route('/plans/<int:plan_id>/pause', methods=['POST'])

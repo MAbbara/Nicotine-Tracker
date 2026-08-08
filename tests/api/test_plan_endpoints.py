@@ -17,6 +17,7 @@ from models import (
 )
 from services import log_service
 from services.plan_schedule import PlanGenerationInput, PlanScheduleGenerator
+from services.plan_serializers import serialize_plan
 from services.plan_service import PlanService
 from sqlalchemy.exc import OperationalError
 
@@ -24,6 +25,7 @@ from sqlalchemy.exc import OperationalError
 def _plan_payload(**overrides):
     payload = {
         'mode': 'reduce',
+        'target_basis': 'nicotine_mg',
         'baseline_source': 'manual',
         'baseline_pouches': '8',
         'baseline_mg': '48',
@@ -32,9 +34,18 @@ def _plan_payload(**overrides):
         'start_date': '2099-01-01',
         'target_date': None,
         'duration_days': None,
-        'end_target_pouches': 2,
+        'end_target_mg': '12.00',
         'stage_targets': None,
     }
+    payload.update(overrides)
+    return payload
+
+
+def _legacy_plan_payload(**overrides):
+    payload = _plan_payload()
+    payload['target_basis'] = 'legacy_pouches'
+    payload.pop('end_target_mg')
+    payload['end_target_pouches'] = 2
     payload.update(overrides)
     return payload
 
@@ -228,6 +239,7 @@ class TestInitialPlanPreviewAndCreate:
         assert len(payload['preview_digest']) == 64
         assert payload['normalized_input'] == {
             'mode': 'reduce',
+            'target_basis': 'nicotine_mg',
             'baseline_source': 'manual',
             'baseline_pouches': '8.00',
             'baseline_mg': '48.00',
@@ -236,17 +248,19 @@ class TestInitialPlanPreviewAndCreate:
             'start_date': '2099-01-01',
             'target_date': '2099-02-18',
             'duration_days': 49,
-            'end_target_pouches': 2,
+            'end_target_mg': '12.00',
             'stage_targets': None,
         }
-        assert len(payload['stages']) == 7
+        assert len(payload['stages']) == 49
         assert len(payload['days']) == 49
         assert payload['days'][0] == {
             'local_date': '2099-01-01',
-            'target_pouches': 8,
+            'target_pouches': None,
             'nicotine_ceiling_mg': '48.00',
         }
         assert payload['days'][-1]['local_date'] == '2099-02-18'
+        assert payload['days'][-1]['target_pouches'] is None
+        assert payload['days'][-1]['nicotine_ceiling_mg'] == '12.00'
         assert {
             'plans': ReductionPlan.query.count(),
             'revisions': PlanRevision.query.count(),
@@ -259,6 +273,7 @@ class TestInitialPlanPreviewAndCreate:
             self, logged_in_client):
         body = {
             'mode': 'observe',
+            'target_basis': 'observe',
             'baseline_source': 'observe',
             'baseline_pouches': None,
             'baseline_mg': None,
@@ -267,7 +282,7 @@ class TestInitialPlanPreviewAndCreate:
             'start_date': '2099-01-01',
             'target_date': None,
             'duration_days': None,
-            'end_target_pouches': None,
+            'end_target_mg': None,
             'stage_targets': None,
         }
         response = logged_in_client.post('/api/plans/preview', json=body)
@@ -286,18 +301,19 @@ class TestInitialPlanPreviewAndCreate:
             pace='focused',
             target_date='2099-01-28',
             duration_days=28,
-            end_target_pouches=0,
+            end_target_mg='0.00',
         ))
         assert response.status_code == 200
         payload = response.get_json()
         assert payload['normalized_input']['mode'] == 'quit_by_date'
         assert payload['normalized_input']['target_date'] == '2099-01-28'
         assert payload['normalized_input']['duration_days'] == 28
-        assert payload['days'][-1]['target_pouches'] == 0
+        assert payload['days'][-1]['target_pouches'] is None
+        assert payload['days'][-1]['nicotine_ceiling_mg'] == '0.00'
 
     def test_preview_explicit_stages_normalizes_and_preserves_stage_input(
             self, logged_in_client):
-        response = logged_in_client.post('/api/plans/preview', json=_plan_payload(
+        response = logged_in_client.post('/api/plans/preview', json=_legacy_plan_payload(
             baseline_pouches='8.00',
             baseline_mg='48.00',
             baseline_mg_per_pouch='6.00',
@@ -314,6 +330,10 @@ class TestInitialPlanPreviewAndCreate:
             ],
         ))
         assert response.status_code == 200
+        assert response.headers['Deprecation'] == 'true'
+        assert response.headers['Link'] == (
+            '</api/plans/preview>; rel="successor-version"'
+        )
         payload = response.get_json()
         assert payload['normalized_input']['duration_days'] == 21
         assert payload['normalized_input']['stage_targets'][1] == {
@@ -356,6 +376,7 @@ class TestInitialPlanPreviewAndCreate:
         }
         body = {
             'mode': 'observe',
+            'target_basis': 'observe',
             'baseline_source': 'observe',
             'baseline_pouches': None,
             'baseline_mg': None,
@@ -364,7 +385,7 @@ class TestInitialPlanPreviewAndCreate:
             'start_date': '9999-12-31',
             'target_date': None,
             'duration_days': None,
-            'end_target_pouches': None,
+            'end_target_mg': None,
             'stage_targets': None,
         }
         response = logged_in_client.post('/api/plans/preview', json=body)
@@ -395,7 +416,7 @@ class TestInitialPlanPreviewAndCreate:
             baseline_pouches='2.00',
             baseline_mg='999999.99',
             baseline_mg_per_pouch='999999.99',
-            end_target_pouches=1,
+            end_target_mg='1.00',
         ))
         error = _assert_error_envelope(response, 422, 'validation_error')
         assert 'baseline_mg_per_pouch' in error['field_errors']
@@ -462,13 +483,20 @@ class TestInitialPlanPreviewAndCreate:
         assert set(plan) == {
             'id', 'mode', 'status', 'start_date', 'target_date',
             'baseline_source', 'baseline_pouches', 'baseline_mg',
-            'baseline_mg_per_pouch', 'pace', 'end_target_pouches',
+            'baseline_mg_per_pouch', 'pace', 'target_basis',
+            'end_target_pouches', 'end_target_mg',
             'active_revision_id', 'created_at', 'updated_at', 'days',
             'revisions', 'status_events',
         }
         assert plan['status'] == 'draft'
         assert plan['baseline_pouches'] == '8.00'
+        assert plan['target_basis'] == 'nicotine_mg'
+        assert plan['end_target_mg'] == '12.00'
+        assert plan['end_target_pouches'] is None
         assert plan['days'][0]['nicotine_ceiling_mg'] == '48.00'
+        assert plan['days'][0]['target_pouches'] is None
+        assert plan['revisions'][0]['target_basis'] == 'nicotine_mg'
+        assert plan['revisions'][0]['end_target_mg'] == '12.00'
         assert plan['revisions'][0]['generation_inputs']['duration_days'] == 49
         assert plan['status_events'] == []
         assert OnboardingDraft.query.filter_by(user_id=test_user.id).count() == 0
@@ -558,6 +586,24 @@ class TestInitialPlanPreviewAndCreate:
 def _active_plan_for_lifecycle(db_session, test_user):
     generation_input = PlanGenerationInput(
         mode='reduce',
+        target_basis='nicotine_mg',
+        start_date=date(2099, 1, 1),
+        baseline_pouches=Decimal('8.00'),
+        baseline_mg=Decimal('48.00'),
+        baseline_mg_per_pouch=Decimal('6.00'),
+        pace='steady',
+        end_target_mg=Decimal('12.00'),
+    )
+    preview = PlanScheduleGenerator.generate(generation_input)
+    return PlanService.create_from_preview(
+        test_user.id, generation_input, 'manual', preview.digest, 'activate'
+    )
+
+
+def _legacy_active_plan_for_lifecycle(db_session, test_user):
+    generation_input = PlanGenerationInput(
+        mode='reduce',
+        target_basis='legacy_pouches',
         start_date=date(2099, 1, 1),
         baseline_pouches=Decimal('8.00'),
         baseline_mg=Decimal('48.00'),
@@ -604,7 +650,8 @@ def _lifecycle_graph(user_id):
             iso(plan.start_date), iso(plan.target_date),
             decimal(plan.baseline_pouches), decimal(plan.baseline_mg),
             decimal(plan.baseline_mg_per_pouch), plan.baseline_source,
-            plan.pace, plan.end_target_pouches, plan.active_revision_id,
+            plan.pace, plan.end_target_pouches, decimal(plan.end_target_mg),
+            plan.active_revision_id,
             plan.active_slot, plan.migration_fingerprint,
             canonical_json(plan.legacy_goal_ids), iso(plan.created_at),
             iso(plan.updated_at),
@@ -612,6 +659,7 @@ def _lifecycle_graph(user_id):
         'revisions': [(
             row.id, row.plan_id, iso(row.effective_date), row.pace,
             iso(row.target_date), row.end_target_pouches,
+            decimal(row.end_target_mg),
             canonical_json(row.generation_inputs), row.preview_digest,
             row.reason, row.note, iso(row.created_at),
         ) for row in revisions],
@@ -654,17 +702,17 @@ class TestPlanLifecycleApi:
         ({'effective_date': '2099-01-15',
           'changes': {'duration_days': 366}}, 'changes.duration_days'),
         ({'effective_date': '2099-01-15',
-          'changes': {'end_target_pouches': None}},
-         'changes.end_target_pouches'),
+          'changes': {'end_target_mg': None}},
+         'changes.end_target_mg'),
         ({'effective_date': '2099-01-15',
-          'changes': {'end_target_pouches': True}},
-         'changes.end_target_pouches'),
+          'changes': {'end_target_mg': True}},
+         'changes.end_target_mg'),
         ({'effective_date': '2099-01-15',
-          'changes': {'end_target_pouches': -1}},
-         'changes.end_target_pouches'),
+          'changes': {'end_target_mg': '-1.00'}},
+         'changes.end_target_mg'),
         ({'effective_date': '2099-01-15',
-          'changes': {'end_target_pouches': 1001}},
-         'changes.end_target_pouches'),
+          'changes': {'end_target_mg': '1000000.00'}},
+         'changes.end_target_mg'),
         ({'effective_date': '2099-01-15', 'changes': {'notes': 'free text'}},
          'changes.notes'),
         ({'effective_date': '2099-01-15', 'changes': {
@@ -735,12 +783,13 @@ class TestPlanLifecycleApi:
             f'/api/plans/{plan.id}/revisions/preview', json={
                 'effective_date': '2099-01-15',
                 'changes': {
+                    'target_basis': 'nicotine_mg',
                     'pace': 'gentle',
                     'duration_days': 70,
-                    'end_target_pouches': 1,
+                    'end_target_mg': '6.00',
                 },
             })
-        assert preview_response.status_code == 200
+        assert preview_response.status_code == 200, preview_response.get_json()
         preview = preview_response.get_json()
         assert set(preview) == {
             'preview_digest', 'effective_date', 'stages', 'days'
@@ -757,9 +806,10 @@ class TestPlanLifecycleApi:
             f'/api/plans/{plan.id}/revisions', json={
                 'effective_date': '2099-01-15',
                 'changes': {
+                    'target_basis': 'nicotine_mg',
                     'pace': 'gentle',
                     'duration_days': 70,
-                    'end_target_pouches': 1,
+                    'end_target_mg': '6.00',
                 },
                 'preview_digest': preview['preview_digest'],
                 'reason': 'user_edit',
@@ -772,46 +822,80 @@ class TestPlanLifecycleApi:
         assert body['plan']['target_date'] == '2099-03-25'
         assert body['plan']['revisions'][-1]['note'] == 'Adjusting the pace'
 
-    @pytest.mark.parametrize('changes', [
-        {'pace': 'focused', 'stage_targets': None},
-        {
-            'pace': 'focused',
-            'end_target_pouches': 0,
-            'stage_targets': [
-                {
-                    'start_date': '2099-01-15',
-                    'end_date': '2099-01-20',
-                    'target_pouches': 7,
-                    'nicotine_ceiling_mg': '42.00',
-                },
-                {
-                    'start_date': '2099-01-21',
-                    'end_date': '2099-02-18',
-                    'target_pouches': 0,
-                    'nicotine_ceiling_mg': '0.00',
-                },
-            ],
-        },
-    ])
-    def test_revision_stage_targets_null_and_zero_are_valid(
-            self, logged_in_client, db_session, test_user, changes):
+    def test_pre_basis_legacy_plan_serializes_explicit_compatibility_basis(
+            self, db_session, test_user):
+        plan = _legacy_active_plan_for_lifecycle(db_session, test_user)
+        revision = plan.active_revision
+        revision.generation_inputs = {
+            key: value
+            for key, value in revision.generation_inputs.items()
+            if key != 'target_basis'
+        }
+        db_session.commit()
+
+        payload = serialize_plan(plan)
+
+        assert payload['target_basis'] == 'legacy_pouches'
+        assert payload['revisions'][0]['target_basis'] == 'legacy_pouches'
+
+    def test_implicit_legacy_revision_emits_deprecation_headers(
+            self, logged_in_client, db_session, test_user):
+        plan = _legacy_active_plan_for_lifecycle(db_session, test_user)
+        preview_response = logged_in_client.post(
+            f'/api/plans/{plan.id}/revisions/preview', json={
+                'effective_date': '2099-01-15',
+                'changes': {'duration_days': 42},
+            },
+        )
+
+        assert preview_response.status_code == 200, preview_response.get_json()
+        assert preview_response.headers['Deprecation'] == 'true'
+        assert preview_response.headers['Link'] == (
+            f'</api/plans/{plan.id}/revisions/preview>; '
+            'rel="successor-version"'
+        )
+
+        apply_response = logged_in_client.post(
+            f'/api/plans/{plan.id}/revisions', json={
+                'effective_date': '2099-01-15',
+                'changes': {'duration_days': 42},
+                'preview_digest': preview_response.get_json()['preview_digest'],
+                'reason': 'user_edit',
+                'note': None,
+            },
+        )
+
+        assert apply_response.status_code == 200
+        assert apply_response.headers['Deprecation'] == 'true'
+        assert apply_response.headers['Link'] == (
+            f'</api/plans/{plan.id}/revisions>; rel="successor-version"'
+        )
+        assert apply_response.get_json()['plan']['target_basis'] == (
+            'legacy_pouches'
+        )
+
+    def test_revision_exact_zero_mg_target_is_valid(
+            self, logged_in_client, db_session, test_user):
         plan = _active_plan_for_lifecycle(db_session, test_user)
         response = logged_in_client.post(
             f'/api/plans/{plan.id}/revisions/preview', json={
                 'effective_date': '2099-01-15',
-                'changes': changes,
+                'changes': {
+                    'target_basis': 'nicotine_mg',
+                    'pace': 'focused',
+                    'end_target_mg': '0.00',
+                },
             })
-        assert response.status_code == 200
+        assert response.status_code == 200, response.get_json()
         payload = response.get_json()
         assert set(payload) == {
             'preview_digest', 'effective_date', 'stages', 'days'
         }
         assert payload['effective_date'] == '2099-01-15'
-        if changes.get('stage_targets') is not None:
-            assert payload['stages'][-1]['target_pouches'] == 0
-            assert payload['stages'][-1]['nicotine_ceiling_mg'] == '0.00'
-            assert payload['days'][-1]['target_pouches'] == 0
-            assert payload['days'][-1]['nicotine_ceiling_mg'] == '0.00'
+        assert payload['stages'][-1]['target_pouches'] is None
+        assert payload['stages'][-1]['nicotine_ceiling_mg'] == '0.00'
+        assert payload['days'][-1]['target_pouches'] is None
+        assert payload['days'][-1]['nicotine_ceiling_mg'] == '0.00'
 
     def test_revision_parser_rejects_unknown_fields(self, logged_in_client):
         response = logged_in_client.post(
@@ -933,9 +1017,10 @@ class TestPlanLifecycleApi:
             self, logged_in_client, db_session, test_user):
         generation_input = PlanGenerationInput(
             mode='reduce', start_date=date(2099, 1, 1),
+            target_basis='nicotine_mg',
             baseline_pouches=Decimal('8.00'), baseline_mg=Decimal('48.00'),
             baseline_mg_per_pouch=Decimal('6.00'), pace='steady',
-            end_target_pouches=2,
+            end_target_mg=Decimal('12.00'),
         )
         preview = PlanScheduleGenerator.generate(generation_input)
         draft = PlanService.create_from_preview(

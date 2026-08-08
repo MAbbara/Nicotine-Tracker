@@ -15,6 +15,13 @@ TodayStatus = Literal[
 ]
 GuardrailStatus = Literal["neutral", "on_track", "approaching", "met", "exceeded"]
 NicotineStatus = TodayStatus
+JourneyProgressStatus = Literal[
+    "below_ceiling",
+    "at_ceiling",
+    "above_ceiling",
+    "no_ceiling",
+    "nicotine_total_incomplete",
+]
 
 
 def _require_aware(name: str, value: datetime) -> None:
@@ -214,3 +221,25 @@ class TodaySummary:
             or self.generated_at.utcoffset() != timedelta(0)
         ):
             raise ValueError("generated_at must be UTC and timezone-aware")
+
+
+@dataclass(frozen=True)
+class JourneyNextChange:
+    """The first future day whose nicotine ceiling differs from today."""
+
+    local_date: date
+    ceiling_mg: Decimal | None
+    change_mg: Decimal | None
+
+
+@dataclass(frozen=True)
+class JourneyProgress:
+    """Nicotine-first Journey facts derived from the canonical Today summary."""
+
+    known_mg: Decimal
+    total_complete: bool
+    ceiling_mg: Decimal | None
+    remaining_mg: Decimal | None
+    status: JourneyProgressStatus
+    pouches_logged: int
+    next_change: JourneyNextChange | None

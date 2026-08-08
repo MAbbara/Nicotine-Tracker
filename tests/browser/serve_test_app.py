@@ -353,6 +353,7 @@ with app.app_context():
             baseline_source='manual',
             pace='steady',
             end_target_pouches=6,
+            end_target_mg=Decimal('36.00'),
         )
         db.session.add(plan)
         db.session.flush()
@@ -362,6 +363,7 @@ with app.app_context():
             pace='steady',
             target_date=end,
             end_target_pouches=6,
+            end_target_mg=Decimal('36.00'),
             generation_inputs={
                 'stage_targets': [{
                     'start_date': start.isoformat(),
@@ -466,6 +468,7 @@ with app.app_context():
             baseline_source='manual',
             pace='steady',
             end_target_pouches=target_pouches,
+            end_target_mg=Decimal(nicotine_ceiling),
         )
         db.session.add(plan)
         db.session.flush()
@@ -475,6 +478,7 @@ with app.app_context():
             pace='steady',
             target_date=end,
             end_target_pouches=target_pouches,
+            end_target_mg=Decimal(nicotine_ceiling),
             generation_inputs={},
             preview_digest=(str(plan.id) * 64)[:64],
             reason='initial',
@@ -845,6 +849,9 @@ with app.app_context():
                 baseline_source='observe' if observe else 'manual',
                 pace=None if observe else 'steady',
                 end_target_pouches=None if observe else 6,
+                end_target_mg=(
+                    None if observe else Decimal('36.00')
+                ),
             )
             db.session.add(plan)
             db.session.flush()
@@ -854,6 +861,7 @@ with app.app_context():
                 pace=plan.pace,
                 target_date=plan.target_date,
                 end_target_pouches=plan.end_target_pouches,
+                end_target_mg=plan.end_target_mg,
                 generation_inputs={},
                 preview_digest=(str(plan.id) * 64)[:64],
                 reason='initial',
@@ -951,6 +959,7 @@ with app.app_context():
             baseline_source='manual',
             pace='steady',
             end_target_pouches=6,
+            end_target_mg=Decimal('36.00'),
         )
         db.session.add(plan)
         db.session.flush()
@@ -960,6 +969,7 @@ with app.app_context():
             pace=plan.pace,
             target_date=plan.target_date,
             end_target_pouches=plan.end_target_pouches,
+            end_target_mg=plan.end_target_mg,
             generation_inputs={},
             preview_digest=(str(plan.id) * 64)[:64],
             reason='initial',

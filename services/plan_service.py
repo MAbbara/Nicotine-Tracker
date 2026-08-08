@@ -45,7 +45,8 @@ _REVISION_REASONS = {
     'user_edit', 'difficulty_adjustment', 'resume', 'boundary_change', 'other'
 }
 _REVISION_CHANGE_FIELDS = {
-    'pace', 'target_date', 'duration_days', 'end_target_pouches',
+    'pace', 'target_date', 'duration_days', 'target_basis',
+    'end_target_pouches',
     'end_target_mg', 'stage_targets'
 }
 _ACTIVATION_WINNER_CONFIRM_SECONDS = 0.25
@@ -511,6 +512,12 @@ def _revision_preview(user, plan, changes, effective_date, now=None):
     nicotine_first = (
         'end_target_mg' in changes or anchor.target_pouches is None
     )
+    requested_basis = changes.get('target_basis')
+    expected_basis = 'nicotine_mg' if nicotine_first else 'legacy_pouches'
+    if requested_basis is not None and requested_basis != expected_basis:
+        raise PlanValidationError({
+            'target_basis': f'must be {expected_basis} for this revision'
+        })
     if nicotine_first:
         generation_input = PlanGenerationInput(
             mode=plan.mode,

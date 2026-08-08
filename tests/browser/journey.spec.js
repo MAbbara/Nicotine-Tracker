@@ -23,8 +23,11 @@ function watchForErrors(page, { ignoreConsole = [] } = {}) {
   return errors;
 }
 
-function isoDate(daysFromToday = 0) {
-  const value = new Date();
+async function isoDate(page, daysFromToday = 0) {
+  const response = await page.request.get('/__test__/release-clock');
+  expect(response.status()).toBe(200);
+  const { fixed_now: fixedNow } = await response.json();
+  const value = new Date(fixedNow);
   value.setUTCDate(value.getUTCDate() + daysFromToday);
   return value.toISOString().slice(0, 10);
 }
@@ -53,14 +56,14 @@ async function createPlan(page) {
   await page.locator('input[name="intention"][value="reduce"]').check();
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.locator('input[name="baseline_source"][value="manual"]').check();
-  await page.locator('#field-baseline_pouches').fill('8');
+  await page.locator('#field-baseline_mg').fill('48');
   await page.locator('#field-baseline_mg_per_pouch').fill('6');
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByLabel(/Steady · 49 days/).check();
-  await page.getByLabel(/End target in pouches per day/).fill('2');
+  await page.getByLabel(/End target nicotine per day/).fill('12');
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByLabel('No reminder').check();
-  await page.getByLabel('Plan start date').fill(isoDate());
+  await page.getByLabel('Plan start date').fill(await isoDate(page));
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Activate this reviewed plan' }).click();
   await expect(page).toHaveURL(/\/today\/?$/);
@@ -69,10 +72,11 @@ async function createPlan(page) {
 
 async function previewRevision(page, duration = '35') {
   const editor = page.locator('[data-plan-editor="revision"]');
-  await editor.getByLabel('Effective date').fill(isoDate(1));
+  const effectiveDate = await isoDate(page, 1);
+  await editor.getByLabel('Effective date').fill(effectiveDate);
   await editor.getByLabel('Duration days').fill(duration);
   await editor.getByRole('button', { name: 'Preview revision' }).click();
-  await expect(editor.locator('[data-plan-editor-preview]')).toContainText(isoDate(1));
+  await expect(editor.locator('[data-plan-editor-preview]')).toContainText(effectiveDate);
   await expect(editor.locator('[data-plan-editor-preview] tbody tr')).not.toHaveCount(0);
   await expect(editor.getByRole('status')).toContainText(/persisted plan is unchanged/i);
 }
@@ -111,22 +115,71 @@ test('no-plan Journey prioritizes creation while neutral tracking remains availa
   expect(errors).toEqual([]);
 });
 
+test('first viewport explains nicotine progress and next change before technical details', async ({ page }, testInfo) => {
+  await register(page, testInfo, 'comprehension');
+  await createPlan(page);
+  const errors = watchForErrors(page);
+
+  const progress = page.locator('[data-journey-progress]');
+  await expect(progress.getByRole('heading', { name: 'Today in this plan' })).toBeVisible();
+  await expect(progress.locator('[data-known-mg]')).toHaveText('0.00 mg');
+  await expect(progress.locator('[data-ceiling-mg]')).toHaveText('48.00 mg');
+  await expect(progress.locator('[data-remaining-mg]')).toHaveText('48.00 mg');
+  await expect(progress).toContainText(/Below today’s ceiling/i);
+  await expect(progress).toContainText(/Pouches logged\s+0/i);
+
+  const nextChange = page.locator('[data-next-change]');
+  await expect(nextChange).toBeVisible();
+  await expect(nextChange).toContainText(/mg on/i);
+  await expect(nextChange).toContainText(/lower than today/i);
+
+  const fold = await page.evaluate(() => ({
+    viewport: window.innerHeight,
+    intro: document.querySelector('.journey-intro').getBoundingClientRect().toJSON(),
+    plan: document.querySelector('.journey-plan').getBoundingClientRect().toJSON(),
+    progress: document.querySelector('[data-journey-progress]').getBoundingClientRect().toJSON(),
+    next: document.querySelector('[data-next-change]').getBoundingClientRect().toJSON(),
+    progressBottom: document.querySelector('[data-journey-progress]').getBoundingClientRect().bottom,
+    nextBottom: document.querySelector('[data-next-change]').getBoundingClientRect().bottom,
+    knownSize: parseFloat(getComputedStyle(document.querySelector('[data-known-mg]')).fontSize),
+    pouchSize: parseFloat(getComputedStyle(document.querySelector('.journey-today__context')).fontSize),
+  }));
+  expect(fold.progressBottom, JSON.stringify(fold)).toBeLessThanOrEqual(fold.viewport + 1);
+  expect(fold.nextBottom, JSON.stringify(fold)).toBeLessThanOrEqual(fold.viewport + 1);
+  expect(fold.knownSize).toBeGreaterThan(fold.pouchSize);
+
+  await expect(page.locator('[data-mobile-schedule] tbody tr')).toHaveCount(7);
+  const editor = page.locator('[data-plan-editor="revision"]');
+  await expect(editor.getByRole('heading', { name: 'Change what comes next' })).toBeVisible();
+  const details = page.locator('.journey-details');
+  await expect(details).not.toHaveAttribute('open', '');
+  await expect(page.locator('[data-complete-schedule]')).not.toBeVisible();
+  const summary = details.getByText('Plan details and history');
+  await summary.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-complete-schedule]')).toBeVisible();
+  await expect(page.locator('.journey-history')).toBeVisible();
+  await expect(summary).toBeFocused();
+  expect(errors).toEqual([]);
+});
+
 test('Journey previews explicitly, mutates future rows only, and carries status history through archive', async ({ page }, testInfo) => {
   const recorder = createBehaviorRecorder(OWNER_TITLES.journeyLifecycle, expect);
   await register(page, testInfo, 'lifecycle');
   await createPlan(page);
   const errors = watchForErrors(page);
 
-  await expect(page.getByRole('heading', { name: 'Current stage' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Today in this plan' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'What changes next' })).toBeVisible();
   await expect(page.locator('[data-mobile-schedule] tbody tr')).toHaveCount(7);
-  await expect(page.getByRole('heading', { name: 'Plan facts' })).toBeVisible();
-  const completeSchedule = page.getByText('Show the complete schedule');
-  await completeSchedule.focus();
+  const planDetails = page.getByText('Plan details and history');
+  await planDetails.focus();
   await page.keyboard.press('Enter');
+  const completeSchedule = page.locator('[data-complete-schedule]');
   await expect(page.locator('[data-complete-schedule] tbody tr')).not.toHaveCount(0);
-  await expect(completeSchedule).toBeFocused();
+  await expect(planDetails).toBeFocused();
   recorder.record('journey', 'Show the complete schedule', ['focus', 'keyboard']);
-  await expect(page.locator('.journey-history')).toContainText(/Revision \d+/);
+  await expect(page.locator('.journey-history')).toContainText(/Plan change \d+/);
 
   const before = await page.locator('[data-complete-schedule] tbody tr').evaluateAll((rows) => rows.map((row) => row.textContent));
   const mutationRequests = [];
@@ -143,7 +196,7 @@ test('Journey previews explicitly, mutates future rows only, and carries status 
   await revision.getByRole('button', { name: 'Confirm revision' }).click();
   await expect(page).toHaveURL(/\/journey\/?$/);
   expect(mutationRequests).toHaveLength(1);
-  await page.getByText('Show the complete schedule').click();
+  await page.getByText('Plan details and history').click();
   const after = await page.locator('[data-complete-schedule] tbody tr').evaluateAll((rows) => rows.map((row) => row.textContent));
   expect(after[0]).toBe(before[0]);
   expect(after.slice(1)).not.toEqual(before.slice(1));
@@ -151,14 +204,16 @@ test('Journey previews explicitly, mutates future rows only, and carries status 
   await keyboardPost(page, page.getByRole('button', { name: 'Pause plan' }), '/pause');
   await expect(page.getByText(/Plan paused\. Your history is unchanged/i)).toBeVisible();
   await page.reload();
-  await expect(page.getByText(/Status:\s*Paused/i)).toBeVisible();
+  await page.getByText('Plan details and history').click();
+  await expect(page.locator('.journey-facts')).toContainText(/Status\s*Paused/i);
   recorder.record('journey', 'Pause plan', ['keyboard', 'persistence', 'request']);
   const resume = page.locator('[data-plan-editor="resume"]');
-  await resume.getByLabel('Required resume date').fill(isoDate(2));
+  await resume.getByLabel('Required resume date').fill(await isoDate(page, 2));
   await resume.getByRole('button', { name: 'Preview resume' }).click();
   await expect(resume.locator('[data-plan-editor-preview] tbody tr')).not.toHaveCount(0);
   await resume.getByRole('button', { name: 'Confirm resume' }).click();
-  await expect(page.getByText(/Status:\s*Active/i)).toBeVisible();
+  await page.getByText('Plan details and history').click();
+  await expect(page.locator('.journey-facts')).toContainText(/Status\s*Active/i);
   await expect(page.locator('.journey-history')).toContainText(/Paused .* to .* UTC/s);
 
   await keyboardPost(page, page.getByRole('button', { name: 'Mark complete' }), '/complete');
@@ -170,7 +225,7 @@ test('Journey previews explicitly, mutates future rows only, and carries status 
   await expect(page.getByText(/Plan archived\. Your history is still available/i)).toBeVisible();
   await page.reload();
   await expect(page.locator('[data-historical-plan]')).toContainText('Archived');
-  await expect(page.locator('[data-historical-plan]')).toContainText(/Revision \d+/);
+  await expect(page.locator('[data-historical-plan]')).toContainText(/Plan change \d+/);
 
   const legacy = page.locator('.legacy-review');
   await expect(legacy.getByRole('heading', { name: 'Legacy Goals remain intact' })).toBeVisible();
@@ -205,7 +260,7 @@ test('stale revision preview refreshes and requires a second explicit confirmati
   await expect(editor.getByRole('status')).toContainText(/fresh preview.*confirm again/i);
   await expect(page).toHaveURL(/\/journey\/?$/);
   await editor.getByRole('button', { name: 'Confirm revision' }).click();
-  await expect(page.locator('.journey-history')).toContainText(/reason user edit/i);
+  await expect(page.locator('.journey-history')).toContainText(/User Edit/i);
   expect(staleReturned).toBe(true);
   expect(errors).toEqual([]);
 });
@@ -238,9 +293,11 @@ test('Journey planning flow stays contiguous and balanced across target viewport
           && value.width > 0 && value.height > 0;
       };
       const plan = document.querySelector('.journey-plan');
-      const overview = plan.querySelector(':scope > .journey-plan__overview');
+      const today = plan.querySelector(':scope > .journey-today');
+      const nextChange = plan.querySelector(':scope > .journey-next-change');
       const schedule = plan.querySelector(':scope > .journey-plan__schedule');
       const maintenance = plan.querySelector(':scope > .journey-plan__maintenance');
+      const details = plan.querySelector(':scope > .journey-details');
       const editor = maintenance.querySelector('[data-plan-editor="revision"]');
       const fieldItems = [...editor.querySelectorAll('.journey-editor__fields > div')];
       const fullWidthItems = [
@@ -266,9 +323,11 @@ test('Journey planning flow stays contiguous and balanced across target viewport
       return {
         documentWidth: document.documentElement.clientWidth,
         documentScrollWidth: document.documentElement.scrollWidth,
-        overview: rect(overview),
+        today: rect(today),
+        nextChange: rect(nextChange),
         schedule: rect(schedule),
         maintenance: rect(maintenance),
+        details: rect(details),
         editor: rect(editor),
         fieldItems: fieldItems.map(rect),
         fullWidthItems,
@@ -276,10 +335,15 @@ test('Journey planning flow stays contiguous and balanced across target viewport
         actualHorizontalScrollers,
         scheduleBeforeEditor: Boolean(schedule.compareDocumentPosition(editor)
           & Node.DOCUMENT_POSITION_FOLLOWING),
+        editorBeforeDetails: Boolean(editor.compareDocumentPosition(details)
+          & Node.DOCUMENT_POSITION_FOLLOWING),
       };
     });
 
     expect(layout.scheduleBeforeEditor).toBe(true);
+    expect(layout.editorBeforeDetails).toBe(true);
+    expect(layout.nextChange.top).toBeGreaterThanOrEqual(layout.today.bottom);
+    expect(layout.schedule.top).toBeGreaterThanOrEqual(layout.nextChange.bottom);
     expect(layout.editor.top - layout.schedule.bottom).toBeGreaterThanOrEqual(0);
     expect(layout.editor.top - layout.schedule.bottom).toBeLessThanOrEqual(96);
     expect(layout.editor.width).toBeGreaterThanOrEqual(layout.schedule.width * 0.95);
@@ -309,7 +373,8 @@ test('Observe recovery and migrated Goal review remain visibly separate and non-
   const errors = watchForErrors(page);
   await loginReviewFixture(page, testInfo);
 
-  await expect(page.getByRole('heading', { name: 'Observe your current pattern' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Today in this plan' })).toBeVisible();
+  await page.getByText('Plan details and history').click();
   await expect(page.getByRole('button', { name: 'Finish Observe' })).toBeVisible();
   const legacy = page.locator('.legacy-review');
   await expect(legacy.getByRole('heading', { name: 'History and migration review' })).toBeVisible();
@@ -338,6 +403,7 @@ test('Journey remains usable in dark theme, keyboard focus, 200% text, and reduc
   await createPlan(page);
   const errors = watchForErrors(page);
   await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+  await page.getByText('Plan details and history').click();
 
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   const metrics = await page.evaluate(() => ({
@@ -354,8 +420,12 @@ test('Journey remains usable in dark theme, keyboard focus, 200% text, and reduc
       })),
   }));
   expect(metrics.scrollWidth, JSON.stringify(metrics.offenders)).toBeLessThanOrEqual(metrics.clientWidth + 1);
-  await page.getByRole('button', { name: 'Pause plan' }).focus();
-  const focus = await page.getByRole('button', { name: 'Pause plan' }).evaluate((element) => {
+  const pauseButton = page.getByRole('button', { name: 'Pause plan' });
+  await pauseButton.focus();
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Tab');
+  await expect(pauseButton).toBeFocused();
+  const focus = await pauseButton.evaluate((element) => {
     const style = getComputedStyle(element);
     return { outline: style.outlineStyle, width: parseFloat(style.outlineWidth), height: element.getBoundingClientRect().height };
   });
