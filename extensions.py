@@ -7,6 +7,7 @@ import sqlite3
 
 from flask_bcrypt import Bcrypt
 from flask_mail import Mail
+from flask_limiter import Limiter
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf.csrf import CSRFProtect
@@ -36,3 +37,11 @@ migrate = Migrate()
 bcrypt = Bcrypt()
 mail = Mail()
 csrf = CSRFProtect()
+
+
+def _default_rate_limit_key():
+    from services.rate_limit_service import user_or_ip_key
+    return user_or_ip_key()
+
+
+limiter = Limiter(key_func=_default_rate_limit_key)

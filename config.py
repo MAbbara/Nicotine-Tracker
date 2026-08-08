@@ -53,6 +53,34 @@ class Config:
     # Request correlation header (inbound accepted only as canonical UUID)
     REQUEST_ID_HEADER = os.environ.get('REQUEST_ID_HEADER', 'X-Request-ID')
 
+    # Abuse protection. Process-local memory is intentionally confined to
+    # development and tests; ProductionConfig must provide shared Redis.
+    RATELIMIT_ENABLED = True
+    RATELIMIT_HEADERS_ENABLED = True
+    RATELIMIT_STORAGE_URI = 'memory://'
+    RATELIMIT_KEY_PREFIX = 'nicotine-tracker-local'
+    RATELIMIT_HMAC_SECRET = SECRET_KEY
+    RATELIMIT_TRUSTED_PROXY_COUNT = 0
+    RATELIMIT_SWALLOW_ERRORS = False
+    RATELIMIT_IN_MEMORY_FALLBACK_ENABLED = False
+    RATELIMIT_STORAGE_OPTIONS = {
+        'socket_connect_timeout': 0.5,
+        'socket_timeout': 0.5,
+    }
+    RATELIMIT_DEFAULT = []
+    RATELIMIT_REQUIRE_SHARED_STORAGE = False
+    RATELIMIT_AUTH_ACCOUNT = '6 per 15 minutes'
+    RATELIMIT_AUTH_IP = '30 per hour'
+    RATELIMIT_AUTHENTICATED_WRITE = '120 per minute'
+    RATELIMIT_QUICK_ADD = '30 per minute'
+    RATELIMIT_BULK_ADD = '20 per hour'
+    RATELIMIT_CURRENT_PASSWORD_ACTION = '5 per hour'
+    RATELIMIT_DISCORD_TEST = '5 per hour'
+    RATELIMIT_WEEKLY_REPORT = '2 per hour'
+    RATELIMIT_PLAN_MUTATION = '30 per hour'
+    RATELIMIT_EXPORT = '10 per hour'
+    RATELIMIT_DESTRUCTIVE = '5 per hour'
+
     
     # Debug mode - automatically set based on environment
     @property
@@ -66,16 +94,36 @@ class Config:
 class ProductionConfig(Config):
     DEBUG = False
     SESSION_COOKIE_SECURE = True
+    RATELIMIT_STORAGE_URI = os.environ.get('RATELIMIT_STORAGE_URI')
+    RATELIMIT_KEY_PREFIX = os.environ.get('RATELIMIT_KEY_PREFIX')
+    RATELIMIT_HMAC_SECRET = os.environ.get('RATELIMIT_HMAC_SECRET')
+    RATELIMIT_TRUSTED_PROXY_COUNT = int(
+        os.environ.get('RATELIMIT_TRUSTED_PROXY_COUNT', 0)
+    )
+    RATELIMIT_REQUIRE_SHARED_STORAGE = True
 
 
 class DevelopmentConfig(Config):
     DEBUG = True
+    RATELIMIT_STORAGE_URI = 'memory://'
 
 class TestingConfig(Config):
     TESTING = True
     DEBUG = True
     SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
     WTF_CSRF_ENABLED = False
+    RATELIMIT_STORAGE_URI = 'memory://'
+    RATELIMIT_AUTH_ACCOUNT = '100000 per hour'
+    RATELIMIT_AUTH_IP = '100000 per hour'
+    RATELIMIT_AUTHENTICATED_WRITE = '100000 per hour'
+    RATELIMIT_QUICK_ADD = '100000 per hour'
+    RATELIMIT_BULK_ADD = '100000 per hour'
+    RATELIMIT_CURRENT_PASSWORD_ACTION = '100000 per hour'
+    RATELIMIT_DISCORD_TEST = '100000 per hour'
+    RATELIMIT_WEEKLY_REPORT = '100000 per hour'
+    RATELIMIT_PLAN_MUTATION = '100000 per hour'
+    RATELIMIT_EXPORT = '100000 per hour'
+    RATELIMIT_DESTRUCTIVE = '100000 per hour'
 
 config = {
     'development': DevelopmentConfig,

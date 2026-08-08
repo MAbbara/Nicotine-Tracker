@@ -6,6 +6,7 @@ from datetime import datetime
 from routes.auth import login_required, get_current_user
 from services.enhanced_insights_service import get_enhanced_insights
 from services.insights_service import get_all_insights  # Keep for backward compatibility
+from services.rate_limit_service import export_limit
 
 insights_bp = Blueprint('insights', __name__, template_folder="../templates/insights")
 SUPPORTED_RANGES = frozenset({7, 30, 90, 365})
@@ -43,6 +44,7 @@ def get_insights():
     return response
 
 @insights_bp.route('/api/export', methods=['GET'])
+@export_limit()
 @login_required
 def export_insights_data():
     """Export insights data as CSV."""

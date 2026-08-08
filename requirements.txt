@@ -8,6 +8,7 @@ Werkzeug==2.3.7
 Jinja2==3.1.2
 WTForms==3.0.1
 Flask-WTF==1.1.1
+Flask-Limiter[redis]==4.1.1
 email-validator==2.0.0
 pytz==2023.3
 requests

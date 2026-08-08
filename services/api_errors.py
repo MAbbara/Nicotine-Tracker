@@ -111,3 +111,13 @@ def internal_error_response():
         'Something went wrong on our end. Please try again later.',
         retryable=True,
     )
+
+
+def rate_limited_response(retry_after_seconds):
+    response = error_response(
+        429, 'rate_limited',
+        'Too many requests. Pause for a moment, then try again.',
+        retryable=True,
+    )
+    response.headers['Retry-After'] = str(max(1, int(retry_after_seconds)))
+    return response

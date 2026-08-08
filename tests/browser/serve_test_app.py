@@ -59,6 +59,7 @@ from models import (  # noqa: E402
     DailyCheckIn,
     Goal,
     Log,
+    NotificationQueue,
     PlanDay,
     PlanRevision,
     PlanStatusEvent,
@@ -1162,8 +1163,26 @@ def cleanup_today_events():
 @login_required
 def external_notifications():
     current_user = get_current_user()
+    persisted_weekly = [
+        {
+            'kind': 'notification-queue',
+            'user_id': row.user_id,
+            'category': row.category,
+            'subject': row.subject,
+            'message': row.message,
+            'priority': row.priority,
+            'scheduled_for': (
+                row.scheduled_for.isoformat() if row.scheduled_for else None
+            ),
+            'extra_data': row.extra_data or {},
+        }
+        for row in NotificationQueue.query.filter_by(
+            user_id=current_user.id,
+            category='weekly_report',
+        ).all()
+    ]
     return {
-        'notifications': [
+        'notifications': persisted_weekly + [
             item for item in _OUTBOUND.records
             if item['kind'] == 'notification-queue'
             and item['user_id'] == current_user.id

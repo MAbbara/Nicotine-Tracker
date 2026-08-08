@@ -6,6 +6,12 @@ from typing import Any, Mapping
 import pytz
 from models import User, Log, Pouch
 from services import add_log_entry, add_bulk_logs  # use service layer for log creation
+from services.rate_limit_service import (
+    authenticated_write_limit,
+    bulk_add_limit,
+    destructive_limit,
+    quick_add_limit,
+)
 from services.log_service import (
     CreateLogInput,
     LogService,
@@ -39,6 +45,12 @@ import re
 
 # Specify the template folder for logging-related templates
 logging_bp = Blueprint('logging', __name__, template_folder='../templates/logging')
+
+
+@logging_bp.before_request
+@authenticated_write_limit()
+def _limit_authenticated_logging_writes():
+    return None
 
 LOGBOOK_HISTORY_FRAGMENT_VERSION = 'logbook-history-v1'
 _QUICK_ADD_KEYS = {'pouch_id', 'quantity', 'client_event_id', 'view'}
@@ -396,6 +408,7 @@ def add_log():
         return redirect(url_for('logging.view_logs', open_add_modal=1))
 
 @logging_bp.route('/bulk', methods=['GET', 'POST'])
+@bulk_add_limit()
 @login_required
 def bulk_add():
     """Add multiple log entries at once"""
@@ -663,6 +676,7 @@ def edit_log(log_id):
         return redirect(url_for('logging.view_logs'))
 
 @logging_bp.route('/delete/<int:log_id>', methods=['POST'])
+@destructive_limit(methods=['POST'])
 @login_required
 def delete_log(log_id):
     """Delete a log entry"""
@@ -688,6 +702,7 @@ def delete_log(log_id):
     return redirect(url_for('logging.view_logs'))
 
 @logging_bp.route('/api/quick_add', methods=['POST'])
+@quick_add_limit()
 @login_required
 def quick_add_api():
     """Create one idempotent usual-product log and rebuild server history."""

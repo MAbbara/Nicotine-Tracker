@@ -2,6 +2,7 @@
 Handles email and Discord webhook notifications with queue processing.
 """
 import json
+import hashlib
 import re
 import requests
 from datetime import datetime, time, timedelta
@@ -19,6 +20,7 @@ from services.goal_evaluation_service import (
     evaluate_goal_period,
     latest_completed_week,
 )
+from sqlalchemy.exc import IntegrityError
 
 
 class NotificationService:
@@ -50,6 +52,65 @@ class NotificationService:
         if not content:
             return ''
         return re.sub(r'<[^>]+>', '', content)
+
+    @staticmethod
+    def _weekly_idempotency_key(user_id, period_start, notification_type):
+        material = (
+            f'weekly-report\0{user_id}\0{period_start.isoformat()}\0'
+            f'{notification_type}'
+        )
+        return hashlib.sha256(material.encode('utf-8')).hexdigest()
+
+    def _weekly_rows(self, user_id, period_start):
+        return NotificationQueue.query.filter_by(
+            user_id=user_id,
+            category='weekly_report',
+            report_period_start=period_start,
+        ).order_by(NotificationQueue.notification_type).all()
+
+    def _queue_weekly_channels(self, user, preferences, period_start, subject,
+                               message, extra_data):
+        channels = []
+        if self.preferences_service.should_send_notification(
+                user.id, 'weekly_report', 'email'):
+            channels.append(('email', user.email))
+        if self.preferences_service.should_send_notification(
+                user.id, 'weekly_report', 'discord'):
+            webhook = preferences.discord_webhook
+            if webhook:
+                channels.append(('discord', webhook))
+        expected_types = {channel for channel, _recipient in channels}
+        existing = self._weekly_rows(user.id, period_start)
+        if expected_types and {row.notification_type for row in existing} == expected_types:
+            return existing
+        if not channels:
+            return []
+
+        for notification_type, recipient in channels:
+            db.session.add(NotificationQueue(
+                user_id=user.id,
+                notification_type=notification_type,
+                category='weekly_report',
+                subject=subject,
+                message=message,
+                recipient=recipient,
+                priority=4,
+                extra_data=extra_data,
+                report_period_start=period_start,
+                idempotency_key=self._weekly_idempotency_key(
+                    user.id, period_start, notification_type
+                ),
+                scheduled_for=datetime.utcnow(),
+            ))
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            replay = self._weekly_rows(user.id, period_start)
+            if {row.notification_type for row in replay} == expected_types:
+                return replay
+            raise
+        return self._weekly_rows(user.id, period_start)
 
     def queue_weekly_report(self, user, *, now_utc=None):
         """Generate and queue a weekly report notification for a user."""
@@ -207,13 +268,13 @@ class NotificationService:
                 last_week_end_local
             )
 
-            return self.queue_notification(
-                user_id=user.id,
-                category='weekly_report',
-                subject=subject,
-                message=message,
-                priority=4,
-                extra_data=extra_data
+            return self._queue_weekly_channels(
+                user,
+                preferences,
+                last_week_start_local,
+                subject,
+                message,
+                extra_data,
             )
 
         except Exception as e:

@@ -73,6 +73,12 @@ from services.check_in_service import (
     parse_check_in_payload,
     serialize_check_in,
 )
+from services.rate_limit_service import (
+    authenticated_write_limit,
+    destructive_limit,
+    plan_mutation_limit,
+    quick_add_limit,
+)
 
 from services.log_service import (
     CravingLinkConflictError, CravingNotFoundError, CreateLogInput,
@@ -85,6 +91,12 @@ from datetime import datetime, timedelta, time, timezone
 
 api_bp = Blueprint('api', __name__)
 logger = logging.getLogger(__name__)
+
+
+@api_bp.before_request
+@authenticated_write_limit()
+def _limit_authenticated_api_writes():
+    return None
 
 
 @api_bp.route('/today', methods=['GET'])
@@ -323,6 +335,7 @@ def create_log_api():
 
 
 @api_bp.route('/logs/<int:log_id>', methods=['DELETE'])
+@destructive_limit()
 @login_required
 def delete_log_api(log_id):
     try:
@@ -470,6 +483,7 @@ def get_onboarding_draft():
 
 
 @api_bp.route('/plans/preview', methods=['POST'])
+@plan_mutation_limit()
 @login_required
 def preview_initial_plan():
     try:
@@ -495,6 +509,7 @@ def preview_initial_plan():
 
 
 @api_bp.route('/plans', methods=['POST'])
+@plan_mutation_limit()
 @login_required
 def create_initial_plan():
     try:
@@ -532,6 +547,7 @@ def create_initial_plan():
 
 
 @api_bp.route('/plans/<int:plan_id>/revisions/preview', methods=['POST'])
+@plan_mutation_limit()
 @login_required
 def preview_plan_revision(plan_id):
     try:
@@ -564,6 +580,7 @@ def preview_plan_revision(plan_id):
 
 
 @api_bp.route('/plans/<int:plan_id>/revisions', methods=['POST'])
+@plan_mutation_limit()
 @login_required
 def apply_plan_revision(plan_id):
     try:
@@ -618,6 +635,7 @@ def _plan_compatibility_response(
 
 
 @api_bp.route('/plans/<int:plan_id>/pause', methods=['POST'])
+@plan_mutation_limit()
 @login_required
 def pause_plan(plan_id):
     try:
@@ -648,6 +666,7 @@ def pause_plan(plan_id):
 
 
 @api_bp.route('/plans/<int:plan_id>/resume/preview', methods=['POST'])
+@plan_mutation_limit()
 @login_required
 def preview_plan_resume(plan_id):
     try:
@@ -680,6 +699,7 @@ def preview_plan_resume(plan_id):
 
 
 @api_bp.route('/plans/<int:plan_id>/resume', methods=['POST'])
+@plan_mutation_limit()
 @login_required
 def resume_plan(plan_id):
     try:
@@ -737,6 +757,7 @@ def put_onboarding_draft():
 
 
 @api_bp.route('/onboarding-draft', methods=['DELETE'])
+@destructive_limit()
 @login_required
 def delete_onboarding_draft():
     try:
@@ -761,6 +782,7 @@ def update_timezone():
 
 
 @api_bp.route('/quick_add', methods=['POST'])
+@quick_add_limit()
 @login_required
 def quick_add():
     data = request.get_json(silent=True)

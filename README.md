@@ -235,6 +235,7 @@ cp .env.production .env
 # - Set a strong SECRET_KEY
 # - Configure production database URL
 # - Set up email configuration
+# - Configure shared Redis rate-limit storage (see below)
 # - Adjust file paths as needed
 
 # Set environment variable
@@ -248,8 +249,19 @@ uwsgi --ini uwsgi.ini
 - Debug mode disabled
 - Enhanced security (CSRF enabled, secure cookies)
 - Production database (PostgreSQL/MySQL recommended)
+- Shared Redis abuse-protection counters
 - Structured logging
 - Email functionality enabled
+
+Production startup requires a shared Redis limiter store. Set
+`RATELIMIT_STORAGE_URI` to a dedicated `redis://` or `rediss://` URL,
+`RATELIMIT_KEY_PREFIX` to a deployment-unique prefix, and
+`RATELIMIT_HMAC_SECRET` to an independent high-entropy secret. Set
+`RATELIMIT_TRUSTED_PROXY_COUNT` only to the exact number of trusted reverse
+proxy hops in front of the application. Missing or process-local production
+storage is rejected at startup, and Redis failures do not silently fall back
+to per-process memory counters. Development and test environments use memory
+storage by default.
 
 #### 3. Testing Environment
 

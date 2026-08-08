@@ -53,9 +53,22 @@ from services.plan_service import (
 )
 from services.today_service import TodayService
 from services.timezone_service import get_current_user_day, resolve_timezone
+from services.rate_limit_service import (
+    authenticated_write_limit,
+    plan_mutation_limit,
+)
 
 
 journey_bp = Blueprint('journey', __name__)
+
+
+@journey_bp.before_request
+@authenticated_write_limit()
+@plan_mutation_limit(exempt_when=lambda: (
+    request.method != 'POST' or not request.path.startswith('/journey/plans/')
+))
+def _limit_journey_plan_writes():
+    return None
 
 _DURATION_BY_PACE = {'gentle': 77, 'steady': 49, 'focused': 28}
 _LIST_FIELDS = ('difficult_times', 'common_triggers', 'preferred_pouch_ids')

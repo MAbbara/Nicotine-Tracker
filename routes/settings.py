@@ -28,6 +28,14 @@ from services.goal_evaluation_service import (
     HISTORY_FULL,
     batch_goal_progress,
 )
+from services.rate_limit_service import (
+    authenticated_write_limit,
+    current_password_limit,
+    destructive_limit,
+    discord_test_limit,
+    export_limit,
+    weekly_report_limit,
+)
 import json
 from datetime import date, datetime, time, timedelta
 
@@ -36,9 +44,19 @@ import pytz
 # Specify the template folder for settings-related templates
 settings_bp = Blueprint('settings', __name__, template_folder='../templates/settings')
 
+
+@settings_bp.before_request
+@authenticated_write_limit()
+def _limit_authenticated_settings_writes():
+    return None
+
 DATA_ACTIONS: frozenset[str] = frozenset({
     'export_data', 'cleanup_duplicates', 'merge_custom_pouches',
     'recalculate_goals', 'anonymize_data', 'delete_old_logs',
+})
+DESTRUCTIVE_DATA_ACTIONS = frozenset({
+    'cleanup_duplicates', 'merge_custom_pouches', 'anonymize_data',
+    'delete_old_logs',
 })
 
 
@@ -257,6 +275,7 @@ def notifications():
 
 
 @settings_bp.route('/notifications/trigger-weekly', methods=['POST'])
+@weekly_report_limit()
 @login_required
 def trigger_weekly_report():
     """Allow users to manually queue their weekly report."""
@@ -297,6 +316,7 @@ def trigger_weekly_report():
 
 
 @settings_bp.route('/test-discord-webhook', methods=['POST'])
+@discord_test_limit()
 @login_required
 def test_discord_webhook():
     """Test Discord webhook endpoint"""
@@ -334,6 +354,14 @@ def test_discord_webhook():
         }), 500
 
 @settings_bp.route('/data', methods=['GET', 'POST'])
+@export_limit(
+    methods=['POST'],
+    exempt_when=lambda: request.form.get('action') != 'export_data',
+)
+@destructive_limit(
+    methods=['POST'],
+    exempt_when=lambda: request.form.get('action') not in DESTRUCTIVE_DATA_ACTIONS,
+)
 @login_required
 def data():
     """Data and privacy settings"""
@@ -549,6 +577,11 @@ def profile():
         return render_template('profile.html', user=get_current_user())
 
 @settings_bp.route('/account', methods=['GET', 'POST'])
+@current_password_limit()
+@destructive_limit(
+    methods=['POST'],
+    exempt_when=lambda: request.form.get('action') != 'delete_account',
+)
 @login_required
 def account():
     """Account settings"""

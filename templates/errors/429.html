@@ -1,0 +1,19 @@
+{% extends "layouts/app.html" %}
+{% from "components/button.html" import button %}
+
+{% block preline_js %}{% endblock %}
+
+{% block title %}Take a short pause — Nicotine Tracker{% endblock %}
+
+{% block content %}
+<section class="error-page" aria-labelledby="error-title">
+  <p class="eyebrow">A short pause</p>
+  <h1 id="error-title">Take a short pause</h1>
+  <p class="error-page__lede">This action has been tried several times. Wait a moment, then try again.</p>
+  {% if session.user_id %}
+    {{ button('Return to Today', href=url_for('today.index')) }}
+  {% else %}
+    {{ button('Return safely', href=url_for('index')) }}
+  {% endif %}
+</section>
+{% endblock %}

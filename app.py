@@ -9,12 +9,15 @@ from flask import (
     url_for,
 )
 from config import get_config
-from extensions import db, migrate, bcrypt, mail, csrf
+from extensions import db, migrate, bcrypt, mail, csrf, limiter
 from services.request_context import REQUEST_ID_HEADER, get_request_id, init_request_context
 from flask_wtf.csrf import CSRFError
 import logging
+import math
+import time
 from logging.handlers import RotatingFileHandler
 import os
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 def create_app(config_name=None):
     app = Flask(__name__)
@@ -25,6 +28,13 @@ def create_app(config_name=None):
         app.config.from_object(config[config_name])
     else:
         app.config.from_object(get_config())
+
+    _validate_rate_limit_config(app)
+    trusted_proxy_count = int(
+        app.config.get('RATELIMIT_TRUSTED_PROXY_COUNT', 0) or 0
+    )
+    if trusted_proxy_count > 0:
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=trusted_proxy_count)
     
     # Initialize configuration-specific setup
     config_class = app.config.__class__
@@ -37,6 +47,7 @@ def create_app(config_name=None):
     bcrypt.init_app(app)
     mail.init_app(app)
     csrf.init_app(app)
+    limiter.init_app(app)
 
     # Request correlation: X-Request-ID in/out + log record stamping
     init_request_context(app)
@@ -113,6 +124,23 @@ def create_app(config_name=None):
         return response
     
     # Error handlers
+    @app.errorhandler(429)
+    def rate_limited_error(error):
+        request_limit = limiter.current_limit
+        reset_at = getattr(request_limit, 'reset_at', None)
+        retry_after = max(
+            1,
+            math.ceil(reset_at - time.time()) if reset_at else 1,
+        )
+        if _wants_json_response():
+            from services.api_errors import rate_limited_response
+            return rate_limited_response(retry_after)
+        response = make_response(
+            render_template('errors/429.html'), 429
+        )
+        response.headers['Retry-After'] = str(retry_after)
+        return response
+
     @app.errorhandler(CSRFError)
     def handle_csrf_error(error):
         request_id = get_request_id()
@@ -165,9 +193,39 @@ def create_app(config_name=None):
     return app
 
 
+def _validate_rate_limit_config(app):
+    """Reject process-local or ambiguous limiter configuration in production."""
+    if not app.config.get('RATELIMIT_REQUIRE_SHARED_STORAGE'):
+        return
+    if not app.config.get('RATELIMIT_ENABLED'):
+        raise RuntimeError('Production rate limits must be enabled.')
+    storage_uri = (app.config.get('RATELIMIT_STORAGE_URI') or '').strip()
+    if not storage_uri.startswith(('redis://', 'rediss://')):
+        raise RuntimeError(
+            'Production rate limits require shared Redis storage.'
+        )
+    secret = (app.config.get('RATELIMIT_HMAC_SECRET') or '').strip()
+    prefix = (app.config.get('RATELIMIT_KEY_PREFIX') or '').strip()
+    if not secret or not prefix:
+        raise RuntimeError(
+            'Production rate limits require a limiter secret and key prefix.'
+        )
+    proxy_count = app.config.get('RATELIMIT_TRUSTED_PROXY_COUNT', 0)
+    if not isinstance(proxy_count, int) or isinstance(proxy_count, bool) or proxy_count < 0:
+        raise RuntimeError('Production trusted proxy count must be zero or greater.')
+
+
 def _wants_json_response():
     """True when the client asked for JSON or the endpoint is API-scoped."""
-    if request.path.startswith('/api/'):
+    if (
+        request.path.startswith('/api/')
+        or '/api/' in request.path
+        or request.is_json
+        or request.endpoint in {
+            'settings.trigger_weekly_report',
+            'settings.test_discord_webhook',
+        }
+    ):
         return True
     best = request.accept_mimetypes.best_match(['application/json', 'text/html'])
     return (

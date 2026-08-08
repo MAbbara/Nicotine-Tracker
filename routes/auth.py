@@ -5,6 +5,11 @@ from services import create_user              # new import
 from services.password_reset_service import PasswordResetService
 from services.email_verification_service import EmailVerificationService
 from services.timezone_service import validate_timezone
+from services.rate_limit_service import (
+    auth_account_limit,
+    auth_ip_limit,
+    auth_user_limit,
+)
 from extensions import db, mail
 import re
 from datetime import datetime, timedelta
@@ -103,6 +108,8 @@ def send_reset_email(user, reset_token):
         current_app.logger.error(f'Failed to send reset email: {e}')
 
 @auth_bp.route('/register', methods=['GET', 'POST'])
+@auth_ip_limit()
+@auth_account_limit()
 def register():
     if 'user_id' in session:
         user = get_current_user()
@@ -167,6 +174,8 @@ def register():
     return render_template('register.html')
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
+@auth_ip_limit()
+@auth_account_limit()
 def login():
     if 'user_id' in session:
         return redirect(url_for('today.index'))
@@ -242,6 +251,8 @@ def verify_email(token):
     return redirect(url_for('auth.login'))
 
 @auth_bp.route('/resend_verification', methods=['POST'])
+@auth_ip_limit()
+@auth_user_limit()
 def resend_verification():
     """Resend verification email for logged in user"""
     try:
@@ -276,6 +287,8 @@ def resend_verification():
     return redirect(request.referrer or url_for('dashboard.index'))
 
 @auth_bp.route('/forgot_password', methods=['GET', 'POST'])
+@auth_ip_limit()
+@auth_account_limit()
 def forgot_password():
     if request.method == 'POST':
         try:
@@ -292,14 +305,14 @@ def forgot_password():
                 reset_service = PasswordResetService()
                 recent_attempts = reset_service.get_recent_attempts(user.id, hours=1)
                 
-                if recent_attempts >= 3:
-                    flash('Too many password reset attempts. Please try again later.', 'error')
-                    return render_template('forgot_password.html')
-                
-                # Create reset token using service
-                reset_token = reset_service.create_reset_token(user.id)
-                send_reset_email(user, reset_token)
-                current_app.logger.info(f'Password reset requested for {email}')
+                if recent_attempts < 3:
+                    # Preserve the credential cooldown without disclosing
+                    # whether the submitted address owns an account.
+                    reset_token = reset_service.create_reset_token(user.id)
+                    send_reset_email(user, reset_token)
+                    current_app.logger.info(
+                        'Password reset requested for a known account'
+                    )
             
             # Always show success message for security
             flash('If an account with that email exists, a password reset link has been sent.', 'info')
@@ -313,6 +326,8 @@ def forgot_password():
     return render_template('forgot_password.html')
 
 @auth_bp.route('/reset_password/<token>', methods=['GET', 'POST'])
+@auth_ip_limit()
+@auth_account_limit(token=True)
 def reset_password(token):
     try:
         reset_service = PasswordResetService()

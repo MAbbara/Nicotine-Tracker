@@ -327,7 +327,7 @@ test('Reminders persist and async actions expose success and failure feedback', 
       + '<p>No active goals. Consider setting some goals to track your progress!</p>'
       + '<p>Keep up the great work! Remember, every small step counts towards your health goals.</p>',
     priority: 4,
-    scheduled_for: null,
+    scheduled_for: expect.any(String),
     extra_data: {
       active_streaks: 0,
       daily_average_mg: 0,
@@ -419,6 +419,38 @@ test('Data privacy controls persist and Statistics hands off to Insights', async
       },
     ],
   });
+});
+
+
+test('notification rate limits keep calm recovery copy and keyboard ownership', async ({ page }) => {
+  await login(page, 'release-settings@example.com');
+  await page.goto('/settings/notifications');
+  await page.route('**/settings/notifications/trigger-weekly', (route) => route.fulfill({
+    status: 429,
+    headers: { 'Retry-After': '60' },
+    contentType: 'application/json',
+    body: JSON.stringify({
+      error: {
+        code: 'rate_limited',
+        message: 'Too many requests. Pause for a moment, then try again.',
+        field_errors: {},
+        retryable: true,
+      },
+    }),
+  }));
+  const weekly = page.getByLabel('Weekly progress report');
+  if (!await weekly.isChecked()) await weekly.check();
+  const button = page.locator('#trigger-weekly-report');
+  const status = page.locator('#weekly-report-status');
+
+  await keyboardActivate(page, button);
+
+  await expect(status).toHaveText(
+    'Too many requests. Pause for a moment, then try again.',
+  );
+  await expect(status).toHaveAttribute('data-state', 'error');
+  await expect(button).toBeEnabled();
+  await expect(button).toBeFocused();
 });
 
 

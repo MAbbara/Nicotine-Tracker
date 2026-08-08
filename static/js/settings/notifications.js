@@ -60,6 +60,7 @@ async function postJson(fetchImpl, endpoint, body, csrfToken) {
   const response = await fetchImpl(endpoint, {
     method: 'POST',
     headers: {
+      'Accept': 'application/json',
       'Content-Type': 'application/json',
       'X-CSRFToken': csrfToken,
     },
@@ -75,7 +76,7 @@ async function postJson(fetchImpl, endpoint, body, csrfToken) {
   }
   return {
     success: response.ok && payload.success === true,
-    message: payload.message,
+    message: payload.message || payload.error?.message,
   };
 }
 

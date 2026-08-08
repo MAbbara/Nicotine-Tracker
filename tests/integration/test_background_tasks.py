@@ -1,12 +1,18 @@
 """Scheduled goal evaluation uses shared reset-aware evidence semantics."""
 
 from datetime import datetime, time, timedelta, timezone
+import threading
 
+import pytest
+from sqlalchemy import event
+from sqlalchemy.orm import Session
 from models import (
     DailyCheckIn, Goal, Log, NotificationQueue, User, UserPreferences,
 )
 from services.background_tasks import BackgroundTaskProcessor
 import services.background_tasks as background_tasks
+from services.notification_service import NotificationService
+from extensions import db
 
 
 class _FrozenScheduledDateTime(datetime):
@@ -191,3 +197,102 @@ def test_scheduled_weekly_reports_share_one_captured_utc_instant(
     assert {instant for _user_id, instant in captured} == {
         datetime(2030, 1, 14, 12, 0, tzinfo=timezone.utc)
     }
+
+
+def test_weekly_report_replay_returns_same_rows_per_channel_and_period(
+        app, db_session, test_user):
+    preferences = _notifications_enabled(db_session, test_user)
+    preferences.weekly_reports = True
+    preferences.notification_channel = ['email', 'discord']
+    preferences.discord_webhook = (
+        'https://discord.com/api/webhooks/example/test-token'
+    )
+    db_session.commit()
+    instant = datetime(2030, 1, 14, 12, 0, tzinfo=timezone.utc)
+    service = NotificationService()
+
+    first = service.queue_weekly_report(test_user, now_utc=instant)
+    replay = service.queue_weekly_report(test_user, now_utc=instant)
+
+    assert [row.id for row in replay] == [row.id for row in first]
+    assert {row.notification_type for row in first} == {'email', 'discord'}
+    assert {row.report_period_start.isoformat() for row in first} == {
+        '2030-01-07'
+    }
+    assert len({row.idempotency_key for row in first}) == 2
+    assert NotificationQueue.query.filter_by(
+        user_id=test_user.id, category='weekly_report'
+    ).count() == 2
+
+
+def test_manual_and_scheduled_weekly_report_attempts_converge(
+        app, db_session, test_user):
+    preferences = _notifications_enabled(db_session, test_user)
+    preferences.weekly_reports = True
+    db_session.commit()
+    instant = datetime(2030, 1, 14, 12, 0, tzinfo=timezone.utc)
+    service = NotificationService()
+    processor = BackgroundTaskProcessor(app)
+    processor.notification_service = service
+
+    manual = service.queue_weekly_report(test_user, now_utc=instant)
+    scheduled = processor._send_weekly_report(test_user, now_utc=instant)
+
+    assert scheduled
+    rows = NotificationQueue.query.filter_by(
+        user_id=test_user.id, category='weekly_report'
+    ).all()
+    assert [row.id for row in rows] == [row.id for row in manual]
+
+
+def test_concurrent_weekly_report_sessions_return_one_stable_channel_row(
+        app, db_session, test_user):
+    if db.engine.dialect.name != 'mysql':
+        pytest.skip('MySQL unique-conflict mapping is exercised by --db=mysql')
+    preferences = _notifications_enabled(db_session, test_user)
+    preferences.weekly_reports = True
+    db_session.commit()
+    user_id = test_user.id
+    instant = datetime(2030, 1, 14, 12, 0, tzinfo=timezone.utc)
+    ready_to_flush = threading.Barrier(2)
+    results = []
+    errors = []
+
+    def synchronize_weekly_flush(session, _flush_context, _instances):
+        if any(
+            isinstance(row, NotificationQueue)
+            and row.category == 'weekly_report'
+            for row in session.new
+        ):
+            ready_to_flush.wait(timeout=10)
+
+    def attempt():
+        try:
+            with app.app_context():
+                user = db.session.get(User, user_id)
+                rows = NotificationService().queue_weekly_report(
+                    user, now_utc=instant
+                )
+                results.append([row.id for row in rows] if rows else rows)
+                db.session.remove()
+        except Exception as exc:  # asserted empty below
+            errors.append(exc)
+
+    event.listen(Session, 'before_flush', synchronize_weekly_flush)
+    try:
+        workers = [threading.Thread(target=attempt) for _ in range(2)]
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join(timeout=20)
+        assert all(not worker.is_alive() for worker in workers)
+    finally:
+        event.remove(Session, 'before_flush', synchronize_weekly_flush)
+
+    assert errors == []
+    assert results[0] == results[1]
+    assert len(results[0]) == 1
+    db.session.rollback()
+    assert NotificationQueue.query.filter_by(
+        user_id=user_id, category='weekly_report'
+    ).count() == 1

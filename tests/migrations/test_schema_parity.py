@@ -507,6 +507,7 @@ class TestNicotineFirstTargetMigration:
         assert db.stamp() == NICOTINE_FIRST_REVISION
         assert _nicotine_schema_signature(db) == schema_before
         assert _historical_target_snapshot(db) == data_before
+        db.upgrade(harness.resolve_single_head())
         assert harness.schema_diffs(db.connection) == []
 
 

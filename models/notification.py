@@ -6,6 +6,13 @@ from extensions import db
 
 class NotificationQueue(db.Model):
     __tablename__ = 'notification_queue'
+    __table_args__ = (
+        db.Index('ix_notification_queue_user_id', 'user_id'),
+        db.UniqueConstraint(
+            'user_id', 'category', 'report_period_start', 'notification_type',
+            name='uq_notification_weekly_period_channel',
+        ),
+    )
     
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -29,6 +36,8 @@ class NotificationQueue(db.Model):
     # Priority and extra data
     priority = db.Column(db.Integer, default=5, nullable=False)  # 1-10, 1 being highest priority
     extra_data = db.Column(db.JSON, nullable=True)  # Additional data for the notification
+    report_period_start = db.Column(db.Date, nullable=True)
+    idempotency_key = db.Column(db.String(64), nullable=True)
     
     # Relationships
     user = db.relationship('User', backref=db.backref('queued_notifications', lazy='dynamic', cascade='all, delete-orphan'))
@@ -50,7 +59,12 @@ class NotificationQueue(db.Model):
             'last_attempt_at': self.last_attempt_at.isoformat() if self.last_attempt_at else None,
             'error_message': self.error_message,
             'priority': self.priority,
-            'extra_data': self.extra_data
+            'extra_data': self.extra_data,
+            'report_period_start': (
+                self.report_period_start.isoformat()
+                if self.report_period_start else None
+            ),
+            'idempotency_key': self.idempotency_key,
         }
     
     def __repr__(self):
