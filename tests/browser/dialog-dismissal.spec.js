@@ -603,3 +603,39 @@ test('add-log dismissal cleans only its transient URL flag and stays closed on r
   await expect(dialog).toBeHidden();
   expect(errors).toEqual([]);
 });
+
+
+test('native add-log dialog coalesces competing dismissals and releases document interaction', async ({ page }) => {
+  const errors = watchForProductProblems(page);
+  await loginAs(page, 'release-inventory@example.com');
+  await page.goto('/log/view');
+  const current = await openDialog(page, DIALOGS[2]);
+  const lifecycleDialog = current.attachedDialog || current.dialog;
+
+  await current.dialog.evaluate((element) => {
+    element.dataset.testCloseEvents = '0';
+    element.addEventListener('close', () => {
+      element.dataset.testCloseEvents = String(
+        Number(element.dataset.testCloseEvents) + 1,
+      );
+    });
+    element.querySelector('.c-dialog__close').click();
+    element.dispatchEvent(new Event('cancel', { bubbles: false, cancelable: true }));
+    element.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true, pointerId: 91,
+    }));
+    element.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true, pointerId: 91,
+    }));
+  });
+
+  await expect(current.dialog).toBeHidden();
+  await expect(lifecycleDialog).toHaveAttribute('data-test-close-events', '1');
+  await expect(current.opener).toBeFocused();
+
+  const search = page.getByLabel('Search logs');
+  await search.fill('interaction after close');
+  await expect(search).toHaveValue('interaction after close');
+  await expect(current.dialog).toBeHidden();
+  expect(errors).toEqual([]);
+});
