@@ -181,6 +181,25 @@ function patternSection({ available, values, heading, availableCopy, unavailable
   };
 }
 
+function nicotineDistributionModel(values = {}, coverage = {}) {
+  const rows = Object.entries(values).map(([label, rawMg]) => ({
+    label, mg: finiteNumber(rawMg),
+  })).filter(({ mg }) => mg > 0).sort((a, b) => b.mg - a.mg);
+  const totalMg = rows.reduce((sum, row) => sum + row.mg, 0);
+  const bars = rows.map((row) => ({
+    ...row,
+    share: totalMg ? Math.round((row.mg / totalMg) * 1000) / 10 : 0,
+  }));
+  const state = !bars.length ? 'empty' : bars.length === 1 ? 'single' : 'ready';
+  const unknown = Math.max(0, Math.trunc(finiteNumber(coverage.unknown_pouches)));
+  const coverageCopy = unknown > 0
+    ? `${pluralize(unknown, 'pouch', 'pouches')} had no saved strength, so nicotine totals are incomplete.`
+    : finiteNumber(coverage.total_pouches) > 0
+      ? 'Every pouch in this range has a saved strength.'
+      : 'Strength coverage will appear after you log a pouch.';
+  return { state, bars, totalMg, coverageCopy };
+}
+
 export function buildInsightsViewModel(data = {}, rangeDays = 30) {
   const range = Math.max(1, Math.trunc(finiteNumber(data.range_days, rangeDays || 30)));
   const total = finiteNumber(data.comparison?.current_total, finiteNumber(data.total_pouches));
@@ -237,6 +256,12 @@ export function buildInsightsViewModel(data = {}, rangeDays = 30) {
   };
   const planContext = planContextModel(data.plan_context);
   const cravingPattern = cravingPatternModel(data.craving_pattern);
+  const timeNicotine = nicotineDistributionModel(
+    data.nicotine_by_time_of_day, data.strength_coverage,
+  );
+  const productNicotine = nicotineDistributionModel(
+    data.nicotine_by_product, data.strength_coverage,
+  );
 
   let nextStep;
   if (state !== 'ready') {
@@ -290,7 +315,10 @@ export function buildInsightsViewModel(data = {}, rangeDays = 30) {
         value: formatNumber(observedDays),
       },
     ],
-    sections: { timePattern, weeklyPattern, productPattern, hourlyDetail },
+    sections: {
+      timePattern, weeklyPattern, productPattern, hourlyDetail,
+      timeNicotine, productNicotine,
+    },
     planContext,
     cravingPattern,
     nextStep,

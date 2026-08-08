@@ -38,7 +38,9 @@ def get_insights():
     if not insights:
         return jsonify(error="Could not generate insights."), 404
         
-    return jsonify(insights)
+    response = jsonify(insights)
+    response.headers['Cache-Control'] = 'no-store'
+    return response
 
 @insights_bp.route('/api/export', methods=['GET'])
 @login_required

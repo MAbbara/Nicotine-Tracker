@@ -5359,6 +5359,22 @@
   color: var(--color-ink);
 }
 
+.insights-range__option.is-pending:not(.is-active) {
+  box-shadow: inset 0 0 0 1px var(--color-border-strong);
+}
+
+.insights-load-status {
+  min-height: 1.5em;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-small);
+}
+
+.insights-load-status[hidden] {
+  display: block;
+  visibility: hidden;
+}
+
 .insights-range__long {
   display: none;
 }

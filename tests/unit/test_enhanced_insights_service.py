@@ -29,6 +29,87 @@ LEGACY_KEYS = {
 }
 
 
+def test_nicotine_distributions_use_immutable_log_snapshots_and_report_coverage(
+        db_session, test_user, test_pouch, monkeypatch):
+    boundary = datetime(2026, 8, 8, 0, 0)
+    _freeze_utcnow(monkeypatch, boundary)
+    long_brand = "A deliberately long preserved product label for accessible rows"
+    morning = _add_log(
+        db_session, test_user, test_pouch,
+        at=boundary - timedelta(days=1, hours=-8), quantity=2,
+    )
+    morning.product_brand_snapshot = long_brand
+    morning.nicotine_mg_snapshot = Decimal("6.00")
+    evening = _add_log(
+        db_session, test_user, test_pouch,
+        at=boundary - timedelta(days=1, hours=-20), quantity=1,
+    )
+    evening.product_brand_snapshot = "Zero strength"
+    evening.nicotine_mg_snapshot = Decimal("0.00")
+    unknown = Log(
+        user_id=test_user.id,
+        log_time=boundary - timedelta(days=2, hours=-14),
+        product_brand_snapshot="Unknown strength",
+        nicotine_mg_snapshot=None,
+        quantity=3,
+    )
+    db_session.add(unknown)
+    db_session.commit()
+
+    # A mutable catalog record must never rewrite historical distribution data.
+    test_pouch.brand = "Changed live catalog brand"
+    test_pouch.nicotine_mg = Decimal("99.00")
+    db_session.commit()
+
+    result = insights_service.get_enhanced_insights(test_user.id, 7)
+
+    assert result["nicotine_by_time_of_day"] == {
+        "Morning (6AM-12PM)": 12.0,
+        "Night (12AM-6AM)": 0.0,
+        "Afternoon (12PM-6PM)": 0.0,
+        "Evening (6PM-12AM)": 0.0,
+    }
+    assert result["nicotine_by_product"] == {
+        long_brand: 12.0,
+        "Zero strength": 0.0,
+    }
+    assert result["strength_coverage"] == {
+        "known_pouches": 3,
+        "unknown_pouches": 3,
+        "total_pouches": 6,
+        "known_percent": 50.0,
+        "complete": False,
+    }
+    assert "Changed live catalog brand" not in result["nicotine_by_product"]
+
+
+def test_nicotine_distributions_have_meaningful_empty_and_single_category_states(
+        db_session, test_user, test_pouch, monkeypatch):
+    boundary = datetime(2026, 8, 8, 0, 0)
+    _freeze_utcnow(monkeypatch, boundary)
+    empty = insights_service.get_enhanced_insights(test_user.id, 7)
+    assert empty["nicotine_by_time_of_day"] == {}
+    assert empty["nicotine_by_product"] == {}
+    assert empty["strength_coverage"]["total_pouches"] == 0
+
+    row = _add_log(
+        db_session, test_user, test_pouch,
+        at=boundary - timedelta(days=1, hours=-9), quantity=2,
+    )
+    row.product_brand_snapshot = "Only known product"
+    row.nicotine_mg_snapshot = Decimal("4.00")
+    db_session.commit()
+    single = insights_service.get_enhanced_insights(test_user.id, 7)
+    assert single["nicotine_by_time_of_day"] == {
+        "Morning (6AM-12PM)": 8.0,
+        "Night (12AM-6AM)": 0.0,
+        "Afternoon (12PM-6PM)": 0.0,
+        "Evening (6PM-12AM)": 0.0,
+    }
+    assert single["nicotine_by_product"] == {"Only known product": 8.0}
+    assert single["strength_coverage"]["complete"] is True
+
+
 def _freeze_utcnow(monkeypatch, value):
     class FrozenDateTime(datetime):
         @classmethod
@@ -61,6 +142,10 @@ def _add_plan(
         baseline_source="manual" if targeted else "observe",
         pace="steady" if targeted else None,
         end_target_pouches=targets[-1] if targets else (4 if targeted else None),
+        end_target_mg=(
+            Decimal((targets[-1] if targets else 4) * 4)
+            if targeted else None
+        ),
     )
     db_session.add(plan)
     db_session.flush()
@@ -70,6 +155,7 @@ def _add_plan(
         pace=plan.pace,
         target_date=plan.target_date,
         end_target_pouches=plan.end_target_pouches,
+        end_target_mg=plan.end_target_mg,
         generation_inputs={},
         preview_digest=(str(plan.id) * 64)[:64],
         reason="initial",

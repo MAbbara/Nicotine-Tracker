@@ -98,6 +98,63 @@ def _comparison_metadata(current_df, previous_df, days):
     }
 
 
+def _nicotine_distribution(df):
+    """Aggregate known nicotine mg from immutable log snapshot columns."""
+    empty_coverage = {
+        'known_pouches': 0,
+        'unknown_pouches': 0,
+        'total_pouches': 0,
+        'known_percent': 0.0,
+        'complete': True,
+    }
+    if df.empty:
+        return {}, {}, empty_coverage
+
+    working = df.copy()
+    working['quantity'] = pd.to_numeric(working['quantity'], errors='coerce').fillna(0)
+    known = working['nicotine_mg'].notna()
+    working['nicotine_total_mg'] = 0.0
+    working.loc[known, 'nicotine_total_mg'] = (
+        working.loc[known, 'quantity'].astype(float)
+        * working.loc[known, 'nicotine_mg'].astype(float)
+    )
+    working['hour'] = working['user_time'].dt.hour
+    working['time_of_day'] = pd.cut(
+        working['hour'], bins=[0, 6, 12, 18, 24],
+        labels=[
+            'Night (12AM-6AM)', 'Morning (6AM-12PM)',
+            'Afternoon (12PM-6PM)', 'Evening (6PM-12AM)',
+        ],
+        right=False,
+    )
+
+    def sorted_values(grouped):
+        return {
+            str(label): round(float(value), 1)
+            for label, value in grouped.sort_values(ascending=False).items()
+            if pd.notna(label)
+        }
+
+    by_time = sorted_values(
+        working.loc[known].groupby('time_of_day', observed=False)['nicotine_total_mg'].sum()
+    )
+    by_product = sorted_values(
+        working.loc[known & working['brand'].notna()]
+        .groupby('brand')['nicotine_total_mg'].sum()
+    )
+    known_pouches = int(working.loc[known, 'quantity'].sum())
+    unknown_pouches = int(working.loc[~known, 'quantity'].sum())
+    total_pouches = known_pouches + unknown_pouches
+    coverage = {
+        'known_pouches': known_pouches,
+        'unknown_pouches': unknown_pouches,
+        'total_pouches': total_pouches,
+        'known_percent': round(known_pouches / total_pouches * 100, 1) if total_pouches else 0.0,
+        'complete': unknown_pouches == 0,
+    }
+    return by_time, by_product, coverage
+
+
 def _neutral_plan_context(plan=None, *, state="none", compared_days=0):
     return {
         'state': state,
@@ -299,6 +356,9 @@ def get_enhanced_insights(user_id: int, days: int = 30):
             'consumption_by_time_of_day': {},
             'consumption_by_day_of_week': {},
             'brand_analysis': {},
+            'nicotine_by_time_of_day': {},
+            'nicotine_by_product': {},
+            'strength_coverage': _nicotine_distribution(df)[2],
             'consumption_trend': [],
             'heatmap_data': [],
             'ai_insights': [],
@@ -344,6 +404,7 @@ def get_enhanced_insights(user_id: int, days: int = 30):
     
     # Brand analysis
     brand_analysis = get_brand_analysis(df)
+    nicotine_by_time, nicotine_by_product, strength_coverage = _nicotine_distribution(df)
     
     # Consumption trend data for charts
     consumption_trend = get_consumption_trend(daily_consumption)
@@ -370,6 +431,9 @@ def get_enhanced_insights(user_id: int, days: int = 30):
         'consumption_by_time_of_day': consumption_by_time,
         'consumption_by_day_of_week': consumption_by_day_week,
         'brand_analysis': brand_analysis,
+        'nicotine_by_time_of_day': nicotine_by_time,
+        'nicotine_by_product': nicotine_by_product,
+        'strength_coverage': strength_coverage,
         'consumption_trend': consumption_trend,
         'heatmap_data': heatmap_data,
         'ai_insights': ai_insights,

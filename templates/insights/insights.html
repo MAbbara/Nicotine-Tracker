@@ -69,6 +69,7 @@
             </div>
             <button id="export-data" type="button" class="c-button c-button--quiet">Export CSV</button>
         </div>
+        <p class="insights-load-status" data-insights-load-status role="status" aria-live="polite" hidden></p>
     </header>
 
     <section class="insights-lead" aria-labelledby="what-changed-title">
@@ -169,12 +170,13 @@
                 <p data-insights-time-copy>Logging across the day reveals where a little advance support can help most.</p>
             </div>
             <div class="insights-figure">
-                <h3 id="time-of-day-title">Time of day</h3>
+                <h3 id="time-of-day-title">Known nicotine by time of day</h3>
+                <p data-insights-time-nicotine-copy>{% if initial_insights.get('strength_coverage', {}).get('unknown_pouches', 0) %}Some pouches have no saved strength, so nicotine totals are incomplete.{% else %}Bars show known nicotine in this range.{% endif %}</p>
                 <div id="time-of-day-chart" class="analytics-chart" role="img" aria-labelledby="time-of-day-title"></div>
                 <p class="analytics-chart__status" role="status" aria-live="polite" hidden></p>
                 <details class="analytics-figure__table">
                     <summary>View time-of-day data</summary>
-                    <div class="analytics-data" tabindex="0" role="region" aria-label="Time of day distribution data"><table><caption>Time of day distribution data</caption><thead><tr><th scope="col">Time</th><th scope="col">Pouches</th></tr></thead><tbody data-analytics-key="timeOfDay">{% for label, value in initial_insights.get('consumption_by_time_of_day', {}).items() %}<tr><th scope="row">{{ label }}</th><td>{{ value }}</td></tr>{% else %}<tr><td colspan="2">No consumption logged in this range.</td></tr>{% endfor %}</tbody></table></div>
+                    <div class="analytics-data" tabindex="0" role="region" aria-label="Time of day nicotine data"><table><caption>Known nicotine by time of day</caption><thead><tr><th scope="col">Time</th><th scope="col">Nicotine (mg)</th></tr></thead><tbody data-analytics-key="timeOfDay">{% for label, value in initial_insights.get('nicotine_by_time_of_day', {}).items() %}<tr><th scope="row">{{ label }}</th><td>{{ value }}</td></tr>{% else %}<tr><td colspan="2">No known-strength nicotine logged in this range.</td></tr>{% endfor %}</tbody></table></div>
                 </details>
             </div>
             <div class="insights-figure insights-figure--secondary">
@@ -202,12 +204,13 @@
                 <p data-insights-product-copy>Product patterns add context to the moments you are already noticing.</p>
             </div>
             <div class="insights-figure">
-                <h3 id="brand-title">Product mix</h3>
+                <h3 id="brand-title">Known nicotine by product</h3>
+                <p data-insights-product-nicotine-copy>{% if initial_insights.get('strength_coverage', {}).get('unknown_pouches', 0) %}Some pouches have no saved strength, so nicotine totals are incomplete.{% else %}Bars show known nicotine in this range.{% endif %}</p>
                 <div id="brand-chart" class="analytics-chart" role="img" aria-labelledby="brand-title"></div>
                 <p class="analytics-chart__status" role="status" aria-live="polite" hidden></p>
                 <details class="analytics-figure__table">
                     <summary>View product data</summary>
-                    <div class="analytics-data" tabindex="0" role="region" aria-label="Brand preference data"><table><caption>Brand preference data</caption><thead><tr><th scope="col">Product</th><th scope="col">Pouches</th></tr></thead><tbody data-analytics-key="brands">{% for label, value in initial_insights.get('brand_analysis', {}).items() %}<tr><th scope="row">{{ label }}</th><td>{{ value }}</td></tr>{% else %}<tr><td colspan="2">No product data in this range.</td></tr>{% endfor %}</tbody></table></div>
+                    <div class="analytics-data" tabindex="0" role="region" aria-label="Product nicotine data"><table><caption>Known nicotine by product</caption><thead><tr><th scope="col">Product</th><th scope="col">Nicotine (mg)</th></tr></thead><tbody data-analytics-key="brands">{% for label, value in initial_insights.get('nicotine_by_product', {}).items() %}<tr><th scope="row">{{ label }}</th><td>{{ value }}</td></tr>{% else %}<tr><td colspan="2">No known-strength product data in this range.</td></tr>{% endfor %}</tbody></table></div>
                 </details>
             </div>
         </section>

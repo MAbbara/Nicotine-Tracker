@@ -42,6 +42,18 @@ export function buildInsightsAlternativeModel(data = {}, trendType = 'daily') {
     label,
     value: Number(count) || 0,
   }));
+  const mgRows = (value) => pairs(value).map(({ label, value: mg }) => ({ label, value: mg }));
+  const bars = (rows) => {
+    const positive = rows.filter(({ value }) => value > 0).sort((a, b) => b.value - a.value);
+    const total = positive.reduce((sum, row) => sum + row.value, 0);
+    return positive.map(({ label, value }) => ({
+      label,
+      mg: value,
+      share: total ? Math.round((value / total) * 1000) / 10 : 0,
+    }));
+  };
+  const timeOfDayMg = mgRows(data.nicotine_by_time_of_day);
+  const productMg = mgRows(data.nicotine_by_product);
   return {
     trend: buildTrendModel(data, trendType),
     timeOfDay: pairs(data.consumption_by_time_of_day),
@@ -50,6 +62,14 @@ export function buildInsightsAlternativeModel(data = {}, trendType = 'daily') {
       value: Number(data.consumption_by_day_of_week?.[label]) || 0,
     })),
     brands: pairs(data.brand_analysis),
+    timeOfDayMg,
+    productMg,
+    timeOfDayBars: bars(timeOfDayMg),
+    productBars: bars(productMg),
+    strengthCoverage: data.strength_coverage || {
+      known_pouches: 0, unknown_pouches: 0, total_pouches: 0,
+      known_percent: 0, complete: true,
+    },
     heatmap: (data.heatmap_data || []).flatMap((series) => (
       (series.data || []).map((point, index) => ({
         day: series.name,
@@ -73,13 +93,13 @@ export function selectEligibleChartIds(data = {}, trendType = 'daily', { details
   if (sufficient.trend && hasPositive(model.trend.map((row) => row.value))) {
     eligible.push('consumption-trend-chart');
   }
-  if (sufficient.time_pattern && hasPositive(model.timeOfDay.map((row) => row.value))) {
+  if (sufficient.time_pattern && hasPositive(model.timeOfDayBars.map((row) => row.mg))) {
     eligible.push('time-of-day-chart');
   }
   if (sufficient.trend && hasPositive(model.dayOfWeek.map((row) => row.value))) {
     eligible.push('day-of-week-chart');
   }
-  if (sufficient.brand_pattern && hasPositive(model.brands.map((row) => row.value))) {
+  if (sufficient.brand_pattern && hasPositive(model.productBars.map((row) => row.mg))) {
     eligible.push('brand-chart');
   }
   if (detailsOpen && sufficient.heatmap && hasPositive(model.heatmap.map((row) => row.value))) {
@@ -146,9 +166,9 @@ function renderHeatmapRows(root, rows) {
 function updateAlternatives(root, data, trendType) {
   const model = buildInsightsAlternativeModel(data, trendType);
   renderRows(root, 'trend', model.trend, 'No consumption logged in this range.');
-  renderRows(root, 'timeOfDay', model.timeOfDay, 'No consumption logged in this range.');
+  renderRows(root, 'timeOfDay', model.timeOfDayMg, 'No known-strength nicotine logged in this range.');
   renderRows(root, 'dayOfWeek', model.dayOfWeek, 'No weekly pattern available.');
-  renderRows(root, 'brands', model.brands, 'No brand data in this range.');
+  renderRows(root, 'brands', model.productMg, 'No known-strength product data in this range.');
   renderHeatmapRows(root, model.heatmap);
   return model;
 }
@@ -183,7 +203,7 @@ function statusFor(target) {
   return target?.parentElement?.querySelector('.analytics-chart__status') || null;
 }
 
-function chartDefinitions(data, trendType) {
+export function chartDefinitions(data, trendType) {
   const theme = themeConfig();
   const model = buildInsightsAlternativeModel(data, trendType);
   return [
@@ -197,10 +217,12 @@ function chartDefinitions(data, trendType) {
       yaxis: { min: 0, labels: { style: { colors: theme.foreColor } } },
     }],
     ['time-of-day-chart', {
-      ...commonChart('donut', 250, theme),
-      series: model.timeOfDay.map((row) => row.value),
-      labels: model.timeOfDay.map((row) => row.label),
-      colors: ['#55755F', '#B76343', '#C5A05A', '#7C8B80'],
+      ...commonChart('bar', 250, theme),
+      series: [{ name: 'Nicotine (mg)', data: model.timeOfDayBars.map((row) => row.mg) }],
+      plotOptions: { bar: { horizontal: true, borderRadius: 4 } },
+      xaxis: { categories: model.timeOfDayBars.map((row) => row.label), labels: { style: { colors: theme.foreColor } } },
+      yaxis: { labels: { style: { colors: theme.foreColor }, maxWidth: 180 } },
+      colors: ['#55755F'],
       noData: { text: 'No data available' },
     }],
     ['day-of-week-chart', {
@@ -211,10 +233,12 @@ function chartDefinitions(data, trendType) {
       yaxis: { min: 0, labels: { style: { colors: theme.foreColor } } },
     }],
     ['brand-chart', {
-      ...commonChart('donut', 250, theme),
-      series: model.brands.map((row) => row.value),
-      labels: model.brands.map((row) => row.label),
-      colors: ['#55755F', '#B76343', '#C5A05A', '#7C8B80', '#944733'],
+      ...commonChart('bar', 250, theme),
+      series: [{ name: 'Nicotine (mg)', data: model.productBars.map((row) => row.mg) }],
+      plotOptions: { bar: { horizontal: true, borderRadius: 4 } },
+      xaxis: { categories: model.productBars.map((row) => row.label), labels: { style: { colors: theme.foreColor } } },
+      yaxis: { labels: { style: { colors: theme.foreColor }, maxWidth: 180 } },
+      colors: ['#B76343'],
       noData: { text: 'No brand data available' },
     }],
     ['heatmap-chart', {
@@ -259,6 +283,13 @@ function updateEditorial(root, viewModel, rangeDays) {
   setText('[data-insights-weekly-copy]', viewModel.sections.weeklyPattern.interpretation);
   setText('[data-insights-product-copy]', viewModel.sections.productPattern.interpretation);
   setText('[data-insights-hourly-copy]', viewModel.sections.hourlyDetail.interpretation);
+  const distributionCopy = (model, subject) => {
+    if (model.state === 'empty') return `No known-strength nicotine is available by ${subject} yet. ${model.coverageCopy}`;
+    if (model.state === 'single') return `All known nicotine in this range is in one ${subject} category. ${model.coverageCopy}`;
+    return `${model.coverageCopy} Bars show known nicotine only.`;
+  };
+  setText('[data-insights-time-nicotine-copy]', distributionCopy(viewModel.sections.timeNicotine, 'time'));
+  setText('[data-insights-product-nicotine-copy]', distributionCopy(viewModel.sections.productNicotine, 'product'));
   const planContext = root.querySelector('[data-insights-plan-context]');
   if (planContext) planContext.hidden = !viewModel.planContext.visible;
   const cravingPattern = root.querySelector('[data-craving-pattern]');
@@ -311,8 +342,10 @@ function setPending(root, pending, message = '') {
   if (pending) root.setAttribute('aria-busy', 'true');
   else root.removeAttribute('aria-busy');
   root.querySelectorAll('[data-days]').forEach((control) => {
-    if (pending) control.setAttribute('aria-disabled', 'true');
-    else control.removeAttribute('aria-disabled');
+    const requested = pending && Number(control.dataset.days) === Number(root.dataset.pendingDays);
+    control.classList.toggle('is-pending', requested);
+    if (requested) control.setAttribute('aria-busy', 'true');
+    else control.removeAttribute('aria-busy');
   });
   setLoadStatus(root, message);
 }
@@ -453,7 +486,7 @@ export async function startInsights(scope = document) {
   let currentRange = Number(currentData.range_days) || 30;
   let trendType = 'daily';
   let requestGeneration = 0;
-  let rangePending = false;
+  let rangeController = null;
   const disclosure = createDisclosure({
     trigger: document.querySelector('[data-analytics-disclosure-trigger]'),
     panel: document.querySelector('[data-analytics-disclosure-menu]'),
@@ -484,32 +517,48 @@ export async function startInsights(scope = document) {
   });
   const render = chartRenderer.render;
 
-  const loadRange = async (days) => {
-    if (rangePending) return;
-    rangePending = true;
+  const loadRange = async (days, { historyMode = 'push' } = {}) => {
+    if (![7, 30, 90, 365].includes(Number(days))) return false;
+    rangeController?.abort();
+    rangeController = new AbortController();
+    const controller = rangeController;
     const generation = ++requestGeneration;
+    root.dataset.pendingDays = String(days);
     setPending(root, true, 'Updating insights…');
     try {
-      const response = await fetch(`/insights/api/insights?days=${days}`);
+      const response = await fetch(`/insights/api/insights?days=${days}`, {
+        signal: controller.signal,
+      });
       if (!response.ok) throw new Error(`Insights request failed (${response.status})`);
       const data = await response.json();
-      if (generation !== requestGeneration) return;
+      if (generation !== requestGeneration || controller.signal.aborted) return false;
       currentData = data;
-      currentRange = days;
+      currentRange = Number(data.range_days) || Number(days);
       await render();
+      if (generation !== requestGeneration || controller.signal.aborted) return false;
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.set('days', String(currentRange));
+      if (historyMode === 'push') history.pushState({ days: currentRange }, '', nextUrl);
+      else if (historyMode === 'replace') history.replaceState({ days: currentRange }, '', nextUrl);
       setPending(root, false);
+      delete root.dataset.pendingDays;
+      return true;
     } catch (_) {
-      if (generation !== requestGeneration) return;
+      if (generation !== requestGeneration || controller.signal.aborted) return false;
+      if (historyMode === 'none') {
+        const stableUrl = new URL(window.location.href);
+        stableUrl.searchParams.set('days', String(currentRange));
+        history.replaceState({ days: currentRange }, '', stableUrl);
+      }
       setPending(root, false, 'Insights could not refresh. Your current values are still available; choose the range again to retry.');
-    } finally {
-      rangePending = false;
+      delete root.dataset.pendingDays;
+      return false;
     }
   };
 
   root.querySelectorAll('.dropdown-item[data-days]').forEach((item) => {
     item.addEventListener('click', (event) => {
       event.preventDefault();
-      if (item.getAttribute('aria-disabled') === 'true') return;
       const days = Number(item.dataset.days) || 30;
       disclosure?.close();
       loadRange(days);
@@ -526,6 +575,10 @@ export async function startInsights(scope = document) {
   });
   details?.addEventListener('toggle', render);
   document.documentElement.addEventListener('nicotine-tracker:theme-change', render);
+  window.addEventListener('popstate', () => {
+    const days = Number(new URL(window.location.href).searchParams.get('days')) || 30;
+    loadRange(days, { historyMode: 'none' });
+  });
   await render();
   return { render, loadRange };
 }

@@ -136,6 +136,61 @@ test('insights alternatives preserve the same labels and values as chart series'
   assert.deepEqual(model.brands, [{ label: 'Steady Mint', value: 7 }]);
 });
 
+test('nicotine bar models are sorted, exclude zero visuals, and preserve complete tables', async () => {
+  const { buildInsightsAlternativeModel } = await importModule('static/js/insights.js');
+  const model = buildInsightsAlternativeModel({
+    nicotine_by_time_of_day: { Night: 0, Morning: 6.5, Evening: 18 },
+    nicotine_by_product: {
+      'Very long catalog snapshot label that must remain exact': 12,
+      Zero: 0,
+      Mint: 24,
+    },
+    strength_coverage: {
+      known_pouches: 4, unknown_pouches: 2, total_pouches: 6,
+      known_percent: 66.7, complete: false,
+    },
+  });
+
+  assert.deepEqual(model.timeOfDayBars, [
+    { label: 'Evening', mg: 18, share: 73.5 },
+    { label: 'Morning', mg: 6.5, share: 26.5 },
+  ]);
+  assert.deepEqual(model.productBars, [
+    { label: 'Mint', mg: 24, share: 66.7 },
+    { label: 'Very long catalog snapshot label that must remain exact', mg: 12, share: 33.3 },
+  ]);
+  assert.deepEqual(model.timeOfDayMg, [
+    { label: 'Night', value: 0 },
+    { label: 'Morning', value: 6.5 },
+    { label: 'Evening', value: 18 },
+  ]);
+  assert.equal(model.strengthCoverage.complete, false);
+});
+
+test('nicotine distributions render horizontal mg bars rather than donuts', async () => {
+  const previousWindow = global.window;
+  const previousDocument = global.document;
+  global.window = { matchMedia: () => ({ matches: false }) };
+  global.document = { documentElement: { dataset: { theme: 'light' } } };
+  try {
+    const { chartDefinitions } = await importModule('static/js/insights.js');
+    const definitions = new Map(chartDefinitions({
+      nicotine_by_time_of_day: { Morning: 8, Night: 0 },
+      nicotine_by_product: { Mint: 8, Zero: 0 },
+    }, 'daily'));
+    for (const id of ['time-of-day-chart', 'brand-chart']) {
+      const options = definitions.get(id);
+      assert.equal(options.chart.type, 'bar');
+      assert.equal(options.plotOptions.bar.horizontal, true);
+      assert.deepEqual(options.series[0].data, [8]);
+      assert.equal(options.series[0].name, 'Nicotine (mg)');
+    }
+  } finally {
+    global.window = previousWindow;
+    global.document = previousDocument;
+  }
+});
+
 test('weekly trend model is the single source for chart and alternative rows', async () => {
   const { buildTrendModel } = await importModule('static/js/insights.js');
   const data = {
@@ -515,8 +570,10 @@ test('chart eligibility follows sufficiency, non-zero data, and visible detail',
   const ready = {
     consumption_trend: [{ date: '2026-08-01', value: 2 }],
     consumption_by_time_of_day: { Morning: 2 },
+    nicotine_by_time_of_day: { Morning: 8 },
     consumption_by_day_of_week: { Monday: 2 },
     brand_analysis: { Mint: 2 },
+    nicotine_by_product: { Mint: 8 },
     heatmap_data: [{ name: 'Monday', data: [0, 2] }],
     data_sufficiency: {
       trend: true,
@@ -543,8 +600,10 @@ test('chart eligibility follows sufficiency, non-zero data, and visible detail',
     ...ready,
     consumption_trend: [{ date: '2026-08-01', value: 0 }],
     consumption_by_time_of_day: { Morning: 0 },
+    nicotine_by_time_of_day: { Morning: 0 },
     consumption_by_day_of_week: { Monday: 0 },
     brand_analysis: { Mint: 0 },
+    nicotine_by_product: { Mint: 0 },
     heatmap_data: [{ name: 'Monday', data: [0, 0] }],
   }, 'daily', { detailsOpen: true }), []);
 });
