@@ -225,3 +225,58 @@ def test_journey_progress_paused_transition_has_no_future_date(
     assert progress.next_change.local_date is None
     assert progress.next_change.ceiling_mg is None
     assert progress.next_change.change_mg is None
+
+
+def test_paused_observe_has_no_ceiling_schedule_to_resume(
+    db_session, test_user
+):
+    """Paused observation must not promise future nicotine ceiling dates."""
+    now = datetime.now(timezone.utc)
+    test_user.timezone = 'UTC'
+    plan = ReductionPlan(
+        user_id=test_user.id,
+        mode='observe',
+        status='paused',
+        active_slot=None,
+        start_date=now.date(),
+        target_date=now.date() + timedelta(days=6),
+        baseline_source='observe',
+    )
+    db_session.add(plan)
+    db_session.flush()
+    revision = PlanRevision(
+        plan_id=plan.id,
+        effective_date=now.date(),
+        generation_inputs={
+            'mode': 'observe', 'target_basis': 'observe',
+        },
+        preview_digest='o' * 64,
+        reason='initial',
+    )
+    db_session.add(revision)
+    db_session.flush()
+    plan.active_revision_id = revision.id
+    db_session.add_all([
+        PlanDay(
+            plan_id=plan.id,
+            revision_id=revision.id,
+            local_date=now.date() + timedelta(days=offset),
+            target_pouches=None,
+            nicotine_ceiling_mg=None,
+        )
+        for offset in range(7)
+    ])
+    db_session.commit()
+
+    service = import_module(
+        'services.journey_progress_service'
+    ).JourneyProgressService
+    progress = service.get(test_user.id)
+
+    assert progress.status == 'no_ceiling'
+    assert progress.ceiling_mg is None
+    assert progress.next_change is not None
+    assert progress.next_change.kind == 'observation_paused'
+    assert progress.next_change.local_date is None
+    assert progress.next_change.ceiling_mg is None
+    assert progress.next_change.change_mg is None

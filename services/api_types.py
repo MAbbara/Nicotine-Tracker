@@ -23,7 +23,8 @@ JourneyProgressStatus = Literal[
     "nicotine_total_incomplete",
 ]
 JourneyNextChangeKind = Literal[
-    "ceiling_change", "first_ceiling", "resume_required"
+    "ceiling_change", "first_ceiling", "resume_required",
+    "observation_paused",
 ]
 
 

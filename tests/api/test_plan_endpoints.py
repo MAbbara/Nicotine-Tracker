@@ -903,6 +903,62 @@ class TestPlanLifecycleApi:
             'legacy_pouches'
         )
 
+    @pytest.mark.parametrize('single_change', [
+        {'pace': 'focused'},
+        {'duration_days': 42},
+    ])
+    def test_legacy_pace_or_duration_edit_explicitly_converts_to_nicotine(
+            self, logged_in_client, db_session, test_user, single_change):
+        plan = _legacy_active_plan_for_lifecycle(db_session, test_user)
+        effective = date(2099, 1, 15)
+        historical = PlanDay.query.filter(
+            PlanDay.plan_id == plan.id,
+            PlanDay.local_date < effective,
+        ).order_by(PlanDay.id).all()
+        historical_bytes = [
+            (row.id, row.revision_id, row.local_date, row.target_pouches,
+             row.nicotine_ceiling_mg, row.created_at)
+            for row in historical
+        ]
+        changes = {
+            'target_basis': 'nicotine_mg',
+            'end_target_mg': '12.00',
+            **single_change,
+        }
+
+        preview = logged_in_client.post(
+            f'/api/plans/{plan.id}/revisions/preview', json={
+                'effective_date': effective.isoformat(),
+                'changes': changes,
+            },
+        )
+        assert preview.status_code == 200, preview.get_json()
+        assert 'Deprecation' not in preview.headers
+        applied = logged_in_client.post(
+            f'/api/plans/{plan.id}/revisions', json={
+                'effective_date': effective.isoformat(),
+                'changes': changes,
+                'preview_digest': preview.get_json()['preview_digest'],
+                'reason': 'user_edit',
+                'note': None,
+            },
+        )
+
+        assert applied.status_code == 200, applied.get_json()
+        assert 'Deprecation' not in applied.headers
+        assert applied.get_json()['plan']['target_basis'] == 'nicotine_mg'
+        assert [
+            (row.id, row.revision_id, row.local_date, row.target_pouches,
+             row.nicotine_ceiling_mg, row.created_at)
+            for row in historical
+        ] == historical_bytes
+        future = PlanDay.query.filter(
+            PlanDay.plan_id == plan.id,
+            PlanDay.local_date >= effective,
+        ).all()
+        assert future
+        assert all(row.target_pouches is None for row in future)
+
     def test_revision_exact_zero_mg_target_is_valid(
             self, logged_in_client, db_session, test_user):
         plan = _active_plan_for_lifecycle(db_session, test_user)

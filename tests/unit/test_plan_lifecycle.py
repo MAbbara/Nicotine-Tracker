@@ -48,6 +48,21 @@ def _steady_input(**overrides):
     return PlanGenerationInput(**values)
 
 
+def _legacy_input(**overrides):
+    values = {
+        'mode': 'reduce',
+        'target_basis': 'legacy_pouches',
+        'start_date': date(2099, 1, 1),
+        'baseline_pouches': Decimal('8.00'),
+        'baseline_mg': Decimal('48.00'),
+        'baseline_mg_per_pouch': Decimal('6.00'),
+        'pace': 'steady',
+        'end_target_pouches': 2,
+    }
+    values.update(overrides)
+    return PlanGenerationInput(**values)
+
+
 def test_create_draft_persists_one_initial_revision_and_its_days(
     db_session, test_user,
 ):
@@ -690,6 +705,67 @@ def test_apply_revision_preserves_started_days_and_replaces_only_future_rows(
     ).order_by(PlanDay.local_date).all()
     assert len(new_future) == 28
     assert all(row.revision_id == revision.id for row in new_future)
+
+
+@pytest.mark.parametrize('single_change', [
+    {'pace': 'focused'},
+    {'duration_days': 42},
+])
+def test_legacy_pace_or_duration_revision_converts_with_persisted_mg_target(
+    db_session, test_user, single_change,
+):
+    plan = PlanService.create_draft(
+        test_user.id, _legacy_input(), baseline_source='manual'
+    )
+    initial = PlanRevision.query.filter_by(plan_id=plan.id).one()
+    PlanService.activate(test_user.id, plan.id, initial.preview_digest)
+    now = datetime(2099, 1, 10, 12, tzinfo=timezone.utc)
+    effective = date(2099, 1, 11)
+    historical = PlanDay.query.filter(
+        PlanDay.plan_id == plan.id,
+        PlanDay.local_date < effective,
+    ).order_by(PlanDay.id).all()
+    historical_bytes = [
+        (row.id, row.revision_id, row.local_date, row.target_pouches,
+         row.nicotine_ceiling_mg, row.created_at)
+        for row in historical
+    ]
+    changes = {
+        'target_basis': 'nicotine_mg',
+        'end_target_mg': Decimal(plan.end_target_mg),
+        **single_change,
+    }
+
+    preview = PlanService.preview_revision(
+        test_user.id, plan.id, changes, effective, now=now
+    )
+    if single_change == {'pace': 'focused'}:
+        assert len(preview.days) == 28
+    revision = PlanService.apply_revision(
+        test_user.id,
+        plan.id,
+        changes,
+        effective,
+        preview.digest,
+        reason='user_edit',
+        now=now,
+    )
+
+    assert [
+        (row.id, row.revision_id, row.local_date, row.target_pouches,
+         row.nicotine_ceiling_mg, row.created_at)
+        for row in historical
+    ] == historical_bytes
+    future = PlanDay.query.filter(
+        PlanDay.plan_id == plan.id,
+        PlanDay.local_date >= effective,
+    ).all()
+    assert future
+    assert all(row.target_pouches is None for row in future)
+    assert revision.generation_inputs['target_basis'] == 'nicotine_mg'
+    assert revision.end_target_pouches is None
+    db_session.refresh(plan)
+    assert plan.end_target_pouches is None
 
 
 def test_revision_rejects_started_effective_date_and_stale_digest(

@@ -50,11 +50,12 @@ test('revision bodies include only supported nonblank canonical changes', async 
     effective_date: '2099-02-01',
     pace: ' steady ',
     duration_days: '49',
-    end_target_mg: '',
+    end_target_mg: '12',
   }), {
     effective_date: '2099-02-01',
     changes: {
-      pace: 'steady', duration_days: 49, target_basis: 'nicotine_mg',
+      pace: 'steady', duration_days: 49,
+      target_basis: 'nicotine_mg', end_target_mg: '12.00',
     },
   });
   assert.deepEqual(revisionApplyBody(revisionValues, digestA), {
@@ -73,11 +74,11 @@ test('every canonical revision change set declares the nicotine target basis', a
   const { revisionPreviewBody } = await loadEditor();
 
   for (const [values, expectedChanges] of [
-    [{ pace: 'focused', duration_days: '', end_target_mg: '' }, {
-      pace: 'focused', target_basis: 'nicotine_mg',
+    [{ pace: 'focused', duration_days: '', end_target_mg: '12.00' }, {
+      pace: 'focused', target_basis: 'nicotine_mg', end_target_mg: '12.00',
     }],
-    [{ pace: '', duration_days: '28', end_target_mg: '' }, {
-      duration_days: 28, target_basis: 'nicotine_mg',
+    [{ pace: '', duration_days: '28', end_target_mg: '12.00' }, {
+      duration_days: 28, target_basis: 'nicotine_mg', end_target_mg: '12.00',
     }],
     [{ target_basis: 'nicotine_mg', pace: '', duration_days: '', end_target_mg: '0' }, {
       target_basis: 'nicotine_mg', end_target_mg: '0.00',
@@ -90,6 +91,20 @@ test('every canonical revision change set declares the nicotine target basis', a
       effective_date: '2099-02-01',
       changes: expectedChanges,
     });
+  }
+});
+
+test('pace and duration revisions require the visible persisted mg target', async () => {
+  const { revisionPreviewBody } = await loadEditor();
+
+  for (const values of [
+    { pace: 'focused', duration_days: '', end_target_mg: '' },
+    { pace: '', duration_days: '28', end_target_mg: '' },
+  ]) {
+    assert.throws(
+      () => revisionPreviewBody({ effective_date: '2099-02-01', ...values }),
+      (error) => Boolean(error.fieldErrors?.end_target_mg),
+    );
   }
 });
 

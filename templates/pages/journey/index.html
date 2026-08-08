@@ -73,7 +73,9 @@
       <section class="journey-next-change" data-next-change aria-labelledby="journey-next-change-title">
         <h2 id="journey-next-change-title">What changes next</h2>
         <p class="journey-next-change__value">
-          {% if progress.next_change and progress.next_change.kind == 'resume_required' %}
+          {% if progress.next_change and progress.next_change.kind == 'observation_paused' %}
+            Observation is paused; no nicotine ceiling is scheduled
+          {% elif progress.next_change and progress.next_change.kind == 'resume_required' %}
             Resume this plan before future ceiling dates are scheduled
           {% elif progress.next_change and progress.next_change.kind == 'first_ceiling' %}
             First ceiling begins at {{ '%.2f'|format(progress.next_change.ceiling_mg) }} mg on <time datetime="{{ progress.next_change.local_date.isoformat() }}">{{ progress.next_change.local_date.strftime('%B %-d') }}</time>
@@ -83,7 +85,9 @@
             No further ceiling change is scheduled
           {% endif %}
         </p>
-        {% if progress.next_change and progress.next_change.kind == 'resume_required' %}
+        {% if progress.next_change and progress.next_change.kind == 'observation_paused' %}
+          <p>Resume when you want to continue neutral observation. Resuming does not create a nicotine ceiling.</p>
+        {% elif progress.next_change and progress.next_change.kind == 'resume_required' %}
           <p>Choose a resume date, preview the shifted schedule, and confirm it before any future ceiling date exists.</p>
         {% elif progress.next_change and progress.next_change.kind == 'first_ceiling' %}
           <p>The plan has not started yet. Today’s tracking stays neutral until the first ceiling begins.</p>
@@ -154,7 +158,7 @@
                 </div>
                 <div>
                   <label for="revision-end-target">End target nicotine per day (mg)</label>
-                  <input id="revision-end-target" name="end_target_mg" type="number" min="0" max="999999.99" step="0.01" inputmode="decimal" value="{{ editor['values'].end_target_mg if editor.kind == 'revision' else '' }}">
+                  <input id="revision-end-target" name="end_target_mg" type="number" min="0" max="999999.99" step="0.01" inputmode="decimal" required value="{{ editor['values'].end_target_mg if editor.kind == 'revision' else ('%.2f'|format(plan.row.end_target_mg) if plan.row.end_target_mg is not none else '') }}">
                 </div>
               </div>
               {% if editor.kind == 'revision' and editor.field_errors %}

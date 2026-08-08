@@ -4,6 +4,7 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 from bs4 import BeautifulSoup
+import pytest
 
 from extensions import db
 from models import (
@@ -16,6 +17,8 @@ from models import (
     User,
 )
 from services import log_service
+from services.plan_schedule import PlanGenerationInput, PlanScheduleGenerator
+from services.plan_service import PlanService
 from services.today_service import TodayService
 
 
@@ -95,6 +98,30 @@ def _plan(session, user, *, status='active', mode='reduce', start=None,
             reason='fixture',
         ))
     session.commit()
+    return plan
+
+
+def _legacy_plan(session, user, *, start=None):
+    start = start or date.today()
+    generation_input = PlanGenerationInput(
+        mode='reduce',
+        target_basis='legacy_pouches',
+        start_date=start,
+        baseline_pouches=Decimal('8.00'),
+        baseline_mg=Decimal('48.00'),
+        baseline_mg_per_pouch=Decimal('6.00'),
+        pace='steady',
+        end_target_pouches=2,
+    )
+    preview = PlanScheduleGenerator.generate(generation_input)
+    plan = PlanService.create_from_preview(
+        user.id,
+        generation_input,
+        'manual',
+        preview.digest,
+        'activate',
+    )
+    session.expire_all()
     return plan
 
 
@@ -245,7 +272,7 @@ class TestJourneyComposition:
                 ('input', 'date', 'effective_date', ''),
                 ('select', None, 'pace', ''),
                 ('input', 'number', 'duration_days', ''),
-                ('input', 'number', 'end_target_mg', ''),
+                ('input', 'number', 'end_target_mg', '48.00'),
                 ('button', 'submit', 'form_action', 'preview'),
             ],
         }
@@ -304,6 +331,32 @@ class TestJourneyComposition:
         assert 'Resume this plan before future ceiling dates are scheduled' in (
             next_change.get_text(' ', strip=True)
         )
+        assert next_change.select_one('time') is None
+
+    def test_paused_observe_describes_neutral_observation_not_ceilings(
+            self, logged_in_client, db_session, test_user):
+        _plan(
+            db_session,
+            test_user,
+            status='paused',
+            mode='observe',
+            baseline_source='observe',
+            baseline_pouches=None,
+            baseline_mg=None,
+            baseline_strength=None,
+            pace=None,
+            end_target=None,
+        )
+
+        soup = BeautifulSoup(
+            logged_in_client.get('/journey/').data, 'html.parser'
+        )
+        next_change = soup.select_one('[data-next-change]')
+        text = next_change.get_text(' ', strip=True)
+
+        assert 'Observation is paused' in text
+        assert 'Resume when you want to continue neutral observation' in text
+        assert 'ceiling dates' not in text.lower()
         assert next_change.select_one('time') is None
 
     def test_pre_start_plan_names_first_ceiling_without_comparison(
@@ -739,6 +792,70 @@ class TestJourneyLifecycleActions:
         assert PlanRevision.query.filter_by(
             plan_id=plan.id, reason='user_edit'
         ).count() == 1
+
+    @pytest.mark.parametrize('field,value', [
+        ('pace', 'focused'),
+        ('duration_days', '42'),
+    ])
+    def test_legacy_editor_prefills_mg_and_converts_pace_or_duration_edit(
+            self, logged_in_client, db_session, test_user, field, value):
+        today = date.today()
+        plan = _legacy_plan(db_session, test_user, start=today)
+        effective = today + timedelta(days=1)
+        historical = PlanDay.query.filter(
+            PlanDay.plan_id == plan.id,
+            PlanDay.local_date < effective,
+        ).order_by(PlanDay.id).all()
+        historical_bytes = [
+            (row.id, row.revision_id, row.local_date, row.target_pouches,
+             row.nicotine_ceiling_mg, row.created_at)
+            for row in historical
+        ]
+
+        initial = BeautifulSoup(
+            logged_in_client.get('/journey/').data, 'html.parser'
+        )
+        target = initial.select_one('#revision-end-target')
+        assert target['value'] == '12.00'
+        assert target.has_attr('required')
+        data = {
+            'form_action': 'preview',
+            'effective_date': effective.isoformat(),
+            'pace': '',
+            'duration_days': '',
+            'end_target_mg': target['value'],
+            field: value,
+        }
+        preview_response = logged_in_client.post(
+            f'/journey/plans/{plan.id}/revision', data=data
+        )
+        assert preview_response.status_code == 200
+        preview_soup = BeautifulSoup(preview_response.data, 'html.parser')
+        digest = preview_soup.select_one(
+            'form[data-revision-confirm] input[name="preview_digest"]'
+        )['value']
+
+        confirmed = logged_in_client.post(
+            f'/journey/plans/{plan.id}/revision',
+            data=dict(data, form_action='confirm', preview_digest=digest),
+        )
+        assert confirmed.status_code == 302
+        assert [
+            (row.id, row.revision_id, row.local_date, row.target_pouches,
+             row.nicotine_ceiling_mg, row.created_at)
+            for row in historical
+        ] == historical_bytes
+        future = PlanDay.query.filter(
+            PlanDay.plan_id == plan.id,
+            PlanDay.local_date >= effective,
+        ).all()
+        assert future
+        assert all(row.target_pouches is None for row in future)
+        db_session.refresh(plan)
+        assert plan.end_target_pouches is None
+        assert plan.active_revision.generation_inputs['target_basis'] == (
+            'nicotine_mg'
+        )
 
     def test_finish_observe_without_evidence_completes_and_prompts_manual_baseline(
             self, logged_in_client, db_session, test_user):

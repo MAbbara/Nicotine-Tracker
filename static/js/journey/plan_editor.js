@@ -108,6 +108,11 @@ export function revisionPreviewBody(values) {
   );
   if (duration !== undefined) changes.duration_days = duration;
   if (target !== undefined) changes.end_target_mg = target;
+  if (Object.keys(changes).length && target === undefined) {
+    errors.end_target_mg ||= [
+      'Confirm the visible nicotine target before previewing this revision.',
+    ];
+  }
   if (!Object.keys(changes).length) errors.changes = ['Choose at least one change.'];
   else changes.target_basis = 'nicotine_mg';
   throwErrors(errors);

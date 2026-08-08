@@ -745,7 +745,7 @@ def _revision_changes(values):
         changes['pace'] = values['pace']
     if values['duration_days']:
         changes['duration_days'] = _int_or_raw(values['duration_days'])
-    if values['end_target_mg']:
+    if values['end_target_mg'] or changes:
         changes['end_target_mg'] = values['end_target_mg']
     if changes:
         changes['target_basis'] = 'nicotine_mg'

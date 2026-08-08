@@ -52,6 +52,15 @@ async function loginReviewFixture(page, testInfo) {
   await page.goto('/journey/');
 }
 
+async function loginFixture(page, email) {
+  await page.goto('/auth/login');
+  await page.getByLabel('Email address').fill(email);
+  await page.getByLabel('Password').fill('browser-password');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page).toHaveURL(/\/today\/?$/);
+  await page.goto('/journey/');
+}
+
 async function createPlan(page, { startDays = 0 } = {}) {
   await page.locator('input[name="intention"][value="reduce"]').check();
   await page.getByRole('button', { name: 'Continue' }).click();
@@ -185,6 +194,63 @@ test('pre-start and paused Journey explain neutral schedule transitions', async 
   await expect(nextChange.locator('time')).toHaveCount(0);
   await expect(nextChange).not.toContainText(/final scheduled ceiling|mg on/i);
   expect(errors).toEqual([]);
+});
+
+test('paused Observe describes neutral continuation without ceiling dates', async ({ page }, testInfo) => {
+  const project = testInfo.project.name.includes('mobile') ? 'mobile' : 'desktop';
+  await loginFixture(page, `journey-paused-observe-${project}@example.com`);
+  const errors = watchForErrors(page);
+
+  await page.getByText('Plan details and history').click();
+  await keyboardPost(page, page.getByRole('button', { name: 'Pause plan' }), '/pause');
+
+  const nextChange = page.locator('[data-next-change]');
+  await expect(nextChange).toContainText(/Observation is paused/i);
+  await expect(nextChange).toContainText(/continue neutral observation/i);
+  await expect(nextChange).not.toContainText(/ceiling dates|mg on/i);
+  await expect(nextChange.locator('time')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('legacy pace-only and duration-only edits convert through the nicotine UI', async ({ page }, testInfo) => {
+  const project = testInfo.project.name.includes('mobile') ? 'mobile' : 'desktop';
+  const effectiveDate = await isoDate(page, 1);
+  const today = await isoDate(page);
+
+  for (const edit of ['pace', 'duration']) {
+    await loginFixture(page, `journey-legacy-${edit}-${project}@example.com`);
+    const errors = watchForErrors(page);
+    const editor = page.locator('[data-plan-editor="revision"]');
+    const target = editor.getByLabel(/End target nicotine per day/);
+    await expect(target).toHaveValue('12.00');
+    await expect(target).toHaveAttribute('required', '');
+    await editor.getByLabel('Effective date').fill(effectiveDate);
+    if (edit === 'pace') {
+      await editor.getByLabel('Pace change').selectOption('focused');
+    } else {
+      await editor.getByLabel('Duration days').fill('42');
+    }
+    await editor.getByRole('button', { name: 'Preview revision' }).click();
+    await expect(editor.locator('[data-plan-editor-preview]')).toContainText(
+      effectiveDate,
+    );
+    await expect(editor.getByRole('status')).not.toContainText(/target basis/i);
+    await Promise.all([
+      page.waitForURL(/\/journey\/?$/),
+      editor.getByRole('button', { name: 'Confirm revision' }).click(),
+    ]);
+
+    await page.getByText('Plan details and history').click();
+    const schedule = page.locator('[data-complete-schedule]');
+    const historical = schedule.getByRole('row').filter({ hasText: today });
+    const converted = schedule.getByRole('row').filter({ hasText: effectiveDate });
+    await expect(historical).not.toContainText('Not used');
+    await expect(converted).toContainText('Not used');
+    expect(errors).toEqual([]);
+    const signedOut = await page.request.get('/auth/logout');
+    expect(signedOut.status()).toBe(200);
+    await page.goto('/');
+  }
 });
 
 test('Journey previews explicitly, mutates future rows only, and carries status history through archive', async ({ page }, testInfo) => {

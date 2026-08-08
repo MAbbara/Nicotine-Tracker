@@ -507,8 +507,14 @@ def _revision_preview(user, plan, changes, effective_date, now=None):
     duration_days = changes.get('duration_days')
     target_date = changes.get('target_date')
     if 'duration_days' not in changes and 'target_date' not in changes:
-        duration_days = (plan.target_date - effective_date).days + 1
-        target_date = plan.target_date
+        pace_changed = (
+            plan.mode == 'reduce'
+            and 'pace' in changes
+            and changes['pace'] != plan.pace
+        )
+        if not pace_changed:
+            duration_days = (plan.target_date - effective_date).days + 1
+            target_date = plan.target_date
     nicotine_first = (
         'end_target_mg' in changes or anchor.target_pouches is None
     )

@@ -64,7 +64,11 @@ class JourneyProgressService:
             return None
         if today.plan.status == 'paused':
             return JourneyNextChange(
-                kind='resume_required',
+                kind=(
+                    'observation_paused'
+                    if today.plan.mode == 'observe'
+                    else 'resume_required'
+                ),
                 local_date=None,
                 ceiling_mg=None,
                 change_mg=None,

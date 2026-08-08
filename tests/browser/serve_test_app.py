@@ -72,6 +72,10 @@ from models import (  # noqa: E402
 from services.notification_service import NotificationService  # noqa: E402
 from services import notification_service as notification_service_module  # noqa: E402
 from services.log_service import get_historical_brand  # noqa: E402
+from services.plan_schedule import (  # noqa: E402
+    PlanGenerationInput,
+    PlanScheduleGenerator,
+)
 from models.email_verification import EmailVerification  # noqa: E402
 from tests.browser.helpers.outbound_test_boundary import (  # noqa: E402
     install_outbound_boundary,
@@ -695,6 +699,98 @@ with app.app_context():
     # inventory principals exercised later in the same one-worker run.
     seed_review_fixture('journey-review-flow-desktop@example.com', 'g', 'h')
     seed_review_fixture('journey-review-flow-mobile@example.com', 'i', 'j')
+    seed_review_fixture(
+        'journey-paused-observe-desktop@example.com', 'k', 'l'
+    )
+    seed_review_fixture(
+        'journey-paused-observe-mobile@example.com', 'm', 'n'
+    )
+
+    def seed_legacy_editor_fixture(email):
+        fixture_today = _REAL_DATE(
+            RELEASE_TEST_NOW.year,
+            RELEASE_TEST_NOW.month,
+            RELEASE_TEST_NOW.day,
+        )
+        legacy_user = User(
+            email=email,
+            email_verified=True,
+            timezone='UTC',
+        )
+        legacy_user.set_password('browser-password')
+        db.session.add(legacy_user)
+        db.session.flush()
+        generation_input = PlanGenerationInput(
+            mode='reduce',
+            target_basis='legacy_pouches',
+            start_date=fixture_today,
+            baseline_pouches=Decimal('8.00'),
+            baseline_mg=Decimal('48.00'),
+            baseline_mg_per_pouch=Decimal('6.00'),
+            pace='steady',
+            end_target_pouches=2,
+        )
+        preview = PlanScheduleGenerator.generate(
+            generation_input, reference_date=fixture_today
+        )
+        plan = ReductionPlan(
+            user_id=legacy_user.id,
+            mode='reduce',
+            status='active',
+            active_slot=1,
+            start_date=preview.days[0].local_date,
+            target_date=preview.days[-1].local_date,
+            baseline_pouches=generation_input.baseline_pouches,
+            baseline_mg=generation_input.baseline_mg,
+            baseline_mg_per_pouch=generation_input.baseline_mg_per_pouch,
+            baseline_source='manual',
+            pace=generation_input.pace,
+            end_target_pouches=preview.days[-1].target_pouches,
+            end_target_mg=preview.days[-1].nicotine_ceiling_mg,
+        )
+        db.session.add(plan)
+        db.session.flush()
+        revision = PlanRevision(
+            plan_id=plan.id,
+            effective_date=plan.start_date,
+            pace=plan.pace,
+            target_date=plan.target_date,
+            end_target_pouches=plan.end_target_pouches,
+            end_target_mg=plan.end_target_mg,
+            generation_inputs={
+                'mode': 'reduce',
+                'target_basis': 'legacy_pouches',
+                'end_target_pouches': 2,
+            },
+            preview_digest=preview.digest,
+            reason='initial',
+        )
+        db.session.add(revision)
+        db.session.flush()
+        plan.active_revision_id = revision.id
+        db.session.add_all([
+            PlanDay(
+                plan_id=plan.id,
+                revision_id=revision.id,
+                local_date=day.local_date,
+                target_pouches=day.target_pouches,
+                nicotine_ceiling_mg=day.nicotine_ceiling_mg,
+            )
+            for day in preview.days
+        ])
+        db.session.add(PlanStatusEvent(
+            plan_id=plan.id,
+            status='active',
+            effective_at_utc=datetime.utcnow(),
+            local_date=plan.start_date,
+            reason='fixture activation',
+        ))
+
+    for project in ('desktop', 'mobile'):
+        for edit in ('pace', 'duration'):
+            seed_legacy_editor_fixture(
+                f'journey-legacy-{edit}-{project}@example.com'
+            )
 
     def seed_release_user(
         email,
