@@ -124,40 +124,369 @@ function committedSnapshot(snapshot) {
   };
 }
 
-async function expectedCommittedSnapshotFromResponse(
-  page, payload, days,
-  { reducedMotion = false, trendType = 'daily', zoom = false } = {},
-) {
-  const oracle = await page.context().newPage();
-  try {
-    const viewport = page.viewportSize();
-    if (viewport) await oracle.setViewportSize(viewport);
-    if (reducedMotion) await oracle.emulateMedia({ reducedMotion: 'reduce' });
-    await oracle.route(`**/insights/api/insights?days=${days}`, async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(payload),
-      });
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const LONG_PRODUCT = 'An intentionally long immutable nicotine product snapshot label';
+const SPACED_PRODUCT = ' Exact snapshot ';
+
+const INSIGHTS_FIXTURES = {
+  7: {
+    range_days: 7, observed_days: 0, log_count: 0,
+    total_pouches: 0, daily_average: 0, total_nicotine: 0,
+    best_day: '--', consistency_score: 0, trend_direction: 'stable',
+    peak_day: '--', average_time_between_pouches: '--',
+    comparison: { available: false, current_total: 0, previous_total: 0 },
+    data_sufficiency: {
+      trend: false, time_pattern: false, brand_pattern: false, heatmap: false,
+    },
+    plan_context: {
+      state: 'active_targeted', adherence_available: false, compared_days: 0,
+    },
+    craving_pattern: { available: false },
+    consumption_trend: [], consumption_by_time_of_day: {},
+    consumption_by_day_of_week: {}, brand_analysis: {}, heatmap_data: [],
+    nicotine_by_time_of_day: {}, nicotine_by_product: {},
+    strength_coverage: {
+      known_pouches: 0, unknown_pouches: 0, total_pouches: 0,
+      known_percent: 0, complete: true,
+    },
+    expectedCopy: {
+      headline: 'Your patterns will appear after your first log.',
+      interpretation: 'Start with one honest entry. Insights becomes more useful as your day-to-day pattern takes shape.',
+      plan: 'This range does not have a matched plan day yet. Keep logging on plan days; three matched days are needed before comparing intake with your targets.',
+      time: 'Keep logging throughout the day to reveal a dependable time pattern.',
+      timeNicotine: 'No nicotine is available by time yet. Strength coverage will appear after you log a pouch.',
+      weekly: 'Log across more complete days to reveal a dependable weekly pattern.',
+      product: 'A few more product logs will reveal what you reach for most often.',
+      productNicotine: 'No nicotine is available by product yet. Strength coverage will appear after you log a pouch.',
+      craving: '', hourly: 'Log across more days and times to reveal a dependable hourly pattern.',
+      nextStep: ['Log today', '/today/'],
+    },
+  },
+  30: {
+    range_days: 30, observed_days: 3, log_count: 5,
+    total_pouches: 15, daily_average: 5, total_nicotine: 60,
+    best_day: 'Wednesday', consistency_score: 80, trend_direction: 'decreasing',
+    peak_day: 'Thursday', average_time_between_pouches: '2h 10m',
+    comparison: {
+      available: true, current_total: 15, previous_total: 18,
+      direction: 'down', percent_change: -16.7,
+    },
+    data_sufficiency: {
+      trend: true, time_pattern: true, brand_pattern: true, heatmap: true,
+    },
+    plan_context: {
+      state: 'active_targeted', adherence_available: true, compared_days: 3,
+      actual_pouches: 15, target_pouches: 18, days_on_or_below_target: 2,
+    },
+    craving_pattern: {
+      available: true, leading_trigger: 'Stress', leading_trigger_count: 2,
+      resolved_count: 3, non_nicotine_rate: 66.7,
+    },
+    consumption_trend: [
+      { date: '2026-07-22', value: 5 }, { date: '2026-07-23', value: 7 },
+      { date: '2026-07-24', value: 3 },
+    ],
+    consumption_by_time_of_day: { Morning: 15, Afternoon: 0 },
+    consumption_by_day_of_week: { Wednesday: 5, Thursday: 7, Friday: 3 },
+    brand_analysis: { Main: 10, Backup: 5 },
+    heatmap_data: [{ name: 'Monday', data: [{ x: '10:00', y: 15 }] }],
+    nicotine_by_time_of_day: { Morning: 60, Afternoon: 0 },
+    nicotine_by_product: { Main: 36, Backup: 24, 'Known zero': 0 },
+    strength_coverage: {
+      known_pouches: 15, unknown_pouches: 0, total_pouches: 15,
+      known_percent: 100, complete: true,
+    },
+    expectedCopy: {
+      headline: 'You used 16.7% less than the previous 30 days.',
+      interpretation: 'This lower total is useful context. Notice what changed in this range and what you may want to repeat.',
+      plan: 'Across 3 matched plan days, you logged 15 pouches against a target of 18. 2 of 3 days were on or below target.',
+      time: 'Morning is your most active part of the day. Plan support just before it begins.',
+      timeNicotine: 'All known nicotine in this range is in one time category. Every pouch in this range has a saved strength.',
+      weekly: 'Thursday has the most logged pouches in this range. Use it as a cue to plan support, not a verdict.',
+      product: 'Main appears most often in this range. Use that context when you adjust your plan.',
+      productNicotine: 'Every pouch in this range has a saved strength. Bars show known nicotine only.',
+      craving: 'Stress appeared in 2 of 3 resolved cravings. You chose a non-nicotine response 66.7% of the time.',
+      hourly: 'Monday around 10:00 has the highest logged use in this detail. Consider support before that time.',
+      nextStep: ['Plan for Morning', '/journey/'],
+    },
+  },
+  90: {
+    range_days: 90, observed_days: 7, log_count: 8,
+    total_pouches: 42, daily_average: 6, total_nicotine: 180,
+    best_day: 'Tuesday', consistency_score: 72, trend_direction: 'increasing',
+    peak_day: 'Friday', average_time_between_pouches: '1h 45m',
+    comparison: {
+      available: true, current_total: 42, previous_total: 30,
+      direction: 'up', percent_change: 40,
+    },
+    data_sufficiency: {
+      trend: true, time_pattern: true, brand_pattern: true, heatmap: true,
+    },
+    plan_context: { state: 'active_observe', adherence_available: false, compared_days: 0 },
+    craving_pattern: { available: false },
+    consumption_trend: [
+      { date: '2026-05-04', value: 8 }, { date: '2026-05-11', value: 14 },
+      { date: '2026-05-18', value: 20 },
+    ],
+    consumption_by_time_of_day: { Morning: 12, Afternoon: 30 },
+    consumption_by_day_of_week: { Monday: 8, Wednesday: 14, Friday: 20 },
+    brand_analysis: { Third: 20, Main: 12, Backup: 10 },
+    heatmap_data: [{ name: 'Tuesday', data: [{ x: '18:00', y: 20 }] }],
+    nicotine_by_time_of_day: { Morning: 48, Afternoon: 132 },
+    nicotine_by_product: {
+      'Third product': 30, [SPACED_PRODUCT]: 60, [LONG_PRODUCT]: 90,
+      'Accessible zero category': 0,
+    },
+    strength_coverage: {
+      known_pouches: 41, unknown_pouches: 1, total_pouches: 42,
+      known_percent: 97.6, complete: false,
+    },
+    expectedCopy: {
+      headline: 'You used 40% more than the previous 90 days.',
+      interpretation: 'This is useful context, not a verdict. Look for what made this range harder, then choose one adjustment.',
+      plan: '',
+      time: 'Afternoon is your most active part of the day. Plan support just before it begins.',
+      timeNicotine: '1 pouch had no saved strength, so nicotine totals are incomplete. Bars show known nicotine only.',
+      weekly: 'Friday has the most logged pouches in this range. Use it as a cue to plan support, not a verdict.',
+      product: 'Third appears most often in this range. Use that context when you adjust your plan.',
+      productNicotine: '1 pouch had no saved strength, so nicotine totals are incomplete. Bars show known nicotine only.',
+      craving: '',
+      hourly: 'Tuesday around 18:00 has the highest logged use in this detail. Consider support before that time.',
+      nextStep: ['Review your observations', '/journey/'],
+    },
+  },
+};
+
+function apiFixture(days) {
+  const { expectedCopy: _expectedCopy, ...payload } = INSIGHTS_FIXTURES[days];
+  return structuredClone(payload);
+}
+
+async function installChartConfigProbe(page) {
+  await page.addInitScript(() => {
+    const configs = new WeakMap();
+    window.__insightsChartConfigs = configs;
+    Object.defineProperty(window, 'ApexCharts', {
+      configurable: true,
+      set(BaseChart) {
+        class ProbedChart extends BaseChart {
+          constructor(target, options) {
+            super(target, options);
+            configs.set(target, {
+              type: options.chart?.type || null,
+              horizontal: Boolean(options.plotOptions?.bar?.horizontal),
+              series: (options.series || []).map((series) => ({
+                name: series.name,
+                data: JSON.parse(JSON.stringify(series.data || [])),
+              })),
+              categories: options.xaxis?.categories || null,
+            });
+          }
+        }
+        Object.defineProperty(window, 'ApexCharts', {
+          configurable: true, writable: true, value: ProbedChart,
+        });
+      },
     });
-    const initialDays = Number(days) === 30 ? 7 : 30;
-    await oracle.goto(`/insights/?days=${initialDays}`);
-    if (zoom) await setActualTwoHundredPercentZoom(oracle);
-    await oracle.getByRole('link', {
-      name: Number(days) === 365 ? '1 year' : `${days} days`,
-      exact: true,
-    }).click();
-    await expect(oracle).toHaveURL(new RegExp(`days=${days}`));
-    if (trendType === 'weekly') {
-      await oracle.getByRole('button', { name: 'Weekly' }).click();
-      await expect(oracle.getByRole('button', { name: 'Weekly' })).toHaveAttribute(
-        'aria-pressed', 'true',
-      );
-    }
-    return committedSnapshot(await fullInsightsSnapshot(oracle));
-  } finally {
-    await oracle.close();
-  }
+  });
+}
+
+async function semanticInsightsSnapshot(page) {
+  return page.evaluate(() => {
+    const root = document.querySelector('[data-insights-root]:not([data-insights-candidate])');
+    const text = (selector) => root.querySelector(selector)?.textContent.trim() ?? '';
+    const narrative = (selector) => {
+      const node = root.querySelector(selector);
+      return { text: node?.textContent.trim() ?? '', hidden: Boolean(node?.hidden) };
+    };
+    const chartConfig = window.__insightsChartConfigs;
+    return {
+      url: `${location.pathname}${location.search}`,
+      root: {
+        state: root.dataset.insightsState,
+        busy: root.getAttribute('aria-busy'),
+        pendingDays: root.dataset.pendingDays || null,
+      },
+      metrics: {
+        lead: [...root.querySelectorAll('.insights-measures dd')].map((node) => node.textContent.trim()),
+        totalNicotine: text('#total-nicotine'), bestDay: text('#best-day'),
+        consistency: text('#consistency-score'), trendDirection: text('#trend-direction'),
+        peakDay: text('#peak-day'), averageTimeBetween: text('#avg-time-between'),
+      },
+      narratives: Object.fromEntries([
+        ['headline', '[data-insights-headline]'],
+        ['interpretation', '[data-insights-interpretation]'],
+        ['plan', '[data-insights-plan-context]'], ['time', '[data-insights-time-copy]'],
+        ['timeNicotine', '[data-insights-time-nicotine-copy]'],
+        ['weekly', '[data-insights-weekly-copy]'],
+        ['product', '[data-insights-product-copy]'],
+        ['productNicotine', '[data-insights-product-nicotine-copy]'],
+        ['craving', '[data-insights-craving-copy]'],
+        ['hourly', '[data-insights-hourly-copy]'],
+      ].map(([key, selector]) => [key, narrative(selector)])),
+      nextStep: {
+        text: text('[data-insights-next-step]'),
+        href: root.querySelector('[data-insights-next-step]')?.getAttribute('href'),
+      },
+      craving: {
+        hidden: root.querySelector('[data-craving-pattern]').hidden,
+        leading: text('[data-craving-leading-trigger]'),
+        resolved: text('[data-craving-resolved-pattern]'),
+        nonNicotine: text('[data-craving-non-nicotine-rate]'),
+      },
+      tables: Object.fromEntries([...root.querySelectorAll('[data-analytics-key]')].map((body) => [
+        body.dataset.analyticsKey,
+        [...body.rows].map((row) => [...row.cells].map((cell) => cell.textContent)),
+      ])),
+      charts: Object.fromEntries([...root.querySelectorAll('.analytics-chart')].map((chart) => [
+        chart.id,
+        {
+          hidden: chart.hidden,
+          role: chart.getAttribute('role'),
+          labelledBy: chart.getAttribute('aria-labelledby'),
+          config: chartConfig?.get(chart) || null,
+        },
+      ])),
+      statuses: {
+        load: (() => {
+          const node = root.querySelector('[data-insights-load-status]');
+          return { text: node.textContent, hidden: node.hidden, role: node.getAttribute('role'), live: node.getAttribute('aria-live') };
+        })(),
+        charts: [...root.querySelectorAll('.analytics-chart__status')].map((node) => ({
+          text: node.textContent, hidden: node.hidden,
+          role: node.getAttribute('role'), live: node.getAttribute('aria-live'),
+        })),
+      },
+      range: [...root.querySelectorAll('[data-days]')].map((node) => ({
+        days: Number(node.dataset.days), current: node.getAttribute('aria-current'),
+        busy: node.getAttribute('aria-busy'), active: node.classList.contains('is-active'),
+        pending: node.classList.contains('is-pending'),
+      })),
+      trend: [...root.querySelectorAll('.trend-toggle')].map((node) => ({
+        type: node.dataset.type, pressed: node.getAttribute('aria-pressed'),
+        active: node.classList.contains('is-active'),
+      })),
+      export: {
+        href: root.querySelector('#export-data').dataset.exportHref,
+        busy: root.querySelector('#export-data').getAttribute('aria-busy'),
+        disabled: root.querySelector('#export-data').disabled,
+      },
+      details: [...root.querySelectorAll('details')].map((node) => node.open),
+    };
+  });
+}
+
+function weeklyTrend(points) {
+  const weeks = new Map();
+  points.forEach(({ date, value }) => {
+    const parsed = new Date(`${date}T00:00:00Z`);
+    const day = parsed.getUTCDay() || 7;
+    parsed.setUTCDate(parsed.getUTCDate() - day + 1);
+    const monday = parsed.toISOString().slice(0, 10);
+    weeks.set(monday, (weeks.get(monday) || 0) + Number(value));
+  });
+  return [...weeks].map(([date, value]) => ({ date, value }));
+}
+
+function expectedSemanticSnapshot(payload, days, trendType = 'daily') {
+  const copy = INSIGHTS_FIXTURES[days].expectedCopy;
+  const trend = trendType === 'weekly'
+    ? weeklyTrend(payload.consumption_trend)
+    : payload.consumption_trend;
+  const pairs = (value) => Object.entries(value).map(([label, amount]) => [label, String(Number(amount))]);
+  const bars = (value) => Object.entries(value)
+    .map(([label, amount]) => ({ label, amount: Number(amount) }))
+    .filter(({ amount }) => amount > 0)
+    .sort((a, b) => b.amount - a.amount);
+  const timeBars = bars(payload.nicotine_by_time_of_day);
+  const productBars = bars(payload.nicotine_by_product);
+  const weekdays = DAYS.map((label) => Number(payload.consumption_by_day_of_week[label]) || 0);
+  const eligible = {
+    'consumption-trend-chart': payload.data_sufficiency.trend && trend.some(({ value }) => Number(value) > 0),
+    'time-of-day-chart': payload.data_sufficiency.time_pattern && timeBars.length > 0,
+    'day-of-week-chart': payload.data_sufficiency.trend && weekdays.some((value) => value > 0),
+    'brand-chart': payload.data_sufficiency.brand_pattern && productBars.length > 0,
+    'heatmap-chart': false,
+  };
+  const chart = (id, config) => ({
+    hidden: !eligible[id], role: 'img',
+    labelledBy: {
+      'consumption-trend-chart': 'consumption-trend-title',
+      'time-of-day-chart': 'time-of-day-title',
+      'day-of-week-chart': 'day-of-week-title',
+      'brand-chart': 'brand-title', 'heatmap-chart': 'heatmap-title',
+    }[id],
+    config: eligible[id] ? config : null,
+  });
+  const emptyRow = (message) => [[message]];
+  const heatmapRows = payload.heatmap_data.length
+    ? payload.heatmap_data.map((series) => [
+      series.name, ...series.data.map((point) => String(Number(point.y ?? point))),
+    ])
+    : emptyRow('No hourly pattern available.');
+  const status = { text: '', hidden: true, role: 'status', live: 'polite' };
+  return {
+    url: `/insights/?days=${days}`,
+    root: {
+      state: payload.log_count <= 0 ? 'empty' : payload.data_sufficiency.trend ? 'ready' : 'sparse',
+      busy: null, pendingDays: null,
+    },
+    metrics: {
+      lead: [String(payload.comparison.current_total), String(payload.daily_average), String(payload.observed_days)],
+      totalNicotine: String(payload.total_nicotine), bestDay: String(payload.best_day),
+      consistency: `${payload.consistency_score}%`, trendDirection: String(payload.trend_direction),
+      peakDay: String(payload.peak_day), averageTimeBetween: String(payload.average_time_between_pouches),
+    },
+    narratives: Object.fromEntries(Object.entries(copy).filter(([key]) => !['nextStep'].includes(key)).map(([key, value]) => [
+      key, { text: value, hidden: key === 'plan' ? payload.plan_context.state !== 'active_targeted' : false },
+    ])),
+    nextStep: { text: copy.nextStep[0], href: copy.nextStep[1] },
+    craving: {
+      hidden: !payload.craving_pattern.available,
+      leading: payload.craving_pattern.leading_trigger || '',
+      resolved: payload.craving_pattern.available ? `${payload.craving_pattern.leading_trigger_count} of ${payload.craving_pattern.resolved_count} resolved` : '',
+      nonNicotine: payload.craving_pattern.available ? `${payload.craving_pattern.non_nicotine_rate}%` : '',
+    },
+    tables: {
+      trend: trend.length ? trend.map(({ date, value }) => [date, String(value)]) : emptyRow('No consumption logged in this range.'),
+      timeOfDay: Object.keys(payload.nicotine_by_time_of_day).length ? pairs(payload.nicotine_by_time_of_day) : emptyRow('No known-strength nicotine logged in this range.'),
+      dayOfWeek: DAYS.map((label, index) => [label, String(weekdays[index])]),
+      brands: Object.keys(payload.nicotine_by_product).length ? pairs(payload.nicotine_by_product) : emptyRow('No known-strength product data in this range.'),
+      heatmap: heatmapRows,
+    },
+    charts: {
+      'consumption-trend-chart': chart('consumption-trend-chart', {
+        type: 'line', horizontal: false,
+        series: [{ name: trendType === 'weekly' ? 'Weekly pouches' : 'Daily pouches', data: trend.map(({ date, value }) => ({ x: date, y: Number(value) })) }],
+        categories: null,
+      }),
+      'time-of-day-chart': chart('time-of-day-chart', {
+        type: 'bar', horizontal: true,
+        series: [{ name: 'Nicotine (mg)', data: timeBars.map(({ amount }) => amount) }],
+        categories: timeBars.map(({ label }) => label),
+      }),
+      'day-of-week-chart': chart('day-of-week-chart', {
+        type: 'bar', horizontal: false, series: [{ name: 'Pouches', data: weekdays }],
+        categories: DAYS.map((label) => label.slice(0, 3)),
+      }),
+      'brand-chart': chart('brand-chart', {
+        type: 'bar', horizontal: true,
+        series: [{ name: 'Nicotine (mg)', data: productBars.map(({ amount }) => amount) }],
+        categories: productBars.map(({ label }) => label),
+      }),
+      'heatmap-chart': chart('heatmap-chart', null),
+    },
+    statuses: { load: status, charts: Array.from({ length: 5 }, () => ({ ...status })) },
+    range: [7, 30, 90, 365].map((value) => ({
+      days: value, current: value === days ? 'true' : null,
+      busy: null, active: value === days, pending: false,
+    })),
+    trend: ['daily', 'weekly'].map((type) => ({
+      type, pressed: String(type === trendType), active: type === trendType,
+    })),
+    export: { href: `/insights/api/export?days=${days}`, busy: null, disabled: false },
+    details: Array(6).fill(false),
+  };
 }
 
 test('Insights server fallback keeps neutral plan states neutral and reveals only sufficient cravings', async ({ page }) => {
@@ -336,6 +665,7 @@ test('Insights range refresh hides and restores plan and craving evidence from o
 
 test('Insights range transaction retains geometry, content, focus, and atomic history', async ({ page }) => {
   await login(page, 'insights-range@example.com');
+  await installChartConfigProbe(page);
   await page.goto('/insights/?days=30');
   const actions = page.locator('.insights-actions');
   const seven = page.getByRole('link', { name: '7 days', exact: true });
@@ -343,12 +673,7 @@ test('Insights range transaction retains geometry, content, focus, and atomic hi
   const before = await actions.boundingBox();
   const controlGeometry = await rangeGeometry(page);
   const snapshot = await fullInsightsSnapshot(page);
-  const expectedThirtyPayload = await page.evaluate(async () => (
-    fetch('/insights/api/insights?days=30').then((response) => response.json())
-  ));
-  const expectedThirty = await expectedCommittedSnapshotFromResponse(
-    page, expectedThirtyPayload, 30,
-  );
+  const expectedThirty = expectedSemanticSnapshot(INSIGHTS_FIXTURES[30], 30);
   await page.evaluate(() => {
     window.__insightsLayoutShifts = [];
     new PerformanceObserver((list) => {
@@ -367,11 +692,19 @@ test('Insights range transaction retains geometry, content, focus, and atomic hi
 
   let delayed = true;
   await page.route('**/insights/api/insights?days=7', async (route) => {
-    if (!delayed) return route.continue();
-    delayed = false;
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    await route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"held"}' });
+    if (delayed) {
+      delayed = false;
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      await route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"held"}' });
+      return;
+    }
+    await route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(apiFixture(7)),
+    });
   });
+  await page.route('**/insights/api/insights?days=30', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify(apiFixture(30)),
+  }));
   const failed = seven.click();
   await expect(page.locator('[data-insights-load-status]')).toContainText('Updating');
   const pending = await actions.boundingBox();
@@ -400,51 +733,40 @@ test('Insights range transaction retains geometry, content, focus, and atomic hi
   ));
   await seven.click();
   const sevenPayload = await (await sevenResponsePromise).json();
+  expect(sevenPayload).toEqual(apiFixture(7));
   await expect(page).toHaveURL(/days=7/);
   await expect(page.locator('[data-days="7"]')).toHaveAttribute('aria-current', 'true');
   expectStableRangeGeometry(await rangeGeometry(page), controlGeometry);
-  const expectedSeven = await expectedCommittedSnapshotFromResponse(page, sevenPayload, 7);
-  expect(committedSnapshot(await fullInsightsSnapshot(page))).toEqual(expectedSeven);
+  const expectedSeven = expectedSemanticSnapshot(INSIGHTS_FIXTURES[7], 7);
+  const sevenSnapshot = await semanticInsightsSnapshot(page);
+  const intentionallyStaleSeven = structuredClone(sevenSnapshot);
+  intentionallyStaleSeven.narratives.headline.text = 'Stale headline mutation';
+  expect(intentionallyStaleSeven).not.toEqual(expectedSeven);
+  expect(sevenSnapshot).toEqual(expectedSeven);
   await page.goBack();
   await expect(page).toHaveURL(/days=30/);
   await expect(page.locator('[data-days="30"]')).toHaveAttribute('aria-current', 'true');
   expectStableRangeGeometry(await rangeGeometry(page), controlGeometry);
-  expect(committedSnapshot(await fullInsightsSnapshot(page))).toEqual(expectedThirty);
+  expect(await semanticInsightsSnapshot(page)).toEqual(expectedThirty);
 });
 
 test('latest range wins after abort and long snapshot labels stay contained at 320px 200%', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 320, height: 844 });
   await login(page, 'insights-range@example.com');
+  await installChartConfigProbe(page);
   await page.goto('/insights/?days=30');
   await setActualTwoHundredPercentZoom(page);
-  const stalePayload = await page.evaluate(async () => (
-    fetch('/insights/api/insights?days=7').then((response) => response.json())
-  ));
-  const longLabel = 'An intentionally long immutable nicotine product snapshot label';
-  const spacedLabel = ' Exact snapshot ';
-  let latestNinetyPayload;
+  const controlGeometry = await rangeGeometry(page);
   await page.route('**/insights/api/insights?days=7', async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 600));
     await route.fulfill({
-      status: 200, contentType: 'application/json', body: JSON.stringify(stalePayload),
+      status: 200, contentType: 'application/json', body: JSON.stringify(apiFixture(7)),
     });
   });
-  await page.route('**/insights/api/insights?days=90', async (route) => {
-    const response = await route.fetch();
-    const payload = await response.json();
-    payload.nicotine_by_product = {
-      'Third product': 30,
-      [spacedLabel]: 60,
-      [longLabel]: 90,
-      'Accessible zero category': 0,
-    };
-    payload.data_sufficiency.brand_pattern = true;
-    latestNinetyPayload = payload;
-    await route.fulfill({
-      response, contentType: 'application/json', body: JSON.stringify(payload),
-    });
-  });
+  await page.route('**/insights/api/insights?days=90', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify(apiFixture(90)),
+  }));
 
   const beforeTop = await page.locator('.insights-actions').evaluate((node) => (
     node.getBoundingClientRect().top + window.scrollY
@@ -453,24 +775,24 @@ test('latest range wins after abort and long snapshot labels stay contained at 3
   await expect(page.locator('[data-days="7"]')).toHaveAttribute('aria-busy', 'true');
   await page.getByRole('link', { name: '90 days', exact: true }).click();
   await expect(page).toHaveURL(/days=90/);
-  await expect(page.locator('[data-analytics-key="brands"]')).toContainText(longLabel);
+  await expect(page.locator('[data-analytics-key="brands"]')).toContainText(LONG_PRODUCT);
   await expect(page.locator('[data-analytics-key="brands"] th')).toHaveText([
-    'Third product', spacedLabel, longLabel, 'Accessible zero category',
+    'Third product', SPACED_PRODUCT, LONG_PRODUCT, 'Accessible zero category',
   ]);
   await expect(page.locator('[data-analytics-key="brands"]')).toContainText('Accessible zero category');
   const productLabels = page.locator('#brand-chart .apexcharts-yaxis-label');
   await expect(productLabels).toHaveCount(3);
   await expect(productLabels.locator('title')).toHaveText([
-    longLabel, spacedLabel, 'Third product',
+    LONG_PRODUCT, SPACED_PRODUCT, 'Third product',
   ]);
   await expect(page.locator('#brand-chart .apexcharts-bar-area')).toHaveCount(3);
   await page.waitForTimeout(700);
   await expect(page).toHaveURL(/days=90/);
   await expect(page.locator('[data-days="90"]')).toHaveAttribute('aria-current', 'true');
-  const expectedNinety = await expectedCommittedSnapshotFromResponse(
-    page, latestNinetyPayload, 90, { reducedMotion: true, zoom: true },
+  expect(await semanticInsightsSnapshot(page)).toEqual(
+    expectedSemanticSnapshot(INSIGHTS_FIXTURES[90], 90),
   );
-  expect(committedSnapshot(await fullInsightsSnapshot(page))).toEqual(expectedNinety);
+  expectStableRangeGeometry(await rangeGeometry(page), controlGeometry);
   const afterTop = await page.locator('.insights-actions').evaluate((node) => (
     node.getBoundingClientRect().top + window.scrollY
   ));
@@ -483,20 +805,18 @@ test('latest range wins after abort and long snapshot labels stay contained at 3
 test('range request invalidates an already-running live presentation before pending begins', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await login(page, 'insights-range@example.com');
+  await installChartConfigProbe(page);
   await page.goto('/insights/?days=30');
   const before = await fullInsightsSnapshot(page);
   const geometry = await rangeGeometry(page);
   let releaseRange;
-  let raceNinetyPayload;
   const rangeHeld = new Promise((resolve) => { releaseRange = resolve; });
   await page.route('**/insights/api/insights?days=90', async (route) => {
-    const response = await route.fetch();
-    raceNinetyPayload = await response.json();
     await rangeHeld;
     await route.fulfill({
-      response,
+      status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(raceNinetyPayload),
+      body: JSON.stringify(apiFixture(90)),
     });
   });
   await page.evaluate(() => {
@@ -528,10 +848,9 @@ test('range request invalidates an already-running live presentation before pend
   releaseRange();
   await expect(page).toHaveURL(/days=90/);
   await expect(page.locator('[data-days="90"]')).toHaveAttribute('aria-current', 'true');
-  const expectedNinety = await expectedCommittedSnapshotFromResponse(
-    page, raceNinetyPayload, 90, { reducedMotion: true, trendType: 'weekly' },
+  expect(await semanticInsightsSnapshot(page)).toEqual(
+    expectedSemanticSnapshot(INSIGHTS_FIXTURES[90], 90, 'weekly'),
   );
-  expect(committedSnapshot(await fullInsightsSnapshot(page))).toEqual(expectedNinety);
   expectStableRangeGeometry(await rangeGeometry(page), geometry);
 });
 
