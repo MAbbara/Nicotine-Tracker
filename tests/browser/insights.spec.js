@@ -124,6 +124,42 @@ function committedSnapshot(snapshot) {
   };
 }
 
+async function expectedCommittedSnapshotFromResponse(
+  page, payload, days,
+  { reducedMotion = false, trendType = 'daily', zoom = false } = {},
+) {
+  const oracle = await page.context().newPage();
+  try {
+    const viewport = page.viewportSize();
+    if (viewport) await oracle.setViewportSize(viewport);
+    if (reducedMotion) await oracle.emulateMedia({ reducedMotion: 'reduce' });
+    await oracle.route(`**/insights/api/insights?days=${days}`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(payload),
+      });
+    });
+    const initialDays = Number(days) === 30 ? 7 : 30;
+    await oracle.goto(`/insights/?days=${initialDays}`);
+    if (zoom) await setActualTwoHundredPercentZoom(oracle);
+    await oracle.getByRole('link', {
+      name: Number(days) === 365 ? '1 year' : `${days} days`,
+      exact: true,
+    }).click();
+    await expect(oracle).toHaveURL(new RegExp(`days=${days}`));
+    if (trendType === 'weekly') {
+      await oracle.getByRole('button', { name: 'Weekly' }).click();
+      await expect(oracle.getByRole('button', { name: 'Weekly' })).toHaveAttribute(
+        'aria-pressed', 'true',
+      );
+    }
+    return committedSnapshot(await fullInsightsSnapshot(oracle));
+  } finally {
+    await oracle.close();
+  }
+}
+
 test('Insights server fallback keeps neutral plan states neutral and reveals only sufficient cravings', async ({ page }) => {
   const guard = watchForProductProblems(page);
   await page.route('**/static/js/insights.js', (route) => route.fulfill({
@@ -307,6 +343,12 @@ test('Insights range transaction retains geometry, content, focus, and atomic hi
   const before = await actions.boundingBox();
   const controlGeometry = await rangeGeometry(page);
   const snapshot = await fullInsightsSnapshot(page);
+  const expectedThirtyPayload = await page.evaluate(async () => (
+    fetch('/insights/api/insights?days=30').then((response) => response.json())
+  ));
+  const expectedThirty = await expectedCommittedSnapshotFromResponse(
+    page, expectedThirtyPayload, 30,
+  );
   await page.evaluate(() => {
     window.__insightsLayoutShifts = [];
     new PerformanceObserver((list) => {
@@ -351,14 +393,23 @@ test('Insights range transaction retains geometry, content, focus, and atomic hi
   expect(await page.evaluate(() => window.__insightsLayoutShifts
     .filter((entry) => entry.sources.includes('insights-actions')))).toEqual([]);
 
+  const sevenResponsePromise = page.waitForResponse((response) => (
+    new URL(response.url()).pathname === '/insights/api/insights'
+    && new URL(response.url()).search === '?days=7'
+    && response.status() === 200
+  ));
   await seven.click();
+  const sevenPayload = await (await sevenResponsePromise).json();
   await expect(page).toHaveURL(/days=7/);
   await expect(page.locator('[data-days="7"]')).toHaveAttribute('aria-current', 'true');
   expectStableRangeGeometry(await rangeGeometry(page), controlGeometry);
+  const expectedSeven = await expectedCommittedSnapshotFromResponse(page, sevenPayload, 7);
+  expect(committedSnapshot(await fullInsightsSnapshot(page))).toEqual(expectedSeven);
   await page.goBack();
   await expect(page).toHaveURL(/days=30/);
   await expect(page.locator('[data-days="30"]')).toHaveAttribute('aria-current', 'true');
   expectStableRangeGeometry(await rangeGeometry(page), controlGeometry);
+  expect(committedSnapshot(await fullInsightsSnapshot(page))).toEqual(expectedThirty);
 });
 
 test('latest range wins after abort and long snapshot labels stay contained at 320px 200%', async ({ page }) => {
@@ -372,6 +423,7 @@ test('latest range wins after abort and long snapshot labels stay contained at 3
   ));
   const longLabel = 'An intentionally long immutable nicotine product snapshot label';
   const spacedLabel = ' Exact snapshot ';
+  let latestNinetyPayload;
   await page.route('**/insights/api/insights?days=7', async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 600));
     await route.fulfill({
@@ -388,6 +440,7 @@ test('latest range wins after abort and long snapshot labels stay contained at 3
       'Accessible zero category': 0,
     };
     payload.data_sufficiency.brand_pattern = true;
+    latestNinetyPayload = payload;
     await route.fulfill({
       response, contentType: 'application/json', body: JSON.stringify(payload),
     });
@@ -414,6 +467,10 @@ test('latest range wins after abort and long snapshot labels stay contained at 3
   await page.waitForTimeout(700);
   await expect(page).toHaveURL(/days=90/);
   await expect(page.locator('[data-days="90"]')).toHaveAttribute('aria-current', 'true');
+  const expectedNinety = await expectedCommittedSnapshotFromResponse(
+    page, latestNinetyPayload, 90, { reducedMotion: true, zoom: true },
+  );
+  expect(committedSnapshot(await fullInsightsSnapshot(page))).toEqual(expectedNinety);
   const afterTop = await page.locator('.insights-actions').evaluate((node) => (
     node.getBoundingClientRect().top + window.scrollY
   ));
@@ -430,10 +487,17 @@ test('range request invalidates an already-running live presentation before pend
   const before = await fullInsightsSnapshot(page);
   const geometry = await rangeGeometry(page);
   let releaseRange;
+  let raceNinetyPayload;
   const rangeHeld = new Promise((resolve) => { releaseRange = resolve; });
   await page.route('**/insights/api/insights?days=90', async (route) => {
+    const response = await route.fetch();
+    raceNinetyPayload = await response.json();
     await rangeHeld;
-    await route.continue();
+    await route.fulfill({
+      response,
+      contentType: 'application/json',
+      body: JSON.stringify(raceNinetyPayload),
+    });
   });
   await page.evaluate(() => {
     const original = window.ApexCharts.prototype.render;
@@ -464,6 +528,11 @@ test('range request invalidates an already-running live presentation before pend
   releaseRange();
   await expect(page).toHaveURL(/days=90/);
   await expect(page.locator('[data-days="90"]')).toHaveAttribute('aria-current', 'true');
+  const expectedNinety = await expectedCommittedSnapshotFromResponse(
+    page, raceNinetyPayload, 90, { reducedMotion: true, trendType: 'weekly' },
+  );
+  expect(committedSnapshot(await fullInsightsSnapshot(page))).toEqual(expectedNinety);
+  expectStableRangeGeometry(await rangeGeometry(page), geometry);
 });
 
 test('range response builds offscreen and chart delay or failure cannot partially commit live state', async ({ page }) => {
