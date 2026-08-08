@@ -254,9 +254,12 @@ uwsgi --ini uwsgi.ini
 - Email functionality enabled
 
 Production startup requires a shared Redis limiter store. Set
-`RATELIMIT_STORAGE_URI` to a dedicated `redis://` or `rediss://` URL,
-`RATELIMIT_KEY_PREFIX` to a deployment-unique prefix, and
-`RATELIMIT_HMAC_SECRET` to an independent high-entropy secret. Set
+`RATELIMIT_STORAGE_URI` to a dedicated `redis://` or `rediss://` URL with an
+explicit non-loopback host, port, and numeric database. Set
+`RATELIMIT_KEY_PREFIX` to a deployment-unique prefix of at least eight
+characters, and set `RATELIMIT_HMAC_SECRET` to an independent high-entropy
+secret of at least 32 characters that is not the Flask `SECRET_KEY`. Do not use
+the sample names or values in this document as deployed credentials. Set
 `RATELIMIT_TRUSTED_PROXY_COUNT` only to the exact number of trusted reverse
 proxy hops in front of the application. Missing or process-local production
 storage is rejected at startup, and Redis failures do not silently fall back

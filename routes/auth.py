@@ -234,6 +234,8 @@ def logout():
     return response
 
 @auth_bp.route('/verify_email/<token>')
+@auth_ip_limit(methods=['GET'])
+@auth_account_limit(token=True, methods=['GET'])
 def verify_email(token):
     try:
         verification_service = EmailVerificationService()

@@ -21,9 +21,19 @@ from services.serializers import (
     parse_update_craving_request,
 )
 from services.timezone_service import resolve_timezone
+from services.rate_limit_service import (
+    analytics_read_limit,
+    authenticated_write_limit,
+)
 
 
 cravings_bp = Blueprint('cravings', __name__)
+
+
+@cravings_bp.before_request
+@authenticated_write_limit()
+def _limit_authenticated_craving_writes():
+    return None
 
 _LEGACY_PATCH_KEYS = {
     'outcome',
@@ -215,6 +225,7 @@ def get_cravings():
         return jsonify(error="Failed to retrieve cravings."), 500
 
 @cravings_bp.route('/api/analytics', methods=['GET'])
+@analytics_read_limit()
 @login_required
 def get_craving_analytics():
     """API endpoint for craving analytics data."""

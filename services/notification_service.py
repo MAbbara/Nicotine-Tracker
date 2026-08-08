@@ -68,6 +68,25 @@ class NotificationService:
             report_period_start=period_start,
         ).order_by(NotificationQueue.notification_type).all()
 
+    @staticmethod
+    def _is_weekly_uniqueness_conflict(error, dialect_name):
+        """Identify only the weekly period/channel uniqueness conflict."""
+        original = getattr(error, 'orig', None)
+        message = str(original or error)
+        constraint = 'uq_notification_weekly_period_channel'
+        if dialect_name == 'mysql':
+            args = getattr(original, 'args', ())
+            return bool(args and args[0] == 1062 and constraint in message)
+        if dialect_name == 'sqlite':
+            columns = (
+                'notification_queue.user_id, '
+                'notification_queue.category, '
+                'notification_queue.report_period_start, '
+                'notification_queue.notification_type'
+            )
+            return 'UNIQUE constraint failed' in message and columns in message
+        return constraint in message
+
     def _queue_weekly_channels(self, user, preferences, period_start, subject,
                                message, extra_data):
         channels = []
@@ -81,12 +100,21 @@ class NotificationService:
                 channels.append(('discord', webhook))
         expected_types = {channel for channel, _recipient in channels}
         existing = self._weekly_rows(user.id, period_start)
-        if expected_types and {row.notification_type for row in existing} == expected_types:
-            return existing
         if not channels:
             return []
 
-        for notification_type, recipient in channels:
+        existing_by_type = {
+            row.notification_type: row for row in existing
+        }
+        missing_channels = [
+            (channel, recipient)
+            for channel, recipient in channels
+            if channel not in existing_by_type
+        ]
+        if not missing_channels:
+            return [existing_by_type[channel] for channel in sorted(expected_types)]
+
+        for notification_type, recipient in missing_channels:
             db.session.add(NotificationQueue(
                 user_id=user.id,
                 notification_type=notification_type,
@@ -104,13 +132,28 @@ class NotificationService:
             ))
         try:
             db.session.commit()
-        except IntegrityError:
+        except IntegrityError as error:
             db.session.rollback()
+            dialect_name = db.session.get_bind().dialect.name
+            if not self._is_weekly_uniqueness_conflict(error, dialect_name):
+                raise
             replay = self._weekly_rows(user.id, period_start)
-            if {row.notification_type for row in replay} == expected_types:
-                return replay
+            replay_by_type = {
+                row.notification_type: row for row in replay
+            }
+            if expected_types.issubset(replay_by_type):
+                return [
+                    replay_by_type[channel] for channel in sorted(expected_types)
+                ]
             raise
-        return self._weekly_rows(user.id, period_start)
+        except Exception:
+            db.session.rollback()
+            raise
+        committed = {
+            row.notification_type: row
+            for row in self._weekly_rows(user.id, period_start)
+        }
+        return [committed[channel] for channel in sorted(expected_types)]
 
     def queue_weekly_report(self, user, *, now_utc=None):
         """Generate and queue a weekly report notification for a user."""
@@ -278,8 +321,12 @@ class NotificationService:
             )
 
         except Exception as e:
-            current_app.logger.error(f'Error queuing weekly report for user {user.id}: {e}', exc_info=True)
-            return False
+            db.session.rollback()
+            current_app.logger.error(
+                f'Error queuing weekly report for user {user.id}: {e}',
+                exc_info=True,
+            )
+            raise
     
     def queue_notification(self, user_id, category, subject, message, priority=5, extra_data=None):
         """
@@ -451,7 +498,8 @@ class NotificationService:
                     # Mark as sent and create history record
                     notification.status = 'sent'
                     self._create_history_record(notification, 'sent')
-                    db.session.delete(notification)  # Remove from queue
+                    if notification.category != 'weekly_report':
+                        db.session.delete(notification)  # Ephemeral queue item
                 else:
                     # Increment attempts and potentially reschedule
                     notification.attempts += 1

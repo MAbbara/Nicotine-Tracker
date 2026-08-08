@@ -80,6 +80,7 @@ class Config:
     RATELIMIT_PLAN_MUTATION = '30 per hour'
     RATELIMIT_EXPORT = '10 per hour'
     RATELIMIT_DESTRUCTIVE = '5 per hour'
+    RATELIMIT_ANALYTICS_READ = '30 per minute'
 
     
     # Debug mode - automatically set based on environment
@@ -124,6 +125,7 @@ class TestingConfig(Config):
     RATELIMIT_PLAN_MUTATION = '100000 per hour'
     RATELIMIT_EXPORT = '100000 per hour'
     RATELIMIT_DESTRUCTIVE = '100000 per hour'
+    RATELIMIT_ANALYTICS_READ = '100000 per hour'
 
 config = {
     'development': DevelopmentConfig,

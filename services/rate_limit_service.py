@@ -80,18 +80,19 @@ def authenticated_write_limit():
     )
 
 
-def auth_account_limit(*, token=False):
+def auth_account_limit(*, token=False, methods=None):
     return configured_limit(
         'AUTH_ACCOUNT',
         'auth-account',
         key_func=credential_token_key if token else credential_email_key,
-        methods=['POST'],
+        methods=methods or ['POST'],
     )
 
 
-def auth_ip_limit():
+def auth_ip_limit(*, methods=None):
     return configured_limit(
-        'AUTH_IP', 'auth-ip', key_func=trusted_ip_key, methods=['POST']
+        'AUTH_IP', 'auth-ip', key_func=trusted_ip_key,
+        methods=methods or ['POST'],
     )
 
 
@@ -142,3 +143,7 @@ def destructive_limit(*, methods=None, exempt_when=None):
         'DESTRUCTIVE', 'destructive', methods=methods,
         exempt_when=exempt_when,
     )
+
+
+def analytics_read_limit():
+    return configured_limit('ANALYTICS_READ', 'analytics-read', methods=['GET'])

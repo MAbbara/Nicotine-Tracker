@@ -93,3 +93,22 @@ def test_weekly_migration_backfills_only_parseable_periods_and_enforces_channel_
                     'pending', 0, 3, 4, '2030-01-07'
                 )
             '''))
+
+        alembic_command.downgrade(
+            harness.make_alembic_config(connection), DOWN_REVISION
+        )
+        columns = {
+            column['name']
+            for column in sa.inspect(connection).get_columns(
+                'notification_queue'
+            )
+        }
+        indexes = {
+            index['name']
+            for index in sa.inspect(connection).get_indexes(
+                'notification_queue'
+            )
+        }
+        assert 'report_period_start' not in columns
+        assert 'idempotency_key' not in columns
+        assert 'ix_notification_queue_user_id' not in indexes

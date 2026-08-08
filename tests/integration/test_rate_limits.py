@@ -1,5 +1,8 @@
 import pytest
+import json
 import os
+import subprocess
+import sys
 import time
 from flask import jsonify, session
 from extensions import limiter
@@ -9,6 +12,9 @@ from config import DevelopmentConfig, ProductionConfig, TestingConfig
 from tests.conftest import login_user
 from models import User
 from extensions import db
+
+TEST_PROD_SECRET = 'task6-test-only-' + ('a9F!' * 8)
+TEST_PROD_PREFIX = 'nicotine-prod-20260808-a'
 
 
 @pytest.mark.parametrize('config_class', [DevelopmentConfig, TestingConfig])
@@ -25,8 +31,8 @@ def test_production_rejects_missing_or_process_local_rate_limit_storage(
         ProductionConfig, 'SQLALCHEMY_DATABASE_URI', 'sqlite:///:memory:'
     )
     monkeypatch.setattr(ProductionConfig, 'RATELIMIT_STORAGE_URI', storage_uri)
-    monkeypatch.setattr(ProductionConfig, 'RATELIMIT_KEY_PREFIX', 'task6-prod-a')
-    monkeypatch.setattr(ProductionConfig, 'RATELIMIT_HMAC_SECRET', 'separate-secret')
+    monkeypatch.setattr(ProductionConfig, 'RATELIMIT_KEY_PREFIX', TEST_PROD_PREFIX)
+    monkeypatch.setattr(ProductionConfig, 'RATELIMIT_HMAC_SECRET', TEST_PROD_SECRET)
 
     with pytest.raises(RuntimeError, match='shared Redis'):
         create_app('production')
@@ -37,12 +43,13 @@ def test_production_rejects_missing_limiter_secret_and_prefix(monkeypatch):
         ProductionConfig, 'SQLALCHEMY_DATABASE_URI', 'sqlite:///:memory:'
     )
     monkeypatch.setattr(
-        ProductionConfig, 'RATELIMIT_STORAGE_URI', 'redis://127.0.0.1:6379/15'
+        ProductionConfig, 'RATELIMIT_STORAGE_URI',
+        'redis://cache.internal:6379/15',
     )
     monkeypatch.setattr(ProductionConfig, 'RATELIMIT_KEY_PREFIX', '')
     monkeypatch.setattr(ProductionConfig, 'RATELIMIT_HMAC_SECRET', '')
 
-    with pytest.raises(RuntimeError, match='secret.*prefix'):
+    with pytest.raises(RuntimeError, match='strong independent limiter secret'):
         create_app('production')
 
 
@@ -51,10 +58,11 @@ def test_production_rejects_disabled_limiter_or_negative_proxy_trust(monkeypatch
         ProductionConfig, 'SQLALCHEMY_DATABASE_URI', 'sqlite:///:memory:'
     )
     monkeypatch.setattr(
-        ProductionConfig, 'RATELIMIT_STORAGE_URI', 'redis://127.0.0.1:6379/15'
+        ProductionConfig, 'RATELIMIT_STORAGE_URI',
+        'redis://cache.internal:6379/15',
     )
-    monkeypatch.setattr(ProductionConfig, 'RATELIMIT_KEY_PREFIX', 'task6-prod-a')
-    monkeypatch.setattr(ProductionConfig, 'RATELIMIT_HMAC_SECRET', 'separate-secret')
+    monkeypatch.setattr(ProductionConfig, 'RATELIMIT_KEY_PREFIX', TEST_PROD_PREFIX)
+    monkeypatch.setattr(ProductionConfig, 'RATELIMIT_HMAC_SECRET', TEST_PROD_SECRET)
     monkeypatch.setattr(ProductionConfig, 'RATELIMIT_ENABLED', False)
     with pytest.raises(RuntimeError, match='must be enabled'):
         create_app('production')
@@ -62,6 +70,81 @@ def test_production_rejects_disabled_limiter_or_negative_proxy_trust(monkeypatch
     monkeypatch.setattr(ProductionConfig, 'RATELIMIT_ENABLED', True)
     monkeypatch.setattr(ProductionConfig, 'RATELIMIT_TRUSTED_PROXY_COUNT', -1)
     with pytest.raises(RuntimeError, match='proxy count'):
+        create_app('production')
+
+
+@pytest.mark.parametrize('storage_uri', [
+    'redis://',
+    'redis:///0',
+    'redis://localhost:6379/0',
+    'redis://127.0.0.1:6379/0',
+    'redis://cache.internal/0',
+    'redis://cache.internal:6379',
+    'redis://cache.internal:6379/not-a-db',
+])
+def test_production_rejects_ambiguous_or_local_redis_endpoints(
+        monkeypatch, storage_uri):
+    monkeypatch.setattr(
+        ProductionConfig, 'SQLALCHEMY_DATABASE_URI', 'sqlite:///:memory:'
+    )
+    monkeypatch.setattr(ProductionConfig, 'RATELIMIT_STORAGE_URI', storage_uri)
+    monkeypatch.setattr(ProductionConfig, 'RATELIMIT_KEY_PREFIX', TEST_PROD_PREFIX)
+    monkeypatch.setattr(ProductionConfig, 'RATELIMIT_HMAC_SECRET', TEST_PROD_SECRET)
+    with pytest.raises(RuntimeError, match='concrete Redis endpoint'):
+        create_app('production')
+
+
+@pytest.mark.parametrize('secret', [
+    '', 'short-secret', 'change-me-change-me-change-me-change-me',
+    'dev-secret-key-change-in-production', 'a' * 32,
+    '1234567890' * 4,
+])
+def test_production_rejects_missing_weak_or_predictable_limiter_secret(
+        monkeypatch, secret):
+    monkeypatch.setattr(
+        ProductionConfig, 'SQLALCHEMY_DATABASE_URI', 'sqlite:///:memory:'
+    )
+    monkeypatch.setattr(
+        ProductionConfig, 'RATELIMIT_STORAGE_URI',
+        'redis://cache.internal:6379/3',
+    )
+    monkeypatch.setattr(ProductionConfig, 'RATELIMIT_KEY_PREFIX', TEST_PROD_PREFIX)
+    monkeypatch.setattr(ProductionConfig, 'RATELIMIT_HMAC_SECRET', secret)
+    with pytest.raises(RuntimeError, match='strong independent limiter secret'):
+        create_app('production')
+
+
+def test_production_rejects_limiter_secret_equal_to_session_secret(monkeypatch):
+    shared = 'test-only-strong-shared-' + ('Z7!' * 8)
+    monkeypatch.setattr(
+        ProductionConfig, 'SQLALCHEMY_DATABASE_URI', 'sqlite:///:memory:'
+    )
+    monkeypatch.setattr(
+        ProductionConfig, 'RATELIMIT_STORAGE_URI',
+        'redis://cache.internal:6379/3',
+    )
+    monkeypatch.setattr(ProductionConfig, 'SECRET_KEY', shared)
+    monkeypatch.setattr(ProductionConfig, 'RATELIMIT_HMAC_SECRET', shared)
+    monkeypatch.setattr(ProductionConfig, 'RATELIMIT_KEY_PREFIX', TEST_PROD_PREFIX)
+    with pytest.raises(RuntimeError, match='independent'):
+        create_app('production')
+
+
+@pytest.mark.parametrize('prefix', [
+    '', 'local', 'default', 'nicotine-tracker-local', 'prod',
+])
+def test_production_rejects_default_local_or_ambiguous_prefix(
+        monkeypatch, prefix):
+    monkeypatch.setattr(
+        ProductionConfig, 'SQLALCHEMY_DATABASE_URI', 'sqlite:///:memory:'
+    )
+    monkeypatch.setattr(
+        ProductionConfig, 'RATELIMIT_STORAGE_URI',
+        'redis://cache.internal:6379/3',
+    )
+    monkeypatch.setattr(ProductionConfig, 'RATELIMIT_HMAC_SECRET', TEST_PROD_SECRET)
+    monkeypatch.setattr(ProductionConfig, 'RATELIMIT_KEY_PREFIX', prefix)
+    with pytest.raises(RuntimeError, match='deployment-unique key prefix'):
         create_app('production')
 
 
@@ -416,6 +499,69 @@ def test_account_delete_uses_destructive_and_current_password_buckets(
     assert second_delete.status_code == 429
 
 
+def test_legacy_and_canonical_craving_posts_share_the_write_bucket(
+        app, logged_in_client):
+    _set_test_limits(app, AUTHENTICATED_WRITE='2/minute')
+    responses = [
+        logged_in_client.post('/cravings/cravings', data={}),
+        logged_in_client.post('/cravings/api/cravings', json={}),
+        logged_in_client.post('/api/cravings', json={}),
+    ]
+    _assert_third_is_limited(responses)
+
+
+def test_journey_onboarding_preview_and_apply_share_plan_bucket(
+        app, logged_in_client):
+    _set_test_limits(
+        app, AUTHENTICATED_WRITE='100/minute', PLAN_MUTATION='2/minute'
+    )
+    responses = [
+        logged_in_client.post('/journey/onboarding', data={}),
+        logged_in_client.post(
+            '/journey/onboarding', data={'form_action': 'confirm'}
+        ),
+        logged_in_client.post('/journey/onboarding', data={}),
+    ]
+    _assert_third_is_limited(responses)
+
+
+def test_email_token_verification_has_token_and_ip_inventory(app):
+    _set_test_limits(app, AUTH_ACCOUNT='2/minute', AUTH_IP='20/minute')
+    client = app.test_client()
+    responses = [
+        client.get(
+            '/auth/verify_email/repeated-secret-token',
+            environ_base={'REMOTE_ADDR': f'192.0.2.{index}'},
+        )
+        for index in (31, 32, 33)
+    ]
+    _assert_third_is_limited(responses)
+
+
+def test_goal_and_catalog_deletions_share_destructive_inventory(
+        app, logged_in_client):
+    _set_test_limits(
+        app, AUTHENTICATED_WRITE='100/minute', DESTRUCTIVE='2/minute'
+    )
+    responses = [
+        logged_in_client.post('/goals/delete/999991'),
+        logged_in_client.post('/catalog/delete/999992'),
+        logged_in_client.post('/goals/delete/999993'),
+    ]
+    _assert_third_is_limited(responses)
+
+
+def test_expensive_analytics_routes_share_one_read_inventory(
+        app, logged_in_client):
+    _set_test_limits(app, ANALYTICS_READ='2/minute')
+    responses = [
+        logged_in_client.get('/insights/api/insights?days=7'),
+        logged_in_client.get('/cravings/api/analytics'),
+        logged_in_client.get('/api/daily_intake'),
+    ]
+    _assert_third_is_limited(responses)
+
+
 def _redis_test_app(monkeypatch, endpoint):
     redis_url = os.environ.get('TEST_RATELIMIT_REDIS_URL')
     prefix = os.environ.get('TEST_RATELIMIT_KEY_PREFIX')
@@ -467,3 +613,85 @@ def test_redis_outage_fails_closed_without_silent_memory_fallback(monkeypatch):
 
     assert response.status_code == 500
     assert elapsed < 2
+
+
+def _isolated_process_status(storage_uri, prefix):
+    program = r'''
+import json
+import os
+import time
+from flask import jsonify
+from config import TestingConfig
+
+TestingConfig.RATELIMIT_STORAGE_URI = os.environ['TASK6_STORAGE_URI']
+TestingConfig.RATELIMIT_KEY_PREFIX = os.environ['TASK6_KEY_PREFIX']
+TestingConfig.RATELIMIT_HMAC_SECRET = 'task6-isolated-process-secret-only'
+from app import create_app
+from extensions import limiter
+from services.rate_limit_service import trusted_ip_key
+
+app = create_app('testing')
+app.config['PROPAGATE_EXCEPTIONS'] = False
+app.add_url_rule(
+    '/api/_test/isolated', endpoint='isolated_process_limit',
+    view_func=limiter.shared_limit(
+        '1/minute', 'isolated-process-proof', key_func=trusted_ip_key,
+    )(lambda: jsonify({'ok': True})),
+)
+started = time.monotonic()
+response = app.test_client().get(
+    '/api/_test/isolated', environ_base={'REMOTE_ADDR': '192.0.2.88'}
+)
+print('TASK6_RESULT=' + json.dumps({
+    'status': response.status_code,
+    'elapsed': time.monotonic() - started,
+}))
+'''
+    environment = os.environ.copy()
+    environment.update({
+        'TASK6_STORAGE_URI': storage_uri,
+        'TASK6_KEY_PREFIX': prefix,
+    })
+    result = subprocess.run(
+        [sys.executable, '-c', program],
+        cwd=os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=8,
+        check=True,
+    )
+    marker = next(
+        line.removeprefix('TASK6_RESULT=')
+        for line in result.stdout.splitlines()
+        if line.startswith('TASK6_RESULT=')
+    )
+    return json.loads(marker)
+
+
+def test_isolated_processes_share_only_the_disposable_redis_counter():
+    redis_url = os.environ.get('TEST_RATELIMIT_REDIS_URL')
+    prefix = os.environ.get('TEST_RATELIMIT_KEY_PREFIX')
+    if not redis_url or not prefix:
+        pytest.skip('cross-process proof requires disposable Redis URL/prefix')
+
+    first = _isolated_process_status(redis_url, prefix + '-process')
+    second = _isolated_process_status(redis_url, prefix + '-process')
+    memory_first = _isolated_process_status('memory://', prefix + '-memory')
+    memory_second = _isolated_process_status('memory://', prefix + '-memory')
+
+    assert [first['status'], second['status']] == [200, 429]
+    assert [memory_first['status'], memory_second['status']] == [200, 200]
+
+
+def test_isolated_process_redis_outage_is_bounded_and_fails_closed():
+    if os.environ.get('TEST_RATELIMIT_EXPECT_OUTAGE') != '1':
+        pytest.skip('cross-process outage proof runs after Redis is stopped')
+    redis_url = os.environ.get('TEST_RATELIMIT_REDIS_URL')
+    prefix = os.environ.get('TEST_RATELIMIT_KEY_PREFIX')
+    if not redis_url or not prefix:
+        pytest.skip('cross-process outage proof requires disposable Redis URL/prefix')
+
+    result = _isolated_process_status(redis_url, prefix + '-process-outage')
+    assert result['status'] == 500
+    assert result['elapsed'] < 2

@@ -128,3 +128,21 @@ def downgrade():
         )
         batch.drop_column('idempotency_key')
         batch.drop_column('report_period_start')
+    indexes = sa.inspect(connection).get_indexes('notification_queue')
+    if any(
+        index.get('name') == 'ix_notification_queue_user_id'
+        for index in indexes
+    ):
+        if connection.dialect.name == 'mysql' and not any(
+            index.get('name') != 'ix_notification_queue_user_id'
+            and index.get('column_names') == ['user_id']
+            for index in indexes
+        ):
+            # MySQL may discard its implicit FK index after the explicit index
+            # is introduced. Recreate the down-revision support index before
+            # removing ours so the foreign key remains valid.
+            op.create_index('user_id', 'notification_queue', ['user_id'])
+        op.drop_index(
+            'ix_notification_queue_user_id',
+            table_name='notification_queue',
+        )

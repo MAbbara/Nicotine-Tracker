@@ -17,6 +17,7 @@ import math
 import time
 from logging.handlers import RotatingFileHandler
 import os
+from urllib.parse import urlsplit
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 def create_app(config_name=None):
@@ -204,11 +205,47 @@ def _validate_rate_limit_config(app):
         raise RuntimeError(
             'Production rate limits require shared Redis storage.'
         )
+    try:
+        endpoint = urlsplit(storage_uri)
+        redis_port = endpoint.port
+    except ValueError as exc:
+        raise RuntimeError(
+            'Production rate limits require a concrete Redis endpoint.'
+        ) from exc
+    database = endpoint.path.removeprefix('/')
+    if (
+        endpoint.scheme not in {'redis', 'rediss'}
+        or not endpoint.hostname
+        or redis_port is None
+        or endpoint.hostname.casefold() in {'localhost', '127.0.0.1', '::1'}
+        or not database.isdigit()
+        or endpoint.query
+        or endpoint.fragment
+    ):
+        raise RuntimeError(
+            'Production rate limits require a concrete Redis endpoint.'
+        )
     secret = (app.config.get('RATELIMIT_HMAC_SECRET') or '').strip()
     prefix = (app.config.get('RATELIMIT_KEY_PREFIX') or '').strip()
-    if not secret or not prefix:
+    predictable_secrets = {
+        'change-me-change-me-change-me-change-me',
+        'dev-secret-key-change-in-production',
+    }
+    if (
+        len(secret) < 32
+        or len(set(secret)) < 12
+        or secret.casefold() in predictable_secrets
+        or secret == app.config.get('SECRET_KEY')
+    ):
         raise RuntimeError(
-            'Production rate limits require a limiter secret and key prefix.'
+            'Production rate limits require a strong independent limiter secret.'
+        )
+    disallowed_prefixes = {
+        '', 'local', 'default', 'nicotine-tracker-local', 'prod',
+    }
+    if len(prefix) < 8 or prefix.casefold() in disallowed_prefixes:
+        raise RuntimeError(
+            'Production rate limits require a deployment-unique key prefix.'
         )
     proxy_count = app.config.get('RATELIMIT_TRUSTED_PROXY_COUNT', 0)
     if not isinstance(proxy_count, int) or isinstance(proxy_count, bool) or proxy_count < 0:

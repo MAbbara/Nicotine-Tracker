@@ -65,7 +65,10 @@ journey_bp = Blueprint('journey', __name__)
 @journey_bp.before_request
 @authenticated_write_limit()
 @plan_mutation_limit(exempt_when=lambda: (
-    request.method != 'POST' or not request.path.startswith('/journey/plans/')
+    request.method != 'POST' or not (
+        request.path.startswith('/journey/plans/')
+        or request.path == '/journey/onboarding'
+    )
 ))
 def _limit_journey_plan_writes():
     return None

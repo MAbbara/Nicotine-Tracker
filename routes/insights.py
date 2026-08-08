@@ -6,7 +6,7 @@ from datetime import datetime
 from routes.auth import login_required, get_current_user
 from services.enhanced_insights_service import get_enhanced_insights
 from services.insights_service import get_all_insights  # Keep for backward compatibility
-from services.rate_limit_service import export_limit
+from services.rate_limit_service import analytics_read_limit, export_limit
 
 insights_bp = Blueprint('insights', __name__, template_folder="../templates/insights")
 SUPPORTED_RANGES = frozenset({7, 30, 90, 365})
@@ -17,6 +17,7 @@ def _requested_range_days():
     return days if days in SUPPORTED_RANGES else 30
 
 @insights_bp.route('/', methods=['GET'])
+@analytics_read_limit()
 @login_required
 def insights_page():
     """Renders the enhanced insights and analytics page."""
@@ -30,6 +31,7 @@ def insights_page():
     )
 
 @insights_bp.route('/api/insights', methods=['GET'])
+@analytics_read_limit()
 @login_required
 def get_insights():
     """API endpoint to get enhanced analytical insights."""
@@ -85,6 +87,7 @@ def export_insights_data():
 
 # Legacy endpoint for backward compatibility
 @insights_bp.route('/api/legacy-insights', methods=['GET'])
+@analytics_read_limit()
 @login_required
 def get_legacy_insights():
     """Legacy API endpoint for backward compatibility."""

@@ -5,10 +5,20 @@ from routes.auth import login_required, get_current_user
 from services.log_service import parse_nicotine_strength
 from services.pouch_service import get_sorted_pouches, get_sorted_brands
 from services.preference_service import PreferenceService
+from services.rate_limit_service import (
+    authenticated_write_limit,
+    destructive_limit,
+)
 from sqlalchemy import or_, desc
 
 
 catalog_bp = Blueprint('catalog', __name__, template_folder="../templates/catalog")
+
+
+@catalog_bp.before_request
+@authenticated_write_limit()
+def _limit_authenticated_catalog_writes():
+    return None
 
 @catalog_bp.route('/')
 @login_required
@@ -173,6 +183,7 @@ def edit_pouch(pouch_id):
         return redirect(url_for('catalog.index'))
 
 @catalog_bp.route('/delete/<int:pouch_id>', methods=['POST'])
+@destructive_limit(methods=['POST'])
 @login_required
 def delete_pouch(pouch_id):
     """Delete a custom pouch"""

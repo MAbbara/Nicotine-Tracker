@@ -22,9 +22,20 @@ from services.goal_evaluation_service import (
 from services.timezone_service import resolve_timezone
 from extensions import db
 from routes.auth import login_required, get_current_user
+from services.rate_limit_service import (
+    analytics_read_limit,
+    authenticated_write_limit,
+    destructive_limit,
+)
 from sqlalchemy import desc
 
 goals_bp = Blueprint('goals', __name__, template_folder="../templates/goals")
+
+
+@goals_bp.before_request
+@authenticated_write_limit()
+def _limit_authenticated_goal_writes():
+    return None
 
 
 def _current_effective_day(user, resolved_timezone, now_utc=None):
@@ -239,6 +250,7 @@ def edit_goal(goal_id):
 
 
 @goals_bp.route('/delete/<int:goal_id>', methods=['POST'])
+@destructive_limit(methods=['POST'])
 @login_required
 def delete_goal(goal_id):
     """Delete a goal"""
@@ -302,6 +314,7 @@ def toggle_goal(goal_id):
     return redirect(url_for('goals.index'))
 
 @goals_bp.route('/progress')
+@analytics_read_limit()
 @login_required
 def progress():
     """Detailed progress view"""

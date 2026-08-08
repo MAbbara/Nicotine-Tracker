@@ -74,6 +74,7 @@ from services.check_in_service import (
     serialize_check_in,
 )
 from services.rate_limit_service import (
+    analytics_read_limit,
     authenticated_write_limit,
     destructive_limit,
     plan_mutation_limit,
@@ -405,7 +406,7 @@ def update_day_boundary_preference():
     })
 
 @api_bp.route('/daily_intake', methods=['GET'])
-
+@analytics_read_limit()
 @login_required
 def daily_intake_data():
     today = datetime.utcnow().date()
@@ -455,6 +456,7 @@ def _serialize_baseline(suggestion):
 
 
 @api_bp.route('/baseline-suggestion', methods=['GET'])
+@analytics_read_limit()
 @login_required
 def baseline_suggestion():
     if request.args:
