@@ -211,6 +211,8 @@ def test_account_password_policy_rejects_out_of_bounds_without_write(
     })
     assert response.status_code == 422
     assert test_user.password_hash == original_hash
+    soup = BeautifulSoup(response.data, 'html.parser')
+    assert soup.select_one('#new_email')['value'] == test_user.email
 
 
 def test_account_email_rejects_schema_oversize_without_write(

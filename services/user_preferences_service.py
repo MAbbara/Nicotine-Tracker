@@ -1,12 +1,16 @@
 """User Preferences Service.
 Handles user notification and communication preferences management.
 """
-from datetime import datetime, time
+from datetime import datetime
 from flask import current_app
 from extensions import db
 from models.user_preferences import UserPreferences
 from models.user import User
-from services.settings_validation_service import NotificationSettingsInput
+from services.settings_validation_service import (
+    NotificationSettingsInput,
+    SettingsValidationError,
+    parse_notification_settings,
+)
 
 class UserPreferencesService:
     
@@ -52,55 +56,15 @@ class UserPreferencesService:
             raise
     
     def update_preferences(self, user_id, *, commit=True, **kwargs):
-        """Update user preferences"""
-        try:
-            # Update allowed fields
-            allowed_fields = [
-                'notification_channel', 'goal_notifications', 'daily_reminders',
-                'weekly_reports', 'achievement_notifications', 'discord_webhook',
-                'slack_webhook', 'reminder_time', 'quiet_hours_start',
-                'quiet_hours_end',
-                'units_preference', 'preferred_brands'
-            ]
-            rejected = sorted(set(kwargs) - set(allowed_fields))
-            if rejected:
-                return False, "Unsupported preference field"
-            preferences = self.get_or_create_preferences(user_id, commit=commit)
-            if not preferences:
-                return False, "Could not get user preferences"
-            
-            updated_fields = []
-            for field, value in kwargs.items():
-                if field in allowed_fields and hasattr(preferences, field):
-                    # Handle time fields specially
-                    if field in ['reminder_time', 'quiet_hours_start', 'quiet_hours_end', 'daily_reset_time']:
-                        if isinstance(value, str) and value:
-                            try:
-                                # Parse time string (HH:MM format)
-                                hour, minute = map(int, value.split(':'))
-                                value = time(hour, minute)
-                            except (ValueError, AttributeError):
-                                current_app.logger.warning(f'Invalid time format for {field}: {value}')
-                                continue
-                        elif not value:
-                            value = None
-                    
-                    setattr(preferences, field, value)
-                    updated_fields.append(field)
-            
-            preferences.updated_at = datetime.utcnow()
-            if commit:
-                db.session.commit()
-            else:
-                db.session.flush()
-            
-            current_app.logger.info(f'Updated preferences for user {user_id}: {updated_fields}')
-            return True, f"Updated {len(updated_fields)} preference(s)"
-            
-        except Exception as e:
-            db.session.rollback()
-            current_app.logger.error('Error updating preferences (%s).', type(e).__name__)
-            return False, "Error updating preferences"
+        """Reject legacy raw mutation; callers must use a typed apply method."""
+        notification_fields = {
+            'notification_channel', 'goal_notifications', 'daily_reminders',
+            'weekly_reports', 'achievement_notifications', 'discord_webhook',
+            'reminder_time', 'quiet_hours_start', 'quiet_hours_end',
+        }
+        if notification_fields.intersection(kwargs):
+            return False, "Use validated notification settings"
+        return False, "Unsupported preference field"
 
     def apply_notification_settings(self, user_id, submitted, *, commit=True):
         """Persist only the validated notification settings as one unit."""
@@ -229,34 +193,66 @@ class UserPreferencesService:
         try:
             if not session_preferences:
                 return True, "No session preferences to migrate"
-            
-            # Map session keys to database fields
-            field_mapping = {
-                'email_notifications': 'notification_channel',
-                'goal_notifications': 'goal_notifications',
-                'daily_reminders': 'daily_reminders',
-                'discord_webhook': 'discord_webhook'
+
+            existing = UserPreferences.query.filter_by(user_id=user_id).first()
+            channels = list(
+                existing.notification_channel if existing is not None else ['email']
+            )
+            if 'email_notifications' in session_preferences:
+                channels = [channel for channel in channels if channel != 'email']
+                if session_preferences['email_notifications']:
+                    channels.insert(0, 'email')
+            webhook = session_preferences.get(
+                'discord_webhook',
+                existing.discord_webhook if existing is not None else '',
+            )
+            if 'discord_webhook' in session_preferences:
+                channels = [channel for channel in channels if channel != 'discord']
+                if webhook:
+                    channels.append('discord')
+            payload = {
+                'notification_channel': channels,
+                'goal_notifications': session_preferences.get(
+                    'goal_notifications',
+                    existing.goal_notifications if existing is not None else True,
+                ),
+                'achievement_notifications': (
+                    existing.achievement_notifications if existing is not None else True
+                ),
+                'daily_reminders': session_preferences.get(
+                    'daily_reminders',
+                    existing.daily_reminders if existing is not None else False,
+                ),
+                'weekly_reports': (
+                    existing.weekly_reports if existing is not None else False
+                ),
+                'discord_webhook': webhook or '',
+                'reminder_time': (
+                    existing.reminder_time.strftime('%H:%M')
+                    if existing is not None and existing.reminder_time else ''
+                ),
+                'quiet_hours_start': (
+                    existing.quiet_hours_start.strftime('%H:%M')
+                    if existing is not None and existing.quiet_hours_start else ''
+                ),
+                'quiet_hours_end': (
+                    existing.quiet_hours_end.strftime('%H:%M')
+                    if existing is not None and existing.quiet_hours_end else ''
+                ),
             }
-            
-            update_data = {}
-            for session_key, db_field in field_mapping.items():
-                if session_key in session_preferences:
-                    value = session_preferences[session_key]
-                    if session_key == 'email_notifications':
-                        update_data[db_field] = ['email'] if value else []
-                    else:
-                        update_data[db_field] = value
-            
-            if update_data:
+            submitted = parse_notification_settings(payload)
+            self.apply_notification_settings(user_id, submitted)
+            current_app.logger.info(
+                'Migrated validated notification settings for user %s', user_id
+            )
+            return True, "Migrated validated notification settings"
 
-                success, message = self.update_preferences(user_id, **update_data)
-                if success:
-                    current_app.logger.info(f'Migrated session preferences for user {user_id}')
-                return success, message
-
-            
-            return True, "No preferences to migrate"
-            
+        except SettingsValidationError:
+            db.session.rollback()
+            return False, "Invalid legacy notification settings"
         except Exception as e:
-            current_app.logger.error(f'Error migrating session preferences: {e}')
+            db.session.rollback()
+            current_app.logger.error(
+                'Error migrating preferences (%s).', type(e).__name__
+            )
             return False, "Error migrating preferences"

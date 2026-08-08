@@ -177,6 +177,54 @@ def test_generic_writer_rejects_retired_fields_before_creating_preferences(
     assert UserPreferences.query.filter_by(user_id=test_user.id).count() == 0
 
 
+def test_generic_writer_rejects_raw_notification_subset_without_first_write(
+        db_session, test_user):
+    UserPreferences.query.filter_by(user_id=test_user.id).delete()
+    db_session.commit()
+
+    result = UserPreferencesService().update_preferences(
+        test_user.id,
+        notification_channel=['discord'],
+        weekly_reports=True,
+        discord_webhook=None,
+    )
+
+    assert result == (False, 'Use validated notification settings')
+    assert UserPreferences.query.filter_by(user_id=test_user.id).count() == 0
+
+
+def test_legacy_session_migration_uses_complete_typed_notification_validation(
+        db_session, test_user):
+    UserPreferences.query.filter_by(user_id=test_user.id).delete()
+    db_session.commit()
+
+    result = UserPreferencesService().migrate_session_preferences(
+        test_user.id,
+        {'email_notifications': True, 'goal_notifications': False},
+    )
+
+    assert result == (True, 'Migrated validated notification settings')
+    preferences = UserPreferences.query.filter_by(user_id=test_user.id).one()
+    assert preferences.notification_channel == ['email']
+    assert preferences.goal_notifications is False
+    assert preferences.daily_reminders is False
+    assert preferences.weekly_reports is False
+
+
+def test_legacy_session_migration_rejects_invalid_discord_without_first_write(
+        db_session, test_user):
+    UserPreferences.query.filter_by(user_id=test_user.id).delete()
+    db_session.commit()
+
+    result = UserPreferencesService().migrate_session_preferences(
+        test_user.id,
+        {'email_notifications': False, 'discord_webhook': 'http://127.0.0.1/x'},
+    )
+
+    assert result == (False, 'Invalid legacy notification settings')
+    assert UserPreferences.query.filter_by(user_id=test_user.id).count() == 0
+
+
 def test_first_notification_write_uses_one_boundary_commit(
         logged_in_client, db_session, test_user, monkeypatch):
     UserPreferences.query.filter_by(user_id=test_user.id).delete()

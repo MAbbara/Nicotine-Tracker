@@ -537,14 +537,13 @@ class NotificationService:
                         db.session.delete(notification)  # Ephemeral queue item
                 else:
                     # Increment attempts and potentially reschedule
-                    notification.attempts = (
-                        notification.max_attempts
-                        if success is _PERMANENT_FAILURE
-                        else notification.attempts + 1
-                    )
+                    notification.attempts += 1
                     notification.last_attempt_at = datetime.utcnow()
-                    
-                    if notification.attempts >= notification.max_attempts:
+
+                    if (
+                        success is _PERMANENT_FAILURE
+                        or notification.attempts >= notification.max_attempts
+                    ):
                         notification.status = 'failed'
                         self._create_history_record(notification, 'failed')
                         db.session.delete(notification)  # Remove failed notification

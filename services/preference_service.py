@@ -112,31 +112,36 @@ class PreferenceService:
         return preferences
 
     def update_day_boundary(self, user_id, timezone_name, reset_time_text, *, commit=True):
-        get_timezone_object(timezone_name)
-        if (
-            not isinstance(reset_time_text, str)
-            or _RESET_TIME_PATTERN.fullmatch(reset_time_text) is None
-        ):
-            raise ValueError('daily_reset_time must use HH:MM')
         try:
+            get_timezone_object(timezone_name)
+            if (
+                not isinstance(reset_time_text, str)
+                or _RESET_TIME_PATTERN.fullmatch(reset_time_text) is None
+            ):
+                raise ValueError('daily_reset_time must use HH:MM')
             reset_time = datetime.strptime(reset_time_text, '%H:%M').time()
         except (TypeError, ValueError):
+            db.session.rollback()
             raise ValueError('daily_reset_time must use HH:MM') from None
-        user = db.session.get(User, user_id)
-        if user is None:
-            raise ValueError('user not found')
-        preferences = self.get_or_create_preferences(user_id, commit=commit)
-        user.timezone = timezone_name
-        preferences.daily_reset_time = reset_time
-        preferences.pending_timezone = None
-        preferences.pending_daily_reset_time = None
-        preferences.boundary_change_effective_at_utc = None
-        preferences.boundary_change_target_local_date = None
-        if commit:
-            db.session.commit()
-        else:
-            db.session.flush()
-        return preferences
+        try:
+            user = db.session.get(User, user_id)
+            if user is None:
+                raise ValueError('user not found')
+            preferences = self.get_or_create_preferences(user_id, commit=False)
+            user.timezone = timezone_name
+            preferences.daily_reset_time = reset_time
+            preferences.pending_timezone = None
+            preferences.pending_daily_reset_time = None
+            preferences.boundary_change_effective_at_utc = None
+            preferences.boundary_change_target_local_date = None
+            if commit:
+                db.session.commit()
+            else:
+                db.session.flush()
+            return preferences
+        except Exception:
+            db.session.rollback()
+            raise
 
     def apply_preference_settings(self, user_id, submitted, *, commit=True):
         """Apply a validated Settings preference form in one transaction."""

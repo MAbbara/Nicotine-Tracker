@@ -381,7 +381,7 @@ def test_corrupt_stored_discord_webhook_fails_permanently_without_retry(
         original_queue_id=notification_id
     ).one()
     assert history.delivery_status == 'failed'
-    assert history.attempts_made == 3
+    assert history.attempts_made == 1
 
 
 def test_sent_manual_report_and_staggered_scheduler_share_the_same_row(

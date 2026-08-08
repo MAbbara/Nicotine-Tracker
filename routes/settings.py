@@ -593,9 +593,13 @@ def account():
             try:
                 mutation = parse_account_mutation(request.form)
             except SettingsValidationError as error:
+                retained_email = (
+                    request.form.get('new_email', '')[:120]
+                    if 'new_email' in request.form else user.email
+                )
                 return render_account_error(
                     error.field_errors,
-                    {'new_email': request.form.get('new_email', '')[:120]},
+                    {'new_email': retained_email},
                 )
             action = mutation.action
             
