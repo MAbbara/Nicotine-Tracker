@@ -7,6 +7,10 @@ from datetime import datetime
 import pytest
 
 from models import Craving, Goal, Log, Pouch, User
+from models.email_verification import EmailVerification
+from models.notification import NotificationQueue
+from services.email_verification_service import EmailVerificationService
+from extensions import db
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -53,7 +57,7 @@ def test_account_validation_keeps_user_and_feedback(logged_in_client, test_user)
         "new_email": "changed@example.com",
         "password": "wrong-password",
     })
-    assert response.status_code == 200
+    assert response.status_code == 422
     assert b"Current password is incorrect." in response.data
     assert test_user.email == original_email
     soup = BeautifulSoup(response.data, "html.parser")
@@ -63,6 +67,120 @@ def test_account_validation_keeps_user_and_feedback(logged_in_client, test_user)
     assert soup.select_one("#password-error").get_text(" ", strip=True) == (
         "Current password is incorrect."
     )
+    assert soup.select_one('#new_email')['value'] == 'changed@example.com'
+    assert soup.select_one('#password').get('value', '') == ''
+
+
+def test_account_email_change_rolls_back_when_revoke_fails(
+        logged_in_client, db_session, test_user, monkeypatch):
+    original_email = test_user.email
+    original = EmailVerification(
+        user_id=test_user.id, token='old-address-token',
+        expires_at=datetime(2035, 1, 1), is_verified=False,
+    )
+    db_session.add(original)
+    db_session.commit()
+
+    def fail_revoke(*_args, **_kwargs):
+        raise RuntimeError('forced revoke failure')
+    monkeypatch.setattr(
+        'services.email_verification_service.EmailVerificationService.revoke_user_tokens',
+        fail_revoke,
+    )
+    response = logged_in_client.post('/settings/account', data={
+        'action': 'update_email', 'new_email': 'new@example.com',
+        'password': 'password123',
+    })
+
+    assert response.status_code == 422
+    db_session.refresh(test_user)
+    db_session.refresh(original)
+    assert test_user.email == original_email
+    assert original.is_verified is False
+    assert NotificationQueue.query.filter_by(
+        user_id=test_user.id, category='email_verification'
+    ).count() == 0
+
+
+def test_revoke_commit_false_propagates_flush_failure(
+        app, db_session, test_user, monkeypatch):
+    token = EmailVerification(
+        user_id=test_user.id, token='flush-failure-token',
+        expires_at=datetime(2035, 1, 1), is_verified=False,
+    )
+    db_session.add(token)
+    db_session.commit()
+    monkeypatch.setattr(
+        db.session, 'flush',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError('forced flush failure')
+        ),
+    )
+    with app.app_context(), pytest.raises(RuntimeError, match='forced flush failure'):
+        EmailVerificationService().revoke_user_tokens(
+            test_user.id, commit=False,
+        )
+
+
+def test_account_email_change_commits_token_replacement_queue_and_session(
+        logged_in_client, db_session, test_user):
+    old = EmailVerification(
+        user_id=test_user.id, token='old-address-success-token',
+        expires_at=datetime(2035, 1, 1), is_verified=False,
+    )
+    db_session.add(old)
+    db_session.commit()
+
+    response = logged_in_client.post('/settings/account', data={
+        'action': 'update_email', 'new_email': 'User@Example.NET',
+        'password': 'password123',
+    })
+    assert response.status_code == 302
+    db_session.refresh(test_user)
+    db_session.refresh(old)
+    assert test_user.email == 'User@example.net'
+    assert test_user.email_verified is False
+    assert old.is_verified is True
+    active = EmailVerification.query.filter_by(
+        user_id=test_user.id, is_verified=False,
+    ).one()
+    assert active.id != old.id
+    queued = NotificationQueue.query.filter_by(
+        user_id=test_user.id, category='email_verification',
+    ).one()
+    assert queued.notification_type == 'email'
+    assert queued.recipient == 'User@example.net'
+    with logged_in_client.session_transaction() as session_data:
+        assert session_data['user_email'] == 'User@example.net'
+
+    old_link = logged_in_client.get(
+        f'/auth/verify_email/{old.token}', follow_redirects=False,
+    )
+    assert old_link.status_code == 302
+    db_session.refresh(test_user)
+    assert test_user.email_verified is False
+
+
+def test_account_email_change_rolls_back_token_and_address_when_enqueue_fails(
+        logged_in_client, db_session, test_user, monkeypatch):
+    original_email = test_user.email
+    before_tokens = EmailVerification.query.filter_by(user_id=test_user.id).count()
+    monkeypatch.setattr(
+        'services.notification_service.NotificationService.queue_notification',
+        lambda *_args, **_kwargs: False,
+    )
+
+    response = logged_in_client.post('/settings/account', data={
+        'action': 'update_email', 'new_email': 'new@example.com',
+        'password': 'password123',
+    })
+
+    assert response.status_code == 422
+    db_session.refresh(test_user)
+    assert test_user.email == original_email
+    assert EmailVerification.query.filter_by(user_id=test_user.id).count() == before_tokens
+    with logged_in_client.session_transaction() as session_data:
+        assert session_data['user_email'] == original_email
 
 
 def test_account_rejects_multiple_actions_and_oversized_password_atomically(

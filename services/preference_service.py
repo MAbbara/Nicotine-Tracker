@@ -13,10 +13,11 @@ from services.timezone_service import (
     resolve_timezone,
     to_naive_utc,
 )
+from services.settings_validation_service import PreferenceSettingsInput
 
 
 VALID_THEMES = {'light', 'dark', 'system'}
-_RESET_TIME_PATTERN = re.compile(r'^(?:[01]\d|2[0-3]):[0-5]\d$')
+_RESET_TIME_PATTERN = re.compile(r'(?:[01][0-9]|2[0-3]):[0-5][0-9]', re.ASCII)
 
 
 def _normalized_strings(values):
@@ -136,6 +137,32 @@ class PreferenceService:
         else:
             db.session.flush()
         return preferences
+
+    def apply_preference_settings(self, user_id, submitted, *, commit=True):
+        """Apply a validated Settings preference form in one transaction."""
+        if not isinstance(submitted, PreferenceSettingsInput):
+            raise TypeError('submitted must be validated preference settings')
+        try:
+            user = db.session.get(User, user_id)
+            if user is None:
+                raise ValueError('user not found')
+            preferences = self.get_or_create_preferences(user_id, commit=False)
+            user.timezone = submitted.timezone
+            preferences.daily_reset_time = submitted.daily_reset_time
+            preferences.units_preference = submitted.units_preference
+            preferences.preferred_brands = list(submitted.preferred_brands)
+            preferences.pending_timezone = None
+            preferences.pending_daily_reset_time = None
+            preferences.boundary_change_effective_at_utc = None
+            preferences.boundary_change_target_local_date = None
+            if commit:
+                db.session.commit()
+            else:
+                db.session.flush()
+            return preferences
+        except Exception:
+            db.session.rollback()
+            raise
 
     def schedule_day_boundary_change(
         self, user_id, timezone_name, reset_time_text, now=None

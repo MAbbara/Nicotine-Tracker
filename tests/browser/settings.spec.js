@@ -266,6 +266,18 @@ test('Reminders persist and async actions expose success and failure feedback', 
   expect(dialogs).toBe(0);
 
   await page.unroute('**/settings/test-discord-webhook');
+  await page.getByLabel('Discord webhook URL').fill(
+    'http://169.254.169.254/api/webhooks/1/private-token',
+  );
+  const rejectedDiscordResponsePending = page.waitForResponse((response) => (
+    new URL(response.url()).pathname === '/settings/test-discord-webhook'
+  ));
+  await keyboardActivate(page, discordButton);
+  expect(await (await rejectedDiscordResponsePending).json()).toEqual({
+    success: false, message: 'Enter a valid Discord webhook URL.',
+  });
+  await expect(discordStatus).toHaveText('Enter a valid Discord webhook URL.');
+  await page.getByLabel('Discord webhook URL').fill(VALID_DISCORD_WEBHOOK);
   const directDiscordResponsePending = page.waitForResponse((response) => (
     new URL(response.url()).pathname === '/settings/test-discord-webhook'
     && response.status() === 200
@@ -277,9 +289,9 @@ test('Reminders persist and async actions expose success and failure feedback', 
     webhook_url: VALID_DISCORD_WEBHOOK,
   });
   expect(await directDiscordResponse.json()).toEqual({
-    success: true, message: 'Discord boundary recorded.',
+    success: true, message: 'Test message sent successfully!',
   });
-  await expect(discordStatus).toHaveText('Discord boundary recorded.');
+  await expect(discordStatus).toHaveText('Test message sent successfully!');
   await expect(discordButton).toBeFocused();
 
   await page.unroute('**/settings/notifications/trigger-weekly');
@@ -299,8 +311,8 @@ test('Reminders persist and async actions expose success and failure feedback', 
   const outbound = await outboundResponse.json();
   expect(outbound.unexpected).toEqual([]);
   expect(blockedExternalRequests).toEqual([]);
-  expect(outbound.boundaries.filter((entry) => entry.kind === 'discord-test')).toEqual([{
-    kind: 'discord-test',
+  expect(outbound.boundaries.filter((entry) => entry.kind === 'discord-transport')).toEqual([{
+    kind: 'discord-transport',
     method: 'POST',
     url: VALID_DISCORD_WEBHOOK,
     payload: {
@@ -312,6 +324,9 @@ test('Reminders persist and async actions expose success and failure feedback', 
         footer: { text: 'Nicotine Tracker - Test Message' },
       }],
     },
+    headers: { 'Content-Type': 'application/json' },
+    timeout: [3.05, 5],
+    allow_redirects: false,
   }]);
   const weeklyBoundary = outbound.notifications.find((entry) => entry.category === 'weekly_report');
   expect(weeklyBoundary).toEqual({
@@ -452,6 +467,67 @@ test('notification rate limits keep calm recovery copy and keyboard ownership', 
   await expect(status).toHaveAttribute('data-state', 'error');
   await expect(button).toBeEnabled();
   await expect(button).toBeFocused();
+});
+
+test('reminder dependencies block invalid saves and expose accessible recovery', async ({ page }) => {
+  await login(page);
+  await page.goto('/settings/notifications');
+  const email = page.getByLabel('Email');
+  const discord = page.getByRole('checkbox', { name: 'Discord', exact: true });
+  const weekly = page.getByLabel('Weekly progress report');
+  if (await email.isChecked()) await email.uncheck();
+  if (await discord.isChecked()) await discord.uncheck();
+  if (await weekly.isChecked()) await weekly.uncheck();
+
+  let saves = 0;
+  page.on('request', (request) => {
+    if (request.method() === 'POST'
+      && new URL(request.url()).pathname === '/settings/notifications') saves += 1;
+  });
+  await weekly.check();
+  await expect(page.locator('#notification-channel-group')).toHaveAttribute('aria-invalid', 'true');
+  await expect(email).toHaveAttribute('aria-invalid', 'true');
+  await expect(discord).toHaveAttribute('aria-invalid', 'true');
+  expect((await email.getAttribute('aria-describedby')).split(/\s+/)).toContain(
+    'notification-channel-dependency',
+  );
+  expect(await weekly.evaluate((node) => node.validationMessage)).toBe(
+    'Choose a usable channel for weekly reports.',
+  );
+  await page.getByRole('button', { name: 'Save reminders' }).click();
+  expect(saves).toBe(0);
+
+  await email.check();
+  await expect(page.locator('#notification-channel-group')).not.toHaveAttribute('aria-invalid');
+  await expect(email).not.toHaveAttribute('aria-invalid');
+  expect(await weekly.evaluate((node) => node.validationMessage)).toBe('');
+
+  const quietStart = page.getByLabel('Quiet hours start');
+  const quietEnd = page.getByLabel('Quiet hours end');
+  await quietStart.fill('21:00');
+  await quietEnd.fill('');
+  await expect(quietEnd).toHaveAttribute('required', '');
+  await expect(quietEnd).toHaveAttribute('aria-required', 'true');
+  await expect(quietEnd).toHaveAttribute('aria-invalid', 'true');
+  expect((await quietEnd.getAttribute('aria-describedby')).split(/\s+/)).toContain(
+    'quiet-hours-dependency',
+  );
+  await page.getByRole('button', { name: 'Save reminders' }).click();
+  expect(saves).toBe(0);
+
+  await quietEnd.fill('21:00');
+  await expect(quietStart).toHaveAttribute('aria-invalid', 'true');
+  await expect(quietEnd).toHaveAttribute('aria-invalid', 'true');
+  await quietEnd.fill('06:00');
+  await expect(quietStart).not.toHaveAttribute('aria-invalid');
+  await expect(quietEnd).not.toHaveAttribute('aria-invalid');
+  const responsePromise = page.waitForResponse((response) => (
+    response.request().method() === 'POST'
+    && new URL(response.url()).pathname === '/settings/notifications'
+  ));
+  await page.getByRole('button', { name: 'Save reminders' }).click();
+  expect((await responsePromise).status()).toBe(302);
+  expect(saves).toBe(1);
 });
 
 

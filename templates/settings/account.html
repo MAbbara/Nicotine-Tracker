@@ -5,6 +5,7 @@
 
 {% block settings_content %}
 {% set account_errors = account_errors or {} %}
+{% set account_values = account_values or {} %}
 {% if account_errors.get('action') %}<p class="c-status c-status--attention" role="alert">{{ account_errors.get('action') }}</p>{% endif %}
 {% set account_errors = account_errors|default({}) %}
 <div class="account-sections space-y-8">
@@ -23,7 +24,7 @@
                     'new_email',
                     'New email address',
                     type='email',
-                    value=user.email,
+                    value=account_values.get('new_email', user.email),
                     maxlength=120,
                     autocomplete='email',
                     error=account_errors.get('new_email'),
@@ -35,9 +36,9 @@
                     'Current password',
                     type='password',
                     autocomplete='current-password',
-                    error=account_errors.get('email_password'),
+                    error=account_errors.get('password'),
                     required=true,
-                    autofocus=account_errors.get('email_password')
+                    autofocus=account_errors.get('password')
                 ) }}
             </div>
 

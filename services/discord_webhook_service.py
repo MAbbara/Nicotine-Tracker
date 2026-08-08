@@ -27,6 +27,13 @@ def parse_discord_webhook(value) -> CanonicalDiscordWebhook:
         raise DiscordWebhookError("Enter a valid Discord webhook URL.")
     if value != value.strip():
         raise DiscordWebhookError("Enter a valid Discord webhook URL.")
+    if (
+        any(ord(character) < 32 or ord(character) == 127 for character in value)
+        or '%' in value
+        or '?' in value
+        or '#' in value
+    ):
+        raise DiscordWebhookError("Enter a valid Discord webhook URL.")
     try:
         parsed = urlsplit(value)
         port = parsed.port

@@ -176,18 +176,7 @@ def preferences():
                     common_timezones=get_common_timezones(),
                     available_brands=available_brands,
                 ), 422
-            PreferenceService().update_day_boundary(
-                user.id, submitted.timezone,
-                submitted.daily_reset_time.strftime('%H:%M'), commit=False,
-            )
-            success, message = preferences_service.update_preferences(
-                user.id, commit=False,
-                units_preference=submitted.units_preference,
-                preferred_brands=list(submitted.preferred_brands),
-            )
-            if not success:
-                raise RuntimeError(message)
-            db.session.commit()
+            PreferenceService().apply_preference_settings(user.id, submitted)
             session['user_timezone'] = submitted.timezone
             flash('Preferences updated successfully!', 'success')
             return redirect(url_for('settings.preferences'))
@@ -247,21 +236,7 @@ def notifications():
                     'notifications.html', user=user, preferences=retained,
                     field_errors=error.field_errors,
                 ), 422
-            success, message = preferences_service.update_preferences(
-                user.id,
-                notification_channel=list(submitted.notification_channel),
-                goal_notifications=submitted.goal_notifications,
-                achievement_notifications=submitted.achievement_notifications,
-                daily_reminders=submitted.daily_reminders,
-                weekly_reports=submitted.weekly_reports,
-                discord_webhook=submitted.discord_webhook,
-                reminder_time=submitted.reminder_time,
-                quiet_hours_start=submitted.quiet_hours_start,
-                quiet_hours_end=submitted.quiet_hours_end,
-            )
-            if not success:
-                db.session.rollback()
-                raise RuntimeError(message)
+            preferences_service.apply_notification_settings(user.id, submitted)
             flash('Notification settings updated successfully!', 'success')
             return redirect(url_for('settings.notifications'))
         
@@ -536,11 +511,13 @@ def profile():
                     'profile.html', user=user, field_errors=error.field_errors,
                     submitted=request.form,
                 ), 422
-            legacy_timezone = request.form.get('timezone', '').strip()
+            legacy_timezone = request.form.get('timezone', '')
 
             if legacy_timezone and not validate_timezone(legacy_timezone):
-                flash('Please select a valid timezone.', 'error')
-                return render_template('profile.html', user=user)
+                return render_template(
+                    'profile.html', user=user, submitted=request.form,
+                    field_errors={'timezone': 'Choose a valid time zone.'},
+                ), 422
             
             
             # Update user profile
@@ -551,7 +528,9 @@ def profile():
             # Compatibility for clients that submitted timezone on the old
             # profile form. New UI uses the validated day-boundary API.
             if legacy_timezone:
-                preferences = PreferenceService().get_or_create_preferences(user.id)
+                preferences = UserPreferencesService().get_or_create_preferences(
+                    user.id, commit=False,
+                )
                 reset_text = (
                     preferences.daily_reset_time.strftime('%H:%M')
                     if preferences.daily_reset_time else '00:00'
@@ -559,9 +538,10 @@ def profile():
                 PreferenceService().update_day_boundary(
                     user.id, legacy_timezone, reset_text, commit=False
                 )
-                session['user_timezone'] = legacy_timezone
             
             db.session.commit()
+            if legacy_timezone:
+                session['user_timezone'] = legacy_timezone
             
             current_app.logger.info(f'Profile updated for user {user.email}')
             flash('Profile updated successfully!', 'success')
@@ -576,7 +556,10 @@ def profile():
         db.session.rollback()
         current_app.logger.error(f'Profile error: {e}')
         flash('An error occurred while updating your profile.', 'error')
-        return render_template('profile.html', user=get_current_user())
+        return render_template(
+            'profile.html', user=get_current_user(), submitted=request.form,
+            field_errors={},
+        ), 500
 
 @settings_bp.route('/account', methods=['GET', 'POST'])
 @current_password_limit()
@@ -599,59 +582,66 @@ def account():
             'custom_pouches_created': user.custom_pouches.count(),
             'goals_created': user.goals.count()
         }
+
+        def render_account_error(errors, values=None):
+            return render_template(
+                'account.html', user=user, account_stats=account_stats,
+                account_errors=errors, account_values=values or {},
+            ), 422
         
         if request.method == 'POST':
             try:
                 mutation = parse_account_mutation(request.form)
             except SettingsValidationError as error:
-                return render_template(
-                    'account.html', user=user, account_stats=account_stats,
-                    account_errors=error.field_errors,
-                ), 422
+                return render_account_error(
+                    error.field_errors,
+                    {'new_email': request.form.get('new_email', '')[:120]},
+                )
             action = mutation.action
             
             if action == 'update_email':
                 new_email = mutation.values['new_email']
                 password = mutation.values['password']
                 
-                # Validation
-                if not new_email or '@' not in new_email:
-                    flash('Please enter a valid email address.', 'error')
-                    return render_template('account.html', user=user, account_stats=account_stats,
-                                           account_errors={'new_email': 'Please enter a valid email address.'})
-                
                 if not user.check_password(password):
-                    flash('Current password is incorrect.', 'error')
-                    return render_template('account.html', user=user, account_stats=account_stats,
-                                           account_errors={'email_password': 'Current password is incorrect.'})
+                    return render_account_error(
+                        {'password': 'Current password is incorrect.'},
+                        {'new_email': new_email},
+                    )
                 
                 # Check if email already exists
                 existing_user = User.query.filter(
-                    func.lower(User.email) == new_email
+                    func.lower(User.email) == new_email.casefold()
                 ).first()
                 if existing_user and existing_user.id != user.id:
-                    flash('This email address is already in use.', 'error')
-                    return render_template('account.html', user=user, account_stats=account_stats,
-                                           account_errors={'new_email': 'This email address is already in use.'})
+                    return render_account_error(
+                        {'new_email': 'This email address is already in use.'},
+                        {'new_email': new_email},
+                    )
                 
                 # Update email
                 old_email = user.email
                 verification_service = EmailVerificationService()
-                verification_service.revoke_user_tokens(user.id, commit=False)
-                user.email = new_email
-                user.email_verified = False  # Require re-verification
-                
-                db.session.commit()
-                
-                # Send verification email for new address
-                delivered, _delivery_message = verification_service.send_verification_email(user.id)
+                try:
+                    verification_service.revoke_user_tokens(user.id, commit=False)
+                    user.email = new_email
+                    user.email_verified = False
+                    delivered, _delivery_message = verification_service.send_verification_email(
+                        user.id, commit=False, enforce_cooldown=False,
+                    )
+                    if not delivered:
+                        raise RuntimeError('verification notification was not queued')
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+                    return render_account_error(
+                        {'new_email': 'Email could not be updated. Try again.'},
+                        {'new_email': new_email},
+                    )
                 session['user_email'] = new_email
                 
                 current_app.logger.info(f'Email changed from {old_email} to {new_email}')
-                if delivered:
-                    flash('Email updated. Check your new address for a verification message.', 'success')
-                else:
-                    flash('Email updated, but the verification message could not be sent. You can resend it below.', 'warning')
+                flash('Email updated. Check your new address for a verification message.', 'success')
                 
             elif action == 'change_password':
                 current_password = mutation.values['current_password']
@@ -660,29 +650,19 @@ def account():
                 
                 # Validation
                 if not current_password:
-                    flash('Please enter your current password.', 'error')
-                    return render_template('account.html', user=user, account_stats=account_stats,
-                                           account_errors={'current_password': 'Please enter your current password.'})
+                    return render_account_error({'current_password': 'Please enter your current password.'})
                 
                 if not user.check_password(current_password):
-                    flash('Current password is incorrect.', 'error')
-                    return render_template('account.html', user=user, account_stats=account_stats,
-                                           account_errors={'current_password': 'Current password is incorrect.'})
+                    return render_account_error({'current_password': 'Current password is incorrect.'})
                 
                 if len(new_password) < 6:
-                    flash('New password must be at least 6 characters long.', 'error')
-                    return render_template('account.html', user=user, account_stats=account_stats,
-                                           account_errors={'new_password': 'New password must be at least 6 characters long.'})
+                    return render_account_error({'new_password': 'Use 8 to 128 characters.'})
                 
                 if new_password != confirm_password:
-                    flash('New passwords do not match.', 'error')
-                    return render_template('account.html', user=user, account_stats=account_stats,
-                                           account_errors={'confirm_password': 'New passwords do not match.'})
+                    return render_account_error({'confirm_password': 'New passwords do not match.'})
                 
                 if current_password == new_password:
-                    flash('New password must be different from current password.', 'error')
-                    return render_template('account.html', user=user, account_stats=account_stats,
-                                           account_errors={'new_password': 'New password must be different from current password.'})
+                    return render_account_error({'new_password': 'New password must be different from current password.'})
                 
                 # Update password
                 user.set_password(new_password)
@@ -713,19 +693,13 @@ def account():
                 
                 # Validation
                 if not password:
-                    flash('Please enter your password to confirm account deletion.', 'error')
-                    return render_template('account.html', user=user, account_stats=account_stats,
-                                           account_errors={'delete_password': 'Please enter your password to confirm account deletion.'})
+                    return render_account_error({'delete_password': 'Please enter your password to confirm account deletion.'})
                 
                 if not user.check_password(password):
-                    flash('Password is incorrect.', 'error')
-                    return render_template('account.html', user=user, account_stats=account_stats,
-                                           account_errors={'delete_password': 'Password is incorrect.'})
+                    return render_account_error({'delete_password': 'Password is incorrect.'})
                 
                 if confirmation.lower() != 'delete my account':
-                    flash('Please type "delete my account" to confirm.', 'error')
-                    return render_template('account.html', user=user, account_stats=account_stats,
-                                           account_errors={'confirmation': 'Please type "delete my account" to confirm.'})
+                    return render_account_error({'confirmation': 'Please type "delete my account" to confirm.'})
                 
                 # Log the deletion
                 user_email = user.email

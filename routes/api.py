@@ -3,7 +3,7 @@ import logging
 from decimal import Decimal
 from routes.auth import get_current_user, login_required
 from app import db
-from models import Pouch
+from models import Pouch, UserPreferences
 from services.preference_service import PreferenceService
 from services.pouch_service import get_all_pouches
 from services.request_context import get_request_id
@@ -66,7 +66,7 @@ from services.craving_service import (
     CravingValidationError,
 )
 from services.today_service import TodayService
-from services.timezone_service import resolve_timezone
+from services.timezone_service import resolve_timezone, validate_timezone
 from services.check_in_service import (
     CheckInPersistenceError,
     CheckInService,
@@ -389,15 +389,30 @@ def update_theme_preference():
 @api_bp.route('/preferences/day-boundary', methods=['PATCH'])
 @login_required
 def update_day_boundary_preference():
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    if (
+        not isinstance(data, dict)
+        or set(data) != {'timezone', 'daily_reset_time'}
+        or not validate_timezone(data.get('timezone'))
+    ):
+        return error_response(
+            422, 'validation_error',
+            'Check the highlighted fields and try again.',
+            field_errors={'timezone': ['Choose a valid time zone.']},
+        )
     try:
         preferences = PreferenceService().update_day_boundary(
             get_current_user().id,
             data.get('timezone'),
             data.get('daily_reset_time'),
         )
-    except (ValueError, TypeError) as exc:
-        return jsonify({'success': False, 'message': str(exc)}), 400
+    except (ValueError, TypeError):
+        db.session.rollback()
+        return error_response(
+            422, 'validation_error',
+            'Check the highlighted fields and try again.',
+            field_errors={'daily_reset_time': ['Choose a valid time.']},
+        )
     return jsonify({
         'success': True,
         'timezone': get_current_user().timezone,
@@ -775,9 +790,17 @@ def update_timezone():
     data = request.get_json(silent=True)
     if not isinstance(data, dict) or set(data) != {'timezone'}:
         return error_response(422, 'validation_error', 'Send one valid time zone.', field_errors={'timezone': ['Choose a valid time zone.']})
+    if not validate_timezone(data['timezone']):
+        return error_response(
+            422, 'validation_error', 'Send one valid time zone.',
+            field_errors={'timezone': ['Choose a valid time zone.']},
+        )
     user = get_current_user()
-    preferences = PreferenceService().get_or_create_preferences(user.id)
-    reset = preferences.daily_reset_time.strftime('%H:%M') if preferences.daily_reset_time else '00:00'
+    preferences = UserPreferences.query.filter_by(user_id=user.id).first()
+    reset = (
+        preferences.daily_reset_time.strftime('%H:%M')
+        if preferences is not None and preferences.daily_reset_time else '00:00'
+    )
     try:
         PreferenceService().update_day_boundary(user.id, data['timezone'], reset)
     except (TypeError, ValueError):

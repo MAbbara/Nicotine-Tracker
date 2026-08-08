@@ -84,6 +84,8 @@ export function initReminderSettings(root = document, fetchImpl = fetch) {
   if (!root || typeof root.querySelector !== 'function') return () => {};
 
   const discordCheckbox = root.querySelector('#notification_channel_discord');
+  const emailCheckbox = root.querySelector('#notification_channel_email');
+  const channelGroup = root.querySelector('#notification-channel-group');
   const webhookRegion = root.querySelector('#discord-webhook-region');
   const webhookInput = root.querySelector('#discord_webhook');
   const discordButton = root.querySelector('#test-discord-webhook');
@@ -97,6 +99,14 @@ export function initReminderSettings(root = document, fetchImpl = fetch) {
   const weeklyStatus = root.querySelector('#weekly-report-status');
   const csrfToken = root.querySelector('meta[name="csrf-token"]')?.content || '';
   const cleanups = [];
+
+  const setDescribedBy = (input, id, enabled) => {
+    if (!input) return;
+    const ids = new Set((input.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean));
+    if (enabled) ids.add(id); else ids.delete(id);
+    if (ids.size) input.setAttribute('aria-describedby', [...ids].join(' '));
+    else input.removeAttribute('aria-describedby');
+  };
 
   const updateDiscordState = () => {
     const enabled = discordCheckbox?.checked === true;
@@ -116,21 +126,63 @@ export function initReminderSettings(root = document, fetchImpl = fetch) {
       reminderInput.setAttribute('aria-required', String(dailyEnabled));
     }
     const oneQuietTime = Boolean(quietStart?.value || quietEnd?.value);
+    const equalQuietTimes = Boolean(
+      quietStart?.value && quietEnd?.value && quietStart.value === quietEnd.value,
+    );
     for (const input of [quietStart, quietEnd]) {
       if (!input) continue;
       input.required = oneQuietTime;
       input.setAttribute('aria-required', String(oneQuietTime));
+      setDescribedBy(input, 'quiet-hours-dependency', true);
+      const invalid = oneQuietTime && (!input.value || equalQuietTimes);
+      input.setCustomValidity(invalid
+        ? (equalQuietTimes
+          ? 'Quiet hours must start and end at different times.'
+          : 'Set both quiet-hour times or clear both.')
+        : '');
+      if (invalid) input.setAttribute('aria-invalid', 'true');
+      else input.removeAttribute('aria-invalid');
     }
   };
   const updateWeeklyState = () => {
+    const weeklyEnabled = weeklyCheckbox?.checked === true;
+    const usableChannel = emailCheckbox?.checked === true || (
+      discordCheckbox?.checked === true && Boolean(webhookInput?.value.trim())
+    );
+    const invalid = weeklyEnabled && !usableChannel;
+    weeklyCheckbox?.setCustomValidity(
+      invalid ? 'Choose a usable channel for weekly reports.' : '',
+    );
+    for (const input of [emailCheckbox, discordCheckbox]) {
+      if (!input) continue;
+      setDescribedBy(input, 'notification-channel-dependency', true);
+      if (invalid) input.setAttribute('aria-invalid', 'true');
+      else input.removeAttribute('aria-invalid');
+    }
+    if (channelGroup) {
+      if (invalid) channelGroup.setAttribute('aria-invalid', 'true');
+      else channelGroup.removeAttribute('aria-invalid');
+    }
     if (weeklyButton && weeklyButton.dataset.busy !== 'true') {
-      weeklyButton.disabled = weeklyCheckbox?.checked !== true;
+      weeklyButton.disabled = !weeklyEnabled || !usableChannel;
     }
   };
 
   if (discordCheckbox) {
-    discordCheckbox.addEventListener('change', updateDiscordState);
-    cleanups.push(() => discordCheckbox.removeEventListener('change', updateDiscordState));
+    const updateDiscordDependencies = () => {
+      updateDiscordState();
+      updateWeeklyState();
+    };
+    discordCheckbox.addEventListener('change', updateDiscordDependencies);
+    cleanups.push(() => discordCheckbox.removeEventListener('change', updateDiscordDependencies));
+  }
+  if (emailCheckbox) {
+    emailCheckbox.addEventListener('change', updateWeeklyState);
+    cleanups.push(() => emailCheckbox.removeEventListener('change', updateWeeklyState));
+  }
+  if (webhookInput) {
+    webhookInput.addEventListener('input', updateWeeklyState);
+    cleanups.push(() => webhookInput.removeEventListener('input', updateWeeklyState));
   }
   if (weeklyCheckbox) {
     weeklyCheckbox.addEventListener('change', updateWeeklyState);

@@ -6,6 +6,7 @@ import json
 from datetime import date, datetime, timezone
 from app import db
 from models import User, Pouch, Log, Goal
+from models import UserPreferences
 
 class TestApiEndpoints:
 
@@ -35,6 +36,43 @@ class TestApiEndpoints:
 
         db.session.refresh(test_user)
         assert test_user.timezone == new_timezone
+
+    @pytest.mark.parametrize('timezone_name', [
+        'america/new_york', 'America/NEW_YORK', 'Not/A_Zone', 'UTC ', None,
+    ])
+    def test_update_timezone_rejects_noncanonical_without_first_write(
+            self, logged_in_client, db_session, test_user, timezone_name):
+        UserPreferences.query.filter_by(user_id=test_user.id).delete()
+        test_user.timezone = 'UTC'
+        db_session.commit()
+
+        response = logged_in_client.post(
+            '/api/update-timezone', json={'timezone': timezone_name},
+        )
+
+        assert response.status_code == 422
+        assert response.get_json()['error']['field_errors'] == {
+            'timezone': ['Choose a valid time zone.'],
+        }
+        db_session.refresh(test_user)
+        assert test_user.timezone == 'UTC'
+        assert UserPreferences.query.filter_by(user_id=test_user.id).count() == 0
+
+    def test_legacy_auth_timezone_api_matches_atomic_contract(
+            self, logged_in_client, db_session, test_user):
+        UserPreferences.query.filter_by(user_id=test_user.id).delete()
+        test_user.timezone = 'UTC'
+        db_session.commit()
+
+        response = logged_in_client.post(
+            '/auth/api/update-timezone', json={'timezone': 'utc'},
+        )
+
+        assert response.status_code == 422
+        assert response.get_json()['error']['field_errors'] == {
+            'timezone': ['Choose a valid time zone.'],
+        }
+        assert UserPreferences.query.filter_by(user_id=test_user.id).count() == 0
 
     def test_quick_add_api(self, logged_in_client, test_user, test_pouch):
         """Test the /api/quick_add endpoint."""

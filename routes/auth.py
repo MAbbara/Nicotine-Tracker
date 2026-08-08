@@ -1,12 +1,17 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, jsonify
 from flask_mail import Message
-from models import ReductionPlan, User
+from models import ReductionPlan, User, UserPreferences
 from services import create_user              # new import
 from services.password_reset_service import PasswordResetService
 from services.email_verification_service import EmailVerificationService
 from services.timezone_service import validate_timezone
 from services.preference_service import PreferenceService
-from services.settings_validation_service import PASSWORD_MAX, PASSWORD_MIN
+from services.settings_validation_service import (
+    PASSWORD_MAX, PASSWORD_MIN, normalize_account_email,
+)
+from email_validator import EmailNotValidError
+from sqlalchemy import func
+from services.api_errors import error_response
 from services.rate_limit_service import (
     auth_account_limit,
     auth_ip_limit,
@@ -38,9 +43,12 @@ def _internal_next_destination(target):
     return urlunsplit(('', '', parsed.path, parsed.query, parsed.fragment))
 
 def is_valid_email(email):
-    """Simple email validation"""
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(pattern, email) is not None
+    """Return whether an address satisfies the account email contract."""
+    try:
+        normalize_account_email(email)
+        return True
+    except EmailNotValidError:
+        return False
 
 def send_verification_email(user):
     """Send email verification (mock or real based on environment)"""
@@ -124,12 +132,14 @@ def register():
     if request.method == 'POST':
 
         try:
-            email = request.form.get('email', '').strip().lower()
+            raw_email = request.form.get('email', '')
             password = request.form.get('password', '')
             confirm_password = request.form.get('confirm_password', '')
 
             # Basic validation
-            if not email or not is_valid_email(email):
+            try:
+                email = normalize_account_email(raw_email)
+            except EmailNotValidError:
                 flash('Please enter a valid email address.', 'error')
                 return render_template('register.html')
             
@@ -141,7 +151,9 @@ def register():
                 flash('Passwords do not match.', 'error')
                 return render_template('register.html')
 
-            existing_user = User.query.filter_by(email=email).first()
+            existing_user = User.query.filter(
+                func.lower(User.email) == email.casefold()
+            ).first()
             if existing_user:
                 flash('An account with this email already exists.', 'error')
                 return render_template('register.html')
@@ -184,7 +196,7 @@ def login():
     if request.method == 'POST':
 
         try:
-            email = request.form.get('email', '').strip().lower()
+            email = request.form.get('email', '').strip()
             password = request.form.get('password', '')
             remember_me = request.form.get('remember_me') == 'on'
             
@@ -192,7 +204,9 @@ def login():
                 flash('Please enter both email and password.', 'error')
                 return render_template('login.html')
             
-            user = User.query.filter_by(email=email).first()
+            user = User.query.filter(
+                func.lower(User.email) == email.casefold()
+            ).first()
             
             if user and user.check_password(password):
                 session['user_id'] = user.id
@@ -296,13 +310,16 @@ def resend_verification():
 def forgot_password():
     if request.method == 'POST':
         try:
-            email = request.form.get('email', '').strip().lower()
-            
-            if not email or not is_valid_email(email):
+            raw_email = request.form.get('email', '')
+            try:
+                email = normalize_account_email(raw_email)
+            except EmailNotValidError:
                 flash('Please enter a valid email address.', 'error')
                 return render_template('forgot_password.html')
-            
-            user = User.query.filter_by(email=email).first()
+
+            user = User.query.filter(
+                func.lower(User.email) == email.casefold()
+            ).first()
             
             if user:
                 # Check rate limiting
@@ -416,23 +433,32 @@ def inject_current_user():
 def update_timezone():
     """API endpoint to update user's timezone"""
     try:
-        data = request.get_json()
-        if not data or 'timezone' not in data:
-            return jsonify({'success': False, 'error': 'Timezone not provided'}), 400
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict) or set(data) != {'timezone'}:
+            return error_response(
+                422, 'validation_error', 'Send one valid time zone.',
+                field_errors={'timezone': ['Choose a valid time zone.']},
+            )
         
         new_timezone = data['timezone']
         
         # Validate timezone
         if not validate_timezone(new_timezone):
-            return jsonify({'success': False, 'error': 'Invalid timezone'}), 400
+            return error_response(
+                422, 'validation_error', 'Send one valid time zone.',
+                field_errors={'timezone': ['Choose a valid time zone.']},
+            )
         
         # Get current user
         user = get_current_user()
         if not user:
             return jsonify({'success': False, 'error': 'User not found'}), 404
         
-        preferences = PreferenceService().get_or_create_preferences(user.id)
-        reset = preferences.daily_reset_time.strftime('%H:%M') if preferences.daily_reset_time else '00:00'
+        preferences = UserPreferences.query.filter_by(user_id=user.id).first()
+        reset = (
+            preferences.daily_reset_time.strftime('%H:%M')
+            if preferences is not None and preferences.daily_reset_time else '00:00'
+        )
         PreferenceService().update_day_boundary(user.id, new_timezone, reset)
         
         # Update session
@@ -441,6 +467,12 @@ def update_timezone():
         current_app.logger.info(f'Timezone updated for user {user.email}: {new_timezone}')
         return jsonify({'success': True, 'timezone': new_timezone})
         
+    except (TypeError, ValueError):
+        db.session.rollback()
+        return error_response(
+            422, 'validation_error', 'Send one valid time zone.',
+            field_errors={'timezone': ['Choose a valid time zone.']},
+        )
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f'Update timezone error: {e}')

@@ -27,6 +27,8 @@ from services.goal_evaluation_service import (
 )
 from sqlalchemy.exc import IntegrityError
 
+_PERMANENT_FAILURE = object()
+
 
 class NotificationService:
 
@@ -345,7 +347,8 @@ class NotificationService:
             )
             raise
     
-    def queue_notification(self, user_id, category, subject, message, priority=5, extra_data=None):
+    def queue_notification(self, user_id, category, subject, message, priority=5,
+                           extra_data=None, *, commit=True):
         """
         Queues notifications for a user based on their channel and category preferences.
         Iterates through all possible channels and queues a notification if the user
@@ -365,17 +368,27 @@ class NotificationService:
                     category == 'email_verification' and channel_type == 'email'
                 ) or self.preferences_service.should_send_notification(user_id, category, channel_type)
                 if allowed:
-                    if self._queue_single_notification(user_id, channel_type, category, subject, message, priority=priority, extra_data=extra_data):
+                    if self._queue_single_notification(
+                        user_id, channel_type, category, subject, message,
+                        priority=priority, extra_data=extra_data, commit=False,
+                    ):
                         queued_count += 1
-            
+            if commit:
+                db.session.commit()
+            else:
+                db.session.flush()
             return queued_count > 0
 
         except Exception as e:
+            db.session.rollback()
             current_app.logger.error('Error queuing notifications for user %s (%s).', user_id, type(e).__name__)
+            if not commit:
+                raise
             return False
 
     def _queue_single_notification(self, user_id, notification_type, category, subject, message, 
-                                 recipient=None, priority=5, extra_data=None, scheduled_for=None):
+                                 recipient=None, priority=5, extra_data=None,
+                                 scheduled_for=None, *, commit=True):
         """Queues a single notification to a specific channel after validation."""
         try:
             user = User.query.get(user_id)
@@ -384,7 +397,7 @@ class NotificationService:
                 return False
             
             # Check quiet hours
-            if self.preferences_service.is_quiet_hours(user_id):
+            if category != 'email_verification' and self.preferences_service.is_quiet_hours(user_id):
                 preferences = self.preferences_service.get_or_create_preferences(user_id)
                 if preferences and preferences.quiet_hours_end:
                     from datetime import time
@@ -420,7 +433,10 @@ class NotificationService:
             )
             
             db.session.add(notification)
-            db.session.commit()
+            if commit:
+                db.session.commit()
+            else:
+                db.session.flush()
             
             current_app.logger.info(f'Queued {notification_type} notification for user {user_id}: {category}')
             return True
@@ -428,6 +444,8 @@ class NotificationService:
         except Exception as e:
             db.session.rollback()
             current_app.logger.error('Error queuing single notification (%s).', type(e).__name__)
+            if not commit:
+                raise
             return False
 
     
@@ -507,7 +525,7 @@ class NotificationService:
                 success = self._send_notification(notification)
                 processed += 1
                 
-                if success:
+                if success is True:
                     # Mark as sent and create history record. Weekly reports
                     # remain as a minimal idempotency ledger; all delivery and
                     # health-rich content is scrubbed before durable history.
@@ -519,7 +537,11 @@ class NotificationService:
                         db.session.delete(notification)  # Ephemeral queue item
                 else:
                     # Increment attempts and potentially reschedule
-                    notification.attempts += 1
+                    notification.attempts = (
+                        notification.max_attempts
+                        if success is _PERMANENT_FAILURE
+                        else notification.attempts + 1
+                    )
                     notification.last_attempt_at = datetime.utcnow()
                     
                     if notification.attempts >= notification.max_attempts:
@@ -547,6 +569,14 @@ class NotificationService:
             notification.status = 'processing'
             db.session.commit()
 
+            if notification.notification_type == 'discord':
+                try:
+                    parse_discord_webhook(notification.recipient)
+                except DiscordWebhookError:
+                    current_app.logger.warning(
+                        'Discord notification rejected an invalid stored webhook.'
+                    )
+                    return _PERMANENT_FAILURE
             handler = self.send_handlers.get(notification.notification_type)
             if handler:
                 return handler(notification)

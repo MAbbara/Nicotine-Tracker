@@ -17,8 +17,14 @@
                 <p>Choose where useful prompts and progress notes can reach you.</p>
             </header>
 
-            <fieldset class="min-w-0 space-y-3 border-0 p-0">
+            <fieldset
+                id="notification-channel-group"
+                class="min-w-0 space-y-3 border-0 p-0"
+                aria-describedby="notification-channel-dependency{% if field_errors.get('notification_channel') %} notification_channel-error{% endif %}"
+                {% if field_errors.get('notification_channel') %}aria-invalid="true"{% endif %}
+            >
                 <legend class="sr-only">Delivery channels</legend>
+                <p class="c-field__description" id="notification-channel-dependency">Weekly reports need at least one usable delivery channel.</p>
                 <div class="c-field">
                     <label class="c-field__check" for="notification_channel_email">
                         <input
@@ -27,7 +33,8 @@
                             name="notification_channel"
                             type="checkbox"
                             value="email"
-                            aria-describedby="email-channel-description"
+                            aria-describedby="email-channel-description notification-channel-dependency{% if field_errors.get('notification_channel') %} notification_channel-error{% endif %}"
+                            {% if field_errors.get('notification_channel') %}aria-invalid="true"{% endif %}
                             {% if 'email' in channels %}checked{% endif %}
                         >
                         <span class="c-field__check-label">Email</span>
@@ -43,7 +50,8 @@
                             name="notification_channel"
                             type="checkbox"
                             value="discord"
-                            aria-describedby="discord-channel-description"
+                            aria-describedby="discord-channel-description notification-channel-dependency{% if field_errors.get('notification_channel') %} notification_channel-error{% endif %}"
+                            {% if field_errors.get('notification_channel') %}aria-invalid="true"{% endif %}
                             {% if 'discord' in channels %}checked{% endif %}
                         >
                         <span class="c-field__check-label">Discord</span>
@@ -95,7 +103,7 @@
                     'weekly_reports',
                     'Weekly progress report',
                     checked=preferences.weekly_reports,
-                    description='A weekly summary of patterns, progress, and the next useful step.'
+                    description='A weekly summary of patterns, progress, and the next useful step. Requires at least one usable delivery channel.'
                 ) }}
             </div>
         </section>
@@ -107,6 +115,7 @@
             </header>
 
             <div class="reminders-section__fields space-y-6">
+                <p class="c-field__description" id="quiet-hours-dependency">Set both quiet-hour times or clear both. Start and end must differ.</p>
                 {{ field(
                     'reminder_time',
                     'Daily reminder time',

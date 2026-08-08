@@ -1,4 +1,4 @@
-from datetime import datetime
+from types import SimpleNamespace
 
 import pytest
 
@@ -8,61 +8,57 @@ VALID_WEBHOOK = (
 )
 
 
-def test_outbound_boundary_records_discord_exactly_and_fails_closed():
+def test_outbound_boundary_runs_production_discord_validation_and_transport(app):
     from tests.browser.helpers.outbound_test_boundary import install_outbound_boundary
-
-    class NotificationService:
-        pass
-
-    class Requests:
-        @staticmethod
-        def post(*_args, **_kwargs):
-            raise AssertionError('real requests.post must be replaced')
+    from services.notification_service import NotificationService
+    from services import notification_service as notification_module
 
     class Mail:
         @staticmethod
         def send(*_args, **_kwargs):
             raise AssertionError('real mail.send must be replaced')
 
+    original_post = notification_module.requests.post
+    original_queue = NotificationService.queue_notification
+    original_email = NotificationService.send_email_notification
+    original_mail = Mail.send
     recorder = install_outbound_boundary(
         NotificationService,
-        Requests,
+        notification_module.requests,
         Mail,
-        now=lambda: datetime(2026, 8, 3, 12, 0, 0),
     )
+    with app.test_request_context('/'):
+        success, message = NotificationService().test_discord_webhook(VALID_WEBHOOK)
+        assert success is True
+        assert message == 'Test message sent successfully!'
+        success, message = NotificationService().test_discord_webhook(
+            'http://169.254.169.254/api/webhooks/1/private-token',
+        )
+        assert success is False
+        assert message == 'Enter a valid Discord webhook URL.'
 
-    success, message = NotificationService().test_discord_webhook(
-        VALID_WEBHOOK,
-    )
-    assert success is True
-    assert message == 'Discord boundary recorded.'
-    assert recorder.records == [{
-        'kind': 'discord-test',
-        'method': 'POST',
-        'url': VALID_WEBHOOK,
-        'payload': {
-            'embeds': [{
-                'title': '🧪 Webhook Test',
-                'description': (
-                    'This is a test message from Nicotine Tracker to verify '
-                    'your Discord webhook is working correctly.'
-                ),
-                'color': 0x10B981,
-                'timestamp': '2026-08-03T12:00:00',
-                'footer': {'text': 'Nicotine Tracker - Test Message'},
-            }],
-        },
-    }]
+        corrupt = SimpleNamespace(recipient='https://outside.invalid/hook')
+        assert NotificationService().send_discord_notification(corrupt) is False
+        valid = SimpleNamespace(
+            recipient=VALID_WEBHOOK, subject='Subject', message='Body',
+            category='daily_reminder', extra_data={},
+        )
+        assert NotificationService().send_discord_notification(valid) is True
+
+    assert len(recorder.records) == 2
+    assert all(record['kind'] == 'discord-transport' for record in recorder.records)
+    assert all(record['timeout'] == (3.05, 5.0) for record in recorder.records)
+    assert all(record['allow_redirects'] is False for record in recorder.records)
+    assert recorder.unexpected == []
 
     with pytest.raises(AssertionError, match='Unexpected external HTTP POST'):
-        Requests.post('https://outside.invalid/hook', json={'unsafe': True})
+        notification_module.requests.post(
+            'https://outside.invalid/hook', json={'unsafe': True},
+        )
     with pytest.raises(AssertionError, match='Unexpected external email send'):
         Mail.send(object())
-    assert recorder.unexpected == [
-        {
-            'kind': 'http', 'method': 'POST',
-            'url': 'https://outside.invalid/hook',
-            'payload': {'unsafe': True},
-        },
-        {'kind': 'email', 'method': 'SEND'},
-    ]
+    assert [item['kind'] for item in recorder.unexpected] == ['http', 'email']
+    notification_module.requests.post = original_post
+    NotificationService.queue_notification = original_queue
+    NotificationService.send_email_notification = original_email
+    Mail.send = original_mail

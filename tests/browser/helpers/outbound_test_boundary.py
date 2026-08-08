@@ -13,17 +13,33 @@ class OutboundRecorder:
 def install_outbound_boundary(notification_service_cls, requests_module, mail, *, now=None):
     """Replace every notification transport while retaining literal boundary data."""
     recorder = OutboundRecorder()
-    clock = now or datetime.utcnow
-
-    def fail_http_post(url, *args, **kwargs):
+    def record_discord_post(url, *args, **kwargs):
         payload = kwargs.get('json')
-        recorder.unexpected.append({
+        expected = (
+            isinstance(url, str)
+            and url.startswith('https://discord.com/api/webhooks/')
+            and not args
+            and kwargs.get('headers') == {'Content-Type': 'application/json'}
+            and kwargs.get('timeout') == (3.05, 5.0)
+            and kwargs.get('allow_redirects') is False
+        )
+        record = {
             'kind': 'http',
             'method': 'POST',
             'url': url,
             'payload': payload,
-        })
-        raise AssertionError(f'Unexpected external HTTP POST: {url}')
+            'headers': kwargs.get('headers'),
+            'timeout': kwargs.get('timeout'),
+            'allow_redirects': kwargs.get('allow_redirects'),
+        }
+        if not expected:
+            recorder.unexpected.append(record)
+            raise AssertionError(f'Unexpected external HTTP POST: {url}')
+        recorder.records.append({**record, 'kind': 'discord-transport'})
+
+        class Response:
+            status_code = 204
+        return Response()
 
     def fail_email_send(*_args, **_kwargs):
         recorder.unexpected.append({'kind': 'email', 'method': 'SEND'})
@@ -31,7 +47,7 @@ def install_outbound_boundary(notification_service_cls, requests_module, mail, *
 
     def record_queue(
         _service, *, user_id, category, subject, message, priority=0,
-        scheduled_for=None, extra_data=None,
+        scheduled_for=None, extra_data=None, commit=True,
     ):
         recorder.records.append({
             'kind': 'notification-queue',
@@ -45,27 +61,6 @@ def install_outbound_boundary(notification_service_cls, requests_module, mail, *
         })
         return True
 
-    def record_discord_test(_service, webhook_url):
-        payload = {
-            'embeds': [{
-                'title': '🧪 Webhook Test',
-                'description': (
-                    'This is a test message from Nicotine Tracker to verify '
-                    'your Discord webhook is working correctly.'
-                ),
-                'color': 0x10B981,
-                'timestamp': clock().isoformat(),
-                'footer': {'text': 'Nicotine Tracker - Test Message'},
-            }],
-        }
-        recorder.records.append({
-            'kind': 'discord-test',
-            'method': 'POST',
-            'url': webhook_url,
-            'payload': payload,
-        })
-        return True, 'Discord boundary recorded.'
-
     def record_email(_service, notification):
         recorder.records.append({
             'kind': 'email-send',
@@ -76,20 +71,8 @@ def install_outbound_boundary(notification_service_cls, requests_module, mail, *
         })
         return True
 
-    def record_discord(_service, notification):
-        payload = {'embeds': [_service._format_discord_embed(notification)]}
-        recorder.records.append({
-            'kind': 'discord-send',
-            'method': 'POST',
-            'url': notification.recipient,
-            'payload': payload,
-        })
-        return True
-
-    requests_module.post = fail_http_post
+    requests_module.post = record_discord_post
     mail.send = fail_email_send
     notification_service_cls.queue_notification = record_queue
-    notification_service_cls.test_discord_webhook = record_discord_test
     notification_service_cls.send_email_notification = record_email
-    notification_service_cls.send_discord_notification = record_discord
     return recorder

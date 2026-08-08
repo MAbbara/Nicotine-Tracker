@@ -6,6 +6,7 @@ from flask import current_app
 from extensions import db
 from models.user_preferences import UserPreferences
 from models.user import User
+from services.settings_validation_service import NotificationSettingsInput
 
 class UserPreferencesService:
     
@@ -53,21 +54,20 @@ class UserPreferencesService:
     def update_preferences(self, user_id, *, commit=True, **kwargs):
         """Update user preferences"""
         try:
-            preferences = self.get_or_create_preferences(user_id, commit=commit)
-            
-            if not preferences:
-                return False, "Could not get user preferences"
-            
             # Update allowed fields
             allowed_fields = [
                 'notification_channel', 'goal_notifications', 'daily_reminders',
                 'weekly_reports', 'achievement_notifications', 'discord_webhook',
                 'slack_webhook', 'reminder_time', 'quiet_hours_start',
-                'quiet_hours_end', 'notification_frequency', 'daily_reset_time',
+                'quiet_hours_end',
                 'units_preference', 'preferred_brands'
             ]
-
-
+            rejected = sorted(set(kwargs) - set(allowed_fields))
+            if rejected:
+                return False, "Unsupported preference field"
+            preferences = self.get_or_create_preferences(user_id, commit=commit)
+            if not preferences:
+                return False, "Could not get user preferences"
             
             updated_fields = []
             for field, value in kwargs.items():
@@ -101,6 +101,33 @@ class UserPreferencesService:
             db.session.rollback()
             current_app.logger.error('Error updating preferences (%s).', type(e).__name__)
             return False, "Error updating preferences"
+
+    def apply_notification_settings(self, user_id, submitted, *, commit=True):
+        """Persist only the validated notification settings as one unit."""
+        if not isinstance(submitted, NotificationSettingsInput):
+            raise TypeError('submitted must be validated notification settings')
+        try:
+            preferences = self.get_or_create_preferences(user_id, commit=False)
+            if preferences is None:
+                raise RuntimeError('Could not get user preferences')
+            preferences.notification_channel = list(submitted.notification_channel)
+            preferences.goal_notifications = submitted.goal_notifications
+            preferences.achievement_notifications = submitted.achievement_notifications
+            preferences.daily_reminders = submitted.daily_reminders
+            preferences.weekly_reports = submitted.weekly_reports
+            preferences.discord_webhook = submitted.discord_webhook
+            preferences.reminder_time = submitted.reminder_time
+            preferences.quiet_hours_start = submitted.quiet_hours_start
+            preferences.quiet_hours_end = submitted.quiet_hours_end
+            preferences.updated_at = datetime.utcnow()
+            if commit:
+                db.session.commit()
+            else:
+                db.session.flush()
+            return preferences
+        except Exception:
+            db.session.rollback()
+            raise
     
     def get_notification_settings(self, user_id):
         """Get notification settings for a user"""

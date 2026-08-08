@@ -4,6 +4,8 @@ from datetime import time
 from decimal import Decimal, InvalidOperation
 import re
 
+from email_validator import EmailNotValidError, validate_email
+
 from services.discord_webhook_service import DiscordWebhookError, parse_discord_webhook
 from services.timezone_service import validate_timezone
 
@@ -12,7 +14,15 @@ PASSWORD_MIN = 8
 PASSWORD_MAX = 128
 EMAIL_MAX = 120
 BRAND_MAX = 80
-EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+TIME_RE = re.compile(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", re.ASCII)
+
+
+def normalize_account_email(value):
+    raw_email = str(value).strip()
+    email = validate_email(raw_email, check_deliverability=False).normalized
+    if len(email) > EMAIL_MAX:
+        raise EmailNotValidError('Address is too long.')
+    return email
 
 
 class SettingsValidationError(ValueError):
@@ -33,19 +43,16 @@ def _checked(payload, key):
 
 
 def _time(value, field, errors, *, required=False):
-    value = value.strip() if isinstance(value, str) else ""
+    value = value if isinstance(value, str) else ""
     if not value:
         if required:
             errors[field] = "Choose a time."
         return None
-    try:
-        hour, minute = value.split(":")
-        if len(hour) != 2 or len(minute) != 2:
-            raise ValueError
-        return time(int(hour), int(minute))
-    except (ValueError, TypeError):
+    if TIME_RE.fullmatch(value) is None:
         errors[field] = "Choose a valid time."
         return None
+    hour, minute = value.split(":")
+    return time(int(hour), int(minute))
 
 
 @dataclass(frozen=True)
@@ -109,7 +116,7 @@ class PreferenceSettingsInput:
 def parse_preference_settings(payload, *, available_brands):
     errors = {}
     units = str(payload.get("units_preference", "")).strip()
-    timezone = str(payload.get("timezone", "")).strip()
+    timezone = payload.get("timezone", "")
     reset = _time(payload.get("daily_reset_time", ""), "daily_reset_time", errors, required=True)
     brands = _values(payload, "preferred_brands")
     owned = set(available_brands)
@@ -174,8 +181,11 @@ def parse_account_mutation(payload):
     action = actions[0]
     values = {}
     if action == "update_email":
-        email = str(payload.get("new_email", "")).strip().lower()
-        if len(email) > EMAIL_MAX or not EMAIL_RE.fullmatch(email):
+        raw_email = str(payload.get("new_email", "")).strip()
+        try:
+            email = normalize_account_email(raw_email)
+        except EmailNotValidError:
+            email = raw_email
             errors["new_email"] = "Enter a valid email address."
         values = {"new_email": email, "password": str(payload.get("password", ""))}
     elif action == "change_password":

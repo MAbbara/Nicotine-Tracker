@@ -6,6 +6,8 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 
 from models import UserPreferences
+from services.user_preferences_service import UserPreferencesService
+from extensions import db
 
 VALID_WEBHOOK = (
     "https://discord.com/api/webhooks/123456789012345678/"
@@ -141,6 +143,61 @@ def test_reminder_validation_is_atomic_and_retains_safe_values(
     assert soup.select_one('#reminder_time[aria-invalid="true"]')
     assert soup.select_one('#quiet_hours_end[aria-invalid="true"]')
     assert soup.select_one('#discord_webhook')['value'].startswith('http://169.254')
+
+
+def test_weekly_channel_error_is_associated_with_group_and_controls(
+        logged_in_client):
+    response = logged_in_client.post('/settings/notifications', data={
+        'weekly_reports': 'on',
+    })
+    assert response.status_code == 422
+    soup = BeautifulSoup(response.data, 'html.parser')
+    error = soup.select_one('#notification_channel-error')
+    assert error.get_text(' ', strip=True) == (
+        'Choose a usable channel for weekly reports.'
+    )
+    group = soup.select_one('#notification-channel-group[aria-invalid="true"]')
+    assert 'notification_channel-error' in group['aria-describedby'].split()
+    for control in soup.select('input[name="notification_channel"]'):
+        assert control['aria-invalid'] == 'true'
+        assert 'notification_channel-error' in control['aria-describedby'].split()
+
+
+def test_generic_writer_rejects_retired_fields_before_creating_preferences(
+        db_session, test_user):
+    UserPreferences.query.filter_by(user_id=test_user.id).delete()
+    db_session.commit()
+    service = UserPreferencesService()
+    assert service.update_preferences(
+        test_user.id, notification_frequency='daily',
+    ) == (False, 'Unsupported preference field')
+    assert service.update_preferences(
+        test_user.id, daily_reset_time='04:05',
+    ) == (False, 'Unsupported preference field')
+    assert UserPreferences.query.filter_by(user_id=test_user.id).count() == 0
+
+
+def test_first_notification_write_uses_one_boundary_commit(
+        logged_in_client, db_session, test_user, monkeypatch):
+    UserPreferences.query.filter_by(user_id=test_user.id).delete()
+    db_session.commit()
+    real_commit = db.session.commit
+    commits = []
+
+    def counted_commit():
+        commits.append(True)
+        return real_commit()
+
+    monkeypatch.setattr(db.session, 'commit', counted_commit)
+    response = logged_in_client.post('/settings/notifications', data={
+        'notification_channel': ['email'],
+        'goal_notifications': 'on',
+    })
+    assert response.status_code == 302
+    assert len(commits) == 1
+    preferences = UserPreferences.query.filter_by(user_id=test_user.id).one()
+    assert preferences.notification_channel == ['email']
+    assert preferences.goal_notifications is True
 
 
 def test_reminders_template_retires_inline_actions_and_legacy_palette():

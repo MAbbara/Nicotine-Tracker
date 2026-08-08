@@ -14,6 +14,7 @@ from pytz import timezone as pytz_timezone
 from services.request_context import get_request_id
 
 logger = logging.getLogger(__name__)
+CANONICAL_TIMEZONES = frozenset(pytz.all_timezones)
 
 
 class InvalidEventTimeError(ValueError):
@@ -222,7 +223,10 @@ def get_timezone_object(timezone_str: str) -> pytz.BaseTzInfo:
     identifiers raise :class:`pytz.exceptions.UnknownTimeZoneError`.
     Persisted legacy values go through :func:`resolve_timezone` instead.
     """
-    if not isinstance(timezone_str, str) or not timezone_str:
+    if (
+        not isinstance(timezone_str, str)
+        or timezone_str not in CANONICAL_TIMEZONES
+    ):
         raise pytz.exceptions.UnknownTimeZoneError(timezone_str)
     return pytz_timezone(timezone_str)
 
@@ -397,11 +401,7 @@ def validate_timezone(timezone_str: str) -> bool:
     Returns:
         True if valid, False otherwise
     """
-    try:
-        pytz_timezone(timezone_str)
-        return True
-    except pytz.exceptions.UnknownTimeZoneError:
-        return False
+    return isinstance(timezone_str, str) and timezone_str in CANONICAL_TIMEZONES
 
 
 def get_common_timezones() -> list:

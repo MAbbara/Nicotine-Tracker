@@ -259,7 +259,8 @@ def test_sent_weekly_report_is_durable_and_replay_never_redelivers(
     preferences.weekly_reports = True
     preferences.notification_channel = ['email', 'discord']
     preferences.discord_webhook = (
-        'https://discord.invalid/private-webhook-token'
+        'https://discord.com/api/webhooks/123456789012345678/'
+        'abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789'
     )
     db_session.commit()
     instant = datetime(2030, 1, 14, 12, 0, tzinfo=timezone.utc)
@@ -355,6 +356,32 @@ def test_nonweekly_success_keeps_existing_ephemeral_queue_and_history_semantics(
     assert history.delivery_status == 'sent'
     assert history.subject == 'Private daily subject'
     assert history.recipient == test_user.email
+
+
+def test_corrupt_stored_discord_webhook_fails_permanently_without_retry(
+        app, db_session, test_user, monkeypatch):
+    notification = NotificationQueue(
+        user_id=test_user.id, notification_type='discord',
+        category='daily_reminder', subject='Private subject',
+        message='Private body',
+        recipient='http://169.254.169.254/api/webhooks/1/private-token',
+        scheduled_for=datetime(2020, 1, 1), max_attempts=3,
+    )
+    db_session.add(notification)
+    db_session.commit()
+    notification_id = notification.id
+    monkeypatch.setattr(
+        'services.discord_webhook_service.requests.post',
+        lambda *_args, **_kwargs: pytest.fail('transport must not run'),
+    )
+
+    assert NotificationService().process_notification_queue() == 1
+    assert db_session.get(NotificationQueue, notification_id) is None
+    history = NotificationHistory.query.filter_by(
+        original_queue_id=notification_id
+    ).one()
+    assert history.delivery_status == 'failed'
+    assert history.attempts_made == 3
 
 
 def test_sent_manual_report_and_staggered_scheduler_share_the_same_row(

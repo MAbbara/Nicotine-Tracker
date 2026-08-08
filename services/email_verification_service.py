@@ -10,7 +10,7 @@ from models.user import User
 
 class EmailVerificationService:
     
-    def create_verification_token(self, user_id, expires_hours=24):
+    def create_verification_token(self, user_id, expires_hours=24, *, commit=True):
         """Create a new email verification token for a user"""
         try:
             # Create new verification token with minimal data
@@ -21,7 +21,10 @@ class EmailVerificationService:
             )
             
             db.session.add(verification_token)
-            db.session.commit()
+            if commit:
+                db.session.commit()
+            else:
+                db.session.flush()
             
             current_app.logger.info(f'Email verification token created for user {user_id}')
             return verification_token
@@ -82,7 +85,7 @@ class EmailVerificationService:
             current_app.logger.error(f'Error verifying email: {e}')
             return False, "Error verifying email"
     
-    def send_verification_email(self, user_id):
+    def send_verification_email(self, user_id, *, commit=True, enforce_cooldown=True):
         """Send verification email to user"""
         try:
             user = db.session.get(User, user_id)
@@ -94,11 +97,13 @@ class EmailVerificationService:
                 return False, "Email already verified"
             
             # Check rate limiting
-            if not self.can_send_verification(user_id):
+            if enforce_cooldown and not self.can_send_verification(user_id):
                 return False, "Please wait before requesting another verification email"
             
             # Create verification token
-            verification_token = self.create_verification_token(user_id)
+            verification_token = self.create_verification_token(
+                user_id, commit=False,
+            )
             
             # Send email using existing notification system
             from services.notification_service import NotificationService
@@ -126,18 +131,27 @@ class EmailVerificationService:
                 subject=subject,
                 message=message,
                 priority=1,  # High priority
-                extra_data={'verification_url': verification_url}
+                extra_data={'verification_url': verification_url},
+                commit=False,
             )
-            
+
             if success:
+                if commit:
+                    db.session.commit()
+                else:
+                    db.session.flush()
                 current_app.logger.info(f'Verification email queued for {user.email}')
                 return True, "Verification email sent successfully"
             else:
+                if not commit:
+                    raise RuntimeError('verification notification was not queued')
                 return False, "Failed to send verification email"
                 
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f'Error sending verification email: {e}')
+            if not commit:
+                raise
             return False, "Failed to send verification email"
     
     def can_send_verification(self, user_id, cooldown_minutes=5):
@@ -260,6 +274,8 @@ class EmailVerificationService:
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f'Error revoking user tokens: {e}')
+            if not commit:
+                raise
             return 0
     
     def _create_verification_email_content(self, user, verification_url):
