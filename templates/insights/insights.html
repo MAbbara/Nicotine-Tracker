@@ -17,7 +17,16 @@
 {% set range_days = initial_insights.get('range_days', 30) %}
 {% set plan_context = initial_insights.get('plan_context', {}) %}
 {% set craving_pattern = initial_insights.get('craving_pattern', {}) %}
+{% set strength_coverage = initial_insights.get('strength_coverage', {}) %}
 {% set insight_state = 'empty' if log_count == 0 else ('ready' if sufficiency.get('trend') else 'sparse') %}
+{% set time_nicotine = namespace(positive=0) %}
+{% for value in initial_insights.get('nicotine_by_time_of_day', {}).values() %}
+    {% if value|float > 0 %}{% set time_nicotine.positive = time_nicotine.positive + 1 %}{% endif %}
+{% endfor %}
+{% set product_nicotine = namespace(positive=0) %}
+{% for value in initial_insights.get('nicotine_by_product', {}).values() %}
+    {% if value|float > 0 %}{% set product_nicotine.positive = product_nicotine.positive + 1 %}{% endif %}
+{% endfor %}
 {% set time_leader = namespace(label=none, value=0) %}
 {% if sufficiency.get('time_pattern') %}
     {% for label, value in initial_insights.get('consumption_by_time_of_day', {}).items() %}
@@ -171,7 +180,7 @@
             </div>
             <div class="insights-figure">
                 <h3 id="time-of-day-title">Known nicotine by time of day</h3>
-                <p data-insights-time-nicotine-copy>{% if initial_insights.get('strength_coverage', {}).get('unknown_pouches', 0) %}Some pouches have no saved strength, so nicotine totals are incomplete.{% else %}Bars show known nicotine in this range.{% endif %}</p>
+                <p data-insights-time-nicotine-copy>{% if strength_coverage.get('total_pouches', 0) == 0 %}No nicotine is available by time yet. Strength coverage will appear after you log a pouch.{% elif strength_coverage.get('known_pouches', 0) == 0 %}Nicotine by time is unavailable because every logged pouch is missing a saved strength.{% elif time_nicotine.positive == 0 %}Known strengths in this range add up to 0 mg by time.{% elif time_nicotine.positive == 1 %}All known nicotine in this range is in one time category.{% elif strength_coverage.get('unknown_pouches', 0) %}Some pouches have no saved strength, so bars show incomplete known nicotine totals.{% else %}Every pouch in this range has a saved strength. Bars show known nicotine only.{% endif %}</p>
                 <div id="time-of-day-chart" class="analytics-chart" role="img" aria-labelledby="time-of-day-title"></div>
                 <p class="analytics-chart__status" role="status" aria-live="polite" hidden></p>
                 <details class="analytics-figure__table">
@@ -205,7 +214,7 @@
             </div>
             <div class="insights-figure">
                 <h3 id="brand-title">Known nicotine by product</h3>
-                <p data-insights-product-nicotine-copy>{% if initial_insights.get('strength_coverage', {}).get('unknown_pouches', 0) %}Some pouches have no saved strength, so nicotine totals are incomplete.{% else %}Bars show known nicotine in this range.{% endif %}</p>
+                <p data-insights-product-nicotine-copy>{% if strength_coverage.get('total_pouches', 0) == 0 %}No nicotine is available by product yet. Strength coverage will appear after you log a pouch.{% elif strength_coverage.get('known_pouches', 0) == 0 %}Nicotine by product is unavailable because every logged pouch is missing a saved strength.{% elif product_nicotine.positive == 0 %}Known strengths in this range add up to 0 mg by product.{% elif product_nicotine.positive == 1 %}All known nicotine in this range is in one product category.{% elif strength_coverage.get('unknown_pouches', 0) %}Some pouches have no saved strength, so bars show incomplete known nicotine totals.{% else %}Every pouch in this range has a saved strength. Bars show known nicotine only.{% endif %}</p>
                 <div id="brand-chart" class="analytics-chart" role="img" aria-labelledby="brand-title"></div>
                 <p class="analytics-chart__status" role="status" aria-live="polite" hidden></p>
                 <details class="analytics-figure__table">

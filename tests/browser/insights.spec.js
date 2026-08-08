@@ -12,6 +12,38 @@ async function login(page, email) {
   await expect(page).toHaveURL(/\/today\/?$/);
 }
 
+async function setActualTwoHundredPercentZoom(page) {
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = '2';
+  });
+  await expect.poll(() => page.evaluate(() => (
+    Number.parseFloat(getComputedStyle(document.documentElement).zoom)
+  ))).toBe(2);
+}
+
+async function rangeGeometry(page) {
+  return page.locator('[data-days]').evaluateAll((controls) => Object.fromEntries(
+    controls.map((control) => {
+      const rect = control.getBoundingClientRect();
+      return [control.dataset.days, {
+        top: rect.top + window.scrollY,
+        left: rect.left + window.scrollX,
+        width: rect.width,
+        height: rect.height,
+      }];
+    }),
+  ));
+}
+
+function expectStableRangeGeometry(actual, expected) {
+  expect(Object.keys(actual)).toEqual(Object.keys(expected));
+  for (const days of Object.keys(expected)) {
+    for (const key of ['top', 'left', 'width', 'height']) {
+      expect(Math.abs(actual[days][key] - expected[days][key])).toBeLessThanOrEqual(1);
+    }
+  }
+}
+
 test('Insights server fallback keeps neutral plan states neutral and reveals only sufficient cravings', async ({ page }) => {
   const guard = watchForProductProblems(page);
   await page.route('**/static/js/insights.js', (route) => route.fulfill({
@@ -130,7 +162,7 @@ test('Insights range refresh hides and restores plan and craving evidence from o
     'href', '/today/',
   );
   await expect(page.locator('[data-insights-product-nicotine-copy]')).toContainText(
-    'No known-strength nicotine',
+    'No nicotine is available',
   );
   await expect(page.locator('[data-insights-interpretation]')).not.toContainText(/your plan/i);
 
@@ -193,21 +225,32 @@ test('Insights range transaction retains geometry, content, focus, and atomic hi
   const seven = page.getByRole('link', { name: '7 days', exact: true });
   const headline = page.locator('[data-insights-headline]');
   const before = await actions.boundingBox();
+  const controlGeometry = await rangeGeometry(page);
   const snapshot = await page.evaluate(() => ({
-    headline: document.querySelector('[data-insights-headline]')?.textContent,
-    interpretation: document.querySelector('[data-insights-interpretation]')?.textContent,
+    metrics: [...document.querySelectorAll('.insights-measures dt, .insights-measures dd')].map((node) => node.textContent),
+    narratives: [...document.querySelectorAll('[data-insights-headline], [data-insights-interpretation], [data-insights-plan-context], [data-insights-time-copy], [data-insights-time-nicotine-copy], [data-insights-weekly-copy], [data-insights-product-copy], [data-insights-product-nicotine-copy], [data-insights-hourly-copy]')].map((node) => ({ text: node.textContent, hidden: node.hidden })),
     timeRows: document.querySelector('[data-analytics-key="timeOfDay"]')?.textContent,
     productRows: document.querySelector('[data-analytics-key="brands"]')?.textContent,
-    chart: document.querySelector('#time-of-day-chart')?.textContent,
+    charts: [...document.querySelectorAll('#time-of-day-chart, #brand-chart')].map((node) => ({
+      text: node.textContent,
+      values: [...node.querySelectorAll('.apexcharts-bar-area')].map((bar) => bar.getAttribute('val')),
+      labels: [...node.querySelectorAll('.apexcharts-yaxis-label title')].map((title) => title.textContent),
+      hidden: node.hidden,
+    })),
+    aria: {
+      busy: document.querySelector('[data-insights-root]')?.getAttribute('aria-busy'),
+      current: document.querySelector('[data-days][aria-current="true"]')?.dataset.days,
+      controlBusy: [...document.querySelectorAll('[data-days]')].map((node) => node.getAttribute('aria-busy')),
+    },
     exportHref: document.querySelector('#export-data')?.dataset.exportHref,
   }));
   await page.evaluate(() => {
     window.__insightsLayoutShifts = [];
     new PerformanceObserver((list) => {
       for (const entry of list.getEntries()) {
-        if (entry.hadRecentInput) continue;
         window.__insightsLayoutShifts.push({
           value: entry.value,
+          hadRecentInput: entry.hadRecentInput,
           sources: (entry.sources || []).map((source) => (
             source.node?.closest?.('.insights-actions') ? 'insights-actions' : 'other'
           )),
@@ -228,29 +271,43 @@ test('Insights range transaction retains geometry, content, focus, and atomic hi
   await expect(page.locator('[data-insights-load-status]')).toContainText('Updating');
   const pending = await actions.boundingBox();
   expect(Math.abs(pending.y - before.y)).toBeLessThanOrEqual(1);
-  expect(await headline.textContent()).toBe(snapshot.headline);
+  expectStableRangeGeometry(await rangeGeometry(page), controlGeometry);
+  expect(await headline.textContent()).toBe(snapshot.narratives[0].text);
   await expect(seven).toBeFocused();
   await failed;
   await expect(page.locator('[data-insights-load-status]')).toContainText('could not refresh');
   await expect(page).toHaveURL(/days=30/);
   await expect(page.locator('[data-days="30"]')).toHaveAttribute('aria-current', 'true');
   expect(await page.evaluate(() => ({
-    headline: document.querySelector('[data-insights-headline]')?.textContent,
-    interpretation: document.querySelector('[data-insights-interpretation]')?.textContent,
+    metrics: [...document.querySelectorAll('.insights-measures dt, .insights-measures dd')].map((node) => node.textContent),
+    narratives: [...document.querySelectorAll('[data-insights-headline], [data-insights-interpretation], [data-insights-plan-context], [data-insights-time-copy], [data-insights-time-nicotine-copy], [data-insights-weekly-copy], [data-insights-product-copy], [data-insights-product-nicotine-copy], [data-insights-hourly-copy]')].map((node) => ({ text: node.textContent, hidden: node.hidden })),
     timeRows: document.querySelector('[data-analytics-key="timeOfDay"]')?.textContent,
     productRows: document.querySelector('[data-analytics-key="brands"]')?.textContent,
-    chart: document.querySelector('#time-of-day-chart')?.textContent,
+    charts: [...document.querySelectorAll('#time-of-day-chart, #brand-chart')].map((node) => ({
+      text: node.textContent,
+      values: [...node.querySelectorAll('.apexcharts-bar-area')].map((bar) => bar.getAttribute('val')),
+      labels: [...node.querySelectorAll('.apexcharts-yaxis-label title')].map((title) => title.textContent),
+      hidden: node.hidden,
+    })),
+    aria: {
+      busy: document.querySelector('[data-insights-root]')?.getAttribute('aria-busy'),
+      current: document.querySelector('[data-days][aria-current="true"]')?.dataset.days,
+      controlBusy: [...document.querySelectorAll('[data-days]')].map((node) => node.getAttribute('aria-busy')),
+    },
     exportHref: document.querySelector('#export-data')?.dataset.exportHref,
   }))).toEqual(snapshot);
+  expectStableRangeGeometry(await rangeGeometry(page), controlGeometry);
   expect(await page.evaluate(() => window.__insightsLayoutShifts
     .filter((entry) => entry.sources.includes('insights-actions')))).toEqual([]);
 
   await seven.click();
   await expect(page).toHaveURL(/days=7/);
   await expect(page.locator('[data-days="7"]')).toHaveAttribute('aria-current', 'true');
+  expectStableRangeGeometry(await rangeGeometry(page), controlGeometry);
   await page.goBack();
   await expect(page).toHaveURL(/days=30/);
   await expect(page.locator('[data-days="30"]')).toHaveAttribute('aria-current', 'true');
+  expectStableRangeGeometry(await rangeGeometry(page), controlGeometry);
 });
 
 test('latest range wins after abort and long snapshot labels stay contained at 320px 200%', async ({ page }) => {
@@ -258,7 +315,7 @@ test('latest range wins after abort and long snapshot labels stay contained at 3
   await page.setViewportSize({ width: 320, height: 844 });
   await login(page, 'insights-range@example.com');
   await page.goto('/insights/?days=30');
-  await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+  await setActualTwoHundredPercentZoom(page);
   const stalePayload = await page.evaluate(async () => (
     fetch('/insights/api/insights?days=7').then((response) => response.json())
   ));
@@ -288,6 +345,10 @@ test('latest range wins after abort and long snapshot labels stay contained at 3
   await expect(page).toHaveURL(/days=90/);
   await expect(page.locator('[data-analytics-key="brands"]')).toContainText(longLabel);
   await expect(page.locator('[data-analytics-key="brands"]')).toContainText('Accessible zero category');
+  const productLabels = page.locator('#brand-chart .apexcharts-yaxis-label');
+  await expect(productLabels).toHaveCount(1);
+  await expect(productLabels.locator('title')).toHaveText(longLabel);
+  await expect(productLabels).not.toContainText('Accessible zero category');
   await page.waitForTimeout(700);
   await expect(page).toHaveURL(/days=90/);
   await expect(page.locator('[data-days="90"]')).toHaveAttribute('aria-current', 'true');
@@ -300,6 +361,150 @@ test('latest range wins after abort and long snapshot labels stay contained at 3
   ))).toBe(0);
 });
 
+test('range response builds offscreen and chart delay or failure cannot partially commit live state', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await login(page, 'insights-range@example.com');
+  await page.goto('/insights/?days=30');
+  const liveSnapshot = () => page.evaluate(() => {
+    const root = document.querySelector('[data-insights-root]:not([data-insights-candidate])');
+    return {
+      metrics: [...root.querySelectorAll('.insights-measures dd')].map((node) => node.textContent),
+      narratives: [...root.querySelectorAll('[data-insights-headline], [data-insights-interpretation], [data-insights-time-nicotine-copy], [data-insights-product-nicotine-copy]')].map((node) => node.textContent),
+      tables: [...root.querySelectorAll('[data-analytics-key="timeOfDay"], [data-analytics-key="brands"]')].map((node) => node.textContent),
+      chartText: [...root.querySelectorAll('#time-of-day-chart, #brand-chart')].map((node) => node.textContent),
+      current: root.querySelector('[data-days][aria-current="true"]')?.dataset.days,
+      exportHref: root.querySelector('#export-data')?.dataset.exportHref,
+    };
+  });
+  const before = await liveSnapshot();
+  await page.route('**/insights/api/insights?days=90', async (route) => {
+    const response = await route.fetch();
+    const payload = await response.json();
+    payload.comparison.current_total = 99;
+    payload.total_pouches = 99;
+    payload.nicotine_by_product = { 'Candidate only': 321 };
+    payload.data_sufficiency.brand_pattern = true;
+    await route.fulfill({ response, contentType: 'application/json', body: JSON.stringify(payload) });
+  });
+  await page.evaluate(() => {
+    const original = window.ApexCharts.prototype.render;
+    window.__insightsOriginalRender = original;
+    window.__holdInsightsChart = true;
+    window.ApexCharts.prototype.render = function heldRender(...args) {
+      if (!window.__holdInsightsChart) return original.apply(this, args);
+      return new Promise((resolve, reject) => {
+        window.__releaseInsightsChart = async ({ fail = false } = {}) => {
+          window.__holdInsightsChart = false;
+          if (fail) reject(new Error('forced candidate render failure'));
+          else resolve(await original.apply(this, args));
+        };
+      });
+    };
+  });
+
+  await page.getByRole('link', { name: '90 days', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => typeof window.__releaseInsightsChart)).toBe('function');
+  expect(await liveSnapshot()).toEqual(before);
+  await page.getByRole('link', { name: '7 days', exact: true }).click();
+  await expect(page).toHaveURL(/days=7/);
+  await page.evaluate(() => window.__releaseInsightsChart());
+  await page.waitForTimeout(100);
+  await expect(page).toHaveURL(/days=7/);
+  await expect(page.locator('[data-analytics-key="brands"]')).not.toContainText('Candidate only');
+
+  await page.getByRole('link', { name: '30 days', exact: true }).click();
+  await expect(page).toHaveURL(/days=30/);
+  await page.evaluate(() => {
+    window.__holdInsightsChart = true;
+    delete window.__releaseInsightsChart;
+  });
+  await page.getByRole('link', { name: '90 days', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => typeof window.__releaseInsightsChart)).toBe('function');
+  expect(await liveSnapshot()).toEqual(before);
+  await page.evaluate(() => window.__releaseInsightsChart());
+  await expect(page).toHaveURL(/days=90/);
+  await expect(page.locator('[data-analytics-key="brands"]')).toContainText('Candidate only');
+
+  await page.getByRole('link', { name: '30 days', exact: true }).click();
+  await expect(page).toHaveURL(/days=30/);
+  const committed = await liveSnapshot();
+  await page.evaluate(() => {
+    window.__holdInsightsChart = true;
+    delete window.__releaseInsightsChart;
+  });
+  await page.getByRole('link', { name: '90 days', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => typeof window.__releaseInsightsChart)).toBe('function');
+  expect(await liveSnapshot()).toEqual(committed);
+  await page.evaluate(() => window.__releaseInsightsChart({ fail: true }));
+  await expect(page.locator('[data-insights-load-status]')).toContainText('could not refresh');
+  await expect(page).toHaveURL(/days=30/);
+  expect(await liveSnapshot()).toEqual(committed);
+});
+
+test('failed popstate returns to committed entry without overwriting the destination history entry', async ({ page }) => {
+  await login(page, 'insights-range@example.com');
+  await page.goto('/insights/?days=30');
+  await page.getByRole('link', { name: '7 days', exact: true }).click();
+  await expect(page).toHaveURL(/days=7/);
+  let failThirty = true;
+  await page.route('**/insights/api/insights?days=30', async (route) => {
+    if (!failThirty) return route.continue();
+    failThirty = false;
+    await route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"held"}' });
+  });
+
+  await page.goBack();
+  await expect(page.locator('[data-insights-load-status]')).toContainText('could not refresh');
+  await expect(page).toHaveURL(/days=7/);
+  await expect(page.locator('[data-days="7"]')).toHaveAttribute('aria-current', 'true');
+  await page.goBack();
+  await expect(page).toHaveURL(/days=30/);
+  await expect(page.locator('[data-days="30"]')).toHaveAttribute('aria-current', 'true');
+});
+
+test('known-zero and unknown-only nicotine states stay truthful with authoritative tables', async ({ page }) => {
+  await login(page, 'insights-range@example.com');
+  await page.goto('/insights/?days=30');
+  await page.route('**/insights/api/insights?days=*', async (route) => {
+    const days = Number(new URL(route.request().url()).searchParams.get('days'));
+    if (![90, 365].includes(days)) return route.continue();
+    const response = await route.fetch();
+    const payload = await response.json();
+    payload.data_sufficiency.time_pattern = true;
+    payload.data_sufficiency.brand_pattern = true;
+    if (days === 90) {
+      payload.nicotine_by_time_of_day = { Morning: 0 };
+      payload.nicotine_by_product = { 'Known zero product': 0 };
+      payload.strength_coverage = {
+        known_pouches: 2, unknown_pouches: 0, total_pouches: 2,
+        known_percent: 100, complete: true,
+      };
+    } else {
+      payload.nicotine_by_time_of_day = {};
+      payload.nicotine_by_product = {};
+      payload.strength_coverage = {
+        known_pouches: 0, unknown_pouches: 2, total_pouches: 2,
+        known_percent: 0, complete: false,
+      };
+    }
+    await route.fulfill({ response, contentType: 'application/json', body: JSON.stringify(payload) });
+  });
+
+  await page.getByRole('link', { name: '90 days', exact: true }).click();
+  await expect(page.locator('[data-insights-product-nicotine-copy]')).toContainText('add up to 0 mg');
+  await expect(page.locator('[data-analytics-key="brands"]')).toContainText('Known zero product0');
+  await expect(page.locator('#brand-chart')).toBeHidden();
+
+  await page.getByRole('link', { name: '1 year', exact: true }).click();
+  await expect(page.locator('[data-insights-product-nicotine-copy]')).toContainText(
+    'every logged pouch is missing a saved strength',
+  );
+  await expect(page.locator('[data-analytics-key="brands"]')).toContainText(
+    'No known-strength product data',
+  );
+  await expect(page.locator('#brand-chart')).toBeHidden();
+});
+
 
 test('Insights plan and craving facts remain readable in dark 320px 200% reduced-motion mode', async ({ page }) => {
   const guard = watchForProductProblems(page);
@@ -309,7 +514,7 @@ test('Insights plan and craving facts remain readable in dark 320px 200% reduced
   await page.goto('/you/');
   await page.getByRole('button', { name: 'Dark' }).click();
   await page.goto('/insights/?days=7');
-  await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+  await setActualTwoHundredPercentZoom(page);
 
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await expect(page.locator('[data-insights-plan-context]')).toBeVisible();

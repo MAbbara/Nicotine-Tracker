@@ -1,5 +1,6 @@
 import pandas as pd
 from datetime import datetime, timedelta
+from decimal import Decimal
 import pytz
 from sqlalchemy import case
 
@@ -110,40 +111,37 @@ def _nicotine_distribution(df):
     if df.empty:
         return {}, {}, empty_coverage
 
-    working = df.copy()
-    working['quantity'] = pd.to_numeric(working['quantity'], errors='coerce').fillna(0)
-    known = working['nicotine_mg'].notna()
-    working['nicotine_total_mg'] = 0.0
-    working.loc[known, 'nicotine_total_mg'] = (
-        working.loc[known, 'quantity'].astype(float)
-        * working.loc[known, 'nicotine_mg'].astype(float)
+    time_labels = (
+        'Night (12AM-6AM)', 'Morning (6AM-12PM)',
+        'Afternoon (12PM-6PM)', 'Evening (6PM-12AM)',
     )
-    working['hour'] = working['user_time'].dt.hour
-    working['time_of_day'] = pd.cut(
-        working['hour'], bins=[0, 6, 12, 18, 24],
-        labels=[
-            'Night (12AM-6AM)', 'Morning (6AM-12PM)',
-            'Afternoon (12PM-6PM)', 'Evening (6PM-12AM)',
-        ],
-        right=False,
-    )
+    by_time_raw = {label: Decimal('0.00') for label in time_labels}
+    by_product_raw = {}
+    known_pouches = 0
+    unknown_pouches = 0
+    for row in df.itertuples(index=False):
+        quantity = int(row.quantity or 0)
+        if pd.isna(row.nicotine_mg):
+            unknown_pouches += quantity
+            continue
+        known_pouches += quantity
+        strength = Decimal(str(row.nicotine_mg))
+        nicotine_total = (Decimal(quantity) * strength).quantize(Decimal('0.01'))
+        hour = int(row.user_time.hour)
+        time_label = time_labels[min(hour // 6, 3)]
+        by_time_raw[time_label] += nicotine_total
+        brand = (
+            '' if pd.isna(row.brand) else str(row.brand).strip()
+        ) or 'Unknown product'
+        by_product_raw[brand] = (
+            by_product_raw.get(brand, Decimal('0.00')) + nicotine_total
+        )
 
-    def sorted_values(grouped):
-        return {
-            str(label): round(float(value), 1)
-            for label, value in grouped.sort_values(ascending=False).items()
-            if pd.notna(label)
-        }
+    def sorted_values(values):
+        return dict(sorted(values.items(), key=lambda item: item[1], reverse=True))
 
-    by_time = sorted_values(
-        working.loc[known].groupby('time_of_day', observed=False)['nicotine_total_mg'].sum()
-    )
-    by_product = sorted_values(
-        working.loc[known & working['brand'].notna()]
-        .groupby('brand')['nicotine_total_mg'].sum()
-    )
-    known_pouches = int(working.loc[known, 'quantity'].sum())
-    unknown_pouches = int(working.loc[~known, 'quantity'].sum())
+    by_time = sorted_values(by_time_raw)
+    by_product = sorted_values(by_product_raw)
     total_pouches = known_pouches + unknown_pouches
     coverage = {
         'known_pouches': known_pouches,

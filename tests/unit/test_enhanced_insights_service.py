@@ -110,6 +110,35 @@ def test_nicotine_distributions_have_meaningful_empty_and_single_category_states
     assert single["strength_coverage"]["complete"] is True
 
 
+def test_nicotine_distributions_preserve_fractional_snapshot_precision_and_unknown_product(
+        db_session, test_user, test_pouch, monkeypatch):
+    boundary = datetime(2026, 8, 8, 0, 0)
+    _freeze_utcnow(monkeypatch, boundary)
+    for brand, strength, quantity, hour in (
+        (None, Decimal("3.25"), 1, 8),
+        ("   ", Decimal("1.10"), 2, 9),
+        ("Exact", Decimal("0.05"), 3, 18),
+    ):
+        row = _add_log(
+            db_session, test_user, test_pouch,
+            at=boundary - timedelta(days=1, hours=-hour), quantity=quantity,
+        )
+        row.product_brand_snapshot = brand
+        row.nicotine_mg_snapshot = strength
+    db_session.commit()
+
+    result = insights_service.get_enhanced_insights(test_user.id, 7)
+
+    assert result["nicotine_by_time_of_day"]["Morning (6AM-12PM)"] == Decimal("5.45")
+    assert result["nicotine_by_time_of_day"]["Evening (6PM-12AM)"] == Decimal("0.15")
+    assert result["nicotine_by_product"] == {
+        "Unknown product": Decimal("5.45"),
+        "Exact": Decimal("0.15"),
+    }
+    assert sum(result["nicotine_by_product"].values()) == Decimal("5.60")
+    assert result["strength_coverage"]["known_pouches"] == 6
+
+
 def _freeze_utcnow(monkeypatch, value):
     class FrozenDateTime(datetime):
         @classmethod

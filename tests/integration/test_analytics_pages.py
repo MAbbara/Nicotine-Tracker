@@ -83,6 +83,7 @@ def _seed_insights_plan(db_session, user, dates, *, state):
         baseline_source="manual" if targeted else "observe",
         pace="steady" if targeted else None,
         end_target_pouches=6 if targeted else None,
+        end_target_mg=Decimal("24.00") if targeted else None,
     )
     db_session.add(plan)
     db_session.flush()
@@ -92,6 +93,7 @@ def _seed_insights_plan(db_session, user, dates, *, state):
         pace=plan.pace,
         target_date=plan.target_date,
         end_target_pouches=plan.end_target_pouches,
+        end_target_mg=plan.end_target_mg,
         generation_inputs={},
         preview_digest=(str(plan.id) * 64)[:64],
         reason="initial",

@@ -1,4 +1,5 @@
 import pytest
+from decimal import Decimal
 from app import create_app
 from extensions import db
 from models import User, Log
@@ -35,3 +36,47 @@ def test_get_all_insights(app_context):
         assert 'consumption_by_time_of_day' in insights
         assert 'consumption_by_day_of_week' in insights
         assert 'average_time_between_pouches' in insights
+
+
+def test_insights_api_serializes_decimal_contract_normalizes_range_and_disables_cache(
+        logged_in_client, monkeypatch):
+    calls = []
+
+    def insights_payload(_user_id, days):
+        calls.append(days)
+        return {
+            "range_days": days,
+            "nicotine_by_time_of_day": {
+                "Morning (6AM-12PM)": Decimal("3.25"),
+            },
+            "nicotine_by_product": {
+                "Unknown product": Decimal("3.25"),
+            },
+            "strength_coverage": {
+                "known_pouches": 1,
+                "unknown_pouches": 0,
+                "total_pouches": 1,
+                "known_percent": 100.0,
+                "complete": True,
+            },
+        }
+
+    monkeypatch.setattr("routes.insights.get_enhanced_insights", insights_payload)
+
+    response = logged_in_client.get("/insights/api/insights?days=999")
+
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    assert calls == [30]
+    assert response.get_json() == {
+        "range_days": 30,
+        "nicotine_by_time_of_day": {"Morning (6AM-12PM)": "3.25"},
+        "nicotine_by_product": {"Unknown product": "3.25"},
+        "strength_coverage": {
+            "known_pouches": 1,
+            "unknown_pouches": 0,
+            "total_pouches": 1,
+            "known_percent": 100.0,
+            "complete": True,
+        },
+    }

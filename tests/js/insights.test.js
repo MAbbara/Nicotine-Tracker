@@ -191,6 +191,33 @@ test('nicotine distributions render horizontal mg bars rather than donuts', asyn
   }
 });
 
+test('nicotine distribution copy distinguishes no logs, unknown-only, known zero, single, and ready', async () => {
+  const { buildInsightsViewModel } = await importModule('static/js/insights/view_model.js');
+  const model = (values, coverage) => buildInsightsViewModel({
+    log_count: coverage.total_pouches,
+    observed_days: coverage.total_pouches ? 1 : 0,
+    data_sufficiency: {},
+    nicotine_by_product: values,
+    strength_coverage: coverage,
+  }, 7).sections.productNicotine;
+
+  assert.equal(model({}, {
+    total_pouches: 0, known_pouches: 0, unknown_pouches: 0, complete: true,
+  }).state, 'no-logs');
+  assert.equal(model({}, {
+    total_pouches: 2, known_pouches: 0, unknown_pouches: 2, complete: false,
+  }).state, 'unknown-only');
+  assert.equal(model({ Zero: 0 }, {
+    total_pouches: 2, known_pouches: 2, unknown_pouches: 0, complete: true,
+  }).state, 'known-zero');
+  assert.equal(model({ Mint: 6, Zero: 0 }, {
+    total_pouches: 2, known_pouches: 2, unknown_pouches: 0, complete: true,
+  }).state, 'single');
+  assert.equal(model({ Mint: 6, Citrus: 3 }, {
+    total_pouches: 2, known_pouches: 2, unknown_pouches: 0, complete: true,
+  }).state, 'ready');
+});
+
 test('weekly trend model is the single source for chart and alternative rows', async () => {
   const { buildTrendModel } = await importModule('static/js/insights.js');
   const data = {

@@ -190,7 +190,15 @@ function nicotineDistributionModel(values = {}, coverage = {}) {
     ...row,
     share: totalMg ? Math.round((row.mg / totalMg) * 1000) / 10 : 0,
   }));
-  const state = !bars.length ? 'empty' : bars.length === 1 ? 'single' : 'ready';
+  const totalPouches = Math.max(0, Math.trunc(finiteNumber(coverage.total_pouches)));
+  const knownPouches = Math.max(0, Math.trunc(finiteNumber(coverage.known_pouches)));
+  const state = totalPouches === 0
+    ? 'no-logs'
+    : knownPouches === 0
+      ? 'unknown-only'
+      : !bars.length
+        ? 'known-zero'
+        : bars.length === 1 ? 'single' : 'ready';
   const unknown = Math.max(0, Math.trunc(finiteNumber(coverage.unknown_pouches)));
   const coverageCopy = unknown > 0
     ? `${pluralize(unknown, 'pouch', 'pouches')} had no saved strength, so nicotine totals are incomplete.`

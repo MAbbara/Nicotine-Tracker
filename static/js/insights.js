@@ -199,6 +199,34 @@ function commonChart(type, height, theme) {
   };
 }
 
+function barLabelOptions(rows, theme) {
+  const narrow = window.innerWidth <= 480;
+  const limit = narrow ? 18 : 32;
+  return {
+    categories: rows.map(({ label }) => label),
+    labels: {
+      formatter: (label) => String(label).length > limit
+        ? `${String(label).slice(0, limit - 1)}…`
+        : String(label),
+      style: { colors: theme.foreColor },
+    },
+  };
+}
+
+function decorateBarLabels(target, rows) {
+  target?.querySelectorAll('.apexcharts-yaxis-label').forEach((label, index) => {
+    const fullLabel = rows[index]?.label;
+    if (!fullLabel) return;
+    label.setAttribute('aria-label', fullLabel);
+    let title = label.querySelector('title');
+    if (!title) {
+      title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+      label.append(title);
+    }
+    title.textContent = fullLabel;
+  });
+}
+
 function statusFor(target) {
   return target?.parentElement?.querySelector('.analytics-chart__status') || null;
 }
@@ -220,8 +248,8 @@ export function chartDefinitions(data, trendType) {
       ...commonChart('bar', 250, theme),
       series: [{ name: 'Nicotine (mg)', data: model.timeOfDayBars.map((row) => row.mg) }],
       plotOptions: { bar: { horizontal: true, borderRadius: 4 } },
-      xaxis: { categories: model.timeOfDayBars.map((row) => row.label), labels: { style: { colors: theme.foreColor } } },
-      yaxis: { labels: { style: { colors: theme.foreColor }, maxWidth: 180 } },
+      xaxis: barLabelOptions(model.timeOfDayBars, theme),
+      yaxis: { labels: { style: { colors: theme.foreColor }, maxWidth: Math.max(72, Math.min(180, Math.floor(window.innerWidth * 0.32))) } },
       colors: ['#55755F'],
       noData: { text: 'No data available' },
     }],
@@ -236,8 +264,8 @@ export function chartDefinitions(data, trendType) {
       ...commonChart('bar', 250, theme),
       series: [{ name: 'Nicotine (mg)', data: model.productBars.map((row) => row.mg) }],
       plotOptions: { bar: { horizontal: true, borderRadius: 4 } },
-      xaxis: { categories: model.productBars.map((row) => row.label), labels: { style: { colors: theme.foreColor } } },
-      yaxis: { labels: { style: { colors: theme.foreColor }, maxWidth: 180 } },
+      xaxis: barLabelOptions(model.productBars, theme),
+      yaxis: { labels: { style: { colors: theme.foreColor }, maxWidth: Math.max(72, Math.min(180, Math.floor(window.innerWidth * 0.32))) } },
       colors: ['#B76343'],
       noData: { text: 'No brand data available' },
     }],
@@ -284,7 +312,9 @@ function updateEditorial(root, viewModel, rangeDays) {
   setText('[data-insights-product-copy]', viewModel.sections.productPattern.interpretation);
   setText('[data-insights-hourly-copy]', viewModel.sections.hourlyDetail.interpretation);
   const distributionCopy = (model, subject) => {
-    if (model.state === 'empty') return `No known-strength nicotine is available by ${subject} yet. ${model.coverageCopy}`;
+    if (model.state === 'no-logs') return `No nicotine is available by ${subject} yet. ${model.coverageCopy}`;
+    if (model.state === 'unknown-only') return `Nicotine by ${subject} is unavailable because every logged pouch is missing a saved strength. ${model.coverageCopy}`;
+    if (model.state === 'known-zero') return `Known strengths in this range add up to 0 mg by ${subject}. ${model.coverageCopy}`;
     if (model.state === 'single') return `All known nicotine in this range is in one ${subject} category. ${model.coverageCopy}`;
     return `${model.coverageCopy} Bars show known nicotine only.`;
   };
@@ -486,39 +516,145 @@ export async function startInsights(scope = document) {
   let currentRange = Number(currentData.range_days) || 30;
   let trendType = 'daily';
   let requestGeneration = 0;
+  let presentationGeneration = 0;
   let rangeController = null;
+  let activeCharts = [];
+  let committedHistoryIndex = Number(history.state?.insightsIndex);
+  if (!Number.isFinite(committedHistoryIndex)) committedHistoryIndex = 0;
+  history.replaceState({
+    ...(history.state || {}),
+    insightsIndex: committedHistoryIndex,
+    days: currentRange,
+  }, '', window.location.href);
+  let suppressPop = false;
   const disclosure = createDisclosure({
     trigger: document.querySelector('[data-analytics-disclosure-trigger]'),
     panel: document.querySelector('[data-analytics-disclosure-menu]'),
   });
-  const details = root.querySelector('.analytics-details');
+  const destroyCharts = (charts) => charts.forEach((chart) => chart?.destroy?.());
 
-  const chartRenderer = createLatestChartRenderer(async ({ isCurrent }) => {
+  const renderCharts = async (
+    targetRoot, data, range,
+    { strict = false, isCurrent = () => true } = {},
+  ) => {
     const charts = [];
-    const viewModel = buildInsightsViewModel(currentData, currentRange);
-    const eligible = renderInsights(root, viewModel, currentData, {
-      rangeDays: currentRange,
+    const viewModel = buildInsightsViewModel(data, range);
+    const eligible = renderInsights(targetRoot, viewModel, data, {
+      rangeDays: range,
       trendType,
-      detailsOpen: Boolean(details?.open),
+      detailsOpen: Boolean(targetRoot.querySelector('.analytics-details')?.open),
     });
-    for (const [id, options] of chartDefinitions(currentData, trendType)) {
+    const alternative = buildInsightsAlternativeModel(data, trendType);
+    for (const [id, options] of chartDefinitions(data, trendType)) {
       if (!eligible.has(id)) continue;
-      const target = root.querySelector(`#${id}`);
+      if (!isCurrent()) {
+        destroyCharts(charts);
+        return null;
+      }
+      const target = targetRoot.querySelector(`#${id}`);
       const chart = await enhanceChart({
         target,
         status: statusFor(target),
         options,
         ApexChartsClass: window.ApexCharts,
       });
-      if (chart) charts.push(chart);
-      if (!isCurrent()) break;
+      if (!chart && strict) {
+        destroyCharts(charts);
+        throw new Error(`Candidate chart failed: ${id}`);
+      }
+      if (chart) {
+        charts.push(chart);
+        if (id === 'time-of-day-chart') decorateBarLabels(target, alternative.timeOfDayBars);
+        if (id === 'brand-chart') decorateBarLabels(target, alternative.productBars);
+      }
+      if (!isCurrent()) {
+        destroyCharts(charts);
+        return null;
+      }
     }
     return charts;
-  });
-  const render = chartRenderer.render;
+  };
 
-  const loadRange = async (days, { historyMode = 'push' } = {}) => {
+  const buildCandidate = async (
+    data, range, isCurrent, { strict = true } = {},
+  ) => {
+    const host = document.createElement('div');
+    host.className = 'insights-staging';
+    host.setAttribute('aria-hidden', 'true');
+    host.inert = true;
+    Object.assign(host.style, {
+      position: 'fixed',
+      inset: '0 auto auto -10000px',
+      width: `${Math.max(320, root.getBoundingClientRect().width)}px`,
+      visibility: 'hidden',
+      pointerEvents: 'none',
+    });
+    const candidateRoot = root.cloneNode(true);
+    candidateRoot.dataset.insightsCandidate = 'true';
+    candidateRoot.querySelectorAll('.analytics-chart').forEach((target) => target.replaceChildren());
+    host.attachShadow({ mode: 'open' }).append(candidateRoot);
+    document.body.append(host);
+    let charts = [];
+    let completed = false;
+    try {
+      if (!isCurrent()) return null;
+      charts = await renderCharts(candidateRoot, data, range, {
+        strict,
+        isCurrent,
+      });
+      if (!charts || !isCurrent()) {
+        destroyCharts(charts || []);
+        return null;
+      }
+      delete candidateRoot.dataset.pendingDays;
+      setPending(candidateRoot, false);
+      completed = true;
+      return { host, root: candidateRoot, charts };
+    } catch (error) {
+      destroyCharts(charts);
+      throw error;
+    } finally {
+      if (!completed) host.remove();
+    }
+  };
+
+  const commitCandidate = (candidate, data, range) => {
+    const focusedRange = document.activeElement?.closest?.('[data-days]')?.dataset.days;
+    const previousCharts = activeCharts;
+    root.replaceChildren(...candidate.root.childNodes);
+    root.dataset.insightsState = candidate.root.dataset.insightsState;
+    root.removeAttribute('aria-busy');
+    delete root.dataset.pendingDays;
+    currentData = data;
+    currentRange = range;
+    activeCharts = candidate.charts;
+    candidate.host.remove();
+    destroyCharts(previousCharts);
+    if (focusedRange && document.visibilityState === 'visible') {
+      root.querySelector(`[data-days="${focusedRange}"]`)?.focus();
+    }
+  };
+
+  const renderLive = async () => {
+    if (root.getAttribute('aria-busy') === 'true') return false;
+    const generation = ++presentationGeneration;
+    const candidate = await buildCandidate(
+      currentData,
+      currentRange,
+      () => generation === presentationGeneration,
+      { strict: false },
+    );
+    if (!candidate || generation !== presentationGeneration) return false;
+    commitCandidate(candidate, currentData, currentRange);
+    return true;
+  };
+
+  const loadRange = async (
+    days,
+    { historyMode = 'push', targetHistoryIndex = null } = {},
+  ) => {
     if (![7, 30, 90, 365].includes(Number(days))) return false;
+    if (historyMode === 'push' && Number(days) === currentRange) return true;
     rangeController?.abort();
     rangeController = new AbortController();
     const controller = rangeController;
@@ -532,23 +668,47 @@ export async function startInsights(scope = document) {
       if (!response.ok) throw new Error(`Insights request failed (${response.status})`);
       const data = await response.json();
       if (generation !== requestGeneration || controller.signal.aborted) return false;
-      currentData = data;
-      currentRange = Number(data.range_days) || Number(days);
-      await render();
+      const candidateRange = Number(data.range_days) || Number(days);
+      const candidatePresentation = ++presentationGeneration;
+      const candidate = await buildCandidate(
+        data,
+        candidateRange,
+        () => (
+          generation === requestGeneration
+          && candidatePresentation === presentationGeneration
+          && !controller.signal.aborted
+        ),
+      );
+      if (!candidate) return false;
       if (generation !== requestGeneration || controller.signal.aborted) return false;
+      commitCandidate(candidate, data, candidateRange);
       const nextUrl = new URL(window.location.href);
       nextUrl.searchParams.set('days', String(currentRange));
-      if (historyMode === 'push') history.pushState({ days: currentRange }, '', nextUrl);
-      else if (historyMode === 'replace') history.replaceState({ days: currentRange }, '', nextUrl);
+      if (historyMode === 'push') {
+        committedHistoryIndex += 1;
+        history.pushState({
+          insightsIndex: committedHistoryIndex,
+          days: currentRange,
+        }, '', nextUrl);
+      } else if (historyMode === 'replace') {
+        history.replaceState({
+          insightsIndex: committedHistoryIndex,
+          days: currentRange,
+        }, '', nextUrl);
+      } else if (historyMode === 'pop') {
+        committedHistoryIndex = targetHistoryIndex;
+      }
       setPending(root, false);
       delete root.dataset.pendingDays;
       return true;
     } catch (_) {
       if (generation !== requestGeneration || controller.signal.aborted) return false;
-      if (historyMode === 'none') {
-        const stableUrl = new URL(window.location.href);
-        stableUrl.searchParams.set('days', String(currentRange));
-        history.replaceState({ days: currentRange }, '', stableUrl);
+      if (historyMode === 'pop' && Number.isFinite(targetHistoryIndex)) {
+        const recoveryDelta = committedHistoryIndex - targetHistoryIndex;
+        if (recoveryDelta) {
+          suppressPop = true;
+          history.go(recoveryDelta);
+        }
       }
       setPending(root, false, 'Insights could not refresh. Your current values are still available; choose the range again to retry.');
       delete root.dataset.pendingDays;
@@ -556,31 +716,41 @@ export async function startInsights(scope = document) {
     }
   };
 
-  root.querySelectorAll('.dropdown-item[data-days]').forEach((item) => {
-    item.addEventListener('click', (event) => {
+  root.addEventListener('click', (event) => {
+    const item = event.target.closest?.('.dropdown-item[data-days]');
+    if (item) {
       event.preventDefault();
       const days = Number(item.dataset.days) || 30;
       disclosure?.close();
       loadRange(days);
-    });
-  });
-  root.querySelectorAll('.trend-toggle').forEach((button) => {
-    button.addEventListener('click', () => {
+      return;
+    }
+    const button = event.target.closest?.('.trend-toggle');
+    if (button) {
       trendType = button.dataset.type === 'weekly' ? 'weekly' : 'daily';
-      render();
-    });
+      renderLive();
+      return;
+    }
+    if (event.target.closest?.('#export-data')) exportRange(root, currentRange);
   });
-  root.querySelector('#export-data')?.addEventListener('click', () => {
-    exportRange(root, currentRange);
+  root.addEventListener('toggle', (event) => {
+    if (event.target.matches?.('.analytics-details')) renderLive();
+  }, true);
+  document.documentElement.addEventListener('nicotine-tracker:theme-change', renderLive);
+  window.addEventListener('popstate', (event) => {
+    if (suppressPop) {
+      suppressPop = false;
+      return;
+    }
+    const targetHistoryIndex = Number(event.state?.insightsIndex);
+    if (!Number.isFinite(targetHistoryIndex)) return;
+    const days = Number(event.state?.days)
+      || Number(new URL(window.location.href).searchParams.get('days'))
+      || 30;
+    loadRange(days, { historyMode: 'pop', targetHistoryIndex });
   });
-  details?.addEventListener('toggle', render);
-  document.documentElement.addEventListener('nicotine-tracker:theme-change', render);
-  window.addEventListener('popstate', () => {
-    const days = Number(new URL(window.location.href).searchParams.get('days')) || 30;
-    loadRange(days, { historyMode: 'none' });
-  });
-  await render();
-  return { render, loadRange };
+  await renderLive();
+  return { render: renderLive, loadRange };
 }
 
 if (typeof document !== 'undefined') {
