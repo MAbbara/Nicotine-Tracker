@@ -124,9 +124,10 @@ def test_reset_password_page_preserves_minlength_and_no_referrer(app, client, te
         control = _control(document, name)
         assert control.get("type") == "password"
         assert control.get("autocomplete") == "new-password"
-        assert control.get("minlength") == "6", (
-            f'reset-password field "{name}" keeps minlength="6"'
+        assert control.get("minlength") == "8", (
+            f'reset-password field "{name}" keeps minlength="8"'
         )
+        assert control.get("maxlength") == "128"
 
 
 def test_reset_password_page_externalizes_matching_validation(app, client, test_user):

@@ -1,4 +1,4 @@
-{% macro field(name, label, type='text', value='', description=None, error=None, placeholder=None, autocomplete=None, required=False, min=None, max=None, step=None, disabled=False, autofocus=False) -%}
+{% macro field(name, label, type='text', value='', description=None, error=None, placeholder=None, autocomplete=None, required=False, min=None, max=None, step=None, maxlength=None, disabled=False, autofocus=False) -%}
   {% set described = [name ~ '-description' if description else none,
                       name ~ '-error' if error else none]
                       | reject('equalto', none) | join(' ') %}
@@ -19,6 +19,7 @@
       {% if min is not none %}min="{{ min }}"{% endif %}
       {% if max is not none %}max="{{ max }}"{% endif %}
       {% if step is not none %}step="{{ step }}"{% endif %}
+      {% if maxlength is not none %}maxlength="{{ maxlength }}"{% endif %}
       {% if described %}aria-describedby="{{ described }}"{% endif %}
       {% if error %}aria-invalid="true"{% endif %}
     >

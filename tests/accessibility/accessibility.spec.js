@@ -665,7 +665,7 @@ for (const theme of ['light', 'dark']) {
     await expectExplicitTheme(page, theme);
     await page.getByRole('checkbox', { name: 'Discord' }).check();
     await page.getByLabel('Discord webhook URL').fill(
-      'https://discord.com/api/webhooks/example/token',
+      'https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789',
     );
     await page.getByRole('button', { name: 'Test Discord connection' }).click();
     await expect(page.locator('#discord-test-status')).toHaveAttribute('data-state', 'error');

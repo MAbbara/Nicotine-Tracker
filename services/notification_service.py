@@ -14,6 +14,11 @@ from models.user import User
 from models.goal import Goal
 from services.log_service import logs_for_user_window, summarize_logs
 from services.user_preferences_service import UserPreferencesService
+from services.discord_webhook_service import (
+    DiscordWebhookError,
+    parse_discord_webhook,
+    safe_discord_post,
+)
 from services import timezone_service as tz_service
 from services.goal_evaluation_service import (
     effective_day_for_user,
@@ -335,8 +340,8 @@ class NotificationService:
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(
-                f'Error queuing weekly report for user {user.id}: {e}',
-                exc_info=True,
+                'Error queuing weekly report for user %s (%s).',
+                user.id, type(e).__name__,
             )
             raise
     
@@ -347,18 +352,26 @@ class NotificationService:
         has opted in for that channel and category.
         """
         try:
-            possible_channels = ['email', 'discord']  # Add new channels here in the future
+            # Credential/account messages are never preference-routed: they
+            # must go to the account email address and never to Discord.
+            possible_channels = (
+                ['email'] if category == 'email_verification'
+                else ['email', 'discord']
+            )
             queued_count = 0
 
             for channel_type in possible_channels:
-                if self.preferences_service.should_send_notification(user_id, category, channel_type):
+                allowed = (
+                    category == 'email_verification' and channel_type == 'email'
+                ) or self.preferences_service.should_send_notification(user_id, category, channel_type)
+                if allowed:
                     if self._queue_single_notification(user_id, channel_type, category, subject, message, priority=priority, extra_data=extra_data):
                         queued_count += 1
             
             return queued_count > 0
 
         except Exception as e:
-            current_app.logger.error(f'Error queuing notifications for user {user_id}: {e}')
+            current_app.logger.error('Error queuing notifications for user %s (%s).', user_id, type(e).__name__)
             return False
 
     def _queue_single_notification(self, user_id, notification_type, category, subject, message, 
@@ -414,7 +427,7 @@ class NotificationService:
             
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error(f'Error queuing single notification: {e}')
+            current_app.logger.error('Error queuing single notification (%s).', type(e).__name__)
             return False
 
     
@@ -461,31 +474,19 @@ class NotificationService:
     def send_discord_notification(self, notification):
         """Send a Discord webhook notification"""
         try:
-            webhook_url = notification.recipient
-            
+            # Legacy/corrupt DB rows are untrusted. Revalidate at the last
+            # possible moment before any network operation.
+            webhook = parse_discord_webhook(notification.recipient)
             # Format message for Discord
             embed = self._format_discord_embed(notification)
-            
-            payload = {
-                "embeds": [embed]
-            }
-            
-            response = requests.post(
-                webhook_url,
-                json=payload,
-                headers={'Content-Type': 'application/json'},
-                timeout=10
+            return safe_discord_post(webhook, {"embeds": [embed]})
+        except DiscordWebhookError:
+            current_app.logger.warning('Discord notification rejected an invalid stored webhook.')
+            return False
+        except Exception as error:
+            current_app.logger.error(
+                'Discord notification failed (%s).', type(error).__name__
             )
-            
-            if response.status_code == 204:
-                current_app.logger.info(f'Discord notification sent successfully')
-                return True
-            else:
-                current_app.logger.error(f'Discord webhook failed: {response.status_code} - {response.text}')
-                return False
-                
-        except Exception as e:
-            current_app.logger.error(f'Failed to send Discord notification: {e}')
             return False
     
     def process_notification_queue(self, limit=50):
@@ -749,6 +750,7 @@ class NotificationService:
     def test_discord_webhook(self, webhook_url):
         """Test Discord webhook connectivity"""
         try:
+            webhook = parse_discord_webhook(webhook_url)
             test_embed = {
                 "title": "🧪 Webhook Test",
                 "description": "This is a test message from Nicotine Tracker to verify your Discord webhook is working correctly.",
@@ -761,24 +763,13 @@ class NotificationService:
             
             payload = {"embeds": [test_embed]}
             
-            response = requests.post(
-                webhook_url,
-                json=payload,
-                headers={'Content-Type': 'application/json'},
-                timeout=10
-            )
-            
-            if response.status_code == 204:
+            if safe_discord_post(webhook, payload):
                 return True, "Test message sent successfully!"
-            else:
-                return False, f"Webhook test failed: {response.status_code}"
-                
-        except requests.exceptions.Timeout:
-            return False, "Request timed out. Please check your webhook URL."
-        except requests.exceptions.RequestException as e:
-            return False, f"Connection error: {str(e)}"
-        except Exception as e:
-            return False, f"Unexpected error: {str(e)}"
+            return False, "Discord did not accept the test message."
+        except DiscordWebhookError:
+            return False, "Enter a valid Discord webhook URL."
+        except Exception:
+            return False, "The Discord connection could not be tested."
     
     def send_goal_achievement_notification(self, user_id, goal, achievement_type="milestone"):
         """Send notification when user achieves a goal milestone"""

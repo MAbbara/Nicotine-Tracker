@@ -162,3 +162,31 @@ def test_preferences_template_retires_preline_and_legacy_palette():
         "shadow rounded-lg",
     ):
         assert token not in lowered
+
+
+def test_preferences_reject_invalid_boundary_and_unowned_brand_atomically(
+        logged_in_client, db_session, test_user, test_pouch):
+    preferences = UserPreferences(
+        user_id=test_user.id, units_preference='mg',
+        daily_reset_time=time(1, 0), preferred_brands=['Test Brand'],
+    )
+    test_user.timezone = 'UTC'
+    db_session.add(preferences)
+    db_session.commit()
+    response = logged_in_client.post('/settings/preferences', data={
+        'units_preference': 'percentage',
+        'timezone': 'Not/A_Zone',
+        'daily_reset_time': '25:00',
+        'preferred_brands': ['Unowned Brand'],
+    })
+    assert response.status_code == 422
+    db_session.refresh(test_user)
+    db_session.refresh(preferences)
+    assert test_user.timezone == 'UTC'
+    assert preferences.units_preference == 'mg'
+    assert preferences.daily_reset_time == time(1, 0)
+    assert preferences.preferred_brands == ['Test Brand']
+    soup = BeautifulSoup(response.data, 'html.parser')
+    assert soup.select_one('#timezone[aria-invalid="true"]')
+    assert soup.select_one('#daily_reset_time[aria-invalid="true"]')
+    assert soup.select_one('#preferred_brands-error')

@@ -7,6 +7,11 @@ from bs4 import BeautifulSoup
 
 from models import UserPreferences
 
+VALID_WEBHOOK = (
+    "https://discord.com/api/webhooks/123456789012345678/"
+    "abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789"
+)
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -19,7 +24,7 @@ def _seed_preferences(db_session, test_user):
         achievement_notifications=False,
         daily_reminders=True,
         weekly_reports=True,
-        discord_webhook="https://discord.com/api/webhooks/example/token",
+        discord_webhook=VALID_WEBHOOK,
         reminder_time=time(8, 15),
         quiet_hours_start=time(22, 0),
         quiet_hours_end=time(6, 30),
@@ -54,15 +59,11 @@ def test_reminders_uses_editorial_sections_native_fields_and_live_statuses(
     assert not form.select_one('input[name="achievement_notifications"]').has_attr("checked")
     assert form.select_one('input[name="daily_reminders"][checked]')
     assert form.select_one('input[name="weekly_reports"][checked]')
-    assert form.select_one('input[name="discord_webhook"][type="url"]')["value"].endswith(
-        "/example/token"
-    )
+    assert form.select_one('input[name="discord_webhook"][type="url"]')["value"] == VALID_WEBHOOK
     assert form.select_one('input[name="reminder_time"][type="time"]')["value"] == "08:15"
     assert form.select_one('input[name="quiet_hours_start"][type="time"]')["value"] == "22:00"
     assert form.select_one('input[name="quiet_hours_end"][type="time"]')["value"] == "06:30"
-    assert form.select_one(
-        'select[name="notification_frequency"] option[value="daily"][selected]'
-    )
+    assert not form.select_one('select[name="notification_frequency"]')
 
     discord_button = soup.select_one('button#test-discord-webhook[type="button"]')
     weekly_button = soup.select_one('button#trigger-weekly-report[type="button"]')
@@ -90,11 +91,10 @@ def test_reminders_post_persists_every_server_field(
         "achievement_notifications": "on",
         "daily_reminders": "on",
         "weekly_reports": "on",
-        "discord_webhook": "https://discord.com/api/webhooks/example/token",
+        "discord_webhook": VALID_WEBHOOK,
         "reminder_time": "09:10",
         "quiet_hours_start": "21:30",
         "quiet_hours_end": "06:15",
-        "notification_frequency": "weekly",
     })
     assert response.status_code == 302
     assert response.headers["Location"].endswith("/settings/notifications")
@@ -105,20 +105,42 @@ def test_reminders_post_persists_every_server_field(
     assert preferences.achievement_notifications is True
     assert preferences.daily_reminders is True
     assert preferences.weekly_reports is True
-    assert preferences.discord_webhook.endswith("/example/token")
+    assert preferences.discord_webhook == VALID_WEBHOOK
     assert preferences.reminder_time == time(9, 10)
     assert preferences.quiet_hours_start == time(21, 30)
     assert preferences.quiet_hours_end == time(6, 15)
-    assert preferences.notification_frequency == "weekly"
+    assert preferences.notification_frequency == "immediate"
 
     persisted = BeautifulSoup(
         logged_in_client.get("/settings/notifications").data,
         "html.parser",
     )
     assert persisted.select_one('input[name="weekly_reports"][checked]')
-    assert persisted.select_one(
-        'select[name="notification_frequency"] option[value="weekly"][selected]'
-    )
+    assert not persisted.select_one('select[name="notification_frequency"]')
+
+
+def test_reminder_validation_is_atomic_and_retains_safe_values(
+        logged_in_client, db_session, test_user):
+    preferences = _seed_preferences(db_session, test_user)
+    before = preferences.to_dict()
+    response = logged_in_client.post('/settings/notifications', data={
+        'notification_channel': ['email', 'discord'],
+        'goal_notifications': 'on',
+        'daily_reminders': 'on',
+        'weekly_reports': 'on',
+        'discord_webhook': 'http://169.254.169.254/api/webhooks/1/secret',
+        'reminder_time': '',
+        'quiet_hours_start': '22:00',
+        'quiet_hours_end': '22:00',
+    })
+    assert response.status_code == 422
+    db_session.refresh(preferences)
+    assert preferences.to_dict() == before
+    soup = BeautifulSoup(response.data, 'html.parser')
+    assert soup.select_one('#discord_webhook[aria-invalid="true"]')
+    assert soup.select_one('#reminder_time[aria-invalid="true"]')
+    assert soup.select_one('#quiet_hours_end[aria-invalid="true"]')
+    assert soup.select_one('#discord_webhook')['value'].startswith('http://169.254')
 
 
 def test_reminders_template_retires_inline_actions_and_legacy_palette():

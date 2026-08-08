@@ -18,12 +18,14 @@
 
     <div class="c-field" data-registration-field="password">
       <label class="c-field__label" for="password">Password<span aria-hidden="true"> *</span></label>
-      <p class="c-field__description" id="password-description">Use at least 6 characters.</p>
+      <p class="c-field__description" id="password-description">Use 8 to 128 characters.</p>
       <input
         class="c-field__control"
         id="password"
         name="password"
         type="password"
+        minlength="8"
+        maxlength="128"
         autocomplete="new-password"
         required
         aria-required="true"

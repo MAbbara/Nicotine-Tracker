@@ -3,7 +3,8 @@
 // never replaces server-side validation, which stays authoritative.
 
 export function validateRegistration(password, confirmation) {
-  const passwordError = password.length < 6 ? 'Use at least 6 characters.' : '';
+  const passwordError = password.length < 8 || password.length > 128
+    ? 'Use 8 to 128 characters.' : '';
   const confirmationError = password !== confirmation ? 'Passwords do not match.' : '';
   return {
     valid: passwordError === '' && confirmationError === '',

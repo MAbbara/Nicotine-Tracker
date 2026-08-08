@@ -5,6 +5,8 @@ const {
 } = require('./helpers/supporting_behavior_contract');
 const { watchForProductProblems } = require('./helpers/product_guard');
 
+const VALID_DISCORD_WEBHOOK = 'https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789';
+
 
 function formPayload(request) {
   return Object.fromEntries(new URLSearchParams(request.postData() || ''));
@@ -241,11 +243,10 @@ test('Reminders persist and async actions expose success and failure feedback', 
     }
     await recorder.runScenario(page, 'reminders', name, 'toggle');
   }
-  await page.getByLabel('Discord webhook URL').fill('https://discord.com/api/webhooks/example/token');
+  await page.getByLabel('Discord webhook URL').fill(VALID_DISCORD_WEBHOOK);
   await page.getByLabel('Daily reminder time').fill('09:10');
   await page.getByLabel('Quiet hours start').fill('21:30');
   await page.getByLabel('Quiet hours end').fill('06:15');
-  await page.getByLabel('Delivery frequency').selectOption('weekly');
   await recorder.runScenario(page, 'reminders', 'Save reminders', 'success');
 
   const discordButton = page.locator('#test-discord-webhook');
@@ -273,7 +274,7 @@ test('Reminders persist and async actions expose success and failure feedback', 
   const directDiscordResponse = await directDiscordResponsePending;
   expect(directDiscordResponse.request().method()).toBe('POST');
   expect(directDiscordResponse.request().postDataJSON()).toEqual({
-    webhook_url: 'https://discord.com/api/webhooks/example/token',
+    webhook_url: VALID_DISCORD_WEBHOOK,
   });
   expect(await directDiscordResponse.json()).toEqual({
     success: true, message: 'Discord boundary recorded.',
@@ -301,7 +302,7 @@ test('Reminders persist and async actions expose success and failure feedback', 
   expect(outbound.boundaries.filter((entry) => entry.kind === 'discord-test')).toEqual([{
     kind: 'discord-test',
     method: 'POST',
-    url: 'https://discord.com/api/webhooks/example/token',
+    url: VALID_DISCORD_WEBHOOK,
     payload: {
       embeds: [{
         title: '🧪 Webhook Test',
@@ -490,6 +491,8 @@ test('Account email, password, and deletion mutations work for a disposable user
   const disposableBrand = `Disposable Cedar ${suffix}`;
   const disposableCravingNote = `Disposable craving ${suffix}`;
 
+  expect((await page.request.post('/__test__/clear-outbound')).status()).toBe(200);
+
   await login(page, 'release-inventory@example.com');
   const fixtureBeforeResponse = await page.request.get('/__test__/account-snapshot');
   expect(fixtureBeforeResponse.status()).toBe(200);
@@ -583,7 +586,8 @@ test('Account email, password, and deletion mutations work for a disposable user
   await expect(page.getByLabel('New email address')).toHaveValue(updatedEmail);
   const notificationsResponse = await page.request.get('/__test__/external-notifications');
   expect(notificationsResponse.status()).toBe(200);
-  const notifications = (await notificationsResponse.json()).notifications;
+  const notifications = (await notificationsResponse.json()).notifications
+    .filter((entry) => entry.user_id === disposableUserId);
   expect(notifications).toHaveLength(2);
   expect(notifications.at(-1)).toEqual(expect.objectContaining({
     category: 'email_verification', priority: 1,

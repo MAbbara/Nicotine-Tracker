@@ -9,13 +9,13 @@ from models.user import User
 
 class UserPreferencesService:
     
-    def get_or_create_preferences(self, user_id):
+    def get_or_create_preferences(self, user_id, *, commit=True):
         """Get user preferences or create default ones"""
         try:
             preferences = UserPreferences.query.filter_by(user_id=user_id).first()
             
             if not preferences:
-                preferences = self.create_default_preferences(user_id)
+                preferences = self.create_default_preferences(user_id, commit=commit)
             
             return preferences
             
@@ -23,7 +23,7 @@ class UserPreferencesService:
             current_app.logger.error(f'Error getting user preferences: {e}')
             return None
     
-    def create_default_preferences(self, user_id):
+    def create_default_preferences(self, user_id, *, commit=True):
         """Create default preferences for a new user"""
         try:
             preferences = UserPreferences(
@@ -37,7 +37,10 @@ class UserPreferencesService:
 
             
             db.session.add(preferences)
-            db.session.commit()
+            if commit:
+                db.session.commit()
+            else:
+                db.session.flush()
             
             current_app.logger.info(f'Created default preferences for user {user_id}')
             return preferences
@@ -47,10 +50,10 @@ class UserPreferencesService:
             current_app.logger.error(f'Error creating default preferences: {e}')
             raise
     
-    def update_preferences(self, user_id, **kwargs):
+    def update_preferences(self, user_id, *, commit=True, **kwargs):
         """Update user preferences"""
         try:
-            preferences = self.get_or_create_preferences(user_id)
+            preferences = self.get_or_create_preferences(user_id, commit=commit)
             
             if not preferences:
                 return False, "Could not get user preferences"
@@ -86,14 +89,17 @@ class UserPreferencesService:
                     updated_fields.append(field)
             
             preferences.updated_at = datetime.utcnow()
-            db.session.commit()
+            if commit:
+                db.session.commit()
+            else:
+                db.session.flush()
             
             current_app.logger.info(f'Updated preferences for user {user_id}: {updated_fields}')
             return True, f"Updated {len(updated_fields)} preference(s)"
             
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error(f'Error updating preferences: {e}')
+            current_app.logger.error('Error updating preferences (%s).', type(e).__name__)
             return False, "Error updating preferences"
     
     def get_notification_settings(self, user_id):

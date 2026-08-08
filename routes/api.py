@@ -772,14 +772,17 @@ def delete_onboarding_draft():
 @api_bp.route('/update-timezone', methods=['POST'])
 @login_required
 def update_timezone():
-    data = request.get_json()
-    if not data or 'timezone' not in data:
-        return jsonify({'success': False, 'message': 'Timezone not provided'}), 400
-    
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or set(data) != {'timezone'}:
+        return error_response(422, 'validation_error', 'Send one valid time zone.', field_errors={'timezone': ['Choose a valid time zone.']})
     user = get_current_user()
-    user.timezone = data['timezone']
-    db.session.commit()
-    
+    preferences = PreferenceService().get_or_create_preferences(user.id)
+    reset = preferences.daily_reset_time.strftime('%H:%M') if preferences.daily_reset_time else '00:00'
+    try:
+        PreferenceService().update_day_boundary(user.id, data['timezone'], reset)
+    except (TypeError, ValueError):
+        db.session.rollback()
+        return error_response(422, 'validation_error', 'Send one valid time zone.', field_errors={'timezone': ['Choose a valid time zone.']})
     return jsonify({'success': True, 'timezone': user.timezone})
 
 

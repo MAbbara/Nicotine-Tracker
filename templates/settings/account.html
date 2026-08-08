@@ -4,6 +4,8 @@
 {% block title %}Account - Settings{% endblock %}
 
 {% block settings_content %}
+{% set account_errors = account_errors or {} %}
+{% if account_errors.get('action') %}<p class="c-status c-status--attention" role="alert">{{ account_errors.get('action') }}</p>{% endif %}
 {% set account_errors = account_errors|default({}) %}
 <div class="account-sections space-y-8">
     <section class="account-section" aria-labelledby="account-email-title">
@@ -22,6 +24,7 @@
                     'New email address',
                     type='email',
                     value=user.email,
+                    maxlength=120,
                     autocomplete='email',
                     error=account_errors.get('new_email'),
                     required=true,
@@ -47,7 +50,7 @@
     <section class="account-section" aria-labelledby="account-password-title">
         <header class="account-section__intro space-y-2">
             <h2 id="account-password-title">Password</h2>
-            <p>Choose a new password with at least six characters.</p>
+            <p>Choose a new password with 8 to 128 characters.</p>
         </header>
 
         <form method="POST" action="{{ url_for('settings.account') }}">
@@ -66,13 +69,14 @@
                 ) }}
                 <div class="c-field{% if account_errors.get('new_password') %} c-field--error{% endif %}">
                     <label class="c-field__label" for="new_password">New password<span aria-hidden="true"> *</span></label>
-                    <p class="c-field__description" id="new_password-description">Use at least 6 characters.</p>
+                    <p class="c-field__description" id="new_password-description">Use 8 to 128 characters.</p>
                     <input
                         class="c-field__control"
                         id="new_password"
                         name="new_password"
                         type="password"
-                        minlength="6"
+                        minlength="8"
+                        maxlength="128"
                         autocomplete="new-password"
                         required
                         aria-required="true"

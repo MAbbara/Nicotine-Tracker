@@ -23,6 +23,13 @@ from services.api_errors import (
 )
 from services.user_preferences_service import UserPreferencesService
 from services.notification_service import NotificationService
+from services.settings_validation_service import (
+    SettingsValidationError,
+    parse_account_mutation,
+    parse_notification_settings,
+    parse_preference_settings,
+    parse_profile,
+)
 from services.email_verification_service import EmailVerificationService
 from services.goal_evaluation_service import (
     HISTORY_FULL,
@@ -41,6 +48,7 @@ import json
 from datetime import date, datetime, time, timedelta
 
 import pytz
+from sqlalchemy import func
 
 # Specify the template folder for settings-related templates
 settings_bp = Blueprint('settings', __name__, template_folder='../templates/settings')
@@ -144,33 +152,44 @@ def preferences():
     try:
         user = get_current_user()
         preferences_service = UserPreferencesService()
+        available_rows = db.session.query(Pouch.brand).filter(
+            db.or_(Pouch.is_default, Pouch.created_by == user.id)
+        ).distinct().order_by(Pouch.brand).all()
+        available_brands = [brand[0] for brand in available_rows]
         
         if request.method == 'POST':
-            units_preference = request.form.get('units_preference', 'mg').strip()
-            timezone = request.form.get('timezone', 'UTC').strip()
-            daily_reset_time = request.form.get('daily_reset_time', '').strip()
-            preferred_brands = request.form.getlist('preferred_brands')
-
-            if units_preference not in ['mg', 'percentage']:
-                flash('Please select a valid units preference.', 'error')
-            else:
-                user.timezone = timezone
-                session['user_timezone'] = timezone
-                
-                success, message = preferences_service.update_preferences(
-                    user.id,
-                    daily_reset_time=daily_reset_time if daily_reset_time else None,
-                    units_preference=units_preference,
-                    preferred_brands=preferred_brands
+            try:
+                submitted = parse_preference_settings(
+                    request.form, available_brands=available_brands,
                 )
-                
-                if success:
-                    db.session.commit()
-                    flash('Preferences updated successfully!', 'success')
-                else:
-                    db.session.rollback()
-                    flash(f'Error updating preferences: {message}', 'error')
-            
+            except SettingsValidationError as error:
+                retained = {
+                    'units_preference': request.form.get('units_preference', ''),
+                    'daily_reset_time': request.form.get('daily_reset_time', ''),
+                    'preferred_brands': request.form.getlist('preferred_brands'),
+                }
+                return render_template(
+                    'preferences.html', user=user, preferences=retained,
+                    submitted_timezone=request.form.get('timezone', ''),
+                    field_errors=error.field_errors,
+                    all_timezones=get_all_timezones_for_dropdown(),
+                    common_timezones=get_common_timezones(),
+                    available_brands=available_brands,
+                ), 422
+            PreferenceService().update_day_boundary(
+                user.id, submitted.timezone,
+                submitted.daily_reset_time.strftime('%H:%M'), commit=False,
+            )
+            success, message = preferences_service.update_preferences(
+                user.id, commit=False,
+                units_preference=submitted.units_preference,
+                preferred_brands=list(submitted.preferred_brands),
+            )
+            if not success:
+                raise RuntimeError(message)
+            db.session.commit()
+            session['user_timezone'] = submitted.timezone
+            flash('Preferences updated successfully!', 'success')
             return redirect(url_for('settings.preferences'))
 
         # GET request
@@ -186,17 +205,13 @@ def preferences():
         common_timezones = get_common_timezones()
 
         # Get available brands for selection
-        available_brands = db.session.query(Pouch.brand).filter(
-            db.or_(Pouch.is_default, Pouch.created_by == user.id)
-        ).distinct().order_by(Pouch.brand).all()
-        available_brands = [brand[0] for brand in available_brands]
-        
-        return render_template('preferences.html', 
+        return render_template('preferences.html',
                              user=user, 
                              preferences=preferences_data,
                              all_timezones=all_timezones,
                              common_timezones=common_timezones,
-                             available_brands=available_brands)
+                             available_brands=available_brands,
+                             field_errors={}, submitted_timezone=user.timezone)
 
     except Exception as e:
         db.session.rollback()
@@ -214,41 +229,41 @@ def notifications():
         preferences_service = UserPreferencesService()
 
         if request.method == 'POST':
-            notification_channel = request.form.getlist('notification_channel')
-            goal_notifications = request.form.get('goal_notifications') == 'on'
-            achievement_notifications = request.form.get('achievement_notifications') == 'on'
-            daily_reminders = request.form.get('daily_reminders') == 'on'
-            weekly_reports = request.form.get('weekly_reports') == 'on'
-            discord_webhook = request.form.get('discord_webhook', '').strip()
-            reminder_time = request.form.get('reminder_time', '').strip()
-            quiet_hours_start = request.form.get('quiet_hours_start', '').strip()
-            quiet_hours_end = request.form.get('quiet_hours_end', '').strip()
-            notification_frequency = request.form.get('notification_frequency', 'immediate').strip()
-
-            if notification_frequency not in ['immediate', 'daily', 'weekly']:
-                flash('Please select a valid notification frequency.', 'error')
-            else:
-                success, message = preferences_service.update_preferences(
-                    user.id,
-                    notification_channel=notification_channel,
-                    goal_notifications=goal_notifications,
-                    achievement_notifications=achievement_notifications,
-                    daily_reminders=daily_reminders,
-                    weekly_reports=weekly_reports,
-                    discord_webhook=discord_webhook,
-                    reminder_time=reminder_time if reminder_time else None,
-                    quiet_hours_start=quiet_hours_start if quiet_hours_start else None,
-                    quiet_hours_end=quiet_hours_end if quiet_hours_end else None,
-                    notification_frequency=notification_frequency
-                )
-                
-                if success:
-                    db.session.commit()
-                    flash('Notification settings updated successfully!', 'success')
-                else:
-                    flash(f'Error updating preferences: {message}', 'error')
-                
-                return redirect(url_for('settings.notifications'))
+            try:
+                submitted = parse_notification_settings(request.form)
+            except SettingsValidationError as error:
+                retained = {
+                    'notification_channel': request.form.getlist('notification_channel'),
+                    'goal_notifications': request.form.get('goal_notifications') == 'on',
+                    'achievement_notifications': request.form.get('achievement_notifications') == 'on',
+                    'daily_reminders': request.form.get('daily_reminders') == 'on',
+                    'weekly_reports': request.form.get('weekly_reports') == 'on',
+                    'discord_webhook': request.form.get('discord_webhook', ''),
+                    'reminder_time': request.form.get('reminder_time', ''),
+                    'quiet_hours_start': request.form.get('quiet_hours_start', ''),
+                    'quiet_hours_end': request.form.get('quiet_hours_end', ''),
+                }
+                return render_template(
+                    'notifications.html', user=user, preferences=retained,
+                    field_errors=error.field_errors,
+                ), 422
+            success, message = preferences_service.update_preferences(
+                user.id,
+                notification_channel=list(submitted.notification_channel),
+                goal_notifications=submitted.goal_notifications,
+                achievement_notifications=submitted.achievement_notifications,
+                daily_reminders=submitted.daily_reminders,
+                weekly_reports=submitted.weekly_reports,
+                discord_webhook=submitted.discord_webhook,
+                reminder_time=submitted.reminder_time,
+                quiet_hours_start=submitted.quiet_hours_start,
+                quiet_hours_end=submitted.quiet_hours_end,
+            )
+            if not success:
+                db.session.rollback()
+                raise RuntimeError(message)
+            flash('Notification settings updated successfully!', 'success')
+            return redirect(url_for('settings.notifications'))
         
         # GET request
         current_preferences = preferences_service.get_notification_settings(user.id)
@@ -268,7 +283,10 @@ def notifications():
         
         current_preferences.update(webhook_settings)
 
-        return render_template('notifications.html', user=user, preferences=current_preferences)
+        return render_template(
+            'notifications.html', user=user, preferences=current_preferences,
+            field_errors={},
+        )
     except Exception as e:
         current_app.logger.error(f'Notifications settings error: {e}')
         flash('An error occurred while loading notification settings.', 'error')
@@ -322,20 +340,13 @@ def trigger_weekly_report():
 def test_discord_webhook():
     """Test Discord webhook endpoint"""
     try:
-        data = request.get_json()
-        webhook_url = data.get('webhook_url', '').strip()
+        data = request.get_json(silent=True) or {}
+        webhook_url = data.get('webhook_url', '')
         
         if not webhook_url:
             return jsonify({
                 'success': False,
                 'message': 'Please provide a webhook URL.'
-            }), 400
-        
-        # Validate URL format
-        if not webhook_url.startswith('https://discord.com/api/webhooks/'):
-            return jsonify({
-                'success': False,
-                'message': 'Please provide a valid Discord webhook URL.'
             }), 400
         
         # Test the webhook
@@ -518,24 +529,14 @@ def profile():
         user = get_current_user()
         
         if request.method == 'POST':
-            # Get form data
-            age = request.form.get('age', type=int)
-            gender = request.form.get('gender', '').strip()
-            weight = request.form.get('weight', type=float)
+            try:
+                submitted = parse_profile(request.form)
+            except SettingsValidationError as error:
+                return render_template(
+                    'profile.html', user=user, field_errors=error.field_errors,
+                    submitted=request.form,
+                ), 422
             legacy_timezone = request.form.get('timezone', '').strip()
-            
-            # Validation
-            if age is not None and (age < 18 or age > 120):
-                flash('Please enter a valid age between 18 and 120.', 'error')
-                return render_template('profile.html', user=user)
-            
-            if weight is not None and (weight < 30 or weight > 500):
-                flash('Please enter a valid weight between 30 and 500 kg.', 'error')
-                return render_template('profile.html', user=user)
-            
-            if gender and gender not in ['male', 'female', 'other', 'prefer_not_to_say']:
-                flash('Please select a valid gender option.', 'error')
-                return render_template('profile.html', user=user)
 
             if legacy_timezone and not validate_timezone(legacy_timezone):
                 flash('Please select a valid timezone.', 'error')
@@ -543,9 +544,9 @@ def profile():
             
             
             # Update user profile
-            user.age = age
-            user.gender = gender if gender else None
-            user.weight = weight
+            user.age = submitted.age
+            user.gender = submitted.gender
+            user.weight = float(submitted.weight) if submitted.weight is not None else None
 
             # Compatibility for clients that submitted timezone on the old
             # profile form. New UI uses the validated day-boundary API.
@@ -556,7 +557,7 @@ def profile():
                     if preferences.daily_reset_time else '00:00'
                 )
                 PreferenceService().update_day_boundary(
-                    user.id, legacy_timezone, reset_text
+                    user.id, legacy_timezone, reset_text, commit=False
                 )
                 session['user_timezone'] = legacy_timezone
             
@@ -567,7 +568,7 @@ def profile():
             return redirect(url_for('settings.profile'))
         
         # GET request - display profile
-        return render_template('profile.html', user=user)
+        return render_template('profile.html', user=user, field_errors={}, submitted={})
 
 
         
@@ -600,11 +601,18 @@ def account():
         }
         
         if request.method == 'POST':
-            action = request.form.get('action')
+            try:
+                mutation = parse_account_mutation(request.form)
+            except SettingsValidationError as error:
+                return render_template(
+                    'account.html', user=user, account_stats=account_stats,
+                    account_errors=error.field_errors,
+                ), 422
+            action = mutation.action
             
             if action == 'update_email':
-                new_email = request.form.get('new_email', '').strip().lower()
-                password = request.form.get('password', '')
+                new_email = mutation.values['new_email']
+                password = mutation.values['password']
                 
                 # Validation
                 if not new_email or '@' not in new_email:
@@ -618,7 +626,9 @@ def account():
                                            account_errors={'email_password': 'Current password is incorrect.'})
                 
                 # Check if email already exists
-                existing_user = User.query.filter_by(email=new_email).first()
+                existing_user = User.query.filter(
+                    func.lower(User.email) == new_email
+                ).first()
                 if existing_user and existing_user.id != user.id:
                     flash('This email address is already in use.', 'error')
                     return render_template('account.html', user=user, account_stats=account_stats,
@@ -626,22 +636,27 @@ def account():
                 
                 # Update email
                 old_email = user.email
+                verification_service = EmailVerificationService()
+                verification_service.revoke_user_tokens(user.id, commit=False)
                 user.email = new_email
                 user.email_verified = False  # Require re-verification
                 
                 db.session.commit()
                 
                 # Send verification email for new address
-                verification_service = EmailVerificationService()
-                verification_service.send_verification_email(user.id)
+                delivered, _delivery_message = verification_service.send_verification_email(user.id)
+                session['user_email'] = new_email
                 
                 current_app.logger.info(f'Email changed from {old_email} to {new_email}')
-                flash('Email updated successfully! Please verify your new email address.', 'success')
+                if delivered:
+                    flash('Email updated. Check your new address for a verification message.', 'success')
+                else:
+                    flash('Email updated, but the verification message could not be sent. You can resend it below.', 'warning')
                 
             elif action == 'change_password':
-                current_password = request.form.get('current_password', '')
-                new_password = request.form.get('new_password', '')
-                confirm_password = request.form.get('confirm_password', '')
+                current_password = mutation.values['current_password']
+                new_password = mutation.values['new_password']
+                confirm_password = mutation.values['confirm_password']
                 
                 # Validation
                 if not current_password:
@@ -720,7 +735,6 @@ def account():
                 db.session.commit()
                 
                 # Clear session
-                from flask import session
                 session.clear()
                 flash('Your account has been deleted.', 'info')
                 session['_clear_site_data_after_account_deletion'] = True

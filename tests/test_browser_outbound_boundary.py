@@ -2,6 +2,11 @@ from datetime import datetime
 
 import pytest
 
+VALID_WEBHOOK = (
+    'https://discord.com/api/webhooks/123456789012345678/'
+    'abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789'
+)
+
 
 def test_outbound_boundary_records_discord_exactly_and_fails_closed():
     from tests.browser.helpers.outbound_test_boundary import install_outbound_boundary
@@ -27,14 +32,14 @@ def test_outbound_boundary_records_discord_exactly_and_fails_closed():
     )
 
     success, message = NotificationService().test_discord_webhook(
-        'https://discord.com/api/webhooks/example/token',
+        VALID_WEBHOOK,
     )
     assert success is True
     assert message == 'Discord boundary recorded.'
     assert recorder.records == [{
         'kind': 'discord-test',
         'method': 'POST',
-        'url': 'https://discord.com/api/webhooks/example/token',
+        'url': VALID_WEBHOOK,
         'payload': {
             'embeds': [{
                 'title': '🧪 Webhook Test',

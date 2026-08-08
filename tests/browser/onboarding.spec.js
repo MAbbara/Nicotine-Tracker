@@ -57,7 +57,7 @@ async function register(page, testInfo, recorder = null) {
     await create.focus();
     await page.keyboard.press('Enter');
     await expect(password).toBeFocused();
-    await expect(page.locator('#password-error')).toHaveText('Use at least 6 characters.');
+    await expect(page.locator('#password-error')).toHaveText('Use 8 to 128 characters.');
     expect(registrationPosts).toHaveLength(0);
     await password.fill('browser-password');
     await confirmation.fill('browser-password');

@@ -55,3 +55,20 @@ def test_profile_template_retires_legacy_card_and_palette_utilities():
         assert token not in source
     assert "field(" in source
     assert "select_field(" in source
+
+
+def test_profile_rejects_malformed_and_nonfinite_scalars_without_partial_write(
+        logged_in_client, db_session, test_user):
+    test_user.age = 34
+    test_user.weight = 78.5
+    test_user.gender = 'female'
+    db_session.commit()
+    response = logged_in_client.post('/settings/profile', data={
+        'age': '34.5', 'weight': 'NaN', 'gender': 'other',
+    })
+    assert response.status_code == 422
+    db_session.refresh(test_user)
+    assert (test_user.age, test_user.weight, test_user.gender) == (34, 78.5, 'female')
+    soup = BeautifulSoup(response.data, 'html.parser')
+    assert soup.select_one('#age[aria-invalid="true"]')['value'] == '34.5'
+    assert soup.select_one('#weight[aria-invalid="true"]')['value'] == 'NaN'

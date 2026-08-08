@@ -233,7 +233,7 @@ class EmailVerificationService:
             current_app.logger.error(f'Error cleaning up expired tokens: {e}')
             return 0
     
-    def revoke_user_tokens(self, user_id):
+    def revoke_user_tokens(self, user_id, *, commit=True):
         """Revoke all active verification tokens for a user"""
         try:
             active_tokens = EmailVerification.query.filter(
@@ -247,7 +247,10 @@ class EmailVerificationService:
                 token.is_verified = True
                 token.verified_at = datetime.utcnow()
             
-            db.session.commit()
+            if commit:
+                db.session.commit()
+            else:
+                db.session.flush()
             
             if count > 0:
                 current_app.logger.info(f'Revoked {count} active verification tokens for user {user_id}')

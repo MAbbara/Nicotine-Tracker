@@ -35,12 +35,15 @@ def _normalized_strings(values):
 
 
 class PreferenceService:
-    def get_or_create_preferences(self, user_id):
+    def get_or_create_preferences(self, user_id, *, commit=True):
         preferences = UserPreferences.query.filter_by(user_id=user_id).first()
         if preferences is None:
             preferences = UserPreferences(user_id=user_id)
             db.session.add(preferences)
-            db.session.commit()
+            if commit:
+                db.session.commit()
+            else:
+                db.session.flush()
         return preferences
 
     def get_or_create_settings(self, user_id):
@@ -107,8 +110,13 @@ class PreferenceService:
         db.session.commit()
         return preferences
 
-    def update_day_boundary(self, user_id, timezone_name, reset_time_text):
+    def update_day_boundary(self, user_id, timezone_name, reset_time_text, *, commit=True):
         get_timezone_object(timezone_name)
+        if (
+            not isinstance(reset_time_text, str)
+            or _RESET_TIME_PATTERN.fullmatch(reset_time_text) is None
+        ):
+            raise ValueError('daily_reset_time must use HH:MM')
         try:
             reset_time = datetime.strptime(reset_time_text, '%H:%M').time()
         except (TypeError, ValueError):
@@ -116,14 +124,17 @@ class PreferenceService:
         user = db.session.get(User, user_id)
         if user is None:
             raise ValueError('user not found')
-        preferences = self.get_or_create_preferences(user_id)
+        preferences = self.get_or_create_preferences(user_id, commit=commit)
         user.timezone = timezone_name
         preferences.daily_reset_time = reset_time
         preferences.pending_timezone = None
         preferences.pending_daily_reset_time = None
         preferences.boundary_change_effective_at_utc = None
         preferences.boundary_change_target_local_date = None
-        db.session.commit()
+        if commit:
+            db.session.commit()
+        else:
+            db.session.flush()
         return preferences
 
     def schedule_day_boundary_change(

@@ -5,11 +5,7 @@
 
 {% block settings_content %}
 {% set channels = preferences.notification_channel or [] %}
-{% set frequency_options = [
-    ('immediate', 'As events happen'),
-    ('daily', 'Daily digest'),
-    ('weekly', 'Weekly digest')
-] %}
+{% set field_errors = field_errors or {} %}
 <form method="POST" action="{{ url_for('settings.notifications') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
@@ -38,6 +34,7 @@
                     </label>
                     <p class="c-field__description" id="email-channel-description">Send reminders to the address on your account.</p>
                 </div>
+                {% if field_errors.get('notification_channel') %}<p class="c-field__error" id="notification_channel-error" role="alert">{{ field_errors.get('notification_channel') }}</p>{% endif %}
                 <div class="c-field">
                     <label class="c-field__check" for="notification_channel_discord">
                         <input
@@ -62,7 +59,9 @@
                     type='url',
                     value=preferences.discord_webhook or '',
                     description='Paste the full webhook URL from the Discord channel where reminders should arrive.',
-                    placeholder='https://discord.com/api/webhooks/...'
+                    placeholder='https://discord.com/api/webhooks/...',
+                    required='discord' in channels,
+                    error=field_errors.get('discord_webhook')
                 ) }}
             </div>
         </section>
@@ -113,28 +112,25 @@
                     'Daily reminder time',
                     type='time',
                     value=preferences.reminder_time or '',
-                    description='Used when daily logging reminders are enabled.'
+                    description='Used when daily logging reminders are enabled.',
+                    required=preferences.daily_reminders,
+                    error=field_errors.get('reminder_time')
                 ) }}
                 {{ field(
                     'quiet_hours_start',
                     'Quiet hours start',
                     type='time',
                     value=preferences.quiet_hours_start or '',
-                    description='Pause non-urgent reminders beginning at this time.'
+                    description='Pause non-urgent reminders beginning at this time.',
+                    error=field_errors.get('quiet_hours_start')
                 ) }}
                 {{ field(
                     'quiet_hours_end',
                     'Quiet hours end',
                     type='time',
                     value=preferences.quiet_hours_end or '',
-                    description='Resume reminders after this time.'
-                ) }}
-                {{ select_field(
-                    'notification_frequency',
-                    'Delivery frequency',
-                    frequency_options,
-                    value=preferences.notification_frequency,
-                    description='Group notifications into a quieter digest when immediate delivery feels distracting.'
+                    description='Resume reminders after this time.',
+                    error=field_errors.get('quiet_hours_end')
                 ) }}
             </div>
         </section>

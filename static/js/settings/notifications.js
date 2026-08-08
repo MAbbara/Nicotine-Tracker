@@ -89,6 +89,10 @@ export function initReminderSettings(root = document, fetchImpl = fetch) {
   const discordButton = root.querySelector('#test-discord-webhook');
   const discordStatus = root.querySelector('#discord-test-status');
   const weeklyCheckbox = root.querySelector('#weekly_reports');
+  const dailyCheckbox = root.querySelector('#daily_reminders');
+  const reminderInput = root.querySelector('#reminder_time');
+  const quietStart = root.querySelector('#quiet_hours_start');
+  const quietEnd = root.querySelector('#quiet_hours_end');
   const weeklyButton = root.querySelector('#trigger-weekly-report');
   const weeklyStatus = root.querySelector('#weekly-report-status');
   const csrfToken = root.querySelector('meta[name="csrf-token"]')?.content || '';
@@ -97,8 +101,25 @@ export function initReminderSettings(root = document, fetchImpl = fetch) {
   const updateDiscordState = () => {
     const enabled = discordCheckbox?.checked === true;
     if (webhookRegion) webhookRegion.hidden = !enabled;
+    if (webhookInput) {
+      webhookInput.required = enabled;
+      webhookInput.setAttribute('aria-required', String(enabled));
+    }
     if (discordButton && discordButton.dataset.busy !== 'true') {
       discordButton.disabled = !enabled;
+    }
+  };
+  const updateTimeDependencies = () => {
+    const dailyEnabled = dailyCheckbox?.checked === true;
+    if (reminderInput) {
+      reminderInput.required = dailyEnabled;
+      reminderInput.setAttribute('aria-required', String(dailyEnabled));
+    }
+    const oneQuietTime = Boolean(quietStart?.value || quietEnd?.value);
+    for (const input of [quietStart, quietEnd]) {
+      if (!input) continue;
+      input.required = oneQuietTime;
+      input.setAttribute('aria-required', String(oneQuietTime));
     }
   };
   const updateWeeklyState = () => {
@@ -114,6 +135,15 @@ export function initReminderSettings(root = document, fetchImpl = fetch) {
   if (weeklyCheckbox) {
     weeklyCheckbox.addEventListener('change', updateWeeklyState);
     cleanups.push(() => weeklyCheckbox.removeEventListener('change', updateWeeklyState));
+  }
+  if (dailyCheckbox) {
+    dailyCheckbox.addEventListener('change', updateTimeDependencies);
+    cleanups.push(() => dailyCheckbox.removeEventListener('change', updateTimeDependencies));
+  }
+  for (const input of [quietStart, quietEnd]) {
+    if (!input) continue;
+    input.addEventListener('input', updateTimeDependencies);
+    cleanups.push(() => input.removeEventListener('input', updateTimeDependencies));
   }
 
   const testDiscord = () => runNotificationAction({
@@ -165,6 +195,7 @@ export function initReminderSettings(root = document, fetchImpl = fetch) {
 
   updateDiscordState();
   updateWeeklyState();
+  updateTimeDependencies();
   return () => cleanups.splice(0).forEach((cleanup) => cleanup());
 }
 

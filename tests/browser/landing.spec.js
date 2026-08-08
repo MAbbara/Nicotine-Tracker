@@ -94,7 +94,7 @@ test('registration validates inline without dialogs or console errors', async ({
   await page.check('#terms');
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
 
-  await expect(page.locator('#password-error')).toHaveText('Use at least 6 characters.');
+  await expect(page.locator('#password-error')).toHaveText('Use 8 to 128 characters.');
   await expect(page).toHaveURL(/\/auth\/register$/);
   expect(dialogSeen).toBe(false);
 

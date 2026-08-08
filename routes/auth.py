@@ -5,6 +5,8 @@ from services import create_user              # new import
 from services.password_reset_service import PasswordResetService
 from services.email_verification_service import EmailVerificationService
 from services.timezone_service import validate_timezone
+from services.preference_service import PreferenceService
+from services.settings_validation_service import PASSWORD_MAX, PASSWORD_MIN
 from services.rate_limit_service import (
     auth_account_limit,
     auth_ip_limit,
@@ -131,8 +133,8 @@ def register():
                 flash('Please enter a valid email address.', 'error')
                 return render_template('register.html')
             
-            if len(password) < 6:
-                flash('Password must be at least 6 characters long.', 'error')
+            if not PASSWORD_MIN <= len(password) <= PASSWORD_MAX:
+                flash(f'Password must be {PASSWORD_MIN} to {PASSWORD_MAX} characters long.', 'error')
                 return render_template('register.html')
             
             if password != confirm_password:
@@ -345,8 +347,8 @@ def reset_password(token):
             password = request.form.get('password', '')
             confirm_password = request.form.get('confirm_password', '')
             
-            if len(password) < 6:
-                flash('Password must be at least 6 characters long.', 'error')
+            if not PASSWORD_MIN <= len(password) <= PASSWORD_MAX:
+                flash(f'Password must be {PASSWORD_MIN} to {PASSWORD_MAX} characters long.', 'error')
                 return render_template('reset_password.html', token=token)
             
             if password != confirm_password:
@@ -429,9 +431,9 @@ def update_timezone():
         if not user:
             return jsonify({'success': False, 'error': 'User not found'}), 404
         
-        # Update user's timezone
-        user.timezone = new_timezone
-        db.session.commit()
+        preferences = PreferenceService().get_or_create_preferences(user.id)
+        reset = preferences.daily_reset_time.strftime('%H:%M') if preferences.daily_reset_time else '00:00'
+        PreferenceService().update_day_boundary(user.id, new_timezone, reset)
         
         # Update session
         session['user_timezone'] = new_timezone

@@ -8,6 +8,7 @@
     ('mg', 'Milligrams (mg)'),
     ('percentage', 'Percentage of maximum dose')
 ] %}
+{% set field_errors = field_errors or {} %}
 <form method="POST" action="{{ url_for('settings.preferences') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
@@ -25,7 +26,8 @@
                     'Units',
                     unit_options,
                     value=preferences.units_preference,
-                    description='Use exact milligrams or compare each entry with your maximum dose.'
+                    description='Use exact milligrams or compare each entry with your maximum dose.',
+                    error=field_errors.get('units_preference')
                 ) }}
             </div>
         </section>
@@ -37,19 +39,21 @@
             </header>
 
             <div class="preferences-section__fields space-y-6">
-                <div class="c-field">
+                <div class="c-field{% if field_errors.get('timezone') %} c-field--error{% endif %}">
                     <label class="c-field__label" for="timezone">Time zone</label>
                     <p class="c-field__description" id="timezone-description">Used to place logs, cravings, reminders, and daily summaries on the right local day.</p>
                     <select
                         class="c-field__control"
                         id="timezone"
                         name="timezone"
-                        aria-describedby="timezone-description"
+                        aria-describedby="timezone-description{% if field_errors.get('timezone') %} timezone-error{% endif %}"
+                        {% if field_errors.get('timezone') %}aria-invalid="true"{% endif %}
                     >
                         {% for tz in all_timezones %}
-                        <option value="{{ tz.value }}"{% if user.timezone == tz.value %} selected{% endif %}>{{ tz.label }}</option>
+                        <option value="{{ tz.value }}"{% if submitted_timezone == tz.value %} selected{% endif %}>{{ tz.label }}</option>
                         {% endfor %}
                     </select>
+                    {% if field_errors.get('timezone') %}<p class="c-field__error" id="timezone-error" role="alert">{{ field_errors.get('timezone') }}</p>{% endif %}
                 </div>
 
                 {{ field(
@@ -57,7 +61,9 @@
                     'Daily reset time',
                     type='time',
                     value=preferences.daily_reset_time or '00:00',
-                    description='Your totals start fresh at this time each day. Midnight works well for most routines.'
+                    description='Your totals start fresh at this time each day. Midnight works well for most routines.',
+                    required=True,
+                    error=field_errors.get('daily_reset_time')
                 ) }}
             </div>
         </section>
@@ -71,6 +77,7 @@
             <fieldset class="preferences-brand-group min-w-0 space-y-4 border-0 p-0" aria-describedby="preferred-brands-description">
                 <legend class="sr-only">Preferred products</legend>
                 <p class="c-field__description" id="preferred-brands-description">Choose any products you want prioritized for quick access. You can change this list at any time.</p>
+                {% if field_errors.get('preferred_brands') %}<p class="c-field__error" id="preferred_brands-error" role="alert">{{ field_errors.get('preferred_brands') }}</p>{% endif %}
 
                 {% if available_brands %}
                 <div class="preferences-brand-group__options space-y-2">

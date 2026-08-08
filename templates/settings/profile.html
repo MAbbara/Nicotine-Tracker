@@ -10,6 +10,7 @@
     ('other', 'Other'),
     ('prefer_not_to_say', 'Prefer not to say')
 ] %}
+{% set field_errors = field_errors or {} %}
 <section class="profile-section" aria-labelledby="profile-about-title">
     <header class="profile-section__intro space-y-2">
         <p class="eyebrow">Your details</p>
@@ -25,25 +26,28 @@
                 'age',
                 'Age',
                 type='number',
-                value=user.age or '',
+                value=submitted.get('age', user.age or ''),
                 min=18,
-                max=120
+                max=120,
+                error=field_errors.get('age')
             ) }}
             {{ select_field(
                 'gender',
                 'Gender',
                 gender_options,
-                value=user.gender or '',
-                placeholder='Select an option'
+                value=submitted.get('gender', user.gender or ''),
+                placeholder='Select an option',
+                error=field_errors.get('gender')
             ) }}
             {{ field(
                 'weight',
                 'Weight (kg)',
                 type='number',
-                value=user.weight or '',
+                value=submitted.get('weight', user.weight or ''),
                 min=30,
                 max=500,
-                step=0.1
+                step=0.1,
+                error=field_errors.get('weight')
             ) }}
         </div>
 

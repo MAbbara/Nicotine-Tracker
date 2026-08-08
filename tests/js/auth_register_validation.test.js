@@ -17,7 +17,7 @@ test('short password returns length guidance and stays invalid', async () => {
   const { validateRegistration } = await loadRegisterValidation();
   assert.deepEqual(validateRegistration('short', 'short'), {
     valid: false,
-    passwordError: 'Use at least 6 characters.',
+    passwordError: 'Use 8 to 128 characters.',
     confirmationError: '',
   });
 });
@@ -34,7 +34,7 @@ test('short password and mismatch report both errors', async () => {
   const { validateRegistration } = await loadRegisterValidation();
   assert.deepEqual(validateRegistration('tiny', 'other'), {
     valid: false,
-    passwordError: 'Use at least 6 characters.',
+    passwordError: 'Use 8 to 128 characters.',
     confirmationError: 'Passwords do not match.',
   });
 });
@@ -46,6 +46,12 @@ test('matching long-enough passwords are valid', async () => {
     passwordError: '',
     confirmationError: '',
   });
+});
+
+test('oversized password is rejected consistently', async () => {
+  const { validateRegistration } = await loadRegisterValidation();
+  const password = 'x'.repeat(129);
+  assert.equal(validateRegistration(password, password).passwordError, 'Use 8 to 128 characters.');
 });
 
 test('module never calls alert()', async () => {

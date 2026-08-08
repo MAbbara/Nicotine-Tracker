@@ -865,10 +865,10 @@ async function catalogFormRequest(page, state, action, status = 302) {
     path = '/settings/notifications';
     exact = {
       notification_channel: ['email', 'discord'],
-      discord_webhook: 'https://discord.com/api/webhooks/example/token',
+      discord_webhook: 'https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789',
       goal_notifications: 'on', achievement_notifications: 'on', daily_reminders: 'on',
       weekly_reports: 'on', reminder_time: '09:10', quiet_hours_start: '21:30',
-      quiet_hours_end: '06:15', notification_frequency: 'weekly',
+      quiet_hours_end: '06:15',
     };
   } else if (state === 'goals' && action === 'Pause goal') {
     const snapshot = await snapshotFor();
@@ -1191,11 +1191,10 @@ function formMutationScenario(page, state, action) {
           if (!await toggle.isChecked()) await toggle.check();
         }
         await page.getByLabel('Discord webhook URL')
-          .fill('https://discord.com/api/webhooks/example/token');
+          .fill('https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789');
         await page.getByLabel('Daily reminder time').fill('09:10');
         await page.getByLabel('Quiet hours start').fill('21:30');
         await page.getByLabel('Quiet hours end').fill('06:15');
-        await page.getByLabel('Delivery frequency').selectOption('weekly');
         const control = exactActionButton(page, action);
         return { control, descriptor: {
           activation: { kind: 'keyboard', key: 'Enter' }, request: await catalogFormRequest(page, state, action),
@@ -1509,7 +1508,7 @@ function asyncActionScenario(page, state, action) {
       }
       if (isDiscord) {
         await page.getByLabel('Discord webhook URL')
-          .fill('https://discord.com/api/webhooks/example/token');
+          .fill('https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789');
         const channel = page.getByRole('checkbox', { name: 'Discord' });
         if (!await channel.isChecked()) await channel.check();
       } else {
@@ -1517,7 +1516,7 @@ function asyncActionScenario(page, state, action) {
         if (!await weekly.isChecked()) await weekly.check();
       }
       const payload = isDiscord
-        ? { webhook_url: 'https://discord.com/api/webhooks/example/token' } : {};
+        ? { webhook_url: 'https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789' } : {};
       const descriptor = {
         activation: { kind: 'keyboard', key: 'Enter' },
         request: { method: 'POST', path, status: branch === 'success' ? 200 : 503,
@@ -1699,7 +1698,7 @@ function disposableAccountMutationScenario(page, state, action) {
         return { control, descriptor: { activation: { kind: 'keyboard', key: 'Enter' },
           request: await catalogFormRequest(page, state, action),
           feedback: flashFeedback(page,
-            'Email updated successfully! Please verify your new email address.'),
+            'Email updated. Check your new address for a verification message.'),
           persistence: { kind: 'json', url: '/__test__/account-snapshot', path: 'profile.email',
             expectedBefore: currentEmail, expectedAfter: updatedEmail } } };
       }

@@ -4,6 +4,7 @@ from pathlib import Path
 
 from bs4 import BeautifulSoup
 from datetime import datetime
+import pytest
 
 from models import Craving, Goal, Log, Pouch, User
 
@@ -30,7 +31,7 @@ def test_account_uses_ordered_independent_security_forms(logged_in_client):
     assert forms["update_email"].select_one('input[name="new_email"][type="email"][required]')
     assert forms["update_email"].select_one('input[name="password"][type="password"][required]')
     assert forms["change_password"].select_one('input[name="current_password"][type="password"][required]')
-    assert forms["change_password"].select_one('input[name="new_password"][minlength="6"][required]')
+    assert forms["change_password"].select_one('input[name="new_password"][minlength="8"][maxlength="128"][required]')
     assert forms["change_password"].select_one('input[name="confirm_password"][type="password"][required]')
     assert forms["delete_account"].select_one('input[name="password"][type="password"][required]')
     assert forms["delete_account"].select_one('input[name="confirmation"][required]')
@@ -62,6 +63,48 @@ def test_account_validation_keeps_user_and_feedback(logged_in_client, test_user)
     assert soup.select_one("#password-error").get_text(" ", strip=True) == (
         "Current password is incorrect."
     )
+
+
+def test_account_rejects_multiple_actions_and_oversized_password_atomically(
+        logged_in_client, test_user):
+    original_email = test_user.email
+    original_hash = test_user.password_hash
+    response = logged_in_client.post('/settings/account', data={
+        'action': ['update_email', 'change_password'],
+        'new_email': 'changed@example.com',
+        'password': 'password123',
+        'current_password': 'password123',
+        'new_password': 'x' * 129,
+        'confirm_password': 'x' * 129,
+    })
+    assert response.status_code == 422
+    assert b'Choose exactly one account action.' in response.data
+    assert test_user.email == original_email
+    assert test_user.password_hash == original_hash
+
+
+@pytest.mark.parametrize('new_password', ['1234567', 'x' * 129])
+def test_account_password_policy_rejects_out_of_bounds_without_write(
+        logged_in_client, test_user, new_password):
+    original_hash = test_user.password_hash
+    response = logged_in_client.post('/settings/account', data={
+        'action': 'change_password', 'current_password': 'password123',
+        'new_password': new_password, 'confirm_password': new_password,
+    })
+    assert response.status_code == 422
+    assert test_user.password_hash == original_hash
+
+
+def test_account_email_rejects_schema_oversize_without_write(
+        logged_in_client, test_user):
+    original = test_user.email
+    local = 'x' * 109
+    response = logged_in_client.post('/settings/account', data={
+        'action': 'update_email', 'new_email': f'{local}@example.com',
+        'password': 'password123',
+    })
+    assert response.status_code == 422
+    assert test_user.email == original
 
 
 def test_password_and_deletion_errors_are_field_adjacent(logged_in_client):
