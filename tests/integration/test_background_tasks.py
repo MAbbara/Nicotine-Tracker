@@ -8,7 +8,8 @@ from sqlalchemy import event
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 from models import (
-    DailyCheckIn, Goal, Log, NotificationQueue, User, UserPreferences,
+    DailyCheckIn, Goal, Log, NotificationHistory, NotificationQueue, User,
+    UserPreferences,
 )
 from services.background_tasks import BackgroundTaskProcessor
 import services.background_tasks as background_tasks
@@ -256,6 +257,10 @@ def test_sent_weekly_report_is_durable_and_replay_never_redelivers(
     db_session.flush()
     preferences = _notifications_enabled(db_session, durable_user)
     preferences.weekly_reports = True
+    preferences.notification_channel = ['email', 'discord']
+    preferences.discord_webhook = (
+        'https://discord.invalid/private-webhook-token'
+    )
     db_session.commit()
     instant = datetime(2030, 1, 14, 12, 0, tzinfo=timezone.utc)
     service = NotificationService()
@@ -263,21 +268,93 @@ def test_sent_weekly_report_is_durable_and_replay_never_redelivers(
     monkeypatch.setattr(
         service,
         'send_email_notification',
-        lambda notification: deliveries.append(notification.id) or True,
+        lambda notification: deliveries.append(
+            (notification.id, notification.notification_type)
+        ) or True,
+    )
+    service.send_handlers['email'] = service.send_email_notification
+    monkeypatch.setattr(
+        service,
+        'send_discord_notification',
+        lambda notification: deliveries.append(
+            (notification.id, notification.notification_type)
+        ) or True,
+    )
+    service.send_handlers['discord'] = service.send_discord_notification
+
+    queued = service.queue_weekly_report(durable_user, now_utc=instant)
+    queued_ids = [row.id for row in queued]
+    original_values = [
+        (row.recipient, row.subject, row.message, dict(row.extra_data))
+        for row in queued
+    ]
+    assert service.process_notification_queue() == 2
+
+    sent = NotificationQueue.query.filter(
+        NotificationQueue.id.in_(queued_ids)
+    ).order_by(NotificationQueue.id).all()
+    assert [row.id for row in sent] == sorted(queued_ids)
+    for row in sent:
+        assert row.status == 'sent'
+        assert row.recipient == '[scrubbed-after-delivery]'
+        assert row.subject is None
+        assert row.message == '[weekly report delivered]'
+        assert row.extra_data == {'retention': 'delivery_metadata_only'}
+    histories = NotificationHistory.query.filter(
+        NotificationHistory.original_queue_id.in_(queued_ids)
+    ).order_by(NotificationHistory.original_queue_id).all()
+    assert len(histories) == 2
+    assert all(history.delivery_status == 'sent' for history in histories)
+    assert all(history.subject is None for history in histories)
+    assert all(
+        history.recipient == '[scrubbed-after-delivery]'
+        for history in histories
+    )
+    retained_text = repr([
+        row.to_dict() for row in sent
+    ] + [history.to_dict() for history in histories])
+    for recipient, subject, message, extra_data in original_values:
+        assert recipient not in retained_text
+        assert subject not in retained_text
+        assert message not in retained_text
+        assert repr(extra_data) not in retained_text
+    replay = service.queue_weekly_report(durable_user, now_utc=instant)
+    assert [row.id for row in replay] == queued_ids
+    assert service.process_notification_queue() == 0
+    assert sorted(deliveries) == sorted([
+        (row.id, row.notification_type) for row in queued
+    ])
+
+
+def test_nonweekly_success_keeps_existing_ephemeral_queue_and_history_semantics(
+        app, db_session, test_user, monkeypatch):
+    notification = NotificationQueue(
+        user_id=test_user.id,
+        notification_type='email',
+        category='daily_reminder',
+        subject='Private daily subject',
+        message='Private daily body',
+        recipient=test_user.email,
+        scheduled_for=datetime(2020, 1, 1),
+        extra_data={'private': 'daily detail'},
+    )
+    db_session.add(notification)
+    db_session.commit()
+    notification_id = notification.id
+    service = NotificationService()
+    monkeypatch.setattr(
+        service, 'send_email_notification', lambda _notification: True
     )
     service.send_handlers['email'] = service.send_email_notification
 
-    queued = service.queue_weekly_report(durable_user, now_utc=instant)
-    queued_id = queued[0].id
     assert service.process_notification_queue() == 1
-
-    sent = db.session.get(NotificationQueue, queued_id)
-    assert sent is not None
-    assert sent.status == 'sent'
-    replay = service.queue_weekly_report(durable_user, now_utc=instant)
-    assert [row.id for row in replay] == [queued_id]
-    assert service.process_notification_queue() == 0
-    assert deliveries == [queued_id]
+    assert db.session.get(NotificationQueue, notification_id) is None
+    history = NotificationHistory.query.filter_by(
+        original_queue_id=notification_id
+    ).one()
+    assert history.delivery_status == 'sent'
+    assert history.subject == 'Private daily subject'
+    assert history.recipient == test_user.email
 
 
 def test_sent_manual_report_and_staggered_scheduler_share_the_same_row(

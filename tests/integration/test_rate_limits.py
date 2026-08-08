@@ -562,6 +562,34 @@ def test_expensive_analytics_routes_share_one_read_inventory(
     _assert_third_is_limited(responses)
 
 
+def test_every_analytics_route_uses_the_shared_expensive_read_inventory(
+        app, logged_in_client):
+    analytics_routes = [
+        '/dashboard/api/daily_intake_chart',
+        '/dashboard/api/weekly_averages',
+        '/dashboard/api/hourly_distribution',
+        '/settings/statistics',
+        '/goals/api/check_notifications',
+        '/goals/api/goals',
+        '/goals/progress',
+        '/cravings/api/analytics',
+        '/api/daily_intake',
+        '/api/baseline-suggestion',
+        '/insights/',
+        '/insights/api/legacy-insights',
+    ]
+    _set_test_limits(app, ANALYTICS_READ='1/minute')
+    first = logged_in_client.get('/insights/api/insights?days=7')
+    assert first.status_code != 429
+
+    for path in analytics_routes:
+        response = logged_in_client.get(path)
+        assert response.status_code == 429, path
+        assert response.get_json(silent=True) is not None or (
+            'take a short pause' in response.get_data(as_text=True).casefold()
+        )
+
+
 def _redis_test_app(monkeypatch, endpoint):
     redis_url = os.environ.get('TEST_RATELIMIT_REDIS_URL')
     prefix = os.environ.get('TEST_RATELIMIT_KEY_PREFIX')

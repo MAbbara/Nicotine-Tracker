@@ -29,6 +29,7 @@ from services.goal_evaluation_service import (
     batch_goal_progress,
 )
 from services.rate_limit_service import (
+    analytics_read_limit,
     authenticated_write_limit,
     current_password_limit,
     destructive_limit,
@@ -950,6 +951,7 @@ def export_user_data(user):
         return redirect(url_for('settings.account'))
 
 @settings_bp.route('/statistics')
+@analytics_read_limit()
 @login_required
 def statistics():
     """User statistics page"""

@@ -398,6 +398,7 @@ def progress():
         return redirect(url_for('goals.index'))
 
 @goals_bp.route('/api/check_notifications')
+@analytics_read_limit()
 @login_required
 def check_notifications():
     """API endpoint to check for goal notifications"""
@@ -441,6 +442,7 @@ def check_notifications():
         })
 
 @goals_bp.route('/api/goals')
+@analytics_read_limit()
 @login_required
 def get_goals_api():
     """API endpoint to get all goals and analytics"""

@@ -24,6 +24,10 @@ from sqlalchemy.exc import IntegrityError
 
 
 class NotificationService:
+
+    WEEKLY_SCRUBBED_RECIPIENT = '[scrubbed-after-delivery]'
+    WEEKLY_SCRUBBED_MESSAGE = '[weekly report delivered]'
+    WEEKLY_SCRUBBED_EXTRA = {'retention': 'delivery_metadata_only'}
     
     def __init__(self):
         self.preferences_service = UserPreferencesService()
@@ -67,6 +71,14 @@ class NotificationService:
             category='weekly_report',
             report_period_start=period_start,
         ).order_by(NotificationQueue.notification_type).all()
+
+    @classmethod
+    def _scrub_delivered_weekly(cls, notification):
+        notification.recipient = cls.WEEKLY_SCRUBBED_RECIPIENT
+        notification.subject = None
+        notification.message = cls.WEEKLY_SCRUBBED_MESSAGE
+        notification.extra_data = dict(cls.WEEKLY_SCRUBBED_EXTRA)
+        notification.error_message = None
 
     @staticmethod
     def _is_weekly_uniqueness_conflict(error, dialect_name):
@@ -495,8 +507,12 @@ class NotificationService:
                 processed += 1
                 
                 if success:
-                    # Mark as sent and create history record
+                    # Mark as sent and create history record. Weekly reports
+                    # remain as a minimal idempotency ledger; all delivery and
+                    # health-rich content is scrubbed before durable history.
                     notification.status = 'sent'
+                    if notification.category == 'weekly_report':
+                        self._scrub_delivered_weekly(notification)
                     self._create_history_record(notification, 'sent')
                     if notification.category != 'weekly_report':
                         db.session.delete(notification)  # Ephemeral queue item

@@ -15,6 +15,7 @@ from services.timezone_service import (
     get_user_day_window,
     resolve_timezone,
 )
+from services.rate_limit_service import analytics_read_limit
 
 dashboard_bp = Blueprint('dashboard', __name__, template_folder="../templates/dashboard")
 DASHBOARD_RANGE_PRESETS = (7, 30, 90, 365)
@@ -183,6 +184,7 @@ def index():
 
 
 @dashboard_bp.route('/api/daily_intake_chart')
+@analytics_read_limit()
 @login_required
 def daily_intake_chart():
     """API endpoint for daily intake chart data with timezone-aware daily boundaries"""
@@ -230,6 +232,7 @@ def daily_intake_chart():
         return jsonify({'success': False, 'error': 'Unable to load chart data'})
 
 @dashboard_bp.route('/api/weekly_averages')
+@analytics_read_limit()
 @login_required
 def weekly_averages():
     """API endpoint for weekly averages chart with timezone-aware calculations"""
@@ -296,6 +299,7 @@ def weekly_averages():
         return jsonify({'success': False, 'error': 'Unable to load weekly data'})
 
 @dashboard_bp.route('/api/hourly_distribution')
+@analytics_read_limit()
 @login_required
 def hourly_distribution():
     """API endpoint for hourly usage distribution"""
