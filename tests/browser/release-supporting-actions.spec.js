@@ -632,7 +632,7 @@ test('catalog authority rejects unrelated focus injected into a substituted acco
   await page.route('**/settings/account', async (route) => {
     if (route.request().method() !== 'POST') return route.continue();
     await route.fulfill({
-      status: 200,
+      status: 422,
       contentType: 'text/html',
       headers: { 'x-supporting-action-invariant': 'account:update_email:rejected' },
       body: `<!doctype html><html><body><main id="main-content">
