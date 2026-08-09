@@ -917,7 +917,27 @@ test('pre-activation disclosure input invalidates a fully built background candi
         });
       });
       const box = await summary.boundingBox();
-      await page.mouse.click(box.x + (box.width / 2), box.y + (box.height / 2));
+      await page.mouse.move(box.x + (box.width / 2), box.y + (box.height / 2));
+      await page.mouse.down();
+      await page.waitForTimeout(450);
+      expect(await oldSummary.evaluate((node) => node.isConnected),
+        'held pointer disclosure must remain live until release').toBe(true);
+      expect(await page.evaluate(() => window.__summaryCommitRace.liveCommits))
+        .toBe(commitsBefore);
+      await page.mouse.up();
+    } else if (input === ' ') {
+      await oldSummary.evaluate((node) => {
+        node.addEventListener('keydown', (event) => {
+          if (event.key === ' ') window.__releaseSummaryCommitRace();
+        }, { once: true });
+      });
+      await page.keyboard.down(' ');
+      await page.waitForTimeout(450);
+      expect(await oldSummary.evaluate((node) => node.isConnected),
+        'held Space disclosure must remain live until release').toBe(true);
+      expect(await page.evaluate(() => window.__summaryCommitRace.liveCommits))
+        .toBe(commitsBefore);
+      await page.keyboard.up(' ');
     } else {
       await oldSummary.evaluate((node, key) => {
         node.addEventListener('keydown', (event) => {
@@ -961,6 +981,11 @@ test('pre-activation disclosure input invalidates a fully built background candi
           cancelable: true,
           pointerId: 41,
         }));
+        node.dispatchEvent(new PointerEvent('pointercancel', {
+          bubbles: true,
+          cancelable: false,
+          pointerId: 41,
+        }));
       });
     } else {
       await oldSummary.evaluate((node, key) => {
@@ -970,6 +995,11 @@ test('pre-activation disclosure input invalidates a fully built background candi
           window.__releaseSummaryCommitRace();
         }, { once: true });
         node.dispatchEvent(new KeyboardEvent('keydown', {
+          bubbles: true,
+          cancelable: true,
+          key,
+        }));
+        node.dispatchEvent(new KeyboardEvent('keyup', {
           bubbles: true,
           cancelable: true,
           key,
@@ -985,7 +1015,7 @@ test('pre-activation disclosure input invalidates a fully built background candi
   expect(await page.evaluate(() => window.__summaryCommitRace.maxActive)).toBe(1);
 });
 
-test('Export handoff preserves focus and defers one invalidated disclosure successor', async ({ page }) => {
+test('Export handoff preserves focus through held and canceled activations', async ({ page }) => {
   await login(page, 'insights-range@example.com');
   await page.goto('/insights/?days=30');
   await page.evaluate(() => {
@@ -1212,40 +1242,112 @@ test('Export handoff preserves focus and defers one invalidated disclosure succe
   )
     .toBeLessThanOrEqual(1);
 
-  for (const input of ['pointerdown', 'Enter', ' ']) {
+  await armDisclosure('Enter');
+  await exportButton.focus({ preventScroll: true });
+  const heldPointerExport = await exportButton.elementHandle();
+  const pointerCommitsBefore = await page.evaluate(() => (
+    window.__exportHandoffRace.liveCommits
+  ));
+  const pointerScroll = await freezeScroll();
+  await heldPointerExport.evaluate((node) => {
+    node.addEventListener('pointerdown', () => window.__releaseExportHandoff(), {
+      once: true,
+    });
+  });
+  const pointerBox = await exportButton.boundingBox();
+  await page.mouse.move(pointerBox.x + (pointerBox.width / 2), pointerBox.y + (pointerBox.height / 2));
+  await page.mouse.down();
+  await page.waitForTimeout(450);
+  expect(await heldPointerExport.evaluate((node) => node.isConnected),
+    'a held pointer must not replace its live export control').toBe(true);
+  expect(await page.evaluate(() => window.__exportHandoffRace.liveCommits))
+    .toBe(pointerCommitsBefore);
+  expect(exportRequests).toBe(2);
+  await page.mouse.up();
+  await expect.poll(() => exportRequests).toBe(3);
+  await expect(exportButton).toBeDisabled();
+  await expect(exportButton).toHaveAttribute('aria-busy', 'true');
+  releaseResponses[2]();
+  await expect(exportButton).toBeEnabled();
+  await expect(exportButton).toBeFocused();
+  expect(Math.abs((await page.evaluate(() => window.scrollY)) - pointerScroll))
+    .toBeLessThanOrEqual(1);
+
+  await armDisclosure(' ');
+  await exportButton.focus({ preventScroll: true });
+  const heldSpaceExport = await exportButton.elementHandle();
+  const spaceCommitsBefore = await page.evaluate(() => (
+    window.__exportHandoffRace.liveCommits
+  ));
+  const spaceScroll = await freezeScroll();
+  await heldSpaceExport.evaluate((node) => {
+    node.addEventListener('keydown', (event) => {
+      if (event.key === ' ') window.__releaseExportHandoff();
+    }, { once: true });
+  });
+  await page.keyboard.down(' ');
+  await page.waitForTimeout(450);
+  expect(await heldSpaceExport.evaluate((node) => node.isConnected),
+    'a held Space key must not replace its live export control').toBe(true);
+  expect(await page.evaluate(() => window.__exportHandoffRace.liveCommits))
+    .toBe(spaceCommitsBefore);
+  expect(exportRequests).toBe(3);
+  await page.keyboard.up(' ');
+  await expect.poll(() => exportRequests).toBe(4);
+  await expect(exportButton).toBeDisabled();
+  await expect(exportButton).toHaveAttribute('aria-busy', 'true');
+  releaseResponses[3]();
+  await expect(exportButton).toBeEnabled();
+  await expect(exportButton).toBeFocused();
+  expect(Math.abs((await page.evaluate(() => window.scrollY)) - spaceScroll))
+    .toBeLessThanOrEqual(1);
+
+  for (const input of ['pointer-drag', 'Enter', ' ']) {
     await armDisclosure(input === ' ' ? 'Enter' : ' ');
     const currentExport = await exportButton.elementHandle();
     await exportButton.focus({ preventScroll: true });
     const commitsBeforeCancel = await page.evaluate(() => (
       window.__exportHandoffRace.liveCommits
     ));
-    await currentExport.evaluate((node, canceledInput) => {
-      const eventName = canceledInput === 'pointerdown' ? 'pointerdown' : 'keydown';
-      node.addEventListener(eventName, (event) => {
-        event.preventDefault();
-        window.__releaseExportHandoff();
-      }, { once: true });
-      node.dispatchEvent(canceledInput === 'pointerdown'
-        ? new PointerEvent('pointerdown', {
-          bubbles: true, cancelable: true, pointerId: 73,
-        })
-        : new KeyboardEvent('keydown', {
-          bubbles: true, cancelable: true, key: canceledInput,
-        }));
-    }, input);
+    if (input === 'pointer-drag') {
+      await currentExport.evaluate((node) => {
+        node.addEventListener('pointerdown', () => window.__releaseExportHandoff(), {
+          once: true,
+        });
+      });
+      const box = await exportButton.boundingBox();
+      await page.mouse.move(box.x + (box.width / 2), box.y + (box.height / 2));
+      await page.mouse.down();
+      await page.waitForTimeout(450);
+      expect(await currentExport.evaluate((node) => node.isConnected),
+        'drag cancellation must wait for pointer release').toBe(true);
+      await page.mouse.move(1, 1);
+      await page.mouse.up();
+    } else {
+      await currentExport.evaluate((node, canceledInput) => {
+        node.addEventListener('keydown', (event) => {
+          if (event.key !== canceledInput) return;
+          event.preventDefault();
+          window.__releaseExportHandoff();
+        }, { once: true });
+      }, input);
+      await page.keyboard.down(input);
+      if (input === ' ') await page.waitForTimeout(450);
+      await page.keyboard.up(input);
+    }
     await expect.poll(() => page.evaluate(() => window.__exportHandoffRace.active)).toBe(0);
     await expect.poll(() => page.evaluate(() => window.__exportHandoffRace.liveCommits))
       .toBe(commitsBeforeCancel + 1);
     await expect.poll(() => currentExport.evaluate((node) => node.isConnected)).toBe(false);
     await expect(exportButton).toBeFocused();
-    expect(exportRequests).toBe(2);
+    expect(exportRequests).toBe(4);
   }
 
   await exportButton.click();
-  await expect.poll(() => exportRequests).toBe(3);
+  await expect.poll(() => exportRequests).toBe(5);
   await expect(exportButton).toBeDisabled();
   await expect(exportButton).toHaveAttribute('aria-busy', 'true');
-  releaseResponses[2]();
+  releaseResponses[4]();
   await expect(exportButton).toBeEnabled();
 
   await armDisclosure('Enter');
@@ -1274,9 +1376,9 @@ test('Export handoff preserves focus and defers one invalidated disclosure succe
   await page.waitForTimeout(100);
   expect(await page.evaluate(() => window.__exportHandoffRace.liveCommits))
     .toBe(commitsBeforePostCommit + 1);
-  expect(exportRequests).toBe(3);
+  expect(exportRequests).toBe(5);
   expect(await page.evaluate(() => window.__exportHandoffRace.maxActive)).toBe(1);
-  expect(exportRequests).toBe(3);
+  expect(exportRequests).toBe(5);
 });
 
 test('Export failure cleanup has no frame gap and never steals moved focus', async ({ page }) => {
@@ -1323,7 +1425,7 @@ test('Export failure cleanup has no frame gap and never steals moved focus', asy
 });
 
 test('empty Insights export stays local for pointer and keyboard activation', async ({ page }) => {
-  await login(page, 'insights-no-plan@example.com');
+  await login(page, 'release-analytics-empty@example.com');
   await page.goto('/insights/?days=7');
   let requests = 0;
   await page.route('**/insights/api/export?days=7', async (route) => {
@@ -1335,7 +1437,7 @@ test('empty Insights export stays local for pointer and keyboard activation', as
   await expect(page.locator('[data-insights-load-status]'))
     .toContainText('There is no data to export');
   await expect(exportButton).toBeEnabled();
-  await expect(exportButton).toHaveAttribute('aria-busy', 'false');
+  await expect(exportButton).not.toHaveAttribute('aria-busy', 'true');
   await exportButton.focus({ preventScroll: true });
   await page.keyboard.press('Enter');
   await expect(exportButton).toBeFocused();

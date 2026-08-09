@@ -604,6 +604,8 @@ export async function startInsights(scope = document) {
   const inFlightPresentations = new Set();
   let presentationRefreshOwed = false;
   let presentationFallbackTimer = null;
+  let pointerActivation = null;
+  let keyboardActivation = null;
   let exportPending = false;
   let exportSettlement = Promise.resolve();
   let exportActivationScroll = null;
@@ -764,13 +766,17 @@ export async function startInsights(scope = document) {
     preserveFocus = false,
     preserveLoadStatus = false,
   } = {}) => {
-    if (exportPending || root.getAttribute('aria-busy') === 'true') {
+    const generation = ++presentationGeneration;
+    const activationStillHeld = (
+      pointerActivation
+      || (keyboardActivation && !keyboardActivation.claimed)
+    );
+    if (activationStillHeld || exportPending || root.getAttribute('aria-busy') === 'true') {
       presentationRefreshOwed = true;
       return false;
     }
     cancelPresentationFallback();
     presentationRefreshOwed = false;
-    const generation = ++presentationGeneration;
     const status = root.querySelector('[data-insights-load-status]');
     const loadStatus = preserveLoadStatus && status ? {
       text: status.textContent,
@@ -908,14 +914,13 @@ export async function startInsights(scope = document) {
     disclosureSummaryFor(event)
     || event.target.closest?.('#export-data')
   );
-  const invalidatePendingPresentation = (event) => {
+  const invalidatePendingPresentation = (event, { atEnd = false } = {}) => {
     const action = presentationSensitiveActionFor(event);
-    if (!action) return;
+    if (!action) return null;
     const invalidatedPresentation = inFlightPresentations.has(presentationGeneration);
     presentationGeneration += 1;
     if (invalidatedPresentation) {
       presentationRefreshOwed = true;
-      schedulePresentationFallback();
     }
     if (action.id === 'export-data') {
       if (event.type === 'keydown' || event.type === 'pointerdown') {
@@ -924,13 +929,59 @@ export async function startInsights(scope = document) {
       const liveDetails = root.querySelector('.analytics-details');
       if (liveDetails) detailsOpen = liveDetails.open;
     }
+    if (atEnd && presentationRefreshOwed) schedulePresentationFallback();
+    return {
+      kind: action.id === 'export-data' ? 'export' : 'summary',
+      target: action,
+    };
   };
-  root.addEventListener('pointerdown', invalidatePendingPresentation, true);
+  const finishPointerActivation = (event) => {
+    if (!pointerActivation || event.pointerId !== pointerActivation.pointerId) return;
+    pointerActivation = null;
+    if (presentationRefreshOwed) schedulePresentationFallback();
+  };
+  const finishKeyboardActivation = (event = null) => {
+    if (!keyboardActivation) return;
+    if (event?.key && event.key !== keyboardActivation.key) return;
+    const activation = keyboardActivation;
+    keyboardActivation = null;
+    if (!activation.claimed && presentationRefreshOwed) schedulePresentationFallback();
+  };
+  root.addEventListener('pointerdown', (event) => {
+    if (!presentationSensitiveActionFor(event)) return;
+    cancelPresentationFallback();
+    const action = invalidatePendingPresentation(event);
+    pointerActivation = {
+      pointerId: event.pointerId,
+      kind: action.kind,
+    };
+  }, true);
   root.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
-    invalidatePendingPresentation(event);
+    if (!presentationSensitiveActionFor(event)) return;
+    if (
+      event.repeat
+      || (keyboardActivation
+        && keyboardActivation.key === event.key
+        && keyboardActivation.target === event.target)
+    ) return;
+    cancelPresentationFallback();
+    keyboardActivation = null;
+    const action = invalidatePendingPresentation(event);
+    keyboardActivation = {
+      key: event.key,
+      kind: action.kind,
+      target: event.target,
+      claimed: false,
+    };
   }, true);
-  root.addEventListener('click', invalidatePendingPresentation, true);
+  root.addEventListener('click', (event) => {
+    const action = presentationSensitiveActionFor(event);
+    if (!action) return;
+    const kind = action.id === 'export-data' ? 'export' : 'summary';
+    if (keyboardActivation?.kind === kind) keyboardActivation.claimed = true;
+    invalidatePendingPresentation(event, { atEnd: true });
+  }, true);
   root.addEventListener('click', (event) => {
     const item = event.target.closest?.('.dropdown-item[data-days]');
     if (item) {
@@ -968,6 +1019,11 @@ export async function startInsights(scope = document) {
     cancelPresentationFallback();
     renderLive({ preserveFocus: true });
   }, true);
+  document.addEventListener('pointerup', finishPointerActivation, true);
+  document.addEventListener('pointercancel', finishPointerActivation, true);
+  document.addEventListener('lostpointercapture', finishPointerActivation, true);
+  document.addEventListener('keyup', finishKeyboardActivation, true);
+  window.addEventListener('blur', () => finishKeyboardActivation());
   document.documentElement.addEventListener('nicotine-tracker:theme-change', renderLive);
   window.addEventListener('popstate', (event) => {
     if (suppressPop) {
