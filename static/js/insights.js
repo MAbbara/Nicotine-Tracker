@@ -514,6 +514,43 @@ export function createSerialTaskQueue() {
   return { run };
 }
 
+export function captureInsightsFocus(root, activeElement, enabled = true) {
+  if (!enabled || !activeElement || !root?.contains?.(activeElement)) return null;
+  for (const [selector, kind, dataKey] of [
+    ['[data-days]', 'range', 'days'],
+    ['.trend-toggle[data-type]', 'trend', 'type'],
+  ]) {
+    const control = activeElement.closest?.(selector);
+    if (!control || !root.contains(control)) continue;
+    const value = control.dataset?.[dataKey];
+    if (value) return { kind, value: String(value) };
+  }
+  const summary = activeElement.closest?.('.analytics-details > summary');
+  if (summary && root.contains(summary)) {
+    const value = summary.textContent?.trim();
+    if (value) return { kind: 'summary', value };
+  }
+  return null;
+}
+
+export function restoreInsightsFocus(root, identity, activeDocument = document) {
+  if (!identity || activeDocument?.visibilityState !== 'visible') return false;
+  const definition = {
+    range: { selector: '[data-days]', dataKey: 'days' },
+    trend: { selector: '.trend-toggle[data-type]', dataKey: 'type' },
+    summary: { selector: '.analytics-details > summary', text: true },
+  }[identity.kind];
+  if (!definition) return false;
+  const replacement = [...root.querySelectorAll(definition.selector)].find((control) => (
+    definition.text
+      ? control.textContent?.trim() === identity.value
+      : String(control.dataset?.[definition.dataKey]) === identity.value
+  ));
+  if (!replacement?.focus) return false;
+  replacement.focus({ preventScroll: true });
+  return true;
+}
+
 export async function buildLatestPresentation({
   build,
   isTransactionCurrent,
@@ -655,8 +692,8 @@ export async function startInsights(scope = document) {
     }
   };
 
-  const commitCandidate = (candidate, data, range) => {
-    const focusedRange = document.activeElement?.closest?.('[data-days]')?.dataset.days;
+  const commitCandidate = (candidate, data, range, { preserveFocus = false } = {}) => {
+    const focusIdentity = captureInsightsFocus(root, document.activeElement, preserveFocus);
     const previousCharts = activeCharts;
     root.replaceChildren(...candidate.root.childNodes);
     root.dataset.insightsState = candidate.root.dataset.insightsState;
@@ -668,12 +705,10 @@ export async function startInsights(scope = document) {
     detailsOpen = Boolean(root.querySelector('.analytics-details')?.open);
     candidate.host.remove();
     destroyCharts(previousCharts);
-    if (focusedRange && document.visibilityState === 'visible') {
-      root.querySelector(`[data-days="${focusedRange}"]`)?.focus();
-    }
+    restoreInsightsFocus(root, focusIdentity, document);
   };
 
-  const renderLive = async () => {
+  const renderLive = async ({ preserveFocus = false } = {}) => {
     const generation = ++presentationGeneration;
     if (root.getAttribute('aria-busy') === 'true') return false;
     const candidate = await buildCandidate(
@@ -683,7 +718,7 @@ export async function startInsights(scope = document) {
       { strict: false },
     );
     if (!candidate || generation !== presentationGeneration) return false;
-    commitCandidate(candidate, currentData, currentRange);
+    commitCandidate(candidate, currentData, currentRange, { preserveFocus });
     return true;
   };
 
@@ -725,7 +760,9 @@ export async function startInsights(scope = document) {
       });
       if (!candidate) return false;
       if (generation !== requestGeneration || controller.signal.aborted) return false;
-      commitCandidate(candidate, data, candidateRange);
+      commitCandidate(candidate, data, candidateRange, {
+        preserveFocus: historyMode === 'push',
+      });
       const nextUrl = new URL(window.location.href);
       nextUrl.searchParams.set('days', String(currentRange));
       if (historyMode === 'push') {
@@ -772,7 +809,7 @@ export async function startInsights(scope = document) {
     const button = event.target.closest?.('.trend-toggle');
     if (button) {
       trendType = button.dataset.type === 'weekly' ? 'weekly' : 'daily';
-      renderLive();
+      renderLive({ preserveFocus: true });
       return;
     }
     if (event.target.closest?.('#export-data')) exportRange(root, currentRange);
@@ -781,7 +818,7 @@ export async function startInsights(scope = document) {
     if (!event.target.matches?.('.analytics-details')) return;
     if (event.target.open === detailsOpen) return;
     detailsOpen = event.target.open;
-    renderLive();
+    renderLive({ preserveFocus: true });
   }, true);
   document.documentElement.addEventListener('nicotine-tracker:theme-change', renderLive);
   window.addEventListener('popstate', (event) => {

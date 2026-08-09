@@ -750,6 +750,71 @@ test('Insights range transaction retains geometry, content, focus, and atomic hi
   expect(await semanticInsightsSnapshot(page)).toEqual(expectedThirty);
 });
 
+test('Insights presentation commits preserve owned focus without stealing moved focus', async ({ page }) => {
+  await login(page, 'insights-range@example.com');
+  await page.goto('/insights/?days=30');
+
+  const weekly = page.getByRole('button', { name: 'Weekly' });
+  await weekly.focus();
+  await page.keyboard.press('Enter');
+  await expect(weekly).toHaveAttribute('aria-pressed', 'true');
+  await expect(weekly).toBeFocused();
+
+  const daily = page.getByRole('button', { name: 'Daily' });
+  await daily.focus();
+  await page.keyboard.press('Enter');
+  await expect(daily).toHaveAttribute('aria-pressed', 'true');
+  await expect(daily).toBeFocused();
+
+  let releaseNinety;
+  const ninetyHeld = new Promise((resolve) => { releaseNinety = resolve; });
+  await page.route('**/insights/api/insights?days=90', async (route) => {
+    await ninetyHeld;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(apiFixture(90)),
+    });
+  });
+  const ninety = page.getByRole('link', { name: '90 days', exact: true });
+  await ninety.focus();
+  await page.keyboard.press('Enter');
+  await expect(ninety).toHaveAttribute('aria-busy', 'true');
+  const outside = page.getByRole('navigation', { name: 'Primary' })
+    .getByRole('link', { name: 'Today', exact: true });
+  await outside.focus();
+  releaseNinety();
+  await expect(page.locator('[data-days="90"]')).toHaveAttribute('aria-current', 'true');
+  await expect(outside).toBeFocused();
+
+  const beforeTheme = await page.locator('[data-insights-headline]').elementHandle();
+  await page.evaluate(() => {
+    document.documentElement.dispatchEvent(new CustomEvent('nicotine-tracker:theme-change'));
+  });
+  await expect.poll(() => beforeTheme.evaluate((node) => node.isConnected)).toBe(false);
+  await expect(outside).toBeFocused();
+
+  const beforePop = await page.locator('[data-insights-headline]').elementHandle();
+  await page.goBack();
+  await expect(page).toHaveURL(/days=30/);
+  await expect(page.locator('[data-days="30"]')).toHaveAttribute('aria-current', 'true');
+  await expect.poll(() => beforePop.evaluate((node) => node.isConnected)).toBe(false);
+  await expect(outside).toBeFocused();
+
+  await page.route('**/insights/api/insights?days=7', (route) => route.fulfill({
+    status: 503,
+    contentType: 'application/json',
+    body: '{"error":"controlled"}',
+  }));
+  const seven = page.getByRole('link', { name: '7 days', exact: true });
+  await seven.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-insights-load-status]'))
+    .toContainText('choose the range again to retry');
+  await expect(seven).toBeFocused();
+  await expect(page.locator('[data-days="30"]')).toHaveAttribute('aria-current', 'true');
+});
+
 test('latest range wins after abort and long snapshot labels stay contained at 320px 200%', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 320, height: 844 });

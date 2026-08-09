@@ -702,6 +702,84 @@ test('chart tasks serialize without losing the newest presentation', async () =>
   assert.deepEqual(results, [false, true]);
 });
 
+test('Insights commit focus identity restores owned replacement controls without scrolling', async () => {
+  const module = await importModule('static/js/insights.js');
+  assert.equal(typeof module.captureInsightsFocus, 'function');
+  assert.equal(typeof module.restoreInsightsFocus, 'function');
+
+  for (const fixture of [
+    { selector: '[data-days]', dataset: { days: '90' }, identity: { kind: 'range', value: '90' } },
+    {
+      selector: '.trend-toggle[data-type]',
+      dataset: { type: 'weekly' },
+      identity: { kind: 'trend', value: 'weekly' },
+    },
+    {
+      selector: '.analytics-details > summary',
+      dataset: {},
+      textContent: 'Open hourly detail and supporting measures',
+      identity: { kind: 'summary', value: 'Open hourly detail and supporting measures' },
+    },
+  ]) {
+    const current = {
+      dataset: fixture.dataset,
+      textContent: fixture.textContent,
+      closest(selector) { return selector === fixture.selector ? this : null; },
+    };
+    const currentRoot = { contains: (node) => node === current };
+    const identity = module.captureInsightsFocus(currentRoot, current);
+    assert.deepEqual(identity, fixture.identity);
+
+    const focusOptions = [];
+    const replacement = {
+      dataset: fixture.dataset,
+      textContent: fixture.textContent,
+      focus(options) { focusOptions.push(options); },
+    };
+    const replacementRoot = {
+      querySelectorAll(selector) { return selector === fixture.selector ? [replacement] : []; },
+    };
+    assert.equal(module.restoreInsightsFocus(
+      replacementRoot,
+      identity,
+      { visibilityState: 'visible' },
+    ), true);
+    assert.deepEqual(focusOptions, [{ preventScroll: true }]);
+  }
+});
+
+test('Insights commit focus ignores disabled, outside, hidden, and missing targets', async () => {
+  const module = await importModule('static/js/insights.js');
+  assert.equal(typeof module.captureInsightsFocus, 'function');
+  assert.equal(typeof module.restoreInsightsFocus, 'function');
+
+  const range = {
+    dataset: { days: '7' },
+    closest(selector) { return selector === '[data-days]' ? this : null; },
+  };
+  const outside = { contains: () => false };
+  assert.equal(module.captureInsightsFocus(outside, range), null);
+  assert.equal(module.captureInsightsFocus({ contains: () => true }, range, false), null);
+
+  let focusCalls = 0;
+  const replacement = {
+    dataset: { days: '7' },
+    focus() { focusCalls += 1; },
+  };
+  const replacementRoot = { querySelectorAll: () => [replacement] };
+  assert.equal(module.restoreInsightsFocus(
+    replacementRoot,
+    { kind: 'range', value: '7' },
+    { visibilityState: 'hidden' },
+  ), false);
+  assert.equal(module.restoreInsightsFocus(
+    { querySelectorAll: () => [] },
+    { kind: 'range', value: '7' },
+    { visibilityState: 'visible' },
+  ), false);
+  assert.equal(focusCalls, 0);
+});
+
 test('a current range transaction retries after its presentation theme is invalidated', async () => {
   const { buildLatestPresentation } = await importModule('static/js/insights.js');
   let presentationGeneration = 0;
