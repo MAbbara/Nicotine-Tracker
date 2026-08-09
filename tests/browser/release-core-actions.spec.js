@@ -1223,18 +1223,32 @@ test('product guard exempts only the exact intentional HTTP failure', async ({ p
     method: 'GET', path: '/insights/api/insights?days=90', status: 503, count: 1,
   };
   const exactGuard = watchForProductProblems(page);
-  await page.evaluate(() => fetch('/insights/api/insights?days=90'));
+  await page.evaluate(async () => {
+    const controller = new AbortController();
+    await fetch('/insights/api/insights?days=90', { signal: controller.signal });
+    controller.abort();
+  });
   await expect.poll(() => exactGuard.problems().filter(({ kind }) => kind === 'http-5xx').length)
     .toBe(1);
+  await expect.poll(() => exactGuard.problems().filter(({ kind }) => (
+    kind === 'request-failed'
+  )).length).toBe(1);
   exactGuard.assertClean(expect, {
     stateName: 'exact intentional 503', expectedHttpErrors: [expectedFailure],
   });
   exactGuard.stop();
 
   const unrelatedGuard = watchForProductProblems(page);
-  await page.evaluate(() => fetch('/insights/api/insights?days=365'));
+  await page.evaluate(async () => {
+    const controller = new AbortController();
+    await fetch('/insights/api/insights?days=365', { signal: controller.signal });
+    controller.abort();
+  });
   await expect.poll(() => unrelatedGuard.problems().filter(({ kind }) => kind === 'http-5xx').length)
     .toBe(1);
+  await expect.poll(() => unrelatedGuard.problems().filter(({ kind }) => (
+    kind === 'request-failed'
+  )).length).toBe(1);
   expect(() => unrelatedGuard.assertClean(expect, {
     stateName: 'unrelated 503', expectedHttpErrors: [expectedFailure],
   })).toThrow(/unrelated 503 product guard findings/);

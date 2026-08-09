@@ -65,6 +65,7 @@ function watchForProductProblems(page) {
     findings.push({
       kind: 'request-failed',
       text: request.failure()?.errorText || 'unknown request failure',
+      method: request.method(),
       url: request.url(),
       navigation: request.isNavigationRequest(),
     });
@@ -108,6 +109,7 @@ function watchForProductProblems(page) {
       ...entry,
       count: entry.count || 1,
       seen: 0,
+      abortedSeen: 0,
     }));
     const unexpected = findings.filter((finding) => {
       if (finding.kind === 'analytics-bundle' && options.allowAnalytics) {
@@ -120,6 +122,22 @@ function watchForProductProblems(page) {
         && allowedCanceledNavigationPaths.has(requestPath(finding.url))
       ) {
         return false;
+      }
+      if (
+        finding.kind === 'request-failed'
+        && !finding.navigation
+        && finding.text.includes('ERR_ABORTED')
+      ) {
+        const expectedAbort = expectedHttpErrors.find((entry) => (
+          entry.method === finding.method
+          && entry.path === requestTarget(finding.url)
+          && entry.abortedSeen < entry.count
+          && entry.abortedSeen < entry.seen
+        ));
+        if (expectedAbort) {
+          expectedAbort.abortedSeen += 1;
+          return false;
+        }
       }
       const expectedFailure = expectedHttpErrors.find((entry) => (
         entry.status === finding.status

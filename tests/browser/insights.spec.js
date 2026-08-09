@@ -815,6 +815,67 @@ test('Insights presentation commits preserve owned focus without stealing moved 
   await expect(page.locator('[data-days="30"]')).toHaveAttribute('aria-current', 'true');
 });
 
+test('native disclosure activation invalidates a background candidate before its queued toggle', async ({ page }) => {
+  await login(page, 'insights-range@example.com');
+  await page.goto('/insights/?days=30');
+  await page.evaluate(() => {
+    const BaseChart = window.ApexCharts;
+    window.__summaryCommitRace = { active: 0, maxActive: 0, held: false };
+    window.ApexCharts = class HeldBackgroundChart {
+      constructor(target, options) {
+        this.chart = new BaseChart(target, options);
+      }
+      async render() {
+        const audit = window.__summaryCommitRace;
+        audit.active += 1;
+        audit.maxActive = Math.max(audit.maxActive, audit.active);
+        try {
+          if (!audit.held) {
+            audit.held = true;
+            await new Promise((resolve) => { window.__releaseSummaryCommitRace = resolve; });
+          }
+          await this.chart.render();
+        } finally {
+          audit.active -= 1;
+        }
+      }
+      destroy() { this.chart.destroy(); }
+    };
+    document.documentElement.dispatchEvent(new CustomEvent('nicotine-tracker:theme-change'));
+  });
+  await expect.poll(() => page.evaluate(() => (
+    typeof window.__releaseSummaryCommitRace
+  ))).toBe('function');
+
+  const liveRoot = page.locator('[data-insights-root]:not([data-insights-candidate])');
+  const summary = liveRoot.getByText(
+    'Open hourly detail and supporting measures', { exact: true },
+  );
+  const oldSummary = await summary.elementHandle();
+  await summary.scrollIntoViewIfNeeded();
+  const scrollBefore = await page.evaluate(() => window.scrollY);
+  await oldSummary.evaluate((node) => {
+    node.focus({ preventScroll: true });
+    node.click();
+    window.__summaryCommitRace.openedAtInteraction = node.parentElement.open;
+    window.__summaryCommitRace.focusedAtInteraction = document.activeElement === node;
+    window.__releaseSummaryCommitRace();
+  });
+  expect(await page.evaluate(() => ({
+    open: window.__summaryCommitRace.openedAtInteraction,
+    focused: window.__summaryCommitRace.focusedAtInteraction,
+  }))).toEqual({ open: true, focused: true });
+  await expect.poll(() => oldSummary.evaluate((node) => node.isConnected)).toBe(false);
+  const replacement = liveRoot.getByText(
+    'Open hourly detail and supporting measures', { exact: true },
+  );
+  await expect(replacement.locator('..')).toHaveAttribute('open', '');
+  await expect(replacement).toBeFocused();
+  expect(Math.abs((await page.evaluate(() => window.scrollY)) - scrollBefore))
+    .toBeLessThanOrEqual(1);
+  expect(await page.evaluate(() => window.__summaryCommitRace.maxActive)).toBe(1);
+});
+
 test('latest range wins after abort and long snapshot labels stay contained at 320px 200%', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 320, height: 844 });

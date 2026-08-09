@@ -798,6 +798,15 @@ export async function startInsights(scope = document) {
   };
 
   root.addEventListener('click', (event) => {
+    const summary = event.target.closest?.('.analytics-details > summary');
+    if (summary && root.contains(summary)) {
+      event.preventDefault();
+      const details = summary.parentElement;
+      details.open = !details.open;
+      detailsOpen = details.open;
+      renderLive({ preserveFocus: true });
+      return;
+    }
     const item = event.target.closest?.('.dropdown-item[data-days]');
     if (item) {
       event.preventDefault();
