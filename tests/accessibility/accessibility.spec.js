@@ -716,9 +716,14 @@ for (const theme of ['light', 'dark']) {
     await page.goto('/journey/');
 
     await expectExplicitTheme(page, theme);
-    await expect(page.locator('.journey-table-scroll').first()).toBeVisible();
-    const scheduleContrast = await page.locator(
-      '.journey-schedule tr[aria-current="date"] > th[scope="row"] > span',
+    const schedule = page.getByRole('region', {
+      name: 'Seven-day plan',
+      exact: true,
+    });
+    await expect(schedule).toHaveCount(1);
+    await expect(schedule).toBeVisible();
+    const scheduleContrast = await schedule.locator(
+      'tr[aria-current="date"] > th[scope="row"] > span',
     ).evaluate((currentLabel) => {
       const parseRgb = (value) => {
         if (value.startsWith('#')) {
@@ -802,7 +807,11 @@ test('populated Journey mobile overflow is keyboard accessible', async ({ page }
   await login(page, 'journey-review-mobile@example.com');
   await page.goto('/journey/');
 
-  const schedule = page.locator('.journey-table-scroll').first();
+  const schedule = page.getByRole('region', {
+    name: 'Seven-day plan',
+    exact: true,
+  });
+  await expect(schedule).toHaveCount(1);
   await expect(schedule).toBeVisible();
   await expectKeyboardScrollable(schedule);
 });
