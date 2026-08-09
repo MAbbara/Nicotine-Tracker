@@ -55,12 +55,28 @@
       {% endif %}
     {% endfor %}
 
+    {% set ceiling_values = plan.next_days
+      |selectattr('nicotine_ceiling_mg', 'ne', none)
+      |map(attribute='nicotine_ceiling_mg')
+      |map('float')
+      |list %}
+    {% set has_comparable_ceilings = ceiling_values|length >= 2 %}
+    {% if has_comparable_ceilings %}
+      {% set minimum_ceiling = ceiling_values|min %}
+      {% set maximum_ceiling = ceiling_values|max %}
+    {% endif %}
+
     <div data-journey-trajectory role="group" aria-label="{{ plan.next_days|length }}-day {{ 'observation schedule' if plan.row.mode == 'observe' else 'nicotine ceiling trajectory' }}" aria-describedby="journey-trajectory-summary">
       {% for day in plan.next_days %}
         {% set previous_day = plan.next_days[loop.index0 - 1] if loop.index0 > 0 else none %}
+        {% if has_comparable_ceilings and day.nicotine_ceiling_mg is not none %}
+          {% set ceiling_value = day.nicotine_ceiling_mg|float %}
+          {% set journey_level = 0.5 if maximum_ceiling == minimum_ceiling else (ceiling_value - minimum_ceiling) / (maximum_ceiling - minimum_ceiling) %}
+        {% endif %}
         <button
           type="button"
           data-journey-day
+          {% if has_comparable_ceilings and day.nicotine_ceiling_mg is not none %}data-journey-level="{{ '%.4f'|format(journey_level) }}" style="--journey-level-offset: {{ '%.4f'|format(journey_level * 0.24) }}rem"{% endif %}
           aria-pressed="{{ 'true' if day.local_date == initial.day.local_date else 'false' }}"
           data-date-label="{{ day.local_date.strftime('%A') }}"
           data-ceiling-label="{{ ceiling_label(day) }}"

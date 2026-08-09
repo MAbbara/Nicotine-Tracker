@@ -203,6 +203,15 @@ def _assert_trajectory_owner(soup, *, count, accessible_name):
     return selected[0]
 
 
+def _trajectory_levels(soup):
+    buttons = soup.select('[data-journey-trajectory] [data-journey-day]')
+    return [
+        Decimal(button['data-journey-level'])
+        if button.has_attr('data-journey-level') else None
+        for button in buttons
+    ]
+
+
 class TestJourneyComposition:
     def test_login_protection_and_two_action_empty_state(self, app,
                                                          logged_in_client):
@@ -295,6 +304,11 @@ class TestJourneyComposition:
             ' ', strip=True
         ) == 'Ceilings stay at 48.00 mg across these 7 scheduled days.'
         assert len(page.select('[data-mobile-schedule] tbody tr')) == 7
+        assert _trajectory_levels(page) == [Decimal('0.5')] * 7
+        assert all(
+            '--journey-level-offset: 0.1200rem' in button.get('style', '')
+            for button in trajectory.select('[data-journey-day]')
+        )
 
         scripts = [script.get('src', '') for script in page.select('script[src]')]
         assert any(src.endswith('/js/journey/progress.js') for src in scripts)
@@ -772,7 +786,55 @@ class TestJourneyComposition:
             button['data-ceiling-label'] == 'No nicotine ceiling'
             for button in trajectory.select('[data-journey-day]')
         )
+        assert _trajectory_levels(soup) == [None, None, None]
+        assert all(
+            '--journey-level-offset' not in button.get('style', '')
+            for button in trajectory.select('[data-journey-day]')
+        )
         assert soup.select_one('[data-difference-mg]') is None
+
+    @pytest.mark.parametrize(
+        ('ceilings', 'expected_levels'),
+        [
+            (['48', '42', '36'], ['1', '0.5', '0']),
+            (['36', '42', '48'], ['0', '0.5', '1']),
+            (['42', '42', '42'], ['0.5', '0.5', '0.5']),
+        ],
+        ids=['decreasing', 'increasing', 'flat'],
+    )
+    def test_trajectory_levels_follow_real_server_ceiling_values(
+            self, logged_in_client, db_session, test_user,
+            ceilings, expected_levels):
+        authority = TodayService.get_summary(test_user.id)
+        plan = _plan(
+            db_session,
+            test_user,
+            start=authority.local_date,
+            length=3,
+        )
+        rows = PlanDay.query.filter_by(plan_id=plan.id).order_by(
+            PlanDay.local_date
+        ).all()
+        for row, ceiling in zip(rows, ceilings):
+            row.nicotine_ceiling_mg = Decimal(ceiling)
+        db_session.commit()
+
+        soup = BeautifulSoup(
+            logged_in_client.get('/journey/').data, 'html.parser'
+        )
+
+        assert _trajectory_levels(soup) == [
+            Decimal(value) for value in expected_levels
+        ]
+        assert [
+            button['style'].strip()
+            for button in soup.select(
+                '[data-journey-trajectory] [data-journey-day]'
+            )
+        ] == [
+            f'--journey-level-offset: {Decimal(value) * Decimal("0.24"):.4f}rem'
+            for value in expected_levels
+        ]
 
     def test_short_targeted_schedule_name_and_owner_match_real_rows(
             self, logged_in_client, db_session, test_user):

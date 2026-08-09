@@ -232,6 +232,21 @@ test('compact Journey hierarchy remains responsive, distinguishable, and motion-
   const nextChange = page.locator('[data-next-change]');
   const trajectory = page.locator('[data-journey-trajectory]');
   const days = trajectory.locator('[data-journey-day]');
+  const trajectoryData = await days.evaluateAll((elements) => elements.map((element) => ({
+    ceiling: Number.parseFloat(element.dataset.ceilingLabel),
+    level: Number.parseFloat(element.dataset.journeyLevel),
+    offset: Number.parseFloat(getComputedStyle(element).getPropertyValue('--journey-level-offset')),
+    cue: getComputedStyle(element, '::after').content,
+  })));
+  expect(trajectoryData).toHaveLength(7);
+  expect(trajectoryData.every(({ ceiling, level, offset, cue }) => (
+    Number.isFinite(ceiling) && Number.isFinite(level) && Number.isFinite(offset) && cue !== 'none'
+  ))).toBe(true);
+  for (let index = 1; index < trajectoryData.length; index += 1) {
+    expect(trajectoryData[index].ceiling).toBeLessThanOrEqual(trajectoryData[index - 1].ceiling);
+    expect(trajectoryData[index].level).toBeLessThanOrEqual(trajectoryData[index - 1].level);
+    expect(trajectoryData[index].offset).toBeLessThanOrEqual(trajectoryData[index - 1].offset);
+  }
 
   expect(await primary.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)))
     .toBeLessThanOrEqual(64);
@@ -272,6 +287,8 @@ test('compact Journey hierarchy remains responsive, distinguishable, and motion-
         left: rect.left,
         right: rect.right,
         border: style.borderRightColor,
+        borderWidth: Number.parseFloat(style.borderRightWidth),
+        borderStyle: style.borderRightStyle,
         background: style.backgroundColor,
       };
     }));
@@ -280,13 +297,25 @@ test('compact Journey hierarchy remains responsive, distinguishable, and motion-
       expect(day.height, `${theme} day ${index + 1} height`).toBeGreaterThanOrEqual(44);
       expect(day.left, `${theme} day ${index + 1} left`).toBeGreaterThanOrEqual(-1);
       expect(day.right, `${theme} day ${index + 1} right`).toBeLessThanOrEqual(321);
+      expect(day.borderWidth, `${theme} day ${index + 1} boundary width`).toBeGreaterThan(0);
+      expect(day.borderStyle, `${theme} day ${index + 1} boundary style`).not.toBe('none');
       expect(contrastRatio(day.border, day.background), `${theme} day ${index + 1} boundary`)
         .toBeGreaterThanOrEqual(3);
     }
 
+    const current = days.filter({ hasText: /Current/ });
+    await expect(current).toHaveCount(1);
+    const currentLabel = await current.getAttribute('data-date-label');
+    await days.last().click();
     const selected = trajectory.locator('[data-journey-day][aria-pressed="true"]');
     await expect(selected).toHaveCount(1);
-    await expect(selected.locator('small')).toHaveText('Current');
+    await expect(selected).toHaveAttribute(
+      'data-date-label',
+      await days.last().getAttribute('data-date-label'),
+    );
+    await expect(current.locator('small')).toHaveText('Current');
+    await expect(current).toHaveAttribute('data-date-label', currentLabel);
+    await expect(current).toHaveAttribute('aria-pressed', 'false');
     const selectedStyle = await selected.evaluate((element) => {
       const style = getComputedStyle(element);
       return { background: style.backgroundColor, shadow: style.boxShadow };
@@ -294,23 +323,34 @@ test('compact Journey hierarchy remains responsive, distinguishable, and motion-
     expect(selectedStyle.shadow).not.toBe('none');
     expect(selectedStyle.background).not.toBe('rgba(0, 0, 0, 0)');
 
-    await days.nth(1).focus();
-    const focused = await days.nth(1).evaluate((element) => {
-      const rect = element.getBoundingClientRect();
-      const style = getComputedStyle(element);
-      return {
-        active: element === document.activeElement,
-        left: rect.left,
-        right: rect.right,
-        outlineStyle: style.outlineStyle,
-        outlineWidth: Number.parseFloat(style.outlineWidth),
-      };
-    });
-    expect(focused.active).toBe(true);
-    expect(focused.outlineStyle).not.toBe('none');
-    expect(focused.outlineWidth).toBeGreaterThanOrEqual(2);
-    expect(focused.left).toBeGreaterThanOrEqual(-1);
-    expect(focused.right).toBeLessThanOrEqual(321);
+    await days.last().focus();
+    for (const [edge, key, day] of [
+      ['first', 'ArrowRight', days.first()],
+      ['last', 'ArrowLeft', days.last()],
+    ]) {
+      await page.keyboard.press(key);
+      await expect(day).toBeFocused();
+      const focused = await day.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        const outlineWidth = Number.parseFloat(style.outlineWidth);
+        const outlineOffset = Number.parseFloat(style.outlineOffset);
+        const outlineOutset = Math.max(0, outlineWidth + outlineOffset);
+        return {
+          active: element === document.activeElement,
+          left: rect.left - outlineOutset,
+          right: rect.right + outlineOutset,
+          outlineStyle: style.outlineStyle,
+          outlineWidth,
+        };
+      });
+      expect(focused.active).toBe(true);
+      expect(focused.outlineStyle).not.toBe('none');
+      expect(focused.outlineWidth).toBeGreaterThanOrEqual(2);
+      expect(focused.left, `${theme} ${edge} focus left`).toBeGreaterThanOrEqual(-1);
+      expect(focused.right, `${theme} ${edge} focus right`).toBeLessThanOrEqual(321);
+    }
+    await current.click();
   }
 
   await page.emulateMedia({ reducedMotion: 'reduce' });

@@ -3064,7 +3064,6 @@
   }
 
   [data-journey-day] {
-    --journey-slope-offset: 0rem;
     position: relative;
     min-width: 2.75rem;
     min-height: 2.75rem;
@@ -3079,14 +3078,10 @@
     transition: background-color var(--duration-feedback) var(--ease-out-expo);
   }
 
-  [data-journey-day]:last-child {
-    border-inline-end: 0;
-  }
-
-  [data-journey-day]::after {
+  [data-journey-day][data-journey-level]::after {
     position: absolute;
     inset-inline: var(--space-2);
-    inset-block-end: calc(0.3rem + var(--journey-slope-offset));
+    inset-block-end: calc(0.3rem + var(--journey-level-offset));
     height: 0.125rem;
     background: var(--color-constructive);
     content: "";
@@ -3094,13 +3089,6 @@
     pointer-events: none;
     transform: rotate(-1.5deg);
   }
-
-  [data-journey-day]:nth-child(2) { --journey-slope-offset: 0.04rem; }
-  [data-journey-day]:nth-child(3) { --journey-slope-offset: 0.08rem; }
-  [data-journey-day]:nth-child(4) { --journey-slope-offset: 0.12rem; }
-  [data-journey-day]:nth-child(5) { --journey-slope-offset: 0.16rem; }
-  [data-journey-day]:nth-child(6) { --journey-slope-offset: 0.2rem; }
-  [data-journey-day]:nth-child(7) { --journey-slope-offset: 0.24rem; }
 
   [data-journey-day] > span,
   [data-journey-day] > strong,
