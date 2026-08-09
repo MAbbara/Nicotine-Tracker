@@ -185,6 +185,24 @@ def _form_contract(form):
     }
 
 
+def _assert_trajectory_owner(soup, *, count, accessible_name):
+    trajectory = soup.select_one('[data-journey-trajectory]')
+    assert trajectory.get('aria-label') == accessible_name
+    buttons = trajectory.select('[data-journey-day]')
+    assert len(buttons) == count
+    selected = trajectory.select('[data-journey-day][aria-pressed="true"]')
+    assert len(selected) == 1
+    expected_detail = ' · '.join([
+        selected[0]['data-date-label'],
+        selected[0]['data-ceiling-label'],
+        selected[0]['data-change-label'],
+    ])
+    assert soup.select_one('[data-journey-day-detail]').get_text(
+        ' ', strip=True
+    ) == expected_detail
+    return selected[0]
+
+
 class TestJourneyComposition:
     def test_login_protection_and_two_action_empty_state(self, app,
                                                          logged_in_client):
@@ -264,8 +282,14 @@ class TestJourneyComposition:
 
         trajectory = page.select_one('[data-journey-trajectory]')
         assert trajectory['aria-describedby'] == 'journey-trajectory-summary'
-        assert len(trajectory.select('[data-journey-day]')) == 7
-        assert len(trajectory.select('[aria-pressed="true"]')) == 1
+        selected = _assert_trajectory_owner(
+            page,
+            count=7,
+            accessible_name='7-day nicotine ceiling trajectory',
+        )
+        assert selected['data-date-label'] == authority.local_date.strftime(
+            '%A'
+        )
         assert page.select_one('[data-journey-day-detail]') is not None
         assert page.select_one('[data-journey-trajectory-summary]').get_text(
             ' ', strip=True
@@ -401,7 +425,11 @@ class TestJourneyComposition:
         assert next_change.select_one('time') is None
         assert soup.select_one('[data-difference-mg]') is None
         trajectory = soup.select_one('[data-journey-trajectory]')
-        assert len(trajectory.select('[data-journey-day]')) == 7
+        _assert_trajectory_owner(
+            soup,
+            count=7,
+            accessible_name='7-day observation schedule',
+        )
         assert all(
             day['data-ceiling-label'] == 'No nicotine ceiling'
             for day in trajectory.select('[data-journey-day]')
@@ -429,9 +457,13 @@ class TestJourneyComposition:
         assert 'final scheduled ceiling' not in next_change.get_text(
             ' ', strip=True
         ).lower()
-        trajectory = soup.select_one('[data-journey-trajectory]')
-        assert len(trajectory.select('[data-journey-day]')) == 7
-        assert trajectory.select_one('[aria-pressed="true"]') is None
+        selected = _assert_trajectory_owner(
+            soup,
+            count=7,
+            accessible_name='7-day nicotine ceiling trajectory',
+        )
+        assert selected['data-date-label'] == start_date.strftime('%A')
+        assert selected['data-change-label'] == 'First scheduled ceiling'
 
     def test_plan_flow_wraps_overview_schedule_maintenance_and_revision_fields(
             self, logged_in_client, db_session, test_user):
@@ -727,13 +759,43 @@ class TestJourneyComposition:
             logged_in_client.get('/journey/').data, 'html.parser'
         )
         trajectory = soup.select_one('[data-journey-trajectory]')
-        assert len(trajectory.select('[data-journey-day]')) == 3
+        selected = _assert_trajectory_owner(
+            soup,
+            count=3,
+            accessible_name='3-day observation schedule',
+        )
+        assert selected['data-date-label'] == authority.local_date.strftime(
+            '%A'
+        )
         assert len(soup.select('[data-mobile-schedule] tbody tr')) == 3
         assert all(
             button['data-ceiling-label'] == 'No nicotine ceiling'
             for button in trajectory.select('[data-journey-day]')
         )
         assert soup.select_one('[data-difference-mg]') is None
+
+    def test_short_targeted_schedule_name_and_owner_match_real_rows(
+            self, logged_in_client, db_session, test_user):
+        authority = TodayService.get_summary(test_user.id)
+        _plan(
+            db_session,
+            test_user,
+            start=authority.local_date,
+            length=3,
+        )
+
+        soup = BeautifulSoup(
+            logged_in_client.get('/journey/').data, 'html.parser'
+        )
+        selected = _assert_trajectory_owner(
+            soup,
+            count=3,
+            accessible_name='3-day nicotine ceiling trajectory',
+        )
+        assert selected['data-date-label'] == authority.local_date.strftime(
+            '%A'
+        )
+        assert len(soup.select('[data-mobile-schedule] tbody tr')) == 3
 
     def test_exhausted_schedule_keeps_history_without_empty_trajectory(
             self, logged_in_client, db_session, test_user):
