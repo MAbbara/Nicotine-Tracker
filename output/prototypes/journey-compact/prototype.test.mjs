@@ -5,6 +5,12 @@ import { chromium } from '@playwright/test';
 
 const origin = 'http://127.0.0.1:5051';
 const url = `${origin}/output/prototypes/journey-compact/`;
+const environments = [
+  { name: 'desktop-light', viewport: { width: 1440, height: 900 }, colorScheme: 'light', reducedMotion: 'no-preference' },
+  { name: 'desktop-dark', viewport: { width: 1440, height: 900 }, colorScheme: 'dark', reducedMotion: 'no-preference' },
+  { name: 'mobile', viewport: { width: 390, height: 844 }, colorScheme: 'light', reducedMotion: 'no-preference' },
+  { name: 'narrow-dark-reduced', viewport: { width: 320, height: 800 }, colorScheme: 'dark', reducedMotion: 'reduce' },
+];
 let server;
 let browser;
 
@@ -251,3 +257,124 @@ test('day detail reserves stable space at 320px and 200% text', async () => {
   assert.ok(overflow <= 1, `horizontal overflow ${overflow}px`);
   await page.close();
 });
+
+for (const environment of environments) {
+  test(`release matrix: ${environment.name}`, async () => {
+    const consoleErrors = [];
+    const failedRequests = [];
+    const page = await browser.newPage({
+      viewport: environment.viewport,
+      colorScheme: environment.colorScheme,
+      reducedMotion: environment.reducedMotion,
+    });
+    page.on('console', (message) => {
+      if (message.type() === 'error') consoleErrors.push(message.text());
+    });
+    page.on('requestfailed', (request) => {
+      failedRequests.push(`${request.method()} ${request.url()} ${request.failure()?.errorText}`);
+    });
+
+    try {
+      await page.goto(url);
+      await page.waitForLoadState('networkidle');
+      if (environment.name === 'narrow-dark-reduced') {
+        await page.evaluate(() => {
+          document.documentElement.style.fontSize = '200%';
+        });
+      }
+
+      assert.equal(await page.locator('[data-logged-mg]').textContent(), '37.25 mg');
+      assert.equal(await page.locator('[data-ceiling-mg]').textContent(), '33.19 mg');
+      assert.equal(await page.locator('[data-difference-mg]').textContent(), '+4.06 mg');
+      await assert.doesNotReject(() => page.locator('[data-plan-status]').evaluate((element) => {
+        if (!element.textContent.includes('Above today’s ceiling')) throw new Error('status text changed');
+        if (!element.checkVisibility()) throw new Error('status is not visible');
+      }));
+
+      const themeToggle = page.locator('[data-theme-toggle]');
+      const targetTheme = environment.colorScheme;
+      if (await page.locator('html').getAttribute('data-theme') !== targetTheme) {
+        await themeToggle.click();
+      }
+      assert.equal(await page.locator('html').getAttribute('data-theme'), targetTheme);
+      await themeToggle.click();
+      assert.notEqual(await page.locator('html').getAttribute('data-theme'), targetTheme);
+      await themeToggle.click();
+      assert.equal(await page.locator('html').getAttribute('data-theme'), targetTheme);
+
+      const days = page.locator('[data-day]');
+      assert.equal(await days.count(), 7);
+      for (let index = 0; index < await days.count(); index += 1) {
+        const day = days.nth(index);
+        await day.scrollIntoViewIfNeeded();
+        const box = await day.boundingBox();
+        assert.equal(await day.isVisible(), true);
+        assert.ok(box && box.x >= -1, `${environment.name} day ${index + 1} crossed the left edge`);
+        assert.ok(
+          box && box.x + box.width <= environment.viewport.width + 1,
+          `${environment.name} day ${index + 1} crossed the right edge`,
+        );
+        assert.ok(box && box.y >= -1, `${environment.name} day ${index + 1} crossed the top edge`);
+        assert.ok(
+          box && box.y + box.height <= environment.viewport.height + 1,
+          `${environment.name} day ${index + 1} crossed the bottom edge`,
+        );
+      }
+
+      await days.first().scrollIntoViewIfNeeded();
+      await days.first().focus();
+      await page.keyboard.press('ArrowRight');
+      const focusedDay = days.nth(1);
+      const focus = await focusedDay.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          active: element === document.activeElement,
+          outlineStyle: style.outlineStyle,
+          outlineWidth: Number.parseFloat(style.outlineWidth),
+        };
+      });
+      assert.equal(focus.active, true);
+      assert.notEqual(focus.outlineStyle, 'none');
+      assert.ok(focus.outlineWidth >= 2);
+
+      if (environment.name === 'narrow-dark-reduced') {
+        const maxMotionDuration = await page.evaluate(() => {
+          const toMilliseconds = (duration) => duration.endsWith('ms')
+            ? Number.parseFloat(duration)
+            : Number.parseFloat(duration) * 1000;
+          return Math.max(...[...document.querySelectorAll('*')].flatMap((element) => {
+            const style = getComputedStyle(element);
+            return [...style.animationDuration.split(','), ...style.transitionDuration.split(',')]
+              .map((duration) => toMilliseconds(duration.trim()));
+          }));
+        });
+        assert.ok(maxMotionDuration <= .001, `motion duration was ${maxMotionDuration}ms`);
+
+        for (let index = 0; index < await days.count(); index += 1) {
+          await days.nth(index).click();
+          assert.equal(await page.locator('[data-day][aria-pressed="true"]').count(), 1);
+          assert.equal(
+            await page.locator('[data-day][aria-pressed="true"]').getAttribute('data-date'),
+            await days.nth(index).getAttribute('data-date'),
+          );
+        }
+
+        const disclosures = page.locator('details > summary');
+        assert.equal(await disclosures.count(), 2);
+        for (let index = 0; index < await disclosures.count(); index += 1) {
+          await disclosures.nth(index).click();
+          assert.equal(await disclosures.nth(index).locator('..').getAttribute('open'), '');
+        }
+      }
+
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+      assert.ok(overflow <= 1, `${environment.name} horizontal overflow ${overflow}px`);
+      assert.deepEqual(consoleErrors, []);
+      assert.deepEqual(failedRequests, []);
+    } finally {
+      await page.close();
+    }
+  });
+}
