@@ -195,6 +195,10 @@ class TestJourneyComposition:
         response = logged_in_client.get('/journey/')
         assert response.status_code == 200
         soup = BeautifulSoup(response.data, 'html.parser')
+        assert soup.select_one('h1').get_text(strip=True) == 'Journey'
+        assert 'sr-only' not in soup.select_one('h1').get('class', [])
+        assert soup.select_one('[data-journey-scorecard]') is None
+        assert soup.select_one('[data-journey-trajectory]') is None
         assert soup.select_one('a[href="/journey/onboarding"]') is not None
         assert soup.select_one('a[href="/today/"]') is not None
         text = soup.get_text(' ', strip=True)
@@ -237,6 +241,40 @@ class TestJourneyComposition:
         )
         assert current is not None
         assert current.get_text(strip=True) == summary.local_date.isoformat()
+
+    def test_active_nicotine_plan_renders_compact_live_scorecard(
+            self, logged_in_client, db_session, test_user):
+        authority = TodayService.get_summary(test_user.id)
+        _plan(db_session, test_user, start=authority.local_date)
+
+        response = logged_in_client.get('/journey/')
+        assert response.status_code == 200
+        page = BeautifulSoup(response.data, 'html.parser')
+
+        heading = page.select_one('h1')
+        assert heading.get_text(strip=True) == 'Journey'
+        assert 'sr-only' not in heading.get('class', [])
+        scorecard = page.select_one('[data-journey-scorecard]')
+        assert scorecard.select_one('[data-known-mg]') is not None
+        assert scorecard.select_one('[data-ceiling-mg]') is not None
+        assert scorecard.select_one('[data-difference-mg]') is not None
+        assert scorecard.select_one('[data-difference-mg]').get_text(
+            strip=True
+        ) == '−48.00 mg'
+
+        trajectory = page.select_one('[data-journey-trajectory]')
+        assert trajectory['aria-describedby'] == 'journey-trajectory-summary'
+        assert len(trajectory.select('[data-journey-day]')) == 7
+        assert len(trajectory.select('[aria-pressed="true"]')) == 1
+        assert page.select_one('[data-journey-day-detail]') is not None
+        assert page.select_one('[data-journey-trajectory-summary]').get_text(
+            ' ', strip=True
+        ) == 'Ceilings stay at 48.00 mg across these 7 scheduled days.'
+        assert len(page.select('[data-mobile-schedule] tbody tr')) == 7
+
+        scripts = [script.get('src', '') for script in page.select('script[src]')]
+        assert any(src.endswith('/js/journey/progress.js') for src in scripts)
+        assert any(src.endswith('/js/journey/plan_editor.js') for src in scripts)
 
     def test_active_plan_preserves_exact_form_and_editor_hook_contracts(
             self, logged_in_client, db_session, test_user):
@@ -328,6 +366,8 @@ class TestJourneyComposition:
         assert soup.select_one('[data-ceiling-mg]').get_text(
             ' ', strip=True
         ) == 'Paused — not in effect'
+        assert soup.select_one('[data-journey-scorecard]') is not None
+        assert soup.select_one('[data-difference-mg]') is None
         next_change = soup.select_one('[data-next-change]')
         assert 'Resume this plan before future ceiling dates are scheduled' in (
             next_change.get_text(' ', strip=True)
@@ -359,6 +399,16 @@ class TestJourneyComposition:
         assert 'Resume when you want to continue neutral observation' in text
         assert 'ceiling dates' not in text.lower()
         assert next_change.select_one('time') is None
+        assert soup.select_one('[data-difference-mg]') is None
+        trajectory = soup.select_one('[data-journey-trajectory]')
+        assert len(trajectory.select('[data-journey-day]')) == 7
+        assert all(
+            day['data-ceiling-label'] == 'No nicotine ceiling'
+            for day in trajectory.select('[data-journey-day]')
+        )
+        assert soup.select_one('[data-journey-trajectory-summary]').get_text(
+            ' ', strip=True
+        ) == 'These 7 observation days have no nicotine ceiling.'
 
     def test_pre_start_plan_names_first_ceiling_without_comparison(
             self, logged_in_client, db_session, test_user):
@@ -379,6 +429,9 @@ class TestJourneyComposition:
         assert 'final scheduled ceiling' not in next_change.get_text(
             ' ', strip=True
         ).lower()
+        trajectory = soup.select_one('[data-journey-trajectory]')
+        assert len(trajectory.select('[data-journey-day]')) == 7
+        assert trajectory.select_one('[aria-pressed="true"]') is None
 
     def test_plan_flow_wraps_overview_schedule_maintenance_and_revision_fields(
             self, logged_in_client, db_session, test_user):
@@ -464,9 +517,22 @@ class TestJourneyComposition:
         assert progress is not None
         assert progress.select_one('[data-known-mg]').get_text(strip=True) == '12.00 mg'
         assert progress.select_one('[data-ceiling-mg]').get_text(strip=True) == '36.00 mg'
-        assert progress.select_one('[data-remaining-mg]').get_text(strip=True) == '24.00 mg'
+        assert progress.select_one('[data-difference-mg]').get_text(
+            strip=True
+        ) == '−24.00 mg'
         assert 'Below today’s ceiling' in progress.get_text(' ', strip=True)
-        assert 'Pouches logged 2' in progress.get_text(' ', strip=True)
+        assert 'Pouches logged' not in progress.get_text(' ', strip=True)
+        pouch_context = soup.select_one('[data-pouch-context]')
+        assert pouch_context.get_text(' ', strip=True) == 'Pouches logged 2'
+        assert pouch_context.find_previous('table').has_attr(
+            'data-mobile-schedule'
+        )
+
+        trajectory = soup.select_one('[data-journey-trajectory]')
+        buttons = trajectory.select('[data-journey-day]')
+        assert buttons[0]['data-change-label'] == 'Current ceiling'
+        assert buttons[1]['data-change-label'] == 'Ceiling unchanged'
+        assert buttons[2]['data-change-label'] == '6.00 mg lower'
 
         complete_schedule = soup.select_one('[data-complete-schedule]')
         assert [cell.get_text(' ', strip=True) for cell in complete_schedule.select('thead th')] == [
@@ -529,6 +595,8 @@ class TestJourneyComposition:
         assert 'Known nicotine 6.00 mg' in text
         assert 'Nicotine total incomplete' in text
         assert progress.select_one('[data-remaining-mg]') is None
+        assert progress.select_one('[data-difference-mg]') is None
+        assert progress.select_one('[data-journey-scorecard]') is not None
         assert '%' not in text
         assert 'on track' not in text.lower()
 
@@ -634,6 +702,57 @@ class TestJourneyComposition:
         assert 'Starting nicotine Not known' in text
         assert 'Usual pouch strength Not provided' in text
         assert '0.00 mg' not in text
+        soup = BeautifulSoup(response.data, 'html.parser')
+        assert soup.select_one('[data-journey-scorecard]') is None
+        assert soup.select_one('[data-journey-trajectory]') is None
+
+    def test_observe_and_short_schedule_render_only_real_day_controls(
+            self, logged_in_client, db_session, test_user):
+        authority = TodayService.get_summary(test_user.id)
+        _plan(
+            db_session,
+            test_user,
+            mode='observe',
+            start=authority.local_date,
+            length=3,
+            baseline_source='observe',
+            baseline_pouches=None,
+            baseline_mg=None,
+            baseline_strength=None,
+            pace=None,
+            end_target=None,
+        )
+
+        soup = BeautifulSoup(
+            logged_in_client.get('/journey/').data, 'html.parser'
+        )
+        trajectory = soup.select_one('[data-journey-trajectory]')
+        assert len(trajectory.select('[data-journey-day]')) == 3
+        assert len(soup.select('[data-mobile-schedule] tbody tr')) == 3
+        assert all(
+            button['data-ceiling-label'] == 'No nicotine ceiling'
+            for button in trajectory.select('[data-journey-day]')
+        )
+        assert soup.select_one('[data-difference-mg]') is None
+
+    def test_exhausted_schedule_keeps_history_without_empty_trajectory(
+            self, logged_in_client, db_session, test_user):
+        authority = TodayService.get_summary(test_user.id)
+        _plan(
+            db_session,
+            test_user,
+            start=authority.local_date - timedelta(days=5),
+            length=3,
+        )
+
+        soup = BeautifulSoup(
+            logged_in_client.get('/journey/').data, 'html.parser'
+        )
+        assert soup.select_one('[data-journey-trajectory]') is None
+        assert soup.select_one('[data-mobile-schedule]') is None
+        assert 'No future days are scheduled' in soup.get_text(' ', strip=True)
+        assert len(soup.select('[data-complete-schedule] tbody tr')) == 3
+        assert soup.select_one('.journey-history') is not None
 
     def test_persisted_zero_draft_values_are_not_mislabeled_unknown(
             self, logged_in_client, db_session, test_user):

@@ -7,7 +7,7 @@
 <div class="journey-page">
   <header class="page-intro page-intro--wide journey-intro{% if plan %} journey-intro--plan{% endif %}">
     <p class="eyebrow">Your direction</p>
-    <h1{% if plan %} class="sr-only"{% endif %}>Journey</h1>
+    <h1>Journey</h1>
     <p>See today clearly, then look ahead. Your history stays intact when you adjust future days.</p>
   </header>
 
@@ -35,7 +35,7 @@
           </p>
         </header>
 
-        <dl class="journey-progress-readout">
+        <dl class="journey-progress-readout" data-journey-scorecard>
           <div class="journey-progress-readout__primary">
             <dt>{% if progress.total_complete %}Nicotine logged{% else %}Known nicotine{% endif %}</dt>
             <dd data-known-mg>{{ '%.2f'|format(progress.known_mg) }} mg</dd>
@@ -44,10 +44,15 @@
             <dt>Today’s ceiling</dt>
             <dd data-ceiling-mg>{% if plan.row.status == 'paused' %}Paused — not in effect{% elif progress.ceiling_mg is not none %}{{ '%.2f'|format(progress.ceiling_mg) }} mg{% else %}Not scheduled{% endif %}</dd>
           </div>
-          {% if progress.total_complete %}
+          {% if progress.total_complete and plan.row.status != 'paused' and progress.ceiling_mg is not none and progress.remaining_mg is not none %}
             <div>
-              <dt>Remaining</dt>
-              <dd data-remaining-mg>{% if progress.remaining_mg is not none %}{{ '%.2f'|format(progress.remaining_mg) }} mg{% else %}Not scheduled{% endif %}</dd>
+              <dt>Difference</dt>
+              <dd data-difference-mg>{% if progress.remaining_mg < 0 %}+{{ '%.2f'|format(-progress.remaining_mg) }} mg{% elif progress.remaining_mg > 0 %}−{{ '%.2f'|format(progress.remaining_mg) }} mg{% else %}0.00 mg{% endif %}</dd>
+            </div>
+          {% elif progress.total_complete %}
+            <div>
+              <dt>Comparison</dt>
+              <dd>{% if plan.row.status == 'paused' %}Paused{% else %}Not available{% endif %}</dd>
             </div>
           {% else %}
             <div>
@@ -58,7 +63,6 @@
         </dl>
 
         <div class="journey-today__context">
-          <p><strong>Pouches logged</strong> {{ progress.pouches_logged }}</p>
           {% if not progress.total_complete %}
             <p>At least one pouch has no strength recorded, so remaining nicotine and pace are not claimed.</p>
           {% elif plan.row.status == 'paused' %}
@@ -281,4 +285,4 @@
 {% endblock %}
 
 {% block preline_js %}{% endblock %}
-{% block extra_js %}<script type="module" src="{{ url_for('static', filename='js/journey/plan_editor.js') }}"></script>{% endblock %}
+{% block extra_js %}<script type="module" src="{{ url_for('static', filename='js/journey/progress.js') }}"></script><script type="module" src="{{ url_for('static', filename='js/journey/plan_editor.js') }}"></script>{% endblock %}
