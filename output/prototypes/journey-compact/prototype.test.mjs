@@ -343,9 +343,15 @@ for (const environment of environments) {
             ? Number.parseFloat(duration)
             : Number.parseFloat(duration) * 1000;
           return Math.max(...[...document.querySelectorAll('*')].flatMap((element) => {
-            const style = getComputedStyle(element);
-            return [...style.animationDuration.split(','), ...style.transitionDuration.split(',')]
-              .map((duration) => toMilliseconds(duration.trim()));
+            const styles = [
+              getComputedStyle(element),
+              getComputedStyle(element, '::before'),
+              getComputedStyle(element, '::after'),
+            ];
+            return styles.flatMap((style) => [
+              ...style.animationDuration.split(','),
+              ...style.transitionDuration.split(','),
+            ]).map((duration) => toMilliseconds(duration.trim()));
           }));
         });
         assert.ok(maxMotionDuration <= .001, `motion duration was ${maxMotionDuration}ms`);
