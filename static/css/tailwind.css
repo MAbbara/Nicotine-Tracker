@@ -6729,6 +6729,12 @@
     height: 1rem;
   }
 
+  .primary-nav__link:focus-visible,
+  .today-shell .primary-nav__link:focus-visible,
+  .journey-shell .primary-nav__link:focus-visible {
+    outline-offset: 0;
+  }
+
   .primary-nav__link > span,
   .today-shell .primary-nav__link > span,
   .journey-shell .primary-nav__link > span {

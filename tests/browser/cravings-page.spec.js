@@ -8,11 +8,32 @@ const { watchForProductProblems } = require('./helpers/product_guard');
 
 
 function deterministicEmail(testInfo) {
-  const source = `${testInfo.project.name}:${testInfo.title}:${testInfo.repeatEachIndex}:cravings-page`;
+  const retry = Number(testInfo.retry) || 0;
+  const repeat = Number(testInfo.repeatEachIndex) || 0;
+  const source = `${testInfo.project.name}:${testInfo.title}:${retry}:${repeat}:cravings-page`;
   let hash = 0;
   for (const character of source) hash = ((hash * 31) + character.charCodeAt(0)) >>> 0;
   return `cravings-page-${hash}@example.com`;
 }
+
+
+test('Craving history registration identities are stable per attempt and isolated across retries and repeats', () => {
+  const attempt = {
+    project: { name: 'chromium-desktop' },
+    title: 'Craving history narrow state',
+    retry: 0,
+    repeatEachIndex: 0,
+  };
+  const email = deterministicEmail(attempt);
+
+  expect(deterministicEmail({ ...attempt })).toBe(email);
+  expect(deterministicEmail({ ...attempt, retry: 1 })).not.toBe(email);
+  expect(deterministicEmail({ ...attempt, repeatEachIndex: 1 })).not.toBe(email);
+  expect(deterministicEmail({
+    ...attempt,
+    project: { name: 'chromium-mobile' },
+  })).not.toBe(email);
+});
 
 
 async function register(page, testInfo) {
