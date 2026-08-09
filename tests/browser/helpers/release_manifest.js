@@ -265,9 +265,8 @@ const EXPECTED_ACTIONS = {
     'Log nicotine use', 'Log nicotine use Steady Mint · 6.00 mg is ready',
   ]),
   journey: reviewActions([
-    'Archive plan', 'Finish Observe', 'Go to Today’s next useful action',
-    'Mark complete', 'Pause plan', 'Review this draft',
-    'Show the complete schedule',
+    'Log nicotine or respond to a craving', 'Plan details and history',
+    'Preview revision', 'Review this draft',
   ]),
   'journey-onboarding': appActions('browser@example.com', [
     'Continue', 'Quit by a date Build a schedule that ends at zero.',
@@ -563,11 +562,10 @@ attachActionCoverage(
   'journey',
   ownedBy(ACTION_OWNERS.appChrome, appChromeActions('journey')),
   ownedBy(ACTION_OWNERS.journeyLifecycle, [
-    'Archive plan', 'Mark complete', 'Pause plan', 'Show the complete schedule',
+    'Plan details and history', 'Preview revision',
   ]),
-  ownedBy(ACTION_OWNERS.journeyObserve, ['Finish Observe']),
   ownedBy(ACTION_OWNERS.journeyChoices, [
-    'Go to Today’s next useful action', 'Review this draft',
+    'Log nicotine or respond to a craving', 'Review this draft',
   ]),
 );
 

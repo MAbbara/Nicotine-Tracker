@@ -868,10 +868,10 @@ test('uncovered onboarding choices and Journey handoffs preserve user control', 
   await loginAs(page, 'today-targeted@example.com');
   await page.goto('/journey/');
   await expectKeyboardNavigation(
-    page, page.getByRole('link', { name: 'Go to Today’s next useful action' }), '/today/',
+    page, page.getByRole('link', { name: 'Log nicotine or respond to a craving' }), '/today/',
   );
   recorder.record(
-    'journey', 'Go to Today’s next useful action', ['keyboard', 'request'],
+    'journey', 'Log nicotine or respond to a craving', ['keyboard', 'request'],
   );
   recorder.assertComplete();
 
@@ -892,17 +892,19 @@ test('Insights export disclosures and next steps keep data accessible', async ({
 
   for (const [summaryName, regionName] of [
     ['View consumption trend data', 'Consumption trend data'],
-    ['View time-of-day data', 'Time of day distribution data'],
+    ['View time-of-day data', 'Time of day nicotine data'],
     ['View weekly pattern data', 'Weekly pattern data'],
-    ['View product data', 'Brand preference data'],
+    ['View product data', 'Product nicotine data'],
   ]) {
     const summary = page.getByText(summaryName, { exact: true });
-    const details = summary.locator('..');
+    const region = page.getByRole('region', { name: regionName, exact: true });
     await summary.focus();
     await page.keyboard.press('Enter');
-    await expect(details).toHaveAttribute('open', '');
+    await expect(region).toHaveCount(1);
+    await expect(region).toBeVisible();
+    await expect(region.locator('tbody tr')).not.toHaveCount(0);
     await page.keyboard.press('Tab');
-    await expect(details.getByRole('region', { name: regionName })).toBeFocused();
+    await expect(region).toBeFocused();
   }
 
   const exportResponse = page.waitForResponse((response) => (
@@ -947,9 +949,9 @@ test('Insights actions run in every exact representative data state', async ({ p
   const recorder = createBehaviorRecorder(OWNER_TITLES.insights, expect);
   const disclosurePairs = [
     ['View consumption trend data', 'Consumption trend data'],
-    ['View time-of-day data', 'Time of day distribution data'],
+    ['View time-of-day data', 'Time of day nicotine data'],
     ['View weekly pattern data', 'Weekly pattern data'],
-    ['View product data', 'Brand preference data'],
+    ['View product data', 'Product nicotine data'],
   ];
 
   for (const stateName of stateNames) {
@@ -989,7 +991,9 @@ test('Insights actions run in every exact representative data state', async ({ p
       ));
       await keyboardActivate(page, range);
       await expect(page.locator('[data-insights-root]')).toHaveAttribute('aria-busy', 'true');
-      await expect(range).toHaveAttribute('aria-disabled', 'true');
+      await expect(range).toHaveAttribute('aria-busy', 'true');
+      await expect(page.locator('[data-days][aria-current="true"]'))
+        .toHaveAttribute('data-days', beforeCurrent);
       await expect(page.locator('[data-insights-load-status]')).toContainText('Updating insights');
       releaseRangeFailure();
       const failedResponse = await failedResponsePending;
@@ -1032,10 +1036,12 @@ test('Insights actions run in every exact representative data state', async ({ p
     for (const [summaryName, regionName] of disclosurePairs) {
       const summary = page.getByText(summaryName, { exact: true });
       await keyboardActivate(page, summary);
-      const details = summary.locator('..');
-      await expect(details).toHaveAttribute('open', '');
+      const region = page.getByRole('region', { name: regionName, exact: true });
+      await expect(region).toHaveCount(1);
+      await expect(region).toBeVisible();
+      await expect(region.locator('tbody tr')).not.toHaveCount(0);
       await page.keyboard.press('Tab');
-      await expect(details.getByRole('region', { name: regionName })).toBeFocused();
+      await expect(region).toBeFocused();
       recorder.record(stateName, summaryName, ['focus', 'keyboard']);
     }
     const hourlySummary = page.getByText(
@@ -1284,9 +1290,13 @@ test('Insights range and export expose deterministic pending state', async ({ pa
     await route.continue();
   });
   const range = page.getByRole('link', { name: '7 days', exact: true });
+  const beforeCurrent = await page.locator('[data-days][aria-current="true"]')
+    .getAttribute('data-days');
   await range.click();
   await expect(page.locator('[data-insights-root]')).toHaveAttribute('aria-busy', 'true');
-  await expect(range).toHaveAttribute('aria-disabled', 'true');
+  await expect(range).toHaveAttribute('aria-busy', 'true');
+  await expect(page.locator('[data-days][aria-current="true"]'))
+    .toHaveAttribute('data-days', beforeCurrent);
   await expect(page.locator('[data-insights-load-status]')).toContainText('Updating insights');
   releaseRange();
   await expect(range).toHaveAttribute('aria-current', 'true');

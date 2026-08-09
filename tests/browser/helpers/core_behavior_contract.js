@@ -129,7 +129,7 @@ const PROFILE_EVIDENCE = Object.freeze({
     error: ['asserted', 'a controlled failure preserves prior data and the same control retries successfully'],
     focus: ['asserted', 'the exact range control retains focus through failure and success'],
     keyboard: ['asserted', 'the exact range control is activated with Enter'],
-    loading: ['asserted', 'busy root, disabled ranges, and live loading status are asserted while held'],
+    loading: ['asserted', 'busy root and requested range plus live loading status are asserted while held'],
     persistence: ['not-applicable', 'range selection is intentionally page-local'],
     request: ['asserted', 'GET method, exact days query, status, and empty body are asserted'],
   },
@@ -262,14 +262,11 @@ group(OWNER_TITLES.todayLinks, [
   ['today-exceeded', 'Review the plan in Journey', 'navigation'],
 ]);
 group(OWNER_TITLES.journeyLifecycle, [
-  ['journey', 'Archive plan', 'journeyMutation'],
-  ['journey', 'Mark complete', 'journeyMutation'],
-  ['journey', 'Pause plan', 'journeyMutation'],
-  ['journey', 'Show the complete schedule', 'localFocus'],
+  ['journey', 'Plan details and history', 'localFocus'],
+  ['journey', 'Preview revision', 'journeyMutation'],
 ]);
-group(OWNER_TITLES.journeyObserve, [['journey', 'Finish Observe', 'journeyMutation']]);
 group(OWNER_TITLES.journeyChoices, [
-  ['journey', 'Go to Today’s next useful action', 'navigation'],
+  ['journey', 'Log nicotine or respond to a craving', 'navigation'],
   ['journey', 'Review this draft', 'navigation'],
   ['journey-onboarding', 'Quit by a date Build a schedule that ends at zero.', 'onboardingChoice'],
   ['journey-onboarding', 'Understand my baseline first Track for seven days without a reduction target.', 'onboardingChoice'],
