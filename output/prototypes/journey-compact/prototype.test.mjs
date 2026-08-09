@@ -125,3 +125,96 @@ test('light and dark themes retain usable trajectory controls', async () => {
 
   await page.close();
 });
+
+test('day selection is latest, stable, and keyboard operable', async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await page.goto(url);
+  const detail = page.locator('[data-day-detail]');
+  const before = await detail.boundingBox();
+  const tuesday = page.getByRole('button', { name: /Tuesday.*32\.06 mg/ });
+  await tuesday.focus();
+  await page.keyboard.press('Enter');
+  assert.equal(await tuesday.getAttribute('aria-pressed'), 'true');
+  assert.equal(
+    await page.getByRole('button', { name: /Today.*33\.19 mg/ }).getAttribute('aria-pressed'),
+    'false',
+  );
+  assert.match(await detail.textContent(), /Tuesday.*32\.06 mg.*0\.56 mg lower/);
+  const after = await detail.boundingBox();
+  assert.ok(before && after && Math.abs(before.height - after.height) <= 1);
+  await page.keyboard.press('ArrowRight');
+  await assert.doesNotReject(() => page.getByRole('button', { name: /Wednesday/ }).evaluate((element) => {
+    if (element !== document.activeElement) throw new Error('focus did not move');
+  }));
+  await page.close();
+});
+
+test('theme and completeness controls restore exact fixture values', async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await page.goto(url);
+
+  const themeToggle = page.locator('[data-theme-toggle]');
+  assert.equal(await page.locator('html').getAttribute('data-theme'), 'light');
+  await themeToggle.click();
+  assert.equal(await page.locator('html').getAttribute('data-theme'), 'dark');
+  await themeToggle.click();
+  assert.equal(await page.locator('html').getAttribute('data-theme'), 'light');
+
+  const stateToggle = page.locator('[data-state-toggle]');
+  await stateToggle.click();
+  assert.equal(
+    await page.locator('[data-logged-mg]').evaluate((element) => element.previousElementSibling.textContent),
+    'Known nicotine',
+  );
+  assert.equal(await page.locator('[data-logged-mg]').textContent(), '31.25 mg');
+  assert.equal(await page.locator('[data-difference-mg]').textContent(), 'Total incomplete');
+  assert.doesNotMatch(await page.locator('[data-difference-mg]').textContent(), /^[+-]/);
+  assert.match(await page.locator('[data-plan-status]').textContent(), /Nicotine total incomplete/);
+  assert.equal(
+    await page.locator('[data-plan-status] [aria-hidden="true"]').textContent(),
+    '■',
+  );
+
+  await stateToggle.click();
+  assert.equal(
+    await page.locator('[data-logged-mg]').evaluate((element) => element.previousElementSibling.textContent),
+    'Logged',
+  );
+  assert.equal(await page.locator('[data-logged-mg]').textContent(), '37.25 mg');
+  assert.equal(await page.locator('[data-difference-mg]').textContent(), '+4.06 mg');
+  assert.match(await page.locator('[data-plan-status]').textContent(), /Above today’s ceiling/);
+  assert.equal(
+    await page.locator('[data-plan-status] [aria-hidden="true"]').textContent(),
+    '●',
+  );
+
+  const disclosures = page.locator('details > summary');
+  assert.equal(await disclosures.count(), 2);
+  for (let index = 0; index < await disclosures.count(); index += 1) {
+    await disclosures.nth(index).focus();
+    assert.equal(
+      await disclosures.nth(index).evaluate((element) => element === document.activeElement),
+      true,
+    );
+  }
+  await page.close();
+});
+
+test('day detail reserves stable space at 320px and 200% text', async () => {
+  const page = await browser.newPage({ viewport: { width: 320, height: 800 } });
+  await page.goto(url);
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = '200%';
+  });
+  const detail = page.locator('[data-day-detail]');
+  const before = await detail.boundingBox();
+  await page.getByRole('button', { name: /Saturday.*29\.81 mg/ }).click();
+  const after = await detail.boundingBox();
+  assert.ok(before && after && Math.abs(before.height - after.height) <= 1);
+  assert.equal(await detail.evaluate((element) => element.scrollHeight <= element.clientHeight), true);
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  assert.ok(overflow <= 1, `horizontal overflow ${overflow}px`);
+  await page.close();
+});
