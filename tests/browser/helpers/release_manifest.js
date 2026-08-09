@@ -1,6 +1,7 @@
 const {
   CORE_BEHAVIOR_OBLIGATIONS,
   OWNER_TITLES,
+  TRANSITION_ONLY_BEHAVIOR_ACTIONS,
   obligationFor,
 } = require('./core_behavior_contract');
 const {
@@ -660,6 +661,7 @@ module.exports = {
   RELEASE_STATES,
   SUPPORTING_ACTION_RECEIPTS,
   SUPPORTING_ACTION_STATES: SUPPORTING_RECEIPT_STATES,
+  TRANSITION_ONLY_BEHAVIOR_ACTIONS,
   loginAs,
   resolveReleaseState,
 };

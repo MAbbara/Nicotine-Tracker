@@ -262,6 +262,9 @@ group(OWNER_TITLES.todayLinks, [
   ['today-exceeded', 'Review the plan in Journey', 'navigation'],
 ]);
 group(OWNER_TITLES.journeyLifecycle, [
+  ['journey', 'Archive plan', 'journeyMutation'],
+  ['journey', 'Mark complete', 'journeyMutation'],
+  ['journey', 'Pause plan', 'journeyMutation'],
   ['journey', 'Plan details and history', 'localFocus'],
   ['journey', 'Preview revision', 'journeyMutation'],
 ]);
@@ -320,6 +323,14 @@ for (const obligation of obligationEntries) {
 }
 
 const CORE_BEHAVIOR_OBLIGATIONS = Object.freeze(obligationEntries);
+const TRANSITION_ONLY_BEHAVIOR_ACTIONS = Object.freeze([
+  Object.freeze({ state: 'journey', action: 'Archive plan' }),
+  Object.freeze({ state: 'journey', action: 'Mark complete' }),
+  Object.freeze({ state: 'journey', action: 'Pause plan' }),
+]);
+const transitionOnlyKeys = new Set(TRANSITION_ONLY_BEHAVIOR_ACTIONS.map(({ state, action }) => (
+  `${state}\u0000${action}`
+)));
 
 function obligationFor(state, action) {
   return CORE_BEHAVIOR_OBLIGATIONS.find((entry) => (
@@ -401,7 +412,9 @@ function validateCoverage(expectedActions, coveredBy) {
   for (const state of states) {
     const actions = expectedActions[state];
     if (!actions) throw new Error(`${state} action inventory is missing`);
-    const obligations = CORE_BEHAVIOR_OBLIGATIONS.filter((entry) => entry.state === state);
+    const obligations = CORE_BEHAVIOR_OBLIGATIONS.filter((entry) => (
+      entry.state === state && !transitionOnlyKeys.has(`${entry.state}\u0000${entry.action}`)
+    ));
     const obligationActions = obligations.map(({ action }) => action).sort();
     if (JSON.stringify(obligationActions) !== JSON.stringify([...actions].sort())) {
       throw new Error(`${state} independent behavior obligations differ from action inventory`);
@@ -425,6 +438,7 @@ module.exports = {
   CORE_BEHAVIOR_OBLIGATIONS,
   DIMENSIONS,
   OWNER_TITLES,
+  TRANSITION_ONLY_BEHAVIOR_ACTIONS,
   assertedDimensions,
   createBehaviorRecorder,
   obligationFor,

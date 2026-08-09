@@ -7,6 +7,7 @@ const {
   RELEASE_PAGES,
   RELEASE_STATES,
   SUPPORTING_ACTION_RECEIPTS,
+  TRANSITION_ONLY_BEHAVIOR_ACTIONS,
   loginAs,
   resolveReleaseState,
 } = require('./helpers/release_manifest');
@@ -95,9 +96,18 @@ test('functional ownership reconciles the exact post-Task-4 release inventory', 
   expect(RELEASE_STATES).toHaveLength(45);
   expect(occurrences).toHaveLength(595);
   expect(new Set(occurrences).size).toBe(142);
-  expect(CORE_BEHAVIOR_OBLIGATIONS).toHaveLength(180);
+  expect(CORE_BEHAVIOR_OBLIGATIONS).toHaveLength(183);
   expect(SUPPORTING_ACTION_RECEIPTS).toHaveLength(415);
-  expect(CORE_BEHAVIOR_OBLIGATIONS.length + SUPPORTING_ACTION_RECEIPTS.length)
+  expect(TRANSITION_ONLY_BEHAVIOR_ACTIONS).toEqual([
+    { state: 'journey', action: 'Archive plan' },
+    { state: 'journey', action: 'Mark complete' },
+    { state: 'journey', action: 'Pause plan' },
+  ]);
+  expect(
+    CORE_BEHAVIOR_OBLIGATIONS.length
+      - TRANSITION_ONLY_BEHAVIOR_ACTIONS.length
+      + SUPPORTING_ACTION_RECEIPTS.length,
+  )
     .toBe(occurrences.length);
 
   for (const [stateName, actions] of Object.entries(EXPECTED_ACTIONS)) {

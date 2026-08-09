@@ -6,11 +6,31 @@ const {
 
 
 function deterministicEmail(testInfo, label) {
-  const source = `${testInfo.project.name}:${testInfo.title}:${label}`;
+  const retry = Number(testInfo.retry) || 0;
+  const repeat = Number(testInfo.repeatEachIndex) || 0;
+  const source = `${testInfo.project.name}:${testInfo.title}:${retry}:${repeat}:${label}`;
   let hash = 0;
   for (const character of source) hash = ((hash * 31) + character.charCodeAt(0)) >>> 0;
   return `journey-${hash}@example.com`;
 }
+
+test('Journey registration identities are stable per attempt and isolated across retries and repeats', () => {
+  const attempt = {
+    project: { name: 'chromium-desktop' },
+    title: 'Journey lifecycle',
+    retry: 0,
+    repeatEachIndex: 0,
+  };
+  const email = deterministicEmail(attempt, 'lifecycle');
+
+  expect(deterministicEmail({ ...attempt }, 'lifecycle')).toBe(email);
+  expect(deterministicEmail({ ...attempt, retry: 1 }, 'lifecycle')).not.toBe(email);
+  expect(deterministicEmail({ ...attempt, repeatEachIndex: 1 }, 'lifecycle')).not.toBe(email);
+  expect(deterministicEmail({
+    ...attempt,
+    project: { name: 'chromium-mobile' },
+  }, 'lifecycle')).not.toBe(email);
+});
 
 function watchForErrors(page, { ignoreConsole = [] } = {}) {
   const errors = [];
@@ -79,12 +99,24 @@ async function createPlan(page, { startDays = 0 } = {}) {
   await page.goto('/journey/');
 }
 
-async function previewRevision(page, duration = '35') {
+async function previewRevision(page, duration = '35', { keyboard = false } = {}) {
   const editor = page.locator('[data-plan-editor="revision"]');
   const effectiveDate = await isoDate(page, 1);
   await editor.getByLabel('Effective date').fill(effectiveDate);
   await editor.getByLabel('Duration days').fill(duration);
-  await editor.getByRole('button', { name: 'Preview revision' }).click();
+  const preview = editor.getByRole('button', { name: 'Preview revision' });
+  const responsePending = page.waitForResponse((response) => (
+    response.request().method() === 'POST'
+    && /\/api\/plans\/\d+\/revisions\/preview$/.test(new URL(response.url()).pathname)
+  ));
+  if (keyboard) {
+    await preview.focus();
+    await expect(preview).toBeFocused();
+    await page.keyboard.press('Enter');
+  } else {
+    await preview.click();
+  }
+  expect((await responsePending).status()).toBe(200);
   await expect(editor.locator('[data-plan-editor-preview]')).toContainText(effectiveDate);
   await expect(editor.locator('[data-plan-editor-preview] tbody tr')).not.toHaveCount(0);
   await expect(editor.getByRole('status')).toContainText(/persisted plan is unchanged/i);
@@ -268,7 +300,7 @@ test('Journey previews explicitly, mutates future rows only, and carries status 
   const completeSchedule = page.locator('[data-complete-schedule]');
   await expect(page.locator('[data-complete-schedule] tbody tr')).not.toHaveCount(0);
   await expect(planDetails).toBeFocused();
-  recorder.record('journey', 'Show the complete schedule', ['focus', 'keyboard']);
+  recorder.record('journey', 'Plan details and history', ['focus', 'keyboard']);
   await expect(page.locator('.journey-history')).toContainText(/Plan change \d+/);
 
   const before = await page.locator('[data-complete-schedule] tbody tr').evaluateAll((rows) => rows.map((row) => row.textContent));
@@ -281,8 +313,9 @@ test('Journey previews explicitly, mutates future rows only, and carries status 
   const revision = page.locator('[data-plan-editor="revision"]');
   await revision.getByLabel('Duration days').fill('42');
   expect(mutationRequests).toHaveLength(0);
-  await previewRevision(page, '42');
+  await previewRevision(page, '42', { keyboard: true });
   expect(mutationRequests).toHaveLength(0);
+  recorder.record('journey', 'Preview revision', ['keyboard', 'persistence', 'request']);
   await revision.getByRole('button', { name: 'Confirm revision' }).click();
   await expect(page).toHaveURL(/\/journey\/?$/);
   expect(mutationRequests).toHaveLength(1);
@@ -482,7 +515,6 @@ test('Observe recovery and migrated Goal review remain visibly separate and non-
   await expect(page.locator('[data-historical-plan]')).toContainText('Completed');
   await expect(legacy).toContainText(/Candidate plan \d+/);
   expect(errors).toEqual([]);
-  recorder.record('journey', 'Finish Observe', ['keyboard', 'persistence', 'request']);
   recorder.assertComplete();
 });
 
