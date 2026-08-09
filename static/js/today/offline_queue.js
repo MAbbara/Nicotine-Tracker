@@ -258,7 +258,6 @@ export function createOfflineQueueRuntime({
   let startupAllowsReplay = false;
   let replayTimer = null;
   let replayDeadline = null;
-  let immediateReplayConsumed = false;
   const maximumReplayTimerSlice = 60 * 60 * 1000;
   const subscribers = new Set();
   const attentionIds = new Set();
@@ -290,17 +289,16 @@ export function createOfflineQueueRuntime({
     return true;
   }
 
-  function scheduleReplayAt(deadline, { allowImmediate = false } = {}) {
+  function scheduleReplayAt(deadline) {
     const currentTime = Number(now());
     if (
       !startupAllowsReplay
       || !Number.isSafeInteger(deadline)
-      || (deadline <= currentTime && (!allowImmediate || immediateReplayConsumed))
+      || deadline <= currentTime
       || (replayTimer !== null && replayDeadline <= deadline)
     ) return false;
     cancelReplayTimer();
     replayDeadline = deadline;
-    if (deadline <= currentTime) immediateReplayConsumed = true;
     return armReplayTimer();
   }
 
@@ -371,9 +369,11 @@ export function createOfflineQueueRuntime({
         sanitized.record.not_before = notBefore;
       }
       await store.put(sanitized.record);
-      if (Number.isSafeInteger(sanitized.record.not_before)) {
-        immediateReplayConsumed = false;
-        scheduleReplayAt(sanitized.record.not_before, { allowImmediate: true });
+      if (
+        Number.isSafeInteger(sanitized.record.not_before)
+        && sanitized.record.not_before > Number(now())
+      ) {
+        scheduleReplayAt(sanitized.record.not_before);
       }
       attentionIds.delete(sanitized.record.client_event_id);
       return {
@@ -403,7 +403,6 @@ export function createOfflineQueueRuntime({
     }
     const removed = await store.remove(offlineQueueId, clientEventId);
     if (removed) attentionIds.delete(clientEventId);
-    if (removed) immediateReplayConsumed = false;
     if (removed) await scheduleEarliestReplay();
     return removed;
   }
@@ -413,7 +412,6 @@ export function createOfflineQueueRuntime({
     try {
       await store.clearAll();
       attentionIds.clear();
-      immediateReplayConsumed = false;
       cancelReplayTimer();
       return true;
     } catch (_) {
@@ -452,7 +450,6 @@ export function createOfflineQueueRuntime({
           attentionIds.delete(record.client_event_id);
         }
       }
-      immediateReplayConsumed = false;
       await scheduleEarliestReplay();
       return true;
     } catch (_) {
@@ -592,7 +589,7 @@ export function createOfflineQueueRuntime({
     return replayAfterStart();
   }
 
-  function ensureStartup({ publishPending = false, scheduleReplay = false } = {}) {
+  function ensureStartup({ publishPending = false } = {}) {
     if (startupPromise) return startupPromise;
     startupAllowsReplay = false;
     startupPromise = (async () => {
@@ -606,7 +603,6 @@ export function createOfflineQueueRuntime({
       if (publishPending) {
         for (const record of records) publish({ type: 'pending', record });
       }
-      if (scheduleReplay) defer(() => replayAfterStart());
       await scheduleEarliestReplay();
       return records;
     })();
@@ -614,7 +610,7 @@ export function createOfflineQueueRuntime({
   }
 
   function start() {
-    return ensureStartup({ publishPending: true, scheduleReplay: true });
+    return ensureStartup({ publishPending: true });
   }
 
   function invalidateBufferedResults() {
@@ -626,7 +622,6 @@ export function createOfflineQueueRuntime({
     invalidateBufferedResults();
     subscribers.clear();
     attentionIds.clear();
-    immediateReplayConsumed = false;
     startupPromise = null;
     startupAllowsReplay = false;
     cancelReplayTimer();

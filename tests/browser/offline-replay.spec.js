@@ -366,8 +366,12 @@ test('logout clears queued storage before another account can replay it', async 
   await expect.poll(() => settledPostCount).toBeGreaterThan(0);
   const beforeYou = postCount;
   await page.goto('/you/');
-  await expect.poll(() => postCount).toBeGreaterThan(beforeYou);
-  await expect.poll(() => settledPostCount).toBeGreaterThan(1);
+  await expect(page.locator('#connection-status')).toHaveText(
+    '1 saved log is waiting for connection.',
+  );
+  await expect.poll(async () => (await pendingEvents(page)).length).toBe(1);
+  expect(postCount).toBe(beforeYou);
+  expect(settledPostCount).toBe(1);
   const beforeLogout = postCount;
   const logoutResponsePending = page.waitForResponse((response) => (
     new URL(response.url()).pathname === '/auth/logout'

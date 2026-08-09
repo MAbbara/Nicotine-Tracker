@@ -2029,6 +2029,11 @@ test('retryable HTTP status enqueues while permanent validation stays ordinary r
   });
   assert.equal(retryable.queueRuntime.enqueued.length, 1);
   assert.deepEqual(retryable.timeline.queued, ['550e8400-e29b-41d4-a716-446655440000']);
+  assert.deepEqual(retryable.view.queued, ['Waiting for connection.']);
+  assert.deepEqual(retryable.view.queuedOptions, [{
+    retryDisabled: false,
+    notBefore: null,
+  }]);
 
   const permanent = await submitStatus(422, {
     error: {
@@ -2215,18 +2220,32 @@ test('in-dialog queued Discard clears the hydrated deadline for the next draft',
   assert.equal(posts, 2);
 });
 
-test('Retry-After zero leaves truthful manual Retry while queue replays immediately', async () => {
+test('Retry-After zero leaves truthful enabled manual Retry without automatic replay', async () => {
   const { createQuickLogController } = await loadQuickLog();
   const now = new Date('2026-07-30T18:42:00Z');
   const view = makeControllerView();
+  const enqueueCalls = [];
+  const queueRuntime = makeQueueRuntime({
+    async enqueue(payload, options) {
+      enqueueCalls.push({ payload, options });
+      return {
+        queued: true,
+        notesOmitted: false,
+        record: { client_event_id: payload.client_event_id, queue_order: 1 },
+      };
+    },
+  });
   const controller = createQuickLogController({
-    view, timeline: makeControllerTimeline(), queueRuntime: makeQueueRuntime(),
+    view, timeline: makeControllerTimeline(), queueRuntime,
     clock: () => now,
     uuid: () => '550e8400-e29b-41d4-a716-446655440000', timezone: () => 'UTC',
     fetchImpl: async () => jsonResponse(429, null, { 'Retry-After': '0' }),
   });
   controller.open({ pouchId: 12, brand: 'Steady Mint', nicotineMg: '6.00' }, {});
   await controller.submit();
+  assert.equal(enqueueCalls.length, 1);
+  assert.equal(enqueueCalls[0].options.notBefore, now.getTime());
+  assert.equal(queueRuntime.replayed, 0);
   assert.deepEqual(view.queuedOptions.at(-1), {
     retryDisabled: false,
     notBefore: null,

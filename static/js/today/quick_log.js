@@ -792,7 +792,9 @@ export function createQuickLogController({
         }
         if (generation !== requestGeneration) return false;
         if (queued?.queued) {
-          const retryDeadline = Number(failure?.retryNotBefore);
+          const retryDeadline = Number.isSafeInteger(failure?.retryNotBefore)
+            ? failure.retryNotBefore
+            : null;
           queuedEventIds.add(payload.client_event_id);
           if (queued.record) queuedRecords.set(payload.client_event_id, queued.record);
           refreshRateLimitNotBefore(retryDeadline);

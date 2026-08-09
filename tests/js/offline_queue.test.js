@@ -177,9 +177,11 @@ test('queue sanitizer rejects normalized calendar dates without rewriting valid 
   const validTimestamp = '2024-02-29T23:59:59.123456-03:30';
   const valid = sanitizeQueueRecord(eligiblePayload({
     occurred_at_local: validTimestamp,
+    not_before: 0,
   }), config);
   assert.equal(valid.eligible, true);
   assert.equal(valid.record.occurred_at_local, validTimestamp);
+  assert.equal(Object.hasOwn(valid.record, 'not_before'), false);
 });
 
 test('queue runtime uses compound identity and lists true insertion order', async () => {
@@ -609,9 +611,8 @@ test('startup clears disabled or unmatched identities before any replay request'
   assert.deepEqual(store.snapshot(), [current]);
   assert.equal(requests.length, 0);
   assert.deepEqual(results, [{ type: 'pending', record: current }]);
-  assert.equal(deferred.length, 1);
-
-  await deferred[0]();
+  assert.equal(deferred.length, 0, 'startup does not auto-replay records without a deadline');
+  await runtime.replay();
   assert.deepEqual(requests, [current.client_event_id]);
   assert.deepEqual(store.snapshot(), []);
 });
@@ -1030,7 +1031,42 @@ test('one owned timer auto-replays due records, reschedules earlier deadlines, a
   assert.deepEqual(clock.pending(), []);
 });
 
-test('an enqueue whose deadline is already due schedules one next-task replay', async () => {
+test('a queued record without a deadline waits for manual or online replay', async () => {
+  const { createOfflineQueueRuntime } = await importOfflineQueue();
+  const startedAt = Date.parse('2026-07-31T06:00:00Z');
+  const clock = fakeReplayClock(startedAt);
+  const store = createMemoryStore();
+  let requests = 0;
+  const runtime = createOfflineQueueRuntime({
+    config: { enabled: true, offlineQueueId: 'opaque-account-scope' },
+    store,
+    now: clock.now,
+    setTimeoutImpl: clock.setTimeout,
+    clearTimeoutImpl: clock.clearTimeout,
+    defer: () => {},
+    fetchImpl: async (_url, options) => {
+      requests += 1;
+      const payload = JSON.parse(options.body);
+      return jsonResponse(201, {
+        log: { id: 90, client_event_id: payload.client_event_id },
+        today: null,
+        warnings: [],
+      });
+    },
+  });
+  await runtime.start();
+
+  const queued = await runtime.enqueue(eligiblePayload());
+  assert.equal(Object.hasOwn(queued.record, 'not_before'), false);
+  assert.deepEqual(clock.pending(), []);
+  await clock.advance(0);
+  assert.equal(requests, 0);
+  assert.equal(await runtime.replay(), true);
+  assert.equal(requests, 1);
+  assert.deepEqual(store.snapshot(), []);
+});
+
+test('an enqueue whose deadline is already due stays available for one manual replay', async () => {
   const { createOfflineQueueRuntime } = await importOfflineQueue();
   const startedAt = Date.parse('2026-07-31T06:00:00Z');
   const clock = fakeReplayClock(startedAt);
@@ -1056,13 +1092,13 @@ test('an enqueue whose deadline is already due schedules one next-task replay', 
   await runtime.start();
 
   await runtime.enqueue(eligiblePayload(), { notBefore: startedAt });
-  assert.deepEqual(clock.pending(), [startedAt]);
+  assert.deepEqual(clock.pending(), []);
   assert.equal(requests, 0);
   await clock.advance(0);
+  assert.equal(requests, 0);
+  assert.equal(await runtime.replay(), true);
   assert.equal(requests, 1);
   assert.deepEqual(store.snapshot(), []);
-  await clock.advance(0);
-  assert.equal(requests, 1, 'the due enqueue owns only one immediate replay');
 });
 
 test('long replay deadlines use bounded timer slices and re-evaluate storage', async () => {
