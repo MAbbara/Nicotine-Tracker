@@ -564,9 +564,15 @@ function exactPath(path) {
 async function prepareShellActionState(page, state) {
   if (state !== 'log-add') return;
   const dialog = page.locator('dialog#addLogModal[open]');
-  if (!await dialog.count()) return;
-  await page.keyboard.press('Escape');
-  await dialog.waitFor({ state: 'hidden' });
+  if (await dialog.count()) {
+    await page.keyboard.press('Escape');
+    await dialog.waitFor({ state: 'hidden' });
+  }
+  await page.waitForURL((url) => url.pathname === '/log/view' && url.search === '');
+  const settled = new URL(page.url());
+  if (settled.pathname !== '/log/view' || settled.search !== '') {
+    throw new Error(`log-add shell state did not settle: ${settled.pathname}${settled.search}`);
+  }
 }
 
 
