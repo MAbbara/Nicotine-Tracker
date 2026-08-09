@@ -504,6 +504,16 @@ export function createLatestChartRenderer(renderSnapshot) {
   return { render, destroy };
 }
 
+export function createSerialTaskQueue() {
+  let tail = Promise.resolve();
+  const run = (task) => {
+    const execute = () => task();
+    tail = tail.then(execute, execute);
+    return tail;
+  };
+  return { run };
+}
+
 export async function startInsights(scope = document) {
   const root = scope.matches?.('[data-insights-root]')
     ? scope
@@ -519,6 +529,7 @@ export async function startInsights(scope = document) {
   let presentationGeneration = 0;
   let rangeController = null;
   let activeCharts = [];
+  let detailsOpen = Boolean(root.querySelector('.analytics-details')?.open);
   let committedHistoryIndex = Number(history.state?.insightsIndex);
   if (!Number.isFinite(committedHistoryIndex)) committedHistoryIndex = 0;
   history.replaceState({
@@ -532,6 +543,7 @@ export async function startInsights(scope = document) {
     panel: document.querySelector('[data-analytics-disclosure-menu]'),
   });
   const destroyCharts = (charts) => charts.forEach((chart) => chart?.destroy?.());
+  const chartRenderQueue = createSerialTaskQueue();
 
   const renderCharts = async (
     targetRoot, data, range,
@@ -552,13 +564,21 @@ export async function startInsights(scope = document) {
         return null;
       }
       const target = targetRoot.querySelector(`#${id}`);
-      const chart = await enhanceChart({
-        target,
-        status: statusFor(target),
-        options,
-        ApexChartsClass: window.ApexCharts,
+      const chart = await chartRenderQueue.run(async () => {
+        if (!isCurrent()) return null;
+        return enhanceChart({
+          target,
+          status: statusFor(target),
+          options,
+          ApexChartsClass: window.ApexCharts,
+        });
       });
-      if (!chart && strict) {
+      if (!isCurrent()) {
+        chart?.destroy?.();
+        destroyCharts(charts);
+        return null;
+      }
+      if (!chart && strict && typeof window.ApexCharts === 'function') {
         destroyCharts(charts);
         throw new Error(`Candidate chart failed: ${id}`);
       }
@@ -628,6 +648,7 @@ export async function startInsights(scope = document) {
     currentData = data;
     currentRange = range;
     activeCharts = candidate.charts;
+    detailsOpen = Boolean(root.querySelector('.analytics-details')?.open);
     candidate.host.remove();
     destroyCharts(previousCharts);
     if (focusedRange && document.visibilityState === 'visible') {
@@ -735,7 +756,10 @@ export async function startInsights(scope = document) {
     if (event.target.closest?.('#export-data')) exportRange(root, currentRange);
   });
   root.addEventListener('toggle', (event) => {
-    if (event.target.matches?.('.analytics-details')) renderLive();
+    if (!event.target.matches?.('.analytics-details')) return;
+    if (event.target.open === detailsOpen) return;
+    detailsOpen = event.target.open;
+    renderLive();
   }, true);
   document.documentElement.addEventListener('nicotine-tracker:theme-change', renderLive);
   window.addEventListener('popstate', (event) => {

@@ -469,20 +469,16 @@ for (const contract of DIALOGS) {
       expect(entered.host.transform).toBe('none');
       expect(entered.host.opacity).toBe('1');
       expect(splitComputedList(entered.host.properties).sort()).toEqual(['display', 'overlay']);
-      expectTransition(entered.panel, {
-        properties: ['opacity', 'transform'],
-        duration: 300,
-        timing: 'cubic-bezier(0.16, 1, 0.3, 1)',
-      }, `${contract.name} ${theme} entrance panel`);
       expectTransition(entered.backdrop, {
         properties: ['opacity'],
         duration: 260,
         timing: 'cubic-bezier(0.16, 1, 0.3, 1)',
       }, `${contract.name} ${theme} entrance backdrop`);
-      expect(hasIntermediateOpacity(entranceFrames, 'panelOpacity')).toBe(true);
       expect(hasIntermediateOpacity(entranceFrames, 'backdropOpacity')).toBe(true);
-      expect(entranceFrames.some((frame) => frame.panelTransform !== 'none')).toBe(true);
+      expect(entranceFrames.every((frame) => frame.panelOpacity === 1)).toBe(true);
+      expect(entranceFrames.every((frame) => frame.panelTransform === 'none')).toBe(true);
       expect(entered.panel.opacity).toBeCloseTo(1, 2);
+      expect(entered.panel.transform).toBe('none');
       expect(entered.backdrop.opacity).toBeCloseTo(1, 2);
       entered.backdrop.background.slice(0, 3).forEach((channel, index) => {
         expect(Math.abs(channel - entered.overlay[index])).toBeLessThanOrEqual(1);
@@ -494,19 +490,15 @@ for (const contract of DIALOGS) {
       await expect(current.dialog).toHaveAttribute('data-dialog-state', 'closing');
       await expect(current.dialog).toBeVisible();
       const exiting = await readDialogVisualContract(current.dialog);
-      expectTransition(exiting.panel, {
-        properties: ['opacity', 'transform'],
-        duration: 220,
-        timing: 'cubic-bezier(0.4, 0, 1, 1)',
-      }, `${contract.name} ${theme} exit panel`);
       expectTransition(exiting.backdrop, {
         properties: ['opacity'],
         duration: 180,
         timing: 'cubic-bezier(0.4, 0, 1, 1)',
       }, `${contract.name} ${theme} exit backdrop`);
       const exitFrames = await sampleDialogFrames(current.dialog, 10);
-      expect(hasIntermediateOpacity(exitFrames, 'panelOpacity')).toBe(true);
       expect(hasIntermediateOpacity(exitFrames, 'backdropOpacity')).toBe(true);
+      expect(exitFrames.every((frame) => frame.panelOpacity === 1)).toBe(true);
+      expect(exitFrames.every((frame) => frame.panelTransform === 'none')).toBe(true);
       expect(exitFrames.some((frame) => frame.open)).toBe(true);
       await expect(current.dialog).toBeHidden();
       await expect(current.opener).toBeFocused();

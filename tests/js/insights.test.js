@@ -665,3 +665,39 @@ test('a delayed chart generation is destroyed before the latest render becomes a
   renderer.destroy();
   assert.deepEqual(destroyed, [1, 2]);
 });
+
+test('chart tasks serialize without losing the newest presentation', async () => {
+  const { createSerialTaskQueue } = await importModule('static/js/insights.js');
+  let active = 0;
+  let maxActive = 0;
+  let releaseFirst;
+  let markFirstStarted;
+  const firstStarted = new Promise((resolve) => { markFirstStarted = resolve; });
+  const firstGate = new Promise((resolve) => { releaseFirst = resolve; });
+  const commits = [];
+  const queue = createSerialTaskQueue();
+  let generation = 0;
+  const task = (id, gate = Promise.resolve()) => {
+    const ownGeneration = ++generation;
+    return queue.run(async () => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      if (id === 1) markFirstStarted();
+      await gate;
+      const isCurrent = ownGeneration === generation;
+      if (isCurrent) commits.push(id);
+      active -= 1;
+      return isCurrent;
+    });
+  };
+
+  const first = task(1, firstGate);
+  await firstStarted;
+  const latest = task(2);
+  releaseFirst();
+  const results = await Promise.all([first, latest]);
+
+  assert.equal(maxActive, 1);
+  assert.deepEqual(commits, [2]);
+  assert.deepEqual(results, [false, true]);
+});

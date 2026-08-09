@@ -65,6 +65,15 @@ function bootstrap() {
     renderFieldError(confirmation, confirmationError);
   });
 
+  form.addEventListener('invalid', (event) => {
+    if (event.target !== password && event.target !== confirmation) return;
+    const result = validateRegistration(password.value, confirmation.value);
+    password.setCustomValidity(result.passwordError);
+    confirmation.setCustomValidity(result.confirmationError);
+    renderFieldError(password, result.passwordError);
+    renderFieldError(confirmation, result.confirmationError);
+  }, true);
+
   form.addEventListener('submit', (event) => {
     const result = validateRegistration(password.value, confirmation.value);
     password.setCustomValidity(result.passwordError);
