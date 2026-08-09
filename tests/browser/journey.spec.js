@@ -43,6 +43,26 @@ function watchForErrors(page, { ignoreConsole = [] } = {}) {
   return errors;
 }
 
+function parseRgb(color) {
+  const channels = color.match(/[\d.]+/g)?.slice(0, 3).map(Number);
+  expect(channels, `Could not parse ${color}`).toHaveLength(3);
+  return channels;
+}
+
+function relativeLuminance(color) {
+  const [red, green, blue] = parseRgb(color).map((channel) => {
+    const value = channel / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return (0.2126 * red) + (0.7152 * green) + (0.0722 * blue);
+}
+
+function contrastRatio(first, second) {
+  const luminances = [relativeLuminance(first), relativeLuminance(second)]
+    .sort((left, right) => right - left);
+  return (luminances[0] + 0.05) / (luminances[1] + 0.05);
+}
+
 async function isoDate(page, daysFromToday = 0) {
   const response = await page.request.get('/__test__/release-clock');
   expect(response.status()).toBe(200);
@@ -165,9 +185,9 @@ test('first viewport explains nicotine progress and next change before technical
   await expect(progress.getByRole('heading', { name: 'Today in this plan' })).toBeVisible();
   await expect(progress.locator('[data-known-mg]')).toHaveText('0.00 mg');
   await expect(progress.locator('[data-ceiling-mg]')).toHaveText('48.00 mg');
-  await expect(progress.locator('[data-remaining-mg]')).toHaveText('48.00 mg');
+  await expect(progress.locator('[data-difference-mg]')).toHaveText('−48.00 mg');
   await expect(progress).toContainText(/Below today’s ceiling/i);
-  await expect(progress).toContainText(/Pouches logged\s+0/i);
+  await expect(page.locator('[data-pouch-context]')).toContainText(/Pouches logged\s+0/i);
 
   const nextChange = page.locator('[data-next-change]');
   await expect(nextChange).toBeVisible();
@@ -202,6 +222,114 @@ test('first viewport explains nicotine progress and next change before technical
   await expect(page.locator('.journey-history')).toBeVisible();
   await expect(summary).toBeFocused();
   expect(errors).toEqual([]);
+});
+
+test('compact Journey hierarchy remains responsive, distinguishable, and motion-safe', async ({ page }, testInfo) => {
+  await register(page, testInfo, 'compact-visual-system');
+  await createPlan(page);
+
+  const primary = page.locator('[data-known-mg]');
+  const nextChange = page.locator('[data-next-change]');
+  const trajectory = page.locator('[data-journey-trajectory]');
+  const days = trajectory.locator('[data-journey-day]');
+
+  expect(await primary.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)))
+    .toBeLessThanOrEqual(64);
+  await expect(nextChange).toBeInViewport();
+  const initialFold = await page.evaluate(() => ({
+    viewport: window.innerHeight,
+    plan: document.querySelector('.journey-plan').getBoundingClientRect().toJSON(),
+    today: document.querySelector('[data-journey-progress]').getBoundingClientRect().toJSON(),
+    next: document.querySelector('[data-next-change]').getBoundingClientRect().toJSON(),
+    schedule: document.querySelector('.journey-schedule').getBoundingClientRect().toJSON(),
+    scheduleHeading: document.querySelector('.journey-schedule .journey-section-heading').getBoundingClientRect().toJSON(),
+    summary: document.querySelector('[data-journey-trajectory-summary]').getBoundingClientRect().toJSON(),
+    trajectory: document.querySelector('[data-journey-trajectory]').getBoundingClientRect().toJSON(),
+  }));
+  expect(initialFold.trajectory.top, JSON.stringify(initialFold))
+    .toBeLessThan(initialFold.viewport);
+  await expect(trajectory).toBeInViewport();
+
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate((value) => {
+      document.documentElement.dataset.theme = value;
+    }, theme);
+
+    const overflow = await page.evaluate(() => (
+      document.documentElement.scrollWidth - document.documentElement.clientWidth
+    ));
+    expect(overflow, `${theme} overflow`).toBeLessThanOrEqual(1);
+
+    const geometry = await days.evaluateAll((elements) => elements.map((element) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return {
+        width: rect.width,
+        height: rect.height,
+        left: rect.left,
+        right: rect.right,
+        border: style.borderRightColor,
+        background: style.backgroundColor,
+      };
+    }));
+    for (const [index, day] of geometry.entries()) {
+      expect(day.width, `${theme} day ${index + 1} width`).toBeGreaterThanOrEqual(44);
+      expect(day.height, `${theme} day ${index + 1} height`).toBeGreaterThanOrEqual(44);
+      expect(day.left, `${theme} day ${index + 1} left`).toBeGreaterThanOrEqual(-1);
+      expect(day.right, `${theme} day ${index + 1} right`).toBeLessThanOrEqual(321);
+      expect(contrastRatio(day.border, day.background), `${theme} day ${index + 1} boundary`)
+        .toBeGreaterThanOrEqual(3);
+    }
+
+    const selected = trajectory.locator('[data-journey-day][aria-pressed="true"]');
+    await expect(selected).toHaveCount(1);
+    await expect(selected.locator('small')).toHaveText('Current');
+    const selectedStyle = await selected.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { background: style.backgroundColor, shadow: style.boxShadow };
+    });
+    expect(selectedStyle.shadow).not.toBe('none');
+    expect(selectedStyle.background).not.toBe('rgba(0, 0, 0, 0)');
+
+    await days.nth(1).focus();
+    const focused = await days.nth(1).evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return {
+        active: element === document.activeElement,
+        left: rect.left,
+        right: rect.right,
+        outlineStyle: style.outlineStyle,
+        outlineWidth: Number.parseFloat(style.outlineWidth),
+      };
+    });
+    expect(focused.active).toBe(true);
+    expect(focused.outlineStyle).not.toBe('none');
+    expect(focused.outlineWidth).toBeGreaterThanOrEqual(2);
+    expect(focused.left).toBeGreaterThanOrEqual(-1);
+    expect(focused.right).toBeLessThanOrEqual(321);
+  }
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const maxMotionDuration = await page.evaluate(() => {
+    const toMilliseconds = (value) => {
+      const duration = Number.parseFloat(value) || 0;
+      return value.trim().endsWith('ms') ? duration : duration * 1000;
+    };
+    return Math.max(...[...document.querySelectorAll('.journey-page, .journey-page *')]
+      .flatMap((element) => [
+        getComputedStyle(element),
+        getComputedStyle(element, '::before'),
+        getComputedStyle(element, '::after'),
+      ])
+      .flatMap((style) => [style.animationDuration, style.transitionDuration])
+      .flatMap((value) => value.split(','))
+      .map(toMilliseconds));
+  });
+  expect(maxMotionDuration).toBeLessThanOrEqual(0.001);
 });
 
 test('pre-start and paused Journey explain neutral schedule transitions', async ({ page }, testInfo) => {

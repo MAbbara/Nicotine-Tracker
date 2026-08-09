@@ -683,6 +683,7 @@
   --color-text-muted: #5F6962;
   --color-border: #D7D1C3;
   --color-border-strong: #AFA99B;
+  --color-journey-control-border: #66736A;
   --color-constructive: #4B6B55;
   --color-constructive-soft: #DCE7DC;
   --color-attention: #B76343;
@@ -734,6 +735,7 @@
   --color-text-muted: #A7AEA7;
   --color-border: #344139;
   --color-border-strong: #59665E;
+  --color-journey-control-border: #718578;
   --color-constructive: #94B29A;
   --color-constructive-soft: #293A30;
   --color-attention: #D38466;
@@ -2904,8 +2906,8 @@
 
   .journey-today {
     display: grid;
-    gap: clamp(1rem, 2vw, 1.5rem);
-    padding-block: clamp(0.25rem, 1vw, 0.75rem) clamp(1rem, 2vw, 1.5rem);
+    gap: var(--space-2);
+    padding-block: var(--space-1) var(--space-2);
     border-block-end: 1px solid var(--color-border-strong);
   }
 
@@ -2947,7 +2949,7 @@
     align-content: center;
     gap: var(--space-2);
     min-width: 0;
-    padding: clamp(1rem, 3vw, 2rem);
+    padding: var(--space-3) clamp(1rem, 2vw, 1.5rem);
     border-inline-start: 1px solid var(--color-border);
   }
 
@@ -2974,8 +2976,10 @@
   }
 
   .journey-progress-readout__primary dd {
-    font-size: clamp(3rem, 9vw, 6.75rem);
+    font-size: clamp(2.5rem, 5vw, 4rem);
     letter-spacing: -0.035em;
+    font-weight: 560;
+    line-height: 0.95;
   }
 
   .journey-today__context {
@@ -2993,7 +2997,7 @@
   .journey-next-change {
     display: grid;
     gap: var(--space-2);
-    padding-block: var(--space-3);
+    padding-block: var(--space-2);
     padding-inline: clamp(1rem, 3vw, 2rem);
     border-block: 0.1875rem solid var(--color-attention);
     background: var(--color-attention-soft);
@@ -3006,7 +3010,7 @@
 
   .journey-next-change__value {
     font-family: var(--font-display);
-    font-size: clamp(1.5rem, 3.5vw, 2.5rem);
+    font-size: clamp(1.5rem, 2.5vw, 2rem);
     font-variant-numeric: tabular-nums;
     line-height: 1.08;
   }
@@ -3020,6 +3024,7 @@
 
     .journey-next-change h2 {
       grid-row: 1 / 3;
+      font-size: 2rem;
     }
 
     .journey-next-change__value,
@@ -3030,7 +3035,119 @@
 
   .journey-schedule {
     display: grid;
-    gap: var(--space-6);
+    grid-template-columns: minmax(12rem, 0.4fr) minmax(0, 0.6fr);
+    gap: var(--space-3);
+  }
+
+  .journey-schedule > .journey-section-heading {
+    display: block;
+  }
+
+  .journey-schedule .journey-section-heading h2 {
+    font-size: clamp(1.5rem, 2.5vw, 2rem);
+  }
+
+  .journey-schedule > :not(.journey-section-heading):not([data-journey-trajectory-summary]) {
+    grid-column: 1 / -1;
+  }
+
+  [data-journey-trajectory-summary] {
+    max-width: 62ch;
+    color: var(--color-text-muted);
+  }
+
+  [data-journey-trajectory] {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    border-block: 1px solid var(--color-journey-control-border);
+  }
+
+  [data-journey-day] {
+    --journey-slope-offset: 0rem;
+    position: relative;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    padding: var(--space-2);
+    overflow: hidden;
+    border: 0;
+    border-inline-end: 1px solid var(--color-journey-control-border);
+    background: var(--color-surface);
+    color: var(--color-ink);
+    text-align: start;
+    cursor: pointer;
+    transition: background-color var(--duration-feedback) var(--ease-out-expo);
+  }
+
+  [data-journey-day]:last-child {
+    border-inline-end: 0;
+  }
+
+  [data-journey-day]::after {
+    position: absolute;
+    inset-inline: var(--space-2);
+    inset-block-end: calc(0.3rem + var(--journey-slope-offset));
+    height: 0.125rem;
+    background: var(--color-constructive);
+    content: "";
+    opacity: 0.42;
+    pointer-events: none;
+    transform: rotate(-1.5deg);
+  }
+
+  [data-journey-day]:nth-child(2) { --journey-slope-offset: 0.04rem; }
+  [data-journey-day]:nth-child(3) { --journey-slope-offset: 0.08rem; }
+  [data-journey-day]:nth-child(4) { --journey-slope-offset: 0.12rem; }
+  [data-journey-day]:nth-child(5) { --journey-slope-offset: 0.16rem; }
+  [data-journey-day]:nth-child(6) { --journey-slope-offset: 0.2rem; }
+  [data-journey-day]:nth-child(7) { --journey-slope-offset: 0.24rem; }
+
+  [data-journey-day] > span,
+  [data-journey-day] > strong,
+  [data-journey-day] > small {
+    position: relative;
+    z-index: 1;
+    display: block;
+  }
+
+  [data-journey-day] > span {
+    color: var(--color-text-muted);
+    font-size: var(--text-caption);
+    font-weight: 760;
+    letter-spacing: 0.045em;
+    text-transform: uppercase;
+  }
+
+  [data-journey-day] > strong {
+    margin-block: var(--space-1);
+    font-family: var(--font-display);
+    font-size: clamp(0.75rem, 1.5vw, 1rem);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  [data-journey-day] > small {
+    color: var(--color-text-muted);
+    font-size: max(0.625rem, 12px);
+  }
+
+  [data-journey-day][aria-pressed="true"] {
+    background: var(--color-constructive-soft);
+    color: var(--color-constructive);
+    box-shadow: inset 0 -.1875rem 0 currentColor;
+  }
+
+  [data-journey-day]:focus-visible {
+    z-index: 2;
+    outline: 0.1875rem solid var(--color-focus);
+    outline-offset: -0.1875rem;
+  }
+
+  [data-journey-day-detail] {
+    min-height: 3em;
+    color: var(--color-text-muted);
+    font-variant-numeric: tabular-nums;
   }
 
   .journey-schedule tbody th span,
@@ -3124,6 +3241,59 @@
 
     .journey-progress-readout > div:last-child {
       border-inline-start: 1px solid var(--color-border);
+    }
+
+    .journey-today {
+      gap: var(--space-3);
+      padding-block-end: var(--space-3);
+    }
+
+    .journey-next-change {
+      gap: var(--space-1);
+      padding-inline: var(--space-3);
+    }
+
+    .journey-plan__schedule {
+      padding-block-start: 0;
+    }
+
+    .journey-schedule {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .journey-schedule .journey-section-heading {
+      display: flex;
+      gap: var(--space-1);
+    }
+
+    .journey-schedule > * {
+      grid-column: 1;
+    }
+
+    [data-journey-trajectory] {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      border-block-end: 0;
+    }
+
+    [data-journey-day] {
+      min-height: 4rem;
+      border-block-end: 1px solid var(--color-journey-control-border);
+    }
+
+    [data-journey-day]:last-child {
+      border-inline-end: 1px solid var(--color-journey-control-border);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .journey-page,
+    .journey-page::before,
+    .journey-page::after,
+    .journey-page *,
+    .journey-page *::before,
+    .journey-page *::after {
+      animation-duration: 0.001ms !important;
+      transition-duration: 0.001ms !important;
     }
   }
 
