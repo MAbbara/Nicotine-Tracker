@@ -85,6 +85,9 @@ class TestOnboardingPage:
         assert len(form.select('fieldset > legend')) >= 8
         assert form.select_one('[aria-live="polite"]') is not None
         assert form.select_one('button[name="form_action"][value="preview"]')
+        copy = form.get_text(' ', strip=True)
+        assert 'Work toward a lower daily nicotine ceiling.' in copy
+        assert 'lower daily pouch ceiling' not in copy
         steady = form.select_one('input[name="pace"][value="steady"]')
         assert steady is not None and not steady.has_attr('checked')
         assert 'recommended' in form.get_text(' ', strip=True).lower()

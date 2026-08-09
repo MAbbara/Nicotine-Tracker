@@ -303,7 +303,9 @@ test('Reminders persist and async actions expose success and failure feedback', 
   const directWeeklyResponse = await directWeeklyResponsePending;
   expect(directWeeklyResponse.request().method()).toBe('POST');
   expect(directWeeklyResponse.request().postDataJSON()).toEqual({});
-  await expect(weeklyStatus).toHaveText('Weekly report queued. It should arrive shortly.');
+  await expect(weeklyStatus).toHaveText(
+    'Weekly report is queued for your enabled delivery channel.',
+  );
   await expect(weeklyButton).toBeFocused();
 
   const outboundResponse = await page.request.get('/__test__/external-notifications');

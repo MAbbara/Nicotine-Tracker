@@ -293,9 +293,24 @@ def trigger_weekly_report():
         queued = notification_service.queue_weekly_report(user)
 
         if queued:
+            statuses = {getattr(row, 'status', None) for row in queued}
+            if statuses & {'pending', 'processing'}:
+                success = True
+                message = (
+                    'Weekly report is queued for your enabled delivery channel.'
+                )
+            elif statuses == {'sent'}:
+                success = True
+                message = 'This weekly report was already sent.'
+            else:
+                success = False
+                message = (
+                    'This weekly report was already processed and was not '
+                    'queued again.'
+                )
             return jsonify({
-                'success': True,
-                'message': 'Weekly report queued. It should arrive shortly.'
+                'success': success,
+                'message': message,
             })
 
         return jsonify({

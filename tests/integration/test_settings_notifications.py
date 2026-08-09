@@ -2,8 +2,10 @@
 
 from datetime import time
 from pathlib import Path
+from types import SimpleNamespace
 
 from bs4 import BeautifulSoup
+import pytest
 
 from models import UserPreferences
 from services.user_preferences_service import UserPreferencesService
@@ -161,6 +163,40 @@ def test_weekly_channel_error_is_associated_with_group_and_controls(
     for control in soup.select('input[name="notification_channel"]'):
         assert control['aria-invalid'] == 'true'
         assert 'notification_channel-error' in control['aria-describedby'].split()
+
+
+@pytest.mark.parametrize(('status', 'success', 'message'), [
+    (
+        'pending', True,
+        'Weekly report is queued for your enabled delivery channel.',
+    ),
+    ('sent', True, 'This weekly report was already sent.'),
+    (
+        'failed', False,
+        'This weekly report was already processed and was not queued again.',
+    ),
+])
+def test_manual_weekly_report_copy_reflects_durable_row_status(
+        logged_in_client, db_session, test_user, monkeypatch,
+        status, success, message):
+    preferences = UserPreferences(
+        user_id=test_user.id,
+        notification_channel=['email'],
+        weekly_reports=True,
+    )
+    db_session.add(preferences)
+    db_session.commit()
+    monkeypatch.setattr(
+        'routes.settings.NotificationService.queue_weekly_report',
+        lambda _service, _user: [SimpleNamespace(status=status)],
+    )
+
+    response = logged_in_client.post(
+        '/settings/notifications/trigger-weekly', json={},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {'success': success, 'message': message}
 
 
 def test_generic_writer_rejects_retired_fields_before_creating_preferences(

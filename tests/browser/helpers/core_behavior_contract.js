@@ -230,7 +230,7 @@ group(OWNER_TITLES.onboarding, [
   ['register', 'Create account', 'registrationSubmit'],
   ['register', 'I understand this is a personal tracking tool, not medical advice.', 'termsChoice'],
   ['journey-onboarding', 'Continue', 'onboardingChoice'],
-  ['journey-onboarding', 'Reduce steadily Work toward a lower daily pouch ceiling.', 'onboardingChoice'],
+  ['journey-onboarding', 'Reduce steadily Work toward a lower daily nicotine ceiling.', 'onboardingChoice'],
 ]);
 group(OWNER_TITLES.authForgot, [['forgot-password', 'Send reset link', 'validationSubmit']]);
 group(OWNER_TITLES.authReset, [['reset-password', 'Reset password', 'validationSubmit']]);

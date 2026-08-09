@@ -271,7 +271,7 @@ const EXPECTED_ACTIONS = {
   ]),
   'journey-onboarding': appActions('browser@example.com', [
     'Continue', 'Quit by a date Build a schedule that ends at zero.',
-    'Reduce steadily Work toward a lower daily pouch ceiling.',
+    'Reduce steadily Work toward a lower daily nicotine ceiling.',
     'Understand my baseline first Track for seven days without a reduction target.',
   ]),
   insights: appActions('release-analytics-ready@example.com', [
@@ -575,7 +575,7 @@ attachActionCoverage(
   ownedBy(ACTION_OWNERS.appChrome, appChromeActions('journey-onboarding')),
   ownedBy(ACTION_OWNERS.onboarding, [
     'Continue',
-    'Reduce steadily Work toward a lower daily pouch ceiling.',
+    'Reduce steadily Work toward a lower daily nicotine ceiling.',
   ]),
   ownedBy(ACTION_OWNERS.journeyChoices, [
     'Quit by a date Build a schedule that ends at zero.',

@@ -97,7 +97,7 @@ async function selectManualBaseline(page, recorder = null) {
     await expect(reduce).toBeFocused();
     recorder.record(
       'journey-onboarding',
-      'Reduce steadily Work toward a lower daily pouch ceiling.',
+      'Reduce steadily Work toward a lower daily nicotine ceiling.',
       ['focus', 'keyboard'],
     );
     const continueButton = page.getByRole('button', { name: 'Continue' });
