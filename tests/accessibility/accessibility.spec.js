@@ -1,5 +1,6 @@
 const { test, expect } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
+const { waitForVisibleDialogPanelsSettled } = require('../browser/helpers/dialog_motion');
 
 
 async function expectNoWcagViolations(page) {
@@ -125,6 +126,7 @@ async function auditRoute(page, errors, path, heading, options = {}) {
   const response = await page.goto(path);
   if (options.status) expect(response.status()).toBe(options.status);
   await expect(page.getByRole('heading', { name: heading, level: 1 })).toHaveCount(1);
+  await waitForVisibleDialogPanelsSettled(page);
   await expectNoWcagViolations(page);
   expectNoUnexpectedBrowserErrors(
     errors,

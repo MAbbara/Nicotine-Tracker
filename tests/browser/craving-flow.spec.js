@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { waitForDialogPanelSettled } = require('./helpers/dialog_motion');
 
 function watchForProductProblems(page) {
   const errors = [];
@@ -143,6 +144,7 @@ test('one dialog adapts to a mobile bottom sheet and centered desktop panel', as
   await expect(dialog).toBeVisible();
 
   const panel = dialog.locator('[data-dialog-panel]');
+  await waitForDialogPanelSettled(panel);
   const geometry = await panel.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const style = getComputedStyle(element);
