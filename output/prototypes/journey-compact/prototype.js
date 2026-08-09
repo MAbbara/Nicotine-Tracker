@@ -1,5 +1,18 @@
 const dayButtons = (root) => [...root.querySelectorAll('[data-day]')];
 
+function dayDetail(button) {
+  return `${button.dataset.date} · ${button.dataset.ceiling} mg ceiling · ${button.dataset.change}`;
+}
+
+function showDayDetail(button, root) {
+  root.querySelector('[data-day-detail]').textContent = dayDetail(button);
+}
+
+function restoreSelectedDay(root) {
+  const selected = root.querySelector('[data-day][aria-pressed="true"]');
+  if (selected) showDayDetail(selected, root);
+}
+
 function setStatus(root, shapeText, message) {
   const status = root.querySelector('[data-plan-status]');
   const shape = status.querySelector('[aria-hidden="true"]');
@@ -12,8 +25,7 @@ export function selectDay(button, root = document) {
   buttons.forEach((day) => {
     day.setAttribute('aria-pressed', String(day === button));
   });
-  root.querySelector('[data-day-detail]').textContent =
-    `${button.dataset.date} · ${button.dataset.ceiling} mg ceiling · ${button.dataset.change}`;
+  showDayDetail(button, root);
 }
 
 export function setTheme(theme) {
@@ -51,6 +63,14 @@ export function init(root = document) {
   buttons.forEach((button, index) => {
     button.setAttribute('aria-pressed', String(index === 0));
     button.addEventListener('click', () => selectDay(button, root));
+    button.addEventListener('pointerenter', () => showDayDetail(button, root));
+    button.addEventListener('pointerleave', () => {
+      if (root.activeElement !== button) restoreSelectedDay(root);
+    });
+    button.addEventListener('focus', () => showDayDetail(button, root));
+    button.addEventListener('blur', () => {
+      if (!button.matches(':hover')) restoreSelectedDay(root);
+    });
     button.addEventListener('keydown', (event) => {
       if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
       event.preventDefault();

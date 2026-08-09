@@ -12,12 +12,6 @@
 <body>
   <main data-journey-prototype>
     <header>
-      <img
-        src="/static/brand/nicotine-tracker-two-point-n-symbol.png"
-        alt=""
-        width="40"
-        height="40"
-      >
       <p>Day 22 of 49 · Steady pace</p>
       <h1>Your nicotine plan</h1>
       <p data-plan-status><span aria-hidden="true">●</span> Above today’s ceiling</p>
@@ -41,8 +35,7 @@
         <dd data-difference-mg>+4.06 mg</dd>
       </div>
     </dl>
-    <p>8 pouches logged</p>
-    <p>A higher day is useful context. Keep logging honestly and let tomorrow’s smaller ceiling be the next step.</p>
+    <p data-coaching>A higher day is useful context. Keep logging honestly and let tomorrow’s smaller ceiling be the next step.</p>
 
     <section data-next-change aria-labelledby="next-change-title">
       <h2 id="next-change-title">What changes next</h2>
@@ -51,7 +44,8 @@
 
     <section aria-labelledby="trajectory-title">
       <h2 id="trajectory-title">Your next seven days</h2>
-      <div data-trajectory role="group" aria-label="Seven-day nicotine ceilings">
+      <p id="trajectory-summary" data-trajectory-summary>Ceilings decrease daily from 33.19 mg to 29.81 mg.</p>
+      <div data-trajectory role="group" aria-label="Seven-day nicotine ceilings" aria-describedby="trajectory-summary">
         <button type="button" data-day data-date="Today" data-ceiling="33.19" data-change="Current ceiling">Today <strong>33.19 mg</strong></button>
         <button type="button" data-day data-date="Tomorrow" data-ceiling="32.62" data-change="0.57 mg lower">Tomorrow <strong>32.62 mg</strong></button>
         <button type="button" data-day data-date="Tuesday" data-ceiling="32.06" data-change="0.56 mg lower">Tuesday <strong>32.06 mg</strong></button>
@@ -60,7 +54,7 @@
         <button type="button" data-day data-date="Friday" data-ceiling="30.38" data-change="0.56 mg lower">Friday <strong>30.38 mg</strong></button>
         <button type="button" data-day data-date="Saturday" data-ceiling="29.81" data-change="0.57 mg lower">Saturday <strong>29.81 mg</strong></button>
       </div>
-      <p data-day-detail aria-live="polite" aria-atomic="true">Today · 33.19 mg ceiling</p>
+      <p data-day-detail aria-live="polite" aria-atomic="true">Today · 33.19 mg ceiling · Current ceiling</p>
 
       <table>
         <caption>Seven-day nicotine ceiling schedule</caption>
@@ -77,11 +71,12 @@
           <tr><th scope="row">Saturday</th><td>29.81 mg</td></tr>
         </tbody>
       </table>
+      <p class="journey-secondary" data-pouch-context>8 pouches logged</p>
     </section>
 
-    <details>
-      <summary>Adjust future days</summary>
-      <p>Preview a pace, duration, or end-target change before applying it.</p>
+    <details aria-label="Prototype plan adjustment">
+      <summary>Preview plan adjustments</summary>
+      <p>Prototype only—nothing is saved. Explore pace, duration, or end-target changes.</p>
     </details>
     <details>
       <summary>Plan details and history</summary>
