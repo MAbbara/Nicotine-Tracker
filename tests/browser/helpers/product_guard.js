@@ -4,6 +4,7 @@ const ANALYTICS_BUNDLES = [
   '/static/js/dashboard-charts.js',
   '/static/js/apexcharts.min.js',
 ];
+const REQUEST_REFERENCE = Symbol('requestReference');
 
 
 function requestPath(rawUrl) {
@@ -68,6 +69,7 @@ function watchForProductProblems(page) {
       method: request.method(),
       url: request.url(),
       navigation: request.isNavigationRequest(),
+      [REQUEST_REFERENCE]: request,
     });
   });
   page.on('response', (response) => {
@@ -81,6 +83,7 @@ function watchForProductProblems(page) {
         status: response.status(),
         method: response.request().method(),
         url,
+        [REQUEST_REFERENCE]: response.request(),
       });
     }
   });
@@ -110,6 +113,7 @@ function watchForProductProblems(page) {
       count: entry.count || 1,
       seen: 0,
       abortedSeen: 0,
+      matchedRequests: [],
     }));
     const unexpected = findings.filter((finding) => {
       if (finding.kind === 'analytics-bundle' && options.allowAnalytics) {
@@ -133,6 +137,7 @@ function watchForProductProblems(page) {
           && entry.path === requestTarget(finding.url)
           && entry.abortedSeen < entry.count
           && entry.abortedSeen < entry.seen
+          && entry.matchedRequests.includes(finding[REQUEST_REFERENCE])
         ));
         if (expectedAbort) {
           expectedAbort.abortedSeen += 1;
@@ -149,7 +154,9 @@ function watchForProductProblems(page) {
       ));
       if (expectedFailure && finding.kind === 'http-5xx') {
         expectedFailure.seen += 1;
-        return expectedFailure.seen > expectedFailure.count;
+        if (expectedFailure.seen > expectedFailure.count) return true;
+        expectedFailure.matchedRequests.push(finding[REQUEST_REFERENCE]);
+        return false;
       }
       if (
         finding.kind === 'console-error'
@@ -198,7 +205,9 @@ function watchForProductProblems(page) {
       ).toEqual([]);
     },
     problems() {
-      return findings.map((finding) => ({ ...finding }));
+      return findings.map((finding) => Object.fromEntries(
+        Object.entries(finding),
+      ));
     },
     clear() {
       findings.splice(0, findings.length);

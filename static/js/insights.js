@@ -797,16 +797,30 @@ export async function startInsights(scope = document) {
     }
   };
 
-  root.addEventListener('click', (event) => {
+  const disclosureSummaryFor = (event) => {
     const summary = event.target.closest?.('.analytics-details > summary');
-    if (summary && root.contains(summary)) {
-      event.preventDefault();
-      const details = summary.parentElement;
-      details.open = !details.open;
-      detailsOpen = details.open;
-      renderLive({ preserveFocus: true });
-      return;
+    return summary && root.contains(summary) ? summary : null;
+  };
+  const presentationSensitiveActionFor = (event) => (
+    disclosureSummaryFor(event)
+    || event.target.closest?.('#export-data')
+  );
+  const invalidatePendingPresentation = (event) => {
+    const action = presentationSensitiveActionFor(event);
+    if (!action) return;
+    presentationGeneration += 1;
+    if (action.id === 'export-data') {
+      const liveDetails = root.querySelector('.analytics-details');
+      if (liveDetails) detailsOpen = liveDetails.open;
     }
+  };
+  root.addEventListener('pointerdown', invalidatePendingPresentation, true);
+  root.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    invalidatePendingPresentation(event);
+  }, true);
+  root.addEventListener('click', invalidatePendingPresentation, true);
+  root.addEventListener('click', (event) => {
     const item = event.target.closest?.('.dropdown-item[data-days]');
     if (item) {
       event.preventDefault();

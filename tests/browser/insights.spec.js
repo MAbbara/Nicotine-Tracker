@@ -815,14 +815,32 @@ test('Insights presentation commits preserve owned focus without stealing moved 
   await expect(page.locator('[data-days="30"]')).toHaveAttribute('aria-current', 'true');
 });
 
-test('native disclosure activation invalidates a background candidate before its queued toggle', async ({ page }) => {
+test('pre-activation disclosure input invalidates a fully built background candidate', async ({ page }) => {
   await login(page, 'insights-range@example.com');
   await page.goto('/insights/?days=30');
   await page.evaluate(() => {
     const BaseChart = window.ApexCharts;
-    window.__summaryCommitRace = { active: 0, maxActive: 0, held: false };
+    window.__summaryCommitRace = {
+      active: 0,
+      maxActive: 0,
+      armed: false,
+      held: false,
+      holdId: null,
+      eligibleIds: [],
+      builtIds: [],
+      liveCommits: 0,
+    };
+    const liveRoot = document.querySelector(
+      '[data-insights-root]:not([data-insights-candidate])',
+    );
+    new MutationObserver((records) => {
+      window.__summaryCommitRace.liveCommits += records.filter((record) => (
+        record.type === 'childList' && record.target === liveRoot
+      )).length;
+    }).observe(liveRoot, { childList: true });
     window.ApexCharts = class HeldBackgroundChart {
       constructor(target, options) {
+        this.targetId = target.id;
         this.chart = new BaseChart(target, options);
       }
       async render() {
@@ -830,49 +848,98 @@ test('native disclosure activation invalidates a background candidate before its
         audit.active += 1;
         audit.maxActive = Math.max(audit.maxActive, audit.active);
         try {
-          if (!audit.held) {
+          await this.chart.render();
+          if (audit.armed) audit.builtIds.push(this.targetId);
+          if (audit.armed && this.targetId === audit.holdId) {
+            audit.armed = false;
             audit.held = true;
             await new Promise((resolve) => { window.__releaseSummaryCommitRace = resolve; });
           }
-          await this.chart.render();
         } finally {
           audit.active -= 1;
         }
       }
       destroy() { this.chart.destroy(); }
     };
-    document.documentElement.dispatchEvent(new CustomEvent('nicotine-tracker:theme-change'));
+    window.__armSummaryCommitRace = () => {
+      const currentRoot = document.querySelector(
+        '[data-insights-root]:not([data-insights-candidate])',
+      );
+      const eligible = [...currentRoot.querySelectorAll('.analytics-chart')]
+        .filter((chart) => !chart.hidden);
+      const audit = window.__summaryCommitRace;
+      audit.eligibleIds = eligible.map((chart) => chart.id);
+      audit.builtIds = [];
+      audit.holdId = eligible.at(-1).id;
+      audit.armed = true;
+      audit.held = false;
+      window.__releaseSummaryCommitRace = null;
+      document.documentElement.dispatchEvent(
+        new CustomEvent('nicotine-tracker:theme-change'),
+      );
+    };
   });
-  await expect.poll(() => page.evaluate(() => (
-    typeof window.__releaseSummaryCommitRace
-  ))).toBe('function');
 
   const liveRoot = page.locator('[data-insights-root]:not([data-insights-candidate])');
-  const summary = liveRoot.getByText(
-    'Open hourly detail and supporting measures', { exact: true },
-  );
-  const oldSummary = await summary.elementHandle();
-  await summary.scrollIntoViewIfNeeded();
-  const scrollBefore = await page.evaluate(() => window.scrollY);
-  await oldSummary.evaluate((node) => {
-    node.focus({ preventScroll: true });
-    node.click();
-    window.__summaryCommitRace.openedAtInteraction = node.parentElement.open;
-    window.__summaryCommitRace.focusedAtInteraction = document.activeElement === node;
-    window.__releaseSummaryCommitRace();
-  });
-  expect(await page.evaluate(() => ({
-    open: window.__summaryCommitRace.openedAtInteraction,
-    focused: window.__summaryCommitRace.focusedAtInteraction,
-  }))).toEqual({ open: true, focused: true });
-  await expect.poll(() => oldSummary.evaluate((node) => node.isConnected)).toBe(false);
-  const replacement = liveRoot.getByText(
-    'Open hourly detail and supporting measures', { exact: true },
-  );
-  await expect(replacement.locator('..')).toHaveAttribute('open', '');
-  await expect(replacement).toBeFocused();
-  expect(Math.abs((await page.evaluate(() => window.scrollY)) - scrollBefore))
-    .toBeLessThanOrEqual(1);
+  const summaryLabel = 'Open hourly detail and supporting measures';
+  const activate = async (input, expectedOpen) => {
+    await page.evaluate(() => window.__armSummaryCommitRace());
+    await expect.poll(() => page.evaluate(() => ({
+      held: window.__summaryCommitRace.held,
+      releaseReady: typeof window.__releaseSummaryCommitRace === 'function',
+    }))).toEqual({ held: true, releaseReady: true });
+    const builtCandidate = await page.evaluate(() => ({
+      eligible: window.__summaryCommitRace.eligibleIds,
+      built: window.__summaryCommitRace.builtIds,
+    }));
+    expect(builtCandidate.built).toEqual(builtCandidate.eligible);
+    const commitsBefore = await page.evaluate(() => window.__summaryCommitRace.liveCommits);
+    const summary = liveRoot.getByText(summaryLabel, { exact: true });
+    await summary.scrollIntoViewIfNeeded();
+    await summary.focus({ preventScroll: true });
+    const oldSummary = await summary.elementHandle();
+    const scrollBefore = await page.evaluate(() => window.scrollY);
+
+    if (input === 'programmatic') {
+      await oldSummary.evaluate((node) => {
+        node.addEventListener('click', () => window.__releaseSummaryCommitRace(), {
+          once: true,
+        });
+        node.click();
+      });
+    } else if (input === 'pointer') {
+      await oldSummary.evaluate((node) => {
+        node.addEventListener('pointerdown', () => window.__releaseSummaryCommitRace(), {
+          once: true,
+        });
+      });
+      const box = await summary.boundingBox();
+      await page.mouse.click(box.x + (box.width / 2), box.y + (box.height / 2));
+    } else {
+      await oldSummary.evaluate((node, key) => {
+        node.addEventListener('keydown', (event) => {
+          if (event.key === key) window.__releaseSummaryCommitRace();
+        }, { once: true });
+      }, input);
+      await summary.press(input);
+    }
+
+    await expect.poll(() => oldSummary.evaluate((node) => node.isConnected)).toBe(false);
+    const replacement = liveRoot.getByText(summaryLabel, { exact: true });
+    if (expectedOpen) await expect(replacement.locator('..')).toHaveAttribute('open', '');
+    else await expect(replacement.locator('..')).not.toHaveAttribute('open', '');
+    await expect(replacement).toBeFocused();
+    expect(Math.abs((await page.evaluate(() => window.scrollY)) - scrollBefore))
+      .toBeLessThanOrEqual(1);
+    await expect.poll(() => page.evaluate(() => window.__summaryCommitRace.active)).toBe(0);
+    expect(await page.evaluate(() => window.__summaryCommitRace.liveCommits))
+      .toBe(commitsBefore + 1);
+  };
+
+  await activate('programmatic', true);
+  await activate('pointer', false);
+  await activate('Enter', true);
+  await activate(' ', false);
   expect(await page.evaluate(() => window.__summaryCommitRace.maxActive)).toBe(1);
 });
 
