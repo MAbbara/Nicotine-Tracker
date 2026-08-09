@@ -882,7 +882,7 @@ test('pre-activation disclosure input invalidates a fully built background candi
 
   const liveRoot = page.locator('[data-insights-root]:not([data-insights-candidate])');
   const summaryLabel = 'Open hourly detail and supporting measures';
-  const activate = async (input, expectedOpen) => {
+  const prepareHeldCandidate = async () => {
     await page.evaluate(() => window.__armSummaryCommitRace());
     await expect.poll(() => page.evaluate(() => ({
       held: window.__summaryCommitRace.held,
@@ -893,6 +893,9 @@ test('pre-activation disclosure input invalidates a fully built background candi
       built: window.__summaryCommitRace.builtIds,
     }));
     expect(builtCandidate.built).toEqual(builtCandidate.eligible);
+  };
+  const activate = async (input, expectedOpen) => {
+    await prepareHeldCandidate();
     const commitsBefore = await page.evaluate(() => window.__summaryCommitRace.liveCommits);
     const summary = liveRoot.getByText(summaryLabel, { exact: true });
     await summary.scrollIntoViewIfNeeded();
@@ -940,6 +943,45 @@ test('pre-activation disclosure input invalidates a fully built background candi
   await activate('pointer', false);
   await activate('Enter', true);
   await activate(' ', false);
+
+  for (const input of ['pointerdown', 'Enter', ' ']) {
+    await prepareHeldCandidate();
+    const commitsBefore = await page.evaluate(() => window.__summaryCommitRace.liveCommits);
+    const summary = liveRoot.getByText(summaryLabel, { exact: true });
+    await summary.focus({ preventScroll: true });
+    const oldSummary = await summary.elementHandle();
+    if (input === 'pointerdown') {
+      await oldSummary.evaluate((node) => {
+        node.addEventListener('pointerdown', (event) => {
+          event.preventDefault();
+          window.__releaseSummaryCommitRace();
+        }, { once: true });
+        node.dispatchEvent(new PointerEvent('pointerdown', {
+          bubbles: true,
+          cancelable: true,
+          pointerId: 41,
+        }));
+      });
+    } else {
+      await oldSummary.evaluate((node, key) => {
+        node.addEventListener('keydown', (event) => {
+          if (event.key !== key) return;
+          event.preventDefault();
+          window.__releaseSummaryCommitRace();
+        }, { once: true });
+        node.dispatchEvent(new KeyboardEvent('keydown', {
+          bubbles: true,
+          cancelable: true,
+          key,
+        }));
+      }, input);
+    }
+    await expect.poll(() => page.evaluate(() => window.__summaryCommitRace.active)).toBe(0);
+    await expect.poll(() => page.evaluate(() => window.__summaryCommitRace.liveCommits))
+      .toBe(commitsBefore + 1);
+    await expect.poll(() => oldSummary.evaluate((node) => node.isConnected)).toBe(false);
+    await expect(liveRoot.getByText(summaryLabel, { exact: true })).toBeFocused();
+  }
   expect(await page.evaluate(() => window.__summaryCommitRace.maxActive)).toBe(1);
 });
 
@@ -960,12 +1002,30 @@ test('Export handoff preserves focus and defers one invalidated disclosure succe
       eligibleIds: [],
       builtIds: [],
       liveCommits: 0,
+      fetchStarts: 0,
+      activationSnapshots: [],
+    };
+    const nativeFetch = window.fetch;
+    window.fetch = (...args) => {
+      if (String(args[0]).includes('/insights/api/export')) {
+        window.__exportHandoffRace.fetchStarts += 1;
+      }
+      return nativeFetch(...args);
     };
     new MutationObserver((records) => {
       window.__exportHandoffRace.liveCommits += records.filter((record) => (
         record.type === 'childList' && record.target === liveRoot
       )).length;
     }).observe(liveRoot, { childList: true });
+    liveRoot.addEventListener('click', (event) => {
+      if (!event.target.closest?.('#export-data')) return;
+      const button = liveRoot.querySelector('#export-data');
+      window.__exportHandoffRace.activationSnapshots.push({
+        busy: button.getAttribute('aria-busy'),
+        disabled: button.disabled,
+        fetchStarts: window.__exportHandoffRace.fetchStarts,
+      });
+    });
     window.ApexCharts = class HeldDisclosureChart {
       constructor(target, options) {
         this.targetId = target.id;
@@ -1027,15 +1087,6 @@ test('Export handoff preserves focus and defers one invalidated disclosure succe
     window.scrollTo({ left: position.x, top: position.y, behavior: 'instant' });
     return position.y;
   });
-  const settleCommit = () => page.evaluate(() => new Promise((resolve) => {
-    let frames = 0;
-    const settle = () => requestAnimationFrame(() => {
-      frames += 1;
-      if (frames === 6) resolve();
-      else settle();
-    });
-    settle();
-  }));
   const armDisclosure = async (key) => {
     await page.evaluate(() => window.__armExportHandoff());
     await summary().focus({ preventScroll: true });
@@ -1077,7 +1128,6 @@ test('Export handoff preserves focus and defers one invalidated disclosure succe
   });
   await expect.poll(() => firstOldExport.evaluate((node) => node.isConnected)).toBe(false);
   await expect(exportButton).toBeFocused();
-  await settleCommit();
   const firstScroll = await page.evaluate(() => (
     window.__exportHandoffRace.focusReleaseScroll
   ));
@@ -1101,6 +1151,9 @@ test('Export handoff preserves focus and defers one invalidated disclosure succe
     }
   });
   await page.keyboard.press('Enter');
+  expect(await page.evaluate(() => (
+    window.__exportHandoffRace.activationSnapshots.at(-1)
+  ))).toEqual({ busy: 'true', disabled: true, fetchStarts: 1 });
   await expect.poll(() => exportRequests).toBe(1);
   await expect(exportButton).toBeDisabled();
   await expect(exportButton).toHaveAttribute('aria-busy', 'true');
@@ -1150,7 +1203,6 @@ test('Export handoff preserves focus and defers one invalidated disclosure succe
   await expect(exportButton).toBeFocused();
   await expect.poll(() => page.evaluate(() => window.__exportHandoffRace.liveCommits))
     .toBe(commitsBefore + 1);
-  await settleCommit();
   const secondScroll = await page.evaluate(() => (
     window.__exportHandoffRace.keydownReleaseScroll
   ));
@@ -1159,8 +1211,135 @@ test('Export handoff preserves focus and defers one invalidated disclosure succe
     'deferred post-export successor must not scroll',
   )
     .toBeLessThanOrEqual(1);
+
+  for (const input of ['pointerdown', 'Enter', ' ']) {
+    await armDisclosure(input === ' ' ? 'Enter' : ' ');
+    const currentExport = await exportButton.elementHandle();
+    await exportButton.focus({ preventScroll: true });
+    const commitsBeforeCancel = await page.evaluate(() => (
+      window.__exportHandoffRace.liveCommits
+    ));
+    await currentExport.evaluate((node, canceledInput) => {
+      const eventName = canceledInput === 'pointerdown' ? 'pointerdown' : 'keydown';
+      node.addEventListener(eventName, (event) => {
+        event.preventDefault();
+        window.__releaseExportHandoff();
+      }, { once: true });
+      node.dispatchEvent(canceledInput === 'pointerdown'
+        ? new PointerEvent('pointerdown', {
+          bubbles: true, cancelable: true, pointerId: 73,
+        })
+        : new KeyboardEvent('keydown', {
+          bubbles: true, cancelable: true, key: canceledInput,
+        }));
+    }, input);
+    await expect.poll(() => page.evaluate(() => window.__exportHandoffRace.active)).toBe(0);
+    await expect.poll(() => page.evaluate(() => window.__exportHandoffRace.liveCommits))
+      .toBe(commitsBeforeCancel + 1);
+    await expect.poll(() => currentExport.evaluate((node) => node.isConnected)).toBe(false);
+    await expect(exportButton).toBeFocused();
+    expect(exportRequests).toBe(2);
+  }
+
+  await exportButton.click();
+  await expect.poll(() => exportRequests).toBe(3);
+  await expect(exportButton).toBeDisabled();
+  await expect(exportButton).toHaveAttribute('aria-busy', 'true');
+  releaseResponses[2]();
+  await expect(exportButton).toBeEnabled();
+
+  await armDisclosure('Enter');
+  await exportButton.focus({ preventScroll: true });
+  const postCommitOldExport = await exportButton.elementHandle();
+  const commitsBeforePostCommit = await page.evaluate(() => (
+    window.__exportHandoffRace.liveCommits
+  ));
+  await page.evaluate(() => {
+    const root = document.querySelector('[data-insights-root]');
+    new MutationObserver((_, observer) => {
+      observer.disconnect();
+      const button = root.querySelector('#export-data');
+      button.addEventListener('pointerdown', (event) => event.preventDefault(), { once: true });
+      button.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true, cancelable: true, pointerId: 97,
+      }));
+      window.__exportHandoffRace.postCommitActivation = true;
+    }).observe(root, { childList: true });
+    window.__releaseExportHandoff();
+  });
+  await expect.poll(() => page.evaluate(() => (
+    window.__exportHandoffRace.postCommitActivation
+  ))).toBe(true);
+  await expect.poll(() => postCommitOldExport.evaluate((node) => node.isConnected)).toBe(false);
+  await page.waitForTimeout(100);
+  expect(await page.evaluate(() => window.__exportHandoffRace.liveCommits))
+    .toBe(commitsBeforePostCommit + 1);
+  expect(exportRequests).toBe(3);
   expect(await page.evaluate(() => window.__exportHandoffRace.maxActive)).toBe(1);
-  expect(exportRequests).toBe(2);
+  expect(exportRequests).toBe(3);
+});
+
+test('Export failure cleanup has no frame gap and never steals moved focus', async ({ page }) => {
+  await login(page, 'insights-range@example.com');
+  await page.goto('/insights/?days=30');
+  const releases = [];
+  await page.route('**/insights/api/export?days=30', async (route) => {
+    await new Promise((resolve) => { releases.push(resolve); });
+    await route.fulfill({ status: 503, contentType: 'text/plain', body: 'controlled' });
+  });
+  await page.evaluate(() => {
+    const nativeFrame = window.requestAnimationFrame;
+    let frameCount = 0;
+    window.__cleanupFrameProbe = { held: false };
+    window.requestAnimationFrame = (callback) => {
+      if (!new Error().stack.includes('/static/js/insights.js')) {
+        return nativeFrame(callback);
+      }
+      frameCount += 1;
+      if (frameCount === 1) return nativeFrame(callback);
+      window.__cleanupFrameProbe.held = true;
+      window.__cleanupFrameProbe.release = () => nativeFrame(callback);
+      return frameCount;
+    };
+  });
+  const exportButton = page.getByRole('button', { name: 'Export CSV' });
+  await exportButton.click();
+  await expect.poll(() => releases.length).toBe(1);
+  releases[0]();
+  await expect.poll(() => page.evaluate(() => ({
+    enabled: !document.querySelector('#export-data').disabled,
+    cleanupFrameHeld: window.__cleanupFrameProbe.held,
+  }))).toEqual({ enabled: true, cleanupFrameHeld: false });
+
+  await exportButton.focus({ preventScroll: true });
+  await page.keyboard.press('Enter');
+  await expect.poll(() => releases.length).toBe(2);
+  const outside = page.getByRole('navigation', { name: 'Primary' })
+    .getByRole('link', { name: 'Today', exact: true });
+  await outside.focus();
+  releases[1]();
+  await expect(exportButton).toBeEnabled();
+  await expect(outside).toBeFocused();
+});
+
+test('empty Insights export stays local for pointer and keyboard activation', async ({ page }) => {
+  await login(page, 'insights-no-plan@example.com');
+  await page.goto('/insights/?days=7');
+  let requests = 0;
+  await page.route('**/insights/api/export?days=7', async (route) => {
+    requests += 1;
+    await route.abort();
+  });
+  const exportButton = page.getByRole('button', { name: 'Export CSV' });
+  await exportButton.click();
+  await expect(page.locator('[data-insights-load-status]'))
+    .toContainText('There is no data to export');
+  await expect(exportButton).toBeEnabled();
+  await expect(exportButton).toHaveAttribute('aria-busy', 'false');
+  await exportButton.focus({ preventScroll: true });
+  await page.keyboard.press('Enter');
+  await expect(exportButton).toBeFocused();
+  expect(requests).toBe(0);
 });
 
 test('latest range wins after abort and long snapshot labels stay contained at 320px 200%', async ({ page }) => {
@@ -1213,6 +1392,48 @@ test('latest range wins after abort and long snapshot labels stay contained at 3
   expect(await page.evaluate(() => (
     document.documentElement.scrollWidth - document.documentElement.clientWidth
   ))).toBe(0);
+});
+
+test('a newer held range keeps ownership after an older candidate commits', async ({ page }) => {
+  await login(page, 'insights-range@example.com');
+  await page.goto('/insights/?days=30');
+  let releaseNinety;
+  await page.route('**/insights/api/insights?days=7', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(apiFixture(7)),
+  }));
+  await page.route('**/insights/api/insights?days=90', async (route) => {
+    await new Promise((resolve) => { releaseNinety = resolve; });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(apiFixture(90)),
+    });
+  });
+  await page.evaluate(() => {
+    const root = document.querySelector('[data-insights-root]');
+    window.__rangeOwnershipProbe = { triggered: false };
+    new MutationObserver(() => {
+      if (window.__rangeOwnershipProbe.triggered) return;
+      if (root.querySelector('[data-days="7"]')?.getAttribute('aria-current') !== 'true') return;
+      window.__rangeOwnershipProbe.triggered = true;
+      root.querySelector('[data-days="90"]').click();
+    }).observe(root, { childList: true });
+  });
+
+  await page.getByRole('link', { name: '7 days', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__rangeOwnershipProbe.triggered))
+    .toBe(true);
+  await expect(page.locator('[data-insights-root]')).toHaveAttribute('data-pending-days', '90');
+  await page.waitForTimeout(150);
+  await expect(page.locator('[data-insights-root]')).toHaveAttribute('aria-busy', 'true');
+  await expect(page.locator('[data-insights-root]')).toHaveAttribute('data-pending-days', '90');
+  await expect(page).toHaveURL(/days=7/);
+
+  releaseNinety();
+  await expect(page).toHaveURL(/days=90/);
+  await expect(page.locator('[data-days="90"]')).toHaveAttribute('aria-current', 'true');
 });
 
 test('range request invalidates an already-running live presentation before pending begins', async ({ page }) => {

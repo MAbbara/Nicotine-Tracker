@@ -402,21 +402,15 @@ async function exportRange(root, days, { activationScroll = null } = {}) {
   const interactionScroll = initiatedWithFocus
     ? activationScroll || { x: window.scrollX, y: window.scrollY }
     : null;
-  const restoreInteractionScroll = () => new Promise((resolve) => {
-    requestAnimationFrame(() => {
-      window.scrollTo({
-        left: interactionScroll.x,
-        top: interactionScroll.y,
-        behavior: 'instant',
-      });
-      resolve();
-    });
+  const restoreInteractionScroll = () => window.scrollTo({
+    left: interactionScroll.x,
+    top: interactionScroll.y,
+    behavior: 'instant',
   });
   button.disabled = true;
   const focusAfterDisable = document.activeElement;
   button.setAttribute('aria-busy', 'true');
   setLoadStatus(root, 'Preparing CSV…');
-  if (interactionScroll) await restoreInteractionScroll();
   try {
     const response = await fetch(`/insights/api/export?days=${days}`);
     if (!response.ok) {
@@ -440,11 +434,11 @@ async function exportRange(root, days, { activationScroll = null } = {}) {
   } catch (_) {
     setLoadStatus(root, 'The CSV could not be prepared. Your insights are still available.');
   } finally {
+    const activeAtSettlement = document.activeElement;
     const focusWasNotMoved = (
-      document.activeElement === focusAfterDisable
-      || document.activeElement === button
+      activeAtSettlement === focusAfterDisable
+      || activeAtSettlement === button
     );
-    if (interactionScroll && focusWasNotMoved) await restoreInteractionScroll();
     button.disabled = false;
     button.setAttribute('aria-busy', 'false');
     if (
@@ -454,13 +448,7 @@ async function exportRange(root, days, { activationScroll = null } = {}) {
       && button.isConnected
       && document.visibilityState === 'visible'
     ) button.focus({ preventScroll: true });
-    if (interactionScroll && focusWasNotMoved) {
-      window.scrollTo({
-        left: interactionScroll.x,
-        top: interactionScroll.y,
-        behavior: 'instant',
-      });
-    }
+    if (interactionScroll && focusWasNotMoved) restoreInteractionScroll();
   }
 }
 
@@ -606,14 +594,16 @@ export async function startInsights(scope = document) {
     || document.getElementById('initial-insights-data');
   if (!root || !payload || root.dataset.insightsStarted === 'true') return null;
   root.dataset.insightsStarted = 'true';
-  root.style.overflowAnchor = 'none';
+  document.documentElement.style.overflowAnchor = 'none';
+  document.documentElement.style.scrollBehavior = 'auto';
   let currentData = JSON.parse(payload.textContent || '{}');
   let currentRange = Number(currentData.range_days) || 30;
   let trendType = 'daily';
   let requestGeneration = 0;
   let presentationGeneration = 0;
   const inFlightPresentations = new Set();
-  let deferredPresentationRefresh = false;
+  let presentationRefreshOwed = false;
+  let presentationFallbackTimer = null;
   let exportPending = false;
   let exportSettlement = Promise.resolve();
   let exportActivationScroll = null;
@@ -728,7 +718,7 @@ export async function startInsights(scope = document) {
     }
   };
 
-  const commitCandidate = async (
+  const commitCandidate = (
     candidate,
     data,
     range,
@@ -736,11 +726,6 @@ export async function startInsights(scope = document) {
   ) => {
     const focusIdentity = captureInsightsFocus(root, document.activeElement, preserveFocus);
     const focusScroll = focusIdentity ? { x: window.scrollX, y: window.scrollY } : null;
-    const restoreScroll = focusScroll ? () => window.scrollTo({
-      left: focusScroll.x,
-      top: focusScroll.y,
-      behavior: 'instant',
-    }) : null;
     const previousCharts = activeCharts;
     root.replaceChildren(...candidate.root.childNodes);
     root.dataset.insightsState = candidate.root.dataset.insightsState;
@@ -761,19 +746,18 @@ export async function startInsights(scope = document) {
     }
     restoreInsightsFocus(root, focusIdentity, document);
     if (focusScroll) {
-      restoreScroll();
-      await new Promise((resolve) => {
-        let settledFrames = 0;
-        const settle = () => requestAnimationFrame(() => {
-          restoreScroll();
-          settledFrames += 1;
-          if (settledFrames === 5) resolve();
-          else settle();
-        });
-        settle();
+      window.scrollTo({
+        left: focusScroll.x,
+        top: focusScroll.y,
+        behavior: 'instant',
       });
-      restoreScroll();
     }
+  };
+
+  const cancelPresentationFallback = () => {
+    if (presentationFallbackTimer === null) return;
+    clearTimeout(presentationFallbackTimer);
+    presentationFallbackTimer = null;
   };
 
   const renderLive = async ({
@@ -781,10 +765,11 @@ export async function startInsights(scope = document) {
     preserveLoadStatus = false,
   } = {}) => {
     if (exportPending || root.getAttribute('aria-busy') === 'true') {
-      deferredPresentationRefresh = true;
+      presentationRefreshOwed = true;
       return false;
     }
-    deferredPresentationRefresh = false;
+    cancelPresentationFallback();
+    presentationRefreshOwed = false;
     const generation = ++presentationGeneration;
     const status = root.querySelector('[data-insights-load-status]');
     const loadStatus = preserveLoadStatus && status ? {
@@ -800,7 +785,7 @@ export async function startInsights(scope = document) {
         { strict: false },
       );
       if (!candidate || generation !== presentationGeneration) return false;
-      await commitCandidate(candidate, currentData, currentRange, {
+      commitCandidate(candidate, currentData, currentRange, {
         preserveFocus,
         loadStatus,
       });
@@ -810,10 +795,18 @@ export async function startInsights(scope = document) {
     }
   };
 
-  const flushDeferredPresentation = async () => {
-    if (!deferredPresentationRefresh || exportPending) return false;
+  const flushOwedPresentation = async () => {
+    if (!presentationRefreshOwed || exportPending) return false;
     if (root.getAttribute('aria-busy') === 'true') return false;
     return renderLive({ preserveFocus: true, preserveLoadStatus: true });
+  };
+
+  const schedulePresentationFallback = () => {
+    cancelPresentationFallback();
+    presentationFallbackTimer = setTimeout(() => {
+      presentationFallbackTimer = null;
+      flushOwedPresentation();
+    }, 0);
   };
 
   const loadRange = async (
@@ -865,10 +858,12 @@ export async function startInsights(scope = document) {
       }
       if (!candidate) return false;
       if (generation !== requestGeneration || controller.signal.aborted) return false;
-      await commitCandidate(candidate, data, candidateRange, {
+      commitCandidate(candidate, data, candidateRange, {
         preserveFocus: historyMode === 'push',
       });
-      deferredPresentationRefresh = false;
+      if (generation !== requestGeneration || controller.signal.aborted) return false;
+      cancelPresentationFallback();
+      presentationRefreshOwed = false;
       const nextUrl = new URL(window.location.href);
       nextUrl.searchParams.set('days', String(currentRange));
       if (historyMode === 'push') {
@@ -887,7 +882,7 @@ export async function startInsights(scope = document) {
       }
       setPending(root, false);
       delete root.dataset.pendingDays;
-      flushDeferredPresentation();
+      flushOwedPresentation();
       return true;
     } catch (_) {
       if (generation !== requestGeneration || controller.signal.aborted) return false;
@@ -900,7 +895,7 @@ export async function startInsights(scope = document) {
       }
       setPending(root, false, 'Insights could not refresh. Your current values are still available; choose the range again to retry.');
       delete root.dataset.pendingDays;
-      flushDeferredPresentation();
+      flushOwedPresentation();
       return false;
     }
   };
@@ -918,8 +913,11 @@ export async function startInsights(scope = document) {
     if (!action) return;
     const invalidatedPresentation = inFlightPresentations.has(presentationGeneration);
     presentationGeneration += 1;
+    if (invalidatedPresentation) {
+      presentationRefreshOwed = true;
+      schedulePresentationFallback();
+    }
     if (action.id === 'export-data') {
-      if (invalidatedPresentation) deferredPresentationRefresh = true;
       if (event.type === 'keydown' || event.type === 'pointerdown') {
         exportActivationScroll = { x: window.scrollX, y: window.scrollY };
       }
@@ -950,6 +948,7 @@ export async function startInsights(scope = document) {
     }
     if (event.target.closest?.('#export-data')) {
       if (exportPending) return;
+      cancelPresentationFallback();
       exportPending = true;
       const activationScroll = exportActivationScroll;
       exportActivationScroll = null;
@@ -958,7 +957,7 @@ export async function startInsights(scope = document) {
       operation.finally(() => {
         if (exportSettlement !== operation) return;
         exportPending = false;
-        flushDeferredPresentation();
+        flushOwedPresentation();
       });
     }
   });
@@ -966,6 +965,7 @@ export async function startInsights(scope = document) {
     if (!event.target.matches?.('.analytics-details')) return;
     if (event.target.open === detailsOpen) return;
     detailsOpen = event.target.open;
+    cancelPresentationFallback();
     renderLive({ preserveFocus: true });
   }, true);
   document.documentElement.addEventListener('nicotine-tracker:theme-change', renderLive);
