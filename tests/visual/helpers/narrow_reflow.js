@@ -4,6 +4,11 @@ const { expect } = require('@playwright/test');
 async function collectNarrowReflowFacts(page, { kind, stateName }) {
   return page.evaluate(({ captureKind, captureState }) => {
     const visible = (element) => {
+      for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+        if (!ancestor.matches('details:not([open])')) continue;
+        const summary = ancestor.querySelector(':scope > summary');
+        if (!summary?.contains(element)) return false;
+      }
       const style = getComputedStyle(element);
       const rect = element.getBoundingClientRect();
       return style.display !== 'none'
@@ -271,6 +276,11 @@ async function collectNarrowReflowFacts(page, { kind, stateName }) {
 async function expectFinalActionClearsNav(page, stateName) {
   const clearance = await page.evaluate(async () => {
     const visible = (element) => {
+      for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+        if (!ancestor.matches('details:not([open])')) continue;
+        const summary = ancestor.querySelector(':scope > summary');
+        if (!summary?.contains(element)) return false;
+      }
       const style = getComputedStyle(element);
       const rect = element.getBoundingClientRect();
       return style.display !== 'none'

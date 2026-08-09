@@ -192,8 +192,11 @@ for (const narrow of [false, true]) {
       textScale: narrow ? 2 : 1,
       async open(currentPage) {
         const editor = currentPage.locator('[data-plan-editor="revision"]');
+        const endTarget = editor.getByLabel('End target nicotine per day (mg)');
+        await expect(endTarget).toHaveValue('36.00');
         await editor.getByLabel('Effective date').fill('2026-08-04');
         await editor.getByLabel('Duration days').fill('42');
+        await endTarget.fill('30.00');
         const previewResponse = currentPage.waitForResponse((response) => (
           response.url().includes('/revisions/preview')
           && response.request().method() === 'POST'
@@ -204,7 +207,9 @@ for (const narrow of [false, true]) {
           response.status(),
           `Journey revision preview response: ${await response.text()}`,
         ).toBe(200);
-        await expect(editor.locator('[data-plan-editor-preview]')).toBeVisible();
+        const preview = editor.locator('[data-plan-editor-preview]');
+        await expect(preview).toBeVisible();
+        await expect(preview).toContainText('30.00 mg');
       },
     });
 
