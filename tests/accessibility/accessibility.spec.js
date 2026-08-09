@@ -150,7 +150,7 @@ async function expectKeyboardScrollable(region) {
 
   expect(await region.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
   await expect(region).toHaveAttribute('tabindex', '0');
-  await expect(region).toHaveAccessibleName(/schedule|recent logs|log history/i);
+  await expect(region).toHaveAccessibleName(/plan|schedule|recent logs|log history/i);
   await region.focus();
   expect(await region.evaluate((element) => {
     const style = getComputedStyle(element);
@@ -716,7 +716,51 @@ for (const theme of ['light', 'dark']) {
     await page.goto('/journey/');
 
     await expectExplicitTheme(page, theme);
-    await expect(page.locator('.journey-table-scroll')).toBeVisible();
+    await expect(page.locator('.journey-table-scroll').first()).toBeVisible();
+    const scheduleContrast = await page.locator(
+      '.journey-schedule tr[aria-current="date"] > th[scope="row"] > span',
+    ).evaluate((currentLabel) => {
+      const parseRgb = (value) => {
+        if (value.startsWith('#')) {
+          return [1, 3, 5].map((index) => Number.parseInt(
+            value.slice(index, index + 2), 16,
+          ));
+        }
+        return value.match(/[\d.]+/g).slice(0, 3).map(Number);
+      };
+      const luminance = (value) => {
+        const channels = parseRgb(value).map((channel) => {
+          const normalized = channel / 255;
+          return normalized <= 0.04045
+            ? normalized / 12.92
+            : ((normalized + 0.055) / 1.055) ** 2.4;
+        });
+        return (0.2126 * channels[0]) + (0.7152 * channels[1]) + (0.0722 * channels[2]);
+      };
+      const foreground = getComputedStyle(currentLabel).color;
+      const background = getComputedStyle(currentLabel.closest('tr')).backgroundColor;
+      const foregroundLuminance = luminance(foreground);
+      const backgroundLuminance = luminance(background);
+      const ratio = (
+        Math.max(foregroundLuminance, backgroundLuminance) + 0.05
+      ) / (
+        Math.min(foregroundLuminance, backgroundLuminance) + 0.05
+      );
+      const noncurrentLabel = currentLabel.closest('tbody').querySelector(
+        'tr:not([aria-current="date"]) > th[scope="row"] > span',
+      );
+      return {
+        foreground,
+        background,
+        ratio,
+        noncurrent: parseRgb(getComputedStyle(noncurrentLabel).color),
+        muted: parseRgb(getComputedStyle(document.documentElement)
+          .getPropertyValue('--color-text-muted').trim()),
+      };
+    });
+    expect(scheduleContrast.ratio, JSON.stringify(scheduleContrast))
+      .toBeGreaterThanOrEqual(5);
+    expect(scheduleContrast.noncurrent).toEqual(scheduleContrast.muted);
     await expectNoWcagViolations(page);
   });
 
@@ -758,7 +802,7 @@ test('populated Journey mobile overflow is keyboard accessible', async ({ page }
   await login(page, 'journey-review-mobile@example.com');
   await page.goto('/journey/');
 
-  const schedule = page.locator('.journey-table-scroll');
+  const schedule = page.locator('.journey-table-scroll').first();
   await expect(schedule).toBeVisible();
   await expectKeyboardScrollable(schedule);
 });

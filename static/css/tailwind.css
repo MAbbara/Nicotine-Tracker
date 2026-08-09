@@ -3044,6 +3044,10 @@
     text-transform: uppercase;
   }
 
+  .journey-schedule tr[aria-current="date"] > th[scope="row"] > span {
+    color: var(--color-ink);
+  }
+
   .journey-schedule td strong {
     font-family: var(--font-display);
     font-size: var(--text-lead);

@@ -607,7 +607,13 @@ with app.app_context():
         repeated_difficulty=True,
     )
 
-    def seed_review_fixture(email, fingerprint_character, digest_character):
+    def seed_review_fixture(
+        email,
+        fingerprint_character,
+        digest_character,
+        *,
+        targeted=False,
+    ):
         review_user = User(
             email=email,
             email_verified=True,
@@ -655,6 +661,85 @@ with app.app_context():
             legacy_goal_ids=[pouch_goal.id, matching_mg.id],
         ))
 
+        if targeted:
+            targeted_start = _REAL_DATE(
+                RELEASE_TEST_NOW.year,
+                RELEASE_TEST_NOW.month,
+                RELEASE_TEST_NOW.day,
+            )
+            generation_input = PlanGenerationInput(
+                mode='reduce',
+                target_basis='nicotine_mg',
+                start_date=targeted_start,
+                baseline_pouches=Decimal('8.00'),
+                baseline_mg=Decimal('48.00'),
+                baseline_mg_per_pouch=Decimal('6.00'),
+                pace='steady',
+                end_target_mg=Decimal('24.00'),
+                duration_days=49,
+            )
+            preview = PlanScheduleGenerator.generate(
+                generation_input,
+                reference_date=targeted_start,
+            )
+            targeted_plan = ReductionPlan(
+                user_id=review_user.id,
+                mode='reduce',
+                status='active',
+                active_slot=1,
+                start_date=preview.days[0].local_date,
+                target_date=preview.days[-1].local_date,
+                baseline_pouches=generation_input.baseline_pouches,
+                baseline_mg=generation_input.baseline_mg,
+                baseline_mg_per_pouch=generation_input.baseline_mg_per_pouch,
+                baseline_source='manual',
+                pace=generation_input.pace,
+                end_target_mg=generation_input.end_target_mg,
+            )
+            db.session.add(targeted_plan)
+            db.session.flush()
+            targeted_revision = PlanRevision(
+                plan_id=targeted_plan.id,
+                effective_date=targeted_plan.start_date,
+                pace=targeted_plan.pace,
+                target_date=targeted_plan.target_date,
+                end_target_mg=targeted_plan.end_target_mg,
+                generation_inputs={
+                    'mode': 'reduce',
+                    'target_basis': 'nicotine_mg',
+                    'baseline_mg': '48.00',
+                    'pace': 'steady',
+                    'end_target_mg': '24.00',
+                    'duration_days': 49,
+                },
+                preview_digest=preview.digest,
+                reason='initial',
+            )
+            db.session.add(targeted_revision)
+            db.session.flush()
+            targeted_plan.active_revision_id = targeted_revision.id
+            db.session.add_all([
+                PlanDay(
+                    plan_id=targeted_plan.id,
+                    revision_id=targeted_revision.id,
+                    local_date=day.local_date,
+                    target_pouches=None,
+                    nicotine_ceiling_mg=day.nicotine_ceiling_mg,
+                )
+                for day in preview.days
+            ])
+            db.session.add(PlanStatusEvent(
+                plan_id=targeted_plan.id,
+                status='active',
+                effective_at_utc=datetime.combine(
+                    targeted_plan.start_date,
+                    time.min,
+                ),
+                local_date=targeted_plan.start_date,
+                reason='fixture activation',
+            ))
+            return
+
         observe_start = date.today() - timedelta(days=7)
         observe_plan = ReductionPlan(
             user_id=review_user.id,
@@ -693,8 +778,12 @@ with app.app_context():
             reason='fixture activation',
         ))
 
-    seed_review_fixture('journey-review-desktop@example.com', 'c', 'd')
-    seed_review_fixture('journey-review-mobile@example.com', 'e', 'f')
+    seed_review_fixture(
+        'journey-review-desktop@example.com', 'c', 'd', targeted=True
+    )
+    seed_review_fixture(
+        'journey-review-mobile@example.com', 'e', 'f', targeted=True
+    )
     # The Journey flow mutates its Observe plan to completed. Keep those
     # destructive lifecycle assertions isolated from the immutable release
     # inventory principals exercised later in the same one-worker run.
