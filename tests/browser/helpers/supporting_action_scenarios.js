@@ -921,14 +921,14 @@ async function catalogFormRequest(page, state, action, status = 302) {
     path = '/settings/account';
     exact = {
       action: 'change_password',
-      current_password: status === 200 ? 'wrong-password' : 'account-password',
+      current_password: status === 422 ? 'wrong-password' : 'account-password',
       new_password: 'updated-account-password', confirm_password: 'updated-account-password',
     };
   } else if (state === 'account-destructive' && action === 'Delete account') {
     path = '/settings/account';
     exact = {
       action: 'delete_account', password: 'updated-account-password',
-      confirmation: status === 200 ? 'keep my account' : 'delete my account',
+      confirmation: status === 422 ? 'keep my account' : 'delete my account',
     };
   } else {
     throw new Error(`catalog form request is not literal for ${state} › ${action}`);
@@ -1650,7 +1650,7 @@ function validationOnlyScenario(page, state, action) {
       return { control, descriptor: {
         activation: { kind: 'keyboard', key: 'Enter' },
         request: {
-          method: 'POST', path: /^\/settings\/account$/, status: 200,
+          method: 'POST', path: /^\/settings\/account$/, status: 422,
           payload: { kind: 'form', exact: exactPayload },
           dynamicFields: { csrf_token: 'non-empty' },
           responseInvariant: `account:${exactPayload.action}:rejected`,
@@ -1711,7 +1711,7 @@ function disposableAccountMutationScenario(page, state, action) {
           const error = page.locator('#current_password-error');
           const ownership = { kind: 'container', locator: form };
           return { control, descriptor: { activation: { kind: 'keyboard', key: 'Enter' },
-            request: await catalogFormRequest(page, state, action, 200),
+            request: await catalogFormRequest(page, state, action, 422),
             error: { locator: error, text: 'Current password is incorrect.', ownership },
             feedback: { locator: error, text: 'Current password is incorrect.', ownership },
             focus: { mode: 'moved', locator: current } } };
@@ -1743,7 +1743,7 @@ function disposableAccountDeleteScenario(page, state, action) {
         const error = page.locator('#confirmation-error');
         const ownership = { kind: 'container', locator: form };
         return { control, descriptor: { activation: { kind: 'keyboard', key: 'Enter' },
-          request: await catalogFormRequest(page, state, action, 200),
+          request: await catalogFormRequest(page, state, action, 422),
           error: { locator: error, text: 'Please type "delete my account" to confirm.', ownership },
           feedback: { locator: error,
             text: 'Please type "delete my account" to confirm.', ownership },

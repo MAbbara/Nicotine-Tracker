@@ -1871,6 +1871,7 @@ def test_revision_at_exact_non_midnight_reset_protects_the_new_day(
     )
     reset_instant = datetime(2099, 1, 10, 4, tzinfo=timezone.utc)
     changes = {
+        'target_basis': 'legacy_pouches',
         'pace': 'focused',
         'duration_days': 28,
         'end_target_pouches': 1,
@@ -2287,7 +2288,10 @@ def test_first_nicotine_revision_preserves_started_rows_and_legacy_metadata(
     protected_before = _day_snapshot(
         plan.id, lambda row: row.local_date < effective_date
     )
-    changes = {'end_target_mg': Decimal('10.00')}
+    changes = {
+        'target_basis': 'nicotine_mg',
+        'end_target_mg': Decimal('10.00'),
+    }
     preview = PlanService.preview_revision(
         test_user.id,
         plan.id,

@@ -379,6 +379,7 @@ def test_active_legacy_plan_is_not_a_draft_candidate(db_session, test_user):
         baseline_mg=Decimal('48.00'),
         baseline_mg_per_pouch=Decimal('6.00'),
         pace='steady',
+        end_target_mg=Decimal('24.00'),
     )
 
     review = LegacyGoalService.get_draft_candidates(test_user.id)

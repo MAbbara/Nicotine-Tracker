@@ -138,11 +138,13 @@ class TestNotificationService:
             'services.notification_service.tz_service.get_current_user_time',
             return_value=frozen_current_time,
         ):
-            assert NotificationService().queue_weekly_report(test_user) is True
+            queued = NotificationService().queue_weekly_report(test_user)
 
         queued_report = NotificationQueue.query.filter_by(
             user_id=test_user.id, category='weekly_report'
         ).one()
+        assert len(queued) == 1
+        assert queued[0].id == queued_report.id
         assert queued_report.extra_data['total_logs'] == 1
         assert queued_report.extra_data['total_pouches'] == 2
 

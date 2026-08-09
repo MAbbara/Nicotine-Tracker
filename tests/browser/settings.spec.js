@@ -551,7 +551,10 @@ test('Account rejects incorrect credentials without losing the form', async ({ p
   await expect(page.getByLabel('New email address')).toHaveValue('release-settings@example.com');
   await expect(page.getByRole('button', { name: 'Delete account' })).toHaveClass(/c-button--danger/);
   recorder.assertComplete();
-  await expectGuardClean(guard, page, 'account validation supporting owner');
+  await expectGuardClean(guard, page, 'account validation supporting owner', {
+    expectedPath: '/settings/account',
+    expectedStatus: 422,
+  });
 });
 
 
@@ -567,9 +570,8 @@ test('Account email, password, and deletion mutations work for a disposable user
   const disposableBrand = `Disposable Cedar ${suffix}`;
   const disposableCravingNote = `Disposable craving ${suffix}`;
 
-  expect((await page.request.post('/__test__/clear-outbound')).status()).toBe(200);
-
   await login(page, 'release-inventory@example.com');
+  expect((await page.request.post('/__test__/clear-outbound')).status()).toBe(200);
   const fixtureBeforeResponse = await page.request.get('/__test__/account-snapshot');
   expect(fixtureBeforeResponse.status()).toBe(200);
   const fixtureBefore = await fixtureBeforeResponse.json();
@@ -715,5 +717,8 @@ test('Account email, password, and deletion mutations work for a disposable user
   expect(fixtureAfterResponse.status()).toBe(200);
   expect(await fixtureAfterResponse.json()).toEqual(fixtureBefore);
   recorder.assertComplete();
-  await expectGuardClean(guard, page, 'disposable account supporting owner');
+  await expectGuardClean(guard, page, 'disposable account supporting owner', {
+    expectedPath: '/settings/account',
+    expectedStatus: 422,
+  });
 });

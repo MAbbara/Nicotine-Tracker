@@ -268,7 +268,8 @@ class TestSecurity:
                 follow_redirects=True)
             client.application.config['WTF_CSRF_ENABLED'] = True
             generation_input = PlanGenerationInput(
-                mode='reduce', start_date=date(2099, 1, 1),
+                mode='reduce', target_basis='legacy_pouches',
+                start_date=date(2099, 1, 1),
                 baseline_pouches=Decimal('8.00'),
                 baseline_mg=Decimal('48.00'),
                 baseline_mg_per_pouch=Decimal('6.00'), pace='steady',
@@ -283,7 +284,10 @@ class TestSecurity:
             db_before = _security_lifecycle_graph(test_user.id)
             body = {
                 'effective_date': '2099-01-15',
-                'changes': {'pace': 'gentle'},
+                'changes': {
+                    'target_basis': 'legacy_pouches',
+                    'pace': 'gentle',
+                },
             }
             try:
                 expected = {

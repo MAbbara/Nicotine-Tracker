@@ -868,13 +868,15 @@ def _queue_single_weekly_report(user):
         return_value=FROZEN_REPORT_CLOCK,
     ):
         queued = NotificationService().queue_weekly_report(user)
-    assert queued is True, (
-        'setup premise: queuing the weekly report must succeed for a user '
-        'with the email channel and weekly_reports enabled'
+    assert len(queued) == 1, (
+        'setup premise: queuing must return the single durable email row for '
+        f'the report period; got {queued!r}'
     )
-    return NotificationQueue.query.filter_by(
+    row = NotificationQueue.query.filter_by(
         user_id=user.id, category='weekly_report'
     ).one()
+    assert queued[0].id == row.id
+    return row
 
 
 def test_enhanced_insights_preserve_catalog_snapshots_after_delete(
@@ -1134,16 +1136,14 @@ def test_weekly_report_blank_timezone_warns_once_with_request_id(
         ):
             queued = NotificationService().queue_weekly_report(blank_user)
 
-    assert queued is True, (
-        'queuing must succeed via the UTC fallback despite the blank '
-        f'persisted timezone; got {queued!r}'
-    )
+    assert len(queued) == 1
     rows = NotificationQueue.query.filter_by(
         user_id=blank_user.id, category='weekly_report'
     ).all()
     assert len(rows) == 1, (
         f'exactly one weekly_report queue row must exist; got {len(rows)}'
     )
+    assert queued[0].id == rows[0].id
 
     warnings = [
         record for record in caplog.records
@@ -1274,10 +1274,12 @@ def test_weekly_report_selects_latest_fully_completed_non_midnight_reset_week(
     ):
         queued = NotificationService().queue_weekly_report(test_user)
 
-    assert queued is True
-    payload = NotificationQueue.query.filter_by(
+    assert len(queued) == 1
+    row = NotificationQueue.query.filter_by(
         user_id=test_user.id, category='weekly_report'
-    ).one().extra_data
+    ).one()
+    assert queued[0].id == row.id
+    payload = row.extra_data
     assert payload['week_start'] == '2026-07-13'
     assert payload['week_end'] == '2026-07-19'
     assert payload['total_logs'] == 1
@@ -1314,11 +1316,12 @@ def test_weekly_report_blank_timezone_with_active_daily_goal_warns_once(
         ):
             queued = NotificationService().queue_weekly_report(blank_user)
 
-    assert queued is True
+    assert len(queued) == 1
     rows = NotificationQueue.query.filter_by(
         user_id=blank_user.id, category='weekly_report'
     ).all()
     assert len(rows) == 1
+    assert queued[0].id == rows[0].id
     warnings = [
         record for record in caplog.records
         if record.levelno == logging.WARNING

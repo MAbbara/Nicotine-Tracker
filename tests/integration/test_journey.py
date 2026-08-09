@@ -206,7 +206,8 @@ class TestJourneyComposition:
         from routes import journey as journey_routes
 
         original_get_summary = TodayService.get_summary
-        plan = _plan(db_session, test_user, start=date.today())
+        canonical_day = original_get_summary(test_user.id).local_date
+        plan = _plan(db_session, test_user, start=canonical_day)
         summary = original_get_summary(test_user.id)
         assert summary.plan is not None and summary.plan.id == plan.id
         calls = []
@@ -424,7 +425,11 @@ class TestJourneyComposition:
 
     def test_today_progress_and_next_change_are_immediately_comprehensible(
             self, logged_in_client, db_session, test_user):
-        today = date.today()
+        authority = TodayService.get_summary(test_user.id)
+        today = authority.local_date
+        log_time = authority.window.start_utc.replace(tzinfo=None) + timedelta(
+            hours=1
+        )
         plan = _plan(db_session, test_user, start=today - timedelta(days=1))
         days = PlanDay.query.filter_by(plan_id=plan.id).order_by(
             PlanDay.local_date
@@ -444,7 +449,7 @@ class TestJourneyComposition:
         }
         db_session.add(Log(
             user_id=test_user.id,
-            log_time=datetime.now(),
+            log_time=log_time,
             quantity=2,
             nicotine_mg_snapshot=Decimal('6.00'),
             product_brand_snapshot='Known fixture',
@@ -472,7 +477,11 @@ class TestJourneyComposition:
 
     def test_unknown_strength_shows_known_subtotal_without_false_remaining(
             self, logged_in_client, db_session, test_user):
-        today = date.today()
+        authority = TodayService.get_summary(test_user.id)
+        today = authority.local_date
+        log_time = authority.window.start_utc.replace(tzinfo=None) + timedelta(
+            hours=1
+        )
         plan = _plan(db_session, test_user, start=today)
         for row in PlanDay.query.filter_by(plan_id=plan.id):
             row.target_pouches = None
@@ -487,14 +496,14 @@ class TestJourneyComposition:
         db_session.add_all([
             Log(
                 user_id=test_user.id,
-                log_time=datetime.now(),
+                log_time=log_time,
                 quantity=1,
                 nicotine_mg_snapshot=Decimal('6.00'),
                 product_brand_snapshot='Known fixture',
             ),
             Log(
                 user_id=test_user.id,
-                log_time=datetime.now(),
+                log_time=log_time + timedelta(minutes=1),
                 quantity=1,
                 nicotine_mg_snapshot=None,
                 product_brand_snapshot='Unknown fixture',

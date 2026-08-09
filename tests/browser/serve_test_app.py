@@ -170,7 +170,7 @@ def add_supporting_action_invariant(response):
             'delete_account': 'delete_account',
         }
         if action in action_names:
-            outcome = 'rejected' if response.status_code == 200 else 'success'
+            outcome = 'rejected' if response.status_code == 422 else 'success'
             response.headers['X-Supporting-Action-Invariant'] = (
                 f'account:{action_names[action]}:{outcome}'
             )
