@@ -1512,8 +1512,28 @@ function asyncActionScenario(page, state, action) {
         const channel = page.getByRole('checkbox', { name: 'Discord' });
         if (!await channel.isChecked()) await channel.check();
       } else {
+        const email = page.getByRole('checkbox', { name: 'Email', exact: true });
         const weekly = page.getByRole('checkbox', { name: 'Weekly progress report' });
+        if (!await email.isChecked()) await email.check();
         if (!await weekly.isChecked()) await weekly.check();
+
+        const dependencyState = await weekly.evaluate((element) => ({
+          valid: element.validity.valid,
+          validationMessage: element.validationMessage,
+          channelInvalid: document
+            .querySelector('#notification-channel-group')
+            ?.getAttribute('aria-invalid'),
+        }));
+        if (
+          !dependencyState.valid
+          || dependencyState.validationMessage
+          || dependencyState.channelInvalid !== null
+        ) {
+          throw new Error('Weekly report channel dependency did not clear.');
+        }
+        if (!await control.isEnabled()) {
+          throw new Error('Weekly report action remained disabled with a usable channel.');
+        }
       }
       const payload = isDiscord
         ? { webhook_url: 'https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789' } : {};
