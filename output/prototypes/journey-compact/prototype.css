@@ -1,0 +1,411 @@
+@font-face {
+  font-family: "Newsreader";
+  src: url("../../../static/fonts/newsreader-variable.woff2") format("woff2");
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DM Sans";
+  src: url("../../../static/fonts/dm-sans-variable.woff2") format("woff2");
+  font-display: swap;
+}
+
+:root {
+  --font-display: "Newsreader", Georgia, serif;
+  --font-body: "DM Sans", sans-serif;
+  --space-1: .25rem;
+  --space-2: .5rem;
+  --space-3: .75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  color-scheme: light;
+}
+
+:root,
+:root[data-theme="light"] {
+  --page: #f1ecdf;
+  --surface: #e9e3d5;
+  --ink: #17221c;
+  --muted: #59655e;
+  --line: #aab3aa;
+  --green: #476d55;
+  --attention: #a85135;
+  --attention-soft: #ead2c4;
+}
+
+:root[data-theme="dark"] {
+  --page: #0e1914;
+  --surface: #17261e;
+  --ink: #eee9dc;
+  --muted: #aeb8b1;
+  --line: #46584d;
+  --green: #96b79e;
+  --attention: #ee9671;
+  --attention-soft: #452d24;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 0;
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+button,
+summary {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+button:focus-visible,
+summary:focus-visible {
+  outline: 3px solid var(--attention);
+  outline-offset: 3px;
+}
+
+[data-journey-prototype] {
+  width: min(calc(100% - 2rem), 74rem);
+  margin-inline: auto;
+  padding: clamp(var(--space-4), 3vw, var(--space-8)) 0 var(--space-8);
+  overflow-wrap: anywhere;
+  background: var(--page);
+}
+
+header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--space-1) var(--space-3);
+  align-items: center;
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+
+header img {
+  grid-row: 1 / span 2;
+}
+
+header > p:first-of-type {
+  align-self: end;
+  margin: 0;
+  color: var(--muted);
+  font-size: .875rem;
+  font-weight: 650;
+  letter-spacing: .03em;
+}
+
+h1,
+h2 {
+  font-family: var(--font-display);
+  font-weight: 520;
+  letter-spacing: -.025em;
+}
+
+h1 {
+  grid-column: 2;
+  align-self: start;
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3.35rem);
+  line-height: .95;
+}
+
+h2 {
+  margin: 0 0 var(--space-2);
+  font-size: clamp(1.4rem, 2.5vw, 2rem);
+  line-height: 1.05;
+}
+
+header [data-plan-status] {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  margin: 0;
+  color: var(--attention);
+  font-weight: 750;
+}
+
+header [data-plan-status] span {
+  margin-right: var(--space-1);
+}
+
+header [aria-label="Prototype controls"] {
+  grid-column: 3;
+  grid-row: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: end;
+}
+
+header button {
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: .2rem;
+  background: transparent;
+  cursor: pointer;
+}
+
+.journey-scorecard,
+[aria-label="Today’s nicotine progress"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));
+  margin: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.journey-scorecard > div,
+[aria-label="Today’s nicotine progress"] > div {
+  min-width: 0;
+  padding: clamp(var(--space-3), 2.4vw, var(--space-6));
+  border-right: 1px solid var(--line);
+}
+
+.journey-scorecard > :last-child,
+[aria-label="Today’s nicotine progress"] > :last-child {
+  border-right: 0;
+}
+
+dt {
+  margin-bottom: var(--space-1);
+  color: var(--muted);
+  font-size: .8rem;
+  font-weight: 720;
+  letter-spacing: .065em;
+  text-transform: uppercase;
+}
+
+dd {
+  margin: 0;
+  font-size: clamp(1.35rem, 2.8vw, 2.2rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 680;
+  line-height: 1;
+}
+
+[data-logged-mg] {
+  font-family: var(--font-display);
+  font-size: clamp(2.5rem, 5vw, 4rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 560;
+  line-height: .95;
+}
+
+[data-difference-mg] {
+  color: var(--attention);
+}
+
+[aria-label="Today’s nicotine progress"] + p,
+.journey-secondary {
+  margin: var(--space-3) 0 0;
+  color: var(--muted);
+  font-size: .875rem;
+  font-weight: 650;
+}
+
+[aria-label="Today’s nicotine progress"] + p + p {
+  max-width: 62ch;
+  margin: var(--space-2) 0 var(--space-4);
+}
+
+.journey-next,
+[data-next-change] {
+  display: grid;
+  grid-template-columns: minmax(10rem, .45fr) minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: baseline;
+  padding: var(--space-3) 0;
+  border-block: 1px solid var(--line);
+  background: var(--attention-soft);
+}
+
+[data-next-change] > * {
+  margin-inline: var(--space-3);
+}
+
+[data-next-change] p {
+  margin-block: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+[data-next-change] strong {
+  font-size: 1.1rem;
+}
+
+[data-next-change] + section {
+  padding-top: var(--space-4);
+}
+
+.journey-trajectory,
+[data-trajectory] {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  border-block: 1px solid var(--line);
+}
+
+.journey-day,
+[data-day] {
+  position: relative;
+  min-width: 0;
+  min-height: 58px;
+  padding: var(--space-2);
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+[data-day]:last-child {
+  border-right: 0;
+}
+
+[data-day]:first-child {
+  background: var(--surface);
+  box-shadow: inset 0 -3px var(--green);
+}
+
+[data-day]:first-child::before {
+  display: block;
+  content: "Current";
+  color: var(--green);
+  font-size: .7rem;
+  font-weight: 760;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+[data-day] strong {
+  display: block;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+[data-day-detail] {
+  min-height: 1.5em;
+  margin: var(--space-2) 0 var(--space-4);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+caption {
+  padding: var(--space-3) 0;
+  color: var(--muted);
+  font-weight: 700;
+  text-align: left;
+}
+
+th,
+td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+thead th {
+  color: var(--muted);
+  font-size: .8rem;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+details {
+  border-bottom: 1px solid var(--line);
+}
+
+summary {
+  min-height: 44px;
+  padding: var(--space-3) 0;
+  font-weight: 720;
+  cursor: pointer;
+}
+
+details p {
+  max-width: 62ch;
+  margin: 0 0 var(--space-4);
+  color: var(--muted);
+}
+
+@media (max-width: 42rem) {
+  [data-journey-prototype] {
+    width: min(calc(100% - 1rem), 74rem);
+  }
+
+  header {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  header [data-plan-status],
+  header [aria-label="Prototype controls"] {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    justify-self: stretch;
+  }
+
+  header [aria-label="Prototype controls"] {
+    justify-content: start;
+  }
+
+  .journey-scorecard,
+  [aria-label="Today’s nicotine progress"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .journey-scorecard > :first-child,
+  [aria-label="Today’s nicotine progress"] > :first-child {
+    grid-column: 1 / -1;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .journey-next,
+  [data-next-change] {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
+
+  .journey-trajectory,
+  [data-trajectory] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-bottom: 0;
+  }
+
+  [data-day] {
+    min-height: 64px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  [data-day]:nth-child(2n) {
+    border-right: 0;
+  }
+
+  [data-day]:last-child {
+    border-right: 1px solid var(--line);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: .001ms !important;
+    transition-duration: .001ms !important;
+  }
+}
