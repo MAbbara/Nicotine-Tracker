@@ -601,7 +601,7 @@ test('catalog authority rejects route-fulfilled account feedback with no server 
   await page.route('**/settings/account', async (route) => {
     if (route.request().method() !== 'POST') return route.continue();
     await route.fulfill({
-      status: 200,
+      status: 422,
       contentType: 'text/html',
       body: `<!doctype html><html><body><main id="main-content">
         <h1>Account</h1>
