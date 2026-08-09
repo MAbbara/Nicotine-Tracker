@@ -701,3 +701,37 @@ test('chart tasks serialize without losing the newest presentation', async () =>
   assert.deepEqual(commits, [2]);
   assert.deepEqual(results, [false, true]);
 });
+
+test('a current range transaction retries after its presentation theme is invalidated', async () => {
+  const { buildLatestPresentation } = await importModule('static/js/insights.js');
+  let presentationGeneration = 0;
+  let theme = 'light';
+  let releaseFirst;
+  let markFirstStarted;
+  const firstStarted = new Promise((resolve) => { markFirstStarted = resolve; });
+  const firstGate = new Promise((resolve) => { releaseFirst = resolve; });
+  const attempts = [];
+  const resultPromise = buildLatestPresentation({
+    build: async (isCurrent) => {
+      const attemptTheme = theme;
+      attempts.push(attemptTheme);
+      if (attempts.length === 1) {
+        markFirstStarted();
+        await firstGate;
+      }
+      return isCurrent() ? { theme: attemptTheme } : null;
+    },
+    isTransactionCurrent: () => true,
+    nextGeneration: () => ++presentationGeneration,
+    isGenerationCurrent: (generation) => generation === presentationGeneration,
+  });
+
+  await firstStarted;
+  theme = 'dark';
+  presentationGeneration += 1;
+  releaseFirst();
+  const result = await resultPromise;
+
+  assert.deepEqual(attempts, ['light', 'dark']);
+  assert.deepEqual(result, { theme: 'dark' });
+});

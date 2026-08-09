@@ -333,3 +333,57 @@ test('System theme changes refresh the Insights chart palette without changing i
   await expect(page.locator('.analytics-chart:not([hidden]) .apexcharts-canvas')).toHaveCount(4);
   expect(await tableBody.innerText()).toBe(originalRows);
 });
+
+test('a theme change during a held range render commits the latest range in the latest palette', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.route('**/insights/api/insights?days=90', (route) => route.fulfill({
+    json: readyInsights(90, 90),
+  }));
+  await login(page);
+  await page.goto('/insights/');
+  await page.evaluate(() => {
+    const BaseChart = window.ApexCharts;
+    window.__heldRangeThemeAudit = { active: 0, maxActive: 0, renders: 0 };
+    window.ApexCharts = class HeldRangeChart {
+      constructor(target, options) {
+        this.chart = new BaseChart(target, options);
+      }
+      async render() {
+        const audit = window.__heldRangeThemeAudit;
+        audit.active += 1;
+        audit.maxActive = Math.max(audit.maxActive, audit.active);
+        try {
+          if (!window.__heldRangeThemeOnce) {
+            window.__heldRangeThemeOnce = true;
+            await new Promise((resolve) => { window.__releaseHeldRangeTheme = resolve; });
+          }
+          await this.chart.render();
+          audit.renders += 1;
+        } finally {
+          audit.active -= 1;
+        }
+      }
+      destroy() {
+        this.chart.destroy();
+      }
+    };
+  });
+
+  await page.getByRole('link', { name: '90 days', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => typeof window.__releaseHeldRangeTheme)).toBe('function');
+  const liveRoot = page.locator('[data-insights-root]:not([data-insights-candidate])');
+  await expect(liveRoot).toHaveAttribute('aria-busy', 'true');
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'dark';
+    document.documentElement.dispatchEvent(new CustomEvent('nicotine-tracker:theme-change'));
+  });
+  await page.evaluate(() => window.__releaseHeldRangeTheme());
+
+  await expect(page).toHaveURL(/days=90/);
+  await expect(page.locator('[data-days="90"]')).toHaveAttribute('aria-current', 'true');
+  await expect(page.locator('#consumption-trend-chart .apexcharts-xaxis-texts-g text').first())
+    .toHaveCSS('fill', 'rgb(238, 232, 216)');
+  await expect(liveRoot).not.toHaveAttribute('aria-busy', 'true');
+  expect(await page.evaluate(() => window.__heldRangeThemeAudit.maxActive)).toBe(1);
+  expect(await page.evaluate(() => window.__heldRangeThemeAudit.renders)).toBeGreaterThan(1);
+});

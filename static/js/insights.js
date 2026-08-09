@@ -514,6 +514,23 @@ export function createSerialTaskQueue() {
   return { run };
 }
 
+export async function buildLatestPresentation({
+  build,
+  isTransactionCurrent,
+  nextGeneration,
+  isGenerationCurrent,
+}) {
+  while (isTransactionCurrent()) {
+    const generation = nextGeneration();
+    const isCurrent = () => (
+      isTransactionCurrent() && isGenerationCurrent(generation)
+    );
+    const candidate = await build(isCurrent);
+    if (candidate && isCurrent()) return candidate;
+  }
+  return null;
+}
+
 export async function startInsights(scope = document) {
   const root = scope.matches?.('[data-insights-root]')
     ? scope
@@ -657,8 +674,8 @@ export async function startInsights(scope = document) {
   };
 
   const renderLive = async () => {
-    if (root.getAttribute('aria-busy') === 'true') return false;
     const generation = ++presentationGeneration;
+    if (root.getAttribute('aria-busy') === 'true') return false;
     const candidate = await buildCandidate(
       currentData,
       currentRange,
@@ -691,16 +708,21 @@ export async function startInsights(scope = document) {
       const data = await response.json();
       if (generation !== requestGeneration || controller.signal.aborted) return false;
       const candidateRange = Number(data.range_days) || Number(days);
-      const candidatePresentation = ++presentationGeneration;
-      const candidate = await buildCandidate(
-        data,
-        candidateRange,
-        () => (
-          generation === requestGeneration
-          && candidatePresentation === presentationGeneration
-          && !controller.signal.aborted
-        ),
+      const isTransactionCurrent = () => (
+        generation === requestGeneration && !controller.signal.aborted
       );
+      const candidate = await buildLatestPresentation({
+        build: (isCurrent) => buildCandidate(
+          data,
+          candidateRange,
+          isCurrent,
+        ),
+        isTransactionCurrent,
+        nextGeneration: () => ++presentationGeneration,
+        isGenerationCurrent: (candidateGeneration) => (
+          candidateGeneration === presentationGeneration
+        ),
+      });
       if (!candidate) return false;
       if (generation !== requestGeneration || controller.signal.aborted) return false;
       commitCandidate(candidate, data, candidateRange);
