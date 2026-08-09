@@ -110,7 +110,7 @@ async function selectManualBaseline(page, recorder = null) {
   await expect(page.getByRole('heading', { name: 'Set an honest starting point' })).toBeFocused();
   recorder?.record('journey-onboarding', 'Continue', ['focus', 'keyboard']);
   await page.locator('input[name="baseline_source"][value="manual"]').check();
-  await page.locator('#field-baseline_pouches').fill('8');
+  await page.locator('#field-baseline_mg').fill('48');
   await page.locator('#field-baseline_mg_per_pouch').fill('6');
 }
 
@@ -119,7 +119,7 @@ async function advanceToSupport(page, recorder = null) {
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { name: 'Choose a pace' })).toBeFocused();
   await page.getByLabel(/Steady · 49 days/).check();
-  await page.getByLabel(/End target in pouches per day/).fill('2');
+  await page.getByLabel(/End target nicotine per day/).fill('12');
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { name: 'Add useful support' })).toBeFocused();
 }
@@ -153,8 +153,9 @@ test('registration previews transparently and activates only after final confirm
   await expect(page.getByText(/behavioral tracking aid, not medical advice/i)).toBeVisible();
   const decisions = page.locator('.review-decisions');
   for (const label of [
-    'Intention', 'Baseline source', 'Starting pouches', 'Direct median strength',
-    'Pace and duration', 'Dates', 'Difficult times', 'Triggers', 'Pouches', 'Reminder',
+    'Intention', 'Baseline source', 'Starting pouches', 'Usual pouch strength',
+    'Starting nicotine', 'Pace and duration', 'Dates', 'End target nicotine',
+    'Difficult times', 'Triggers', 'Pouches', 'Reminder',
   ]) {
     await expect(decisions).toContainText(label);
   }
@@ -179,12 +180,12 @@ test('back and forward navigation preserves entered answers', async ({ page }, t
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Back' }).click();
   await expect(page.locator('input[name="baseline_source"][value="manual"]')).toBeChecked();
-  await expect(page.locator('#field-baseline_pouches')).toHaveValue('8');
+  await expect(page.locator('#field-baseline_mg')).toHaveValue('48');
   await expect(page.locator('#field-baseline_mg_per_pouch')).toHaveValue('6');
   await page.getByRole('button', { name: 'Back' }).click();
   await expect(page.locator('input[name="intention"][value="reduce"]')).toBeChecked();
   await page.getByRole('button', { name: 'Continue' }).click();
-  await expect(page.locator('#field-baseline_pouches')).toHaveValue('8');
+  await expect(page.locator('#field-baseline_mg')).toHaveValue('48');
   expect(errors).toEqual([]);
 });
 
@@ -218,16 +219,16 @@ test('invalid plan data returns to a clearly linked field error', async ({ page 
   await advanceToSupport(page);
   await page.getByLabel('Plan start date').fill('2099-01-01');
   await page.getByRole('button', { name: 'Back' }).click();
-  await page.getByLabel(/End target in pouches per day/).fill('9');
+  await page.getByLabel(/End target nicotine per day/).fill('49');
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Continue' }).click();
 
-  const endTarget = page.getByLabel(/End target in pouches per day/);
+  const endTarget = page.getByLabel(/End target nicotine per day/);
   await expect(endTarget).toBeFocused();
   await expect(endTarget).toHaveAttribute('aria-invalid', 'true');
-  await expect(page.locator('.field-error')).toContainText(/cannot exceed/i);
+  await expect(page.locator('.field-error')).toContainText(/must be lower than the baseline/i);
   const border = await endTarget.evaluate((element) => getComputedStyle(element).borderColor);
-  const normalBorder = await page.locator('#field-baseline_pouches').evaluate(
+  const normalBorder = await page.locator('#field-baseline_mg').evaluate(
     (element) => getComputedStyle(element).borderColor,
   );
   expect(border).not.toBe(normalBorder);
