@@ -10,6 +10,14 @@
   <p class="eyebrow">A short pause</p>
   <h1 id="error-title">Take a short pause</h1>
   <p class="error-page__lede">This action has been tried several times. Wait a moment, then try again.</p>
+  {% if preserved_fields %}
+    <p>Your non-sensitive entries are shown below so you can retry without reconstructing them.</p>
+    <dl class="error-page__details">
+      {% for label, value in preserved_fields %}
+        <div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>
+      {% endfor %}
+    </dl>
+  {% endif %}
   {% if session.user_id %}
     {{ button('Return to Today', href=url_for('today.index')) }}
   {% else %}

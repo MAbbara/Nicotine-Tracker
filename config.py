@@ -44,6 +44,9 @@ class Config:
     NOTIFICATION_PROCESS_INTERVAL = int(os.environ.get('NOTIFICATION_PROCESS_INTERVAL', 30))
     NOTIFICATION_MAX_RETRIES = int(os.environ.get('NOTIFICATION_MAX_RETRIES', 3))
     NOTIFICATION_BATCH_SIZE = int(os.environ.get('NOTIFICATION_BATCH_SIZE', 10))
+    NOTIFICATION_CLAIM_LEASE_SECONDS = int(
+        os.environ.get('NOTIFICATION_CLAIM_LEASE_SECONDS', 300)
+    )
     NOTIFICATION_DEBUG = os.environ.get('NOTIFICATION_DEBUG', 'False').lower() == 'true'
     
     # Logging
@@ -69,18 +72,39 @@ class Config:
     }
     RATELIMIT_DEFAULT = []
     RATELIMIT_REQUIRE_SHARED_STORAGE = False
-    RATELIMIT_AUTH_ACCOUNT = '6 per 15 minutes'
-    RATELIMIT_AUTH_IP = '30 per hour'
-    RATELIMIT_AUTHENTICATED_WRITE = '120 per minute'
-    RATELIMIT_QUICK_ADD = '30 per minute'
-    RATELIMIT_BULK_ADD = '20 per hour'
-    RATELIMIT_CURRENT_PASSWORD_ACTION = '5 per hour'
-    RATELIMIT_DISCORD_TEST = '5 per hour'
-    RATELIMIT_WEEKLY_REPORT = '2 per hour'
-    RATELIMIT_PLAN_MUTATION = '30 per hour'
-    RATELIMIT_EXPORT = '10 per hour'
-    RATELIMIT_DESTRUCTIVE = '5 per hour'
+    RATELIMIT_ANONYMOUS_DEFAULT = '120 per minute'
+    RATELIMIT_AUTHENTICATED_DEFAULT_USER = '300 per minute'
+    RATELIMIT_AUTHENTICATED_DEFAULT_IP = '600 per minute'
+    RATELIMIT_LOGIN_ACCOUNT = '5 per minute;30 per hour'
+    RATELIMIT_LOGIN_IP = '20 per minute'
+    RATELIMIT_REGISTRATION_IP = '3 per hour'
+    RATELIMIT_REGISTRATION_EMAIL = '3 per day'
+    RATELIMIT_FORGOT_PASSWORD_ACCOUNT = '3 per hour'
+    RATELIMIT_FORGOT_PASSWORD_IP = '10 per hour'
+    RATELIMIT_RESET_TOKEN = '5 per 15 minutes'
+    RATELIMIT_RESET_IP = '20 per hour'
+    RATELIMIT_VERIFICATION_USER = '1 per 5 minutes;3 per hour'
+    RATELIMIT_VERIFICATION_IP = '10 per hour'
+    RATELIMIT_CURRENT_PASSWORD_USER = '5 per 15 minutes'
+    RATELIMIT_CURRENT_PASSWORD_IP = '5 per 15 minutes'
+    RATELIMIT_AUTHENTICATED_WRITE_USER = '120 per minute'
+    RATELIMIT_AUTHENTICATED_WRITE_IP = '60 per minute'
+    RATELIMIT_CANONICAL_WRITE = '60 per minute'
+    RATELIMIT_QUICK_ADD = '20 per minute'
+    RATELIMIT_BULK_ADD = '2 per minute;20 per hour'
+    RATELIMIT_DISCORD_TEST = '3 per minute;10 per hour'
+    RATELIMIT_WEEKLY_REPORT = '1 per 15 minutes;4 per day'
+    RATELIMIT_PLAN_PREVIEW = '10 per minute;60 per hour'
+    RATELIMIT_PLAN_MUTATION = '6 per minute;30 per hour'
+    RATELIMIT_EXPORT = '2 per minute;10 per hour'
+    RATELIMIT_DESTRUCTIVE = '1 per minute;6 per hour'
     RATELIMIT_ANALYTICS_READ = '30 per minute'
+    # Compatibility-only test hooks for the original Task 6 bucket names.
+    # Production route policy is defined by the explicit dimensions above.
+    RATELIMIT_AUTH_ACCOUNT = '100000 per hour'
+    RATELIMIT_AUTH_IP = '100000 per hour'
+    RATELIMIT_AUTHENTICATED_WRITE = '100000 per hour'
+    RATELIMIT_CURRENT_PASSWORD_ACTION = '100000 per hour'
 
     
     # Debug mode - automatically set based on environment
@@ -114,6 +138,25 @@ class TestingConfig(Config):
     SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
     WTF_CSRF_ENABLED = False
     RATELIMIT_STORAGE_URI = 'memory://'
+    RATELIMIT_ANONYMOUS_DEFAULT = '100000 per hour'
+    RATELIMIT_AUTHENTICATED_DEFAULT_USER = '100000 per hour'
+    RATELIMIT_AUTHENTICATED_DEFAULT_IP = '100000 per hour'
+    RATELIMIT_LOGIN_ACCOUNT = '100000 per hour'
+    RATELIMIT_LOGIN_IP = '100000 per hour'
+    RATELIMIT_REGISTRATION_IP = '100000 per hour'
+    RATELIMIT_REGISTRATION_EMAIL = '100000 per hour'
+    RATELIMIT_FORGOT_PASSWORD_ACCOUNT = '100000 per hour'
+    RATELIMIT_FORGOT_PASSWORD_IP = '100000 per hour'
+    RATELIMIT_RESET_TOKEN = '100000 per hour'
+    RATELIMIT_RESET_IP = '100000 per hour'
+    RATELIMIT_VERIFICATION_USER = '100000 per hour'
+    RATELIMIT_VERIFICATION_IP = '100000 per hour'
+    RATELIMIT_CURRENT_PASSWORD_USER = '100000 per hour'
+    RATELIMIT_CURRENT_PASSWORD_IP = '100000 per hour'
+    RATELIMIT_AUTHENTICATED_WRITE_USER = '100000 per hour'
+    RATELIMIT_AUTHENTICATED_WRITE_IP = '100000 per hour'
+    RATELIMIT_CANONICAL_WRITE = '100000 per hour'
+    RATELIMIT_PLAN_PREVIEW = '100000 per hour'
     RATELIMIT_AUTH_ACCOUNT = '100000 per hour'
     RATELIMIT_AUTH_IP = '100000 per hour'
     RATELIMIT_AUTHENTICATED_WRITE = '100000 per hour'

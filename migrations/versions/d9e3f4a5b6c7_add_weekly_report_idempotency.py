@@ -112,6 +112,27 @@ def upgrade():
 
 def downgrade():
     connection = op.get_bind()
+    queue = sa.table(
+        'notification_queue',
+        sa.column('id', sa.Integer()),
+        sa.column('category', sa.String()),
+        sa.column('extra_data', sa.JSON()),
+        sa.column('report_period_start', sa.Date()),
+    )
+    rows = connection.execute(sa.select(
+        queue.c.id, queue.c.extra_data, queue.c.report_period_start,
+    ).where(
+        queue.c.category == 'weekly_report',
+        queue.c.report_period_start.is_not(None),
+    )).mappings()
+    for row in rows:
+        extra = _extra_dict(row['extra_data'])
+        extra['week_start'] = row['report_period_start'].isoformat()
+        connection.execute(
+            queue.update().where(queue.c.id == row['id']).values(
+                extra_data=extra,
+            )
+        )
     indexes = sa.inspect(connection).get_indexes('notification_queue')
     if not any(
         index.get('column_names') == ['user_id']

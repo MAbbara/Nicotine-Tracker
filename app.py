@@ -103,6 +103,8 @@ def create_app(config_name=None):
     app.register_blueprint(journey_bp, url_prefix='/journey')
     app.register_blueprint(you_bp, url_prefix='/you')
     app.register_blueprint(pwa_bp)
+    from services.rate_limit_service import register_default_limits
+    register_default_limits(app)
 
 
 
@@ -136,9 +138,9 @@ def create_app(config_name=None):
         if _wants_json_response():
             from services.api_errors import rate_limited_response
             return rate_limited_response(retry_after)
-        response = make_response(
-            render_template('errors/429.html'), 429
-        )
+        response = make_response(render_template(
+            'errors/429.html', preserved_fields=_safe_429_form_values(),
+        ), 429)
         response.headers['Retry-After'] = str(retry_after)
         return response
 
@@ -269,3 +271,59 @@ def _wants_json_response():
         best == 'application/json'
         and request.accept_mimetypes['application/json'] > request.accept_mimetypes['text/html']
     )
+
+
+_SAFE_429_FIELDS = {
+    'auth.register': {
+        'email': 'Email address', 'terms': 'Terms acknowledgement',
+    },
+    'auth.login': {
+        'email': 'Email address', 'remember_me': 'Remember me',
+    },
+    'auth.forgot_password': {'email': 'Email address'},
+    'settings.account': {
+        'action': 'Account action', 'new_email': 'New email address',
+        'confirmation': 'Confirmation',
+    },
+    'settings.notifications': {
+        'notification_channel': 'Delivery channel',
+        'goal_notifications': 'Goal notifications',
+        'achievement_notifications': 'Achievement notifications',
+        'daily_reminders': 'Daily reminders',
+        'weekly_reports': 'Weekly reports',
+        'reminder_time': 'Reminder time',
+        'quiet_hours_start': 'Quiet hours start',
+        'quiet_hours_end': 'Quiet hours end',
+    },
+    'settings.preferences': {
+        'units_preference': 'Units preference', 'timezone': 'Time zone',
+        'daily_reset_time': 'Daily reset time',
+        'preferred_brands': 'Preferred products',
+    },
+    'settings.profile': {
+        'age': 'Age', 'gender': 'Gender', 'weight': 'Weight',
+    },
+}
+
+
+def _safe_429_form_values():
+    """Return bounded, endpoint-allowlisted form state for the HTML 429 page."""
+    allowed = _SAFE_429_FIELDS.get(request.endpoint, {})
+    preserved = []
+    for field, label in allowed.items():
+        values = request.form.getlist(field)
+        safe_values = []
+        for raw in values[:20]:
+            value = str(raw).strip()
+            if not value:
+                continue
+            if field in {
+                'remember_me', 'terms', 'goal_notifications',
+                'achievement_notifications', 'daily_reminders',
+                'weekly_reports',
+            }:
+                value = 'Selected'
+            safe_values.append(value[:120])
+        if safe_values:
+            preserved.append((label, ', '.join(safe_values)))
+    return preserved

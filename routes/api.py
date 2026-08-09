@@ -76,8 +76,10 @@ from services.check_in_service import (
 from services.rate_limit_service import (
     analytics_read_limit,
     authenticated_write_limit,
+    canonical_write_limit,
     destructive_limit,
     plan_mutation_limit,
+    plan_preview_limit,
     quick_add_limit,
 )
 
@@ -170,6 +172,7 @@ def upsert_check_in_api():
 
 
 @api_bp.route('/cravings', methods=['POST'])
+@canonical_write_limit()
 @login_required
 def create_craving_api():
     try:
@@ -224,6 +227,7 @@ def create_craving_api():
 
 
 @api_bp.route('/cravings/<int:craving_id>', methods=['PATCH'])
+@canonical_write_limit()
 @login_required
 def update_craving_api(craving_id):
     try:
@@ -277,6 +281,7 @@ def update_craving_api(craving_id):
 
 
 @api_bp.route('/logs', methods=['POST'])
+@canonical_write_limit()
 @login_required
 def create_log_api():
     try:
@@ -500,7 +505,7 @@ def get_onboarding_draft():
 
 
 @api_bp.route('/plans/preview', methods=['POST'])
-@plan_mutation_limit()
+@plan_preview_limit()
 @login_required
 def preview_initial_plan():
     try:
@@ -564,7 +569,7 @@ def create_initial_plan():
 
 
 @api_bp.route('/plans/<int:plan_id>/revisions/preview', methods=['POST'])
-@plan_mutation_limit()
+@plan_preview_limit()
 @login_required
 def preview_plan_revision(plan_id):
     try:
@@ -683,7 +688,7 @@ def pause_plan(plan_id):
 
 
 @api_bp.route('/plans/<int:plan_id>/resume/preview', methods=['POST'])
-@plan_mutation_limit()
+@plan_preview_limit()
 @login_required
 def preview_plan_resume(plan_id):
     try:

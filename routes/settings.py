@@ -25,11 +25,13 @@ from services.user_preferences_service import UserPreferencesService
 from services.notification_service import NotificationService
 from services.settings_validation_service import (
     SettingsValidationError,
+    normalize_account_email,
     parse_account_mutation,
     parse_notification_settings,
     parse_preference_settings,
     parse_profile,
 )
+from email_validator import EmailNotValidError
 from services.email_verification_service import EmailVerificationService
 from services.goal_evaluation_service import (
     HISTORY_FULL,
@@ -538,7 +540,7 @@ def profile():
                 PreferenceService().update_day_boundary(
                     user.id, legacy_timezone, reset_text, commit=False
                 )
-            
+
             db.session.commit()
             if legacy_timezone:
                 session['user_timezone'] = legacy_timezone
@@ -612,6 +614,16 @@ def account():
                         {'password': 'Current password is incorrect.'},
                         {'new_email': new_email},
                     )
+
+                try:
+                    current_email = normalize_account_email(user.email)
+                except EmailNotValidError:
+                    current_email = str(user.email).strip()
+                if new_email.casefold() == current_email.casefold():
+                    return render_account_error(
+                        {'new_email': 'Enter a different email address.'},
+                        {'new_email': new_email},
+                    )
                 
                 # Check if email already exists
                 existing_user = User.query.filter(
@@ -624,7 +636,6 @@ def account():
                     )
                 
                 # Update email
-                old_email = user.email
                 verification_service = EmailVerificationService()
                 try:
                     verification_service.revoke_user_tokens(user.id, commit=False)
@@ -644,7 +655,9 @@ def account():
                     )
                 session['user_email'] = new_email
                 
-                current_app.logger.info(f'Email changed from {old_email} to {new_email}')
+                current_app.logger.info(
+                    'Account email changed for user %s.', user.id
+                )
                 flash('Email updated. Check your new address for a verification message.', 'success')
                 
             elif action == 'change_password':

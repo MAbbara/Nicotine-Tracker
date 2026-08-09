@@ -56,6 +56,7 @@ from services.timezone_service import get_current_user_day, resolve_timezone
 from services.rate_limit_service import (
     authenticated_write_limit,
     plan_mutation_limit,
+    plan_preview_limit,
 )
 
 
@@ -64,11 +65,22 @@ journey_bp = Blueprint('journey', __name__)
 
 @journey_bp.before_request
 @authenticated_write_limit()
+@plan_preview_limit(exempt_when=lambda: (
+    request.method != 'POST' or not (
+        request.path in {'/journey/onboarding'}
+        or request.path.endswith('/resume')
+        or request.path.endswith('/revision')
+    ) or request.form.get('form_action') == 'confirm'
+))
 @plan_mutation_limit(exempt_when=lambda: (
     request.method != 'POST' or not (
         request.path.startswith('/journey/plans/')
         or request.path == '/journey/onboarding'
-    )
+    ) or (
+        request.path == '/journey/onboarding'
+        or request.path.endswith('/resume')
+        or request.path.endswith('/revision')
+    ) and request.form.get('form_action') != 'confirm'
 ))
 def _limit_journey_plan_writes():
     return None

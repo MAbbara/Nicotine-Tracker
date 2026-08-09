@@ -28,7 +28,9 @@ class PasswordResetService:
             
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error(f'Error creating reset token: {e}')
+            current_app.logger.error(
+                'Password reset token creation failed (%s).', type(e).__name__
+            )
             raise
     
     def validate_reset_token(self, token):
@@ -48,7 +50,9 @@ class PasswordResetService:
             return reset_token, None
             
         except Exception as e:
-            current_app.logger.error(f'Error validating reset token: {e}')
+            current_app.logger.error(
+                'Password reset token validation failed (%s).', type(e).__name__
+            )
             return None, "Error validating reset token"
     
     def use_reset_token(self, token, new_password):
@@ -78,7 +82,9 @@ class PasswordResetService:
             
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error(f'Error using reset token: {e}')
+            current_app.logger.error(
+                'Password reset completion failed (%s).', type(e).__name__
+            )
             return False, "Error resetting password"
     
     def get_recent_attempts(self, user_id, hours=1):
@@ -91,7 +97,9 @@ class PasswordResetService:
             ).count()
             
         except Exception as e:
-            current_app.logger.error(f'Error getting recent attempts: {e}')
+            current_app.logger.error(
+                'Password reset cooldown lookup failed (%s).', type(e).__name__
+            )
             return 0
     
     def cleanup_expired_tokens(self):
@@ -114,7 +122,9 @@ class PasswordResetService:
             
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error(f'Error cleaning up expired tokens: {e}')
+            current_app.logger.error(
+                'Password reset cleanup failed (%s).', type(e).__name__
+            )
             return 0
     
     def revoke_user_tokens(self, user_id):
@@ -140,5 +150,7 @@ class PasswordResetService:
             
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error(f'Error revoking user tokens: {e}')
+            current_app.logger.error(
+                'Password reset revocation failed (%s).', type(e).__name__
+            )
             return 0

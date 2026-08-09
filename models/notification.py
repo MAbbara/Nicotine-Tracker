@@ -8,6 +8,10 @@ class NotificationQueue(db.Model):
     __tablename__ = 'notification_queue'
     __table_args__ = (
         db.Index('ix_notification_queue_user_id', 'user_id'),
+        db.Index(
+            'ix_notification_queue_claim',
+            'status', 'scheduled_for', 'claimed_at',
+        ),
         db.UniqueConstraint(
             'user_id', 'category', 'report_period_start', 'notification_type',
             name='uq_notification_weekly_period_channel',
@@ -31,6 +35,9 @@ class NotificationQueue(db.Model):
     attempts = db.Column(db.Integer, default=0, nullable=False)
     max_attempts = db.Column(db.Integer, default=3, nullable=False)
     last_attempt_at = db.Column(db.DateTime, nullable=True)
+    claim_owner = db.Column(db.String(64), nullable=True)
+    claimed_at = db.Column(db.DateTime, nullable=True)
+    delivery_started_at = db.Column(db.DateTime, nullable=True)
     error_message = db.Column(db.Text, nullable=True)
     
     # Priority and extra data
@@ -57,6 +64,12 @@ class NotificationQueue(db.Model):
             'attempts': self.attempts,
             'max_attempts': self.max_attempts,
             'last_attempt_at': self.last_attempt_at.isoformat() if self.last_attempt_at else None,
+            'claim_owner': self.claim_owner,
+            'claimed_at': self.claimed_at.isoformat() if self.claimed_at else None,
+            'delivery_started_at': (
+                self.delivery_started_at.isoformat()
+                if self.delivery_started_at else None
+            ),
             'error_message': self.error_message,
             'priority': self.priority,
             'extra_data': self.extra_data,

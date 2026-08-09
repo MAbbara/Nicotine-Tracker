@@ -363,7 +363,7 @@ def test_quick_and_bulk_logging_have_stricter_costed_buckets(app, logged_in_clie
         app,
         AUTHENTICATED_WRITE='100/minute',
         QUICK_ADD='2/minute',
-        BULK_ADD='5/minute',
+        BULK_ADD='1/minute',
     )
     quick = [logged_in_client.post('/api/quick_add', json={}) for _ in range(3)]
     _assert_third_is_limited(quick)
@@ -417,16 +417,20 @@ def test_current_password_actions_share_one_bucket(app, logged_in_client):
     _assert_third_is_limited(responses)
 
 
-def test_plan_preview_and_apply_share_one_user_bucket(app, logged_in_client):
+def test_plan_preview_and_apply_use_independent_multi_window_buckets(
+        app, logged_in_client):
     _set_test_limits(
-        app, AUTHENTICATED_WRITE='100/minute', PLAN_MUTATION='2/minute'
+        app, AUTHENTICATED_WRITE='100/minute',
+        PLAN_PREVIEW='1/minute', PLAN_MUTATION='1/minute',
     )
-    responses = [
-        logged_in_client.post('/api/plans/preview', json={}),
-        logged_in_client.post('/api/plans', json={}),
-        logged_in_client.post('/api/plans/preview', json={}),
-    ]
-    _assert_third_is_limited(responses)
+    preview = logged_in_client.post('/api/plans/preview', json={})
+    apply = logged_in_client.post('/api/plans', json={})
+    preview_limited = logged_in_client.post('/api/plans/preview', json={})
+    apply_limited = logged_in_client.post('/api/plans', json={})
+    assert preview.status_code != 429
+    assert apply.status_code != 429
+    assert preview_limited.status_code == 429
+    assert apply_limited.status_code == 429
 
 
 def test_exports_and_destructive_data_actions_have_separate_buckets(
@@ -510,19 +514,24 @@ def test_legacy_and_canonical_craving_posts_share_the_write_bucket(
     _assert_third_is_limited(responses)
 
 
-def test_journey_onboarding_preview_and_apply_share_plan_bucket(
+def test_journey_onboarding_preview_and_apply_use_independent_plan_buckets(
         app, logged_in_client):
     _set_test_limits(
-        app, AUTHENTICATED_WRITE='100/minute', PLAN_MUTATION='2/minute'
+        app, AUTHENTICATED_WRITE='100/minute',
+        PLAN_PREVIEW='1/minute', PLAN_MUTATION='1/minute',
     )
-    responses = [
-        logged_in_client.post('/journey/onboarding', data={}),
-        logged_in_client.post(
-            '/journey/onboarding', data={'form_action': 'confirm'}
-        ),
-        logged_in_client.post('/journey/onboarding', data={}),
-    ]
-    _assert_third_is_limited(responses)
+    preview = logged_in_client.post('/journey/onboarding', data={})
+    apply = logged_in_client.post(
+        '/journey/onboarding', data={'form_action': 'confirm'}
+    )
+    preview_limited = logged_in_client.post('/journey/onboarding', data={})
+    apply_limited = logged_in_client.post(
+        '/journey/onboarding', data={'form_action': 'confirm'}
+    )
+    assert preview.status_code != 429
+    assert apply.status_code != 429
+    assert preview_limited.status_code == 429
+    assert apply_limited.status_code == 429
 
 
 def test_email_token_verification_has_token_and_ip_inventory(app):
@@ -538,17 +547,19 @@ def test_email_token_verification_has_token_and_ip_inventory(app):
     _assert_third_is_limited(responses)
 
 
-def test_goal_and_catalog_deletions_share_destructive_inventory(
+def test_goal_and_catalog_deletions_have_independent_action_buckets(
         app, logged_in_client):
     _set_test_limits(
         app, AUTHENTICATED_WRITE='100/minute', DESTRUCTIVE='2/minute'
     )
-    responses = [
-        logged_in_client.post('/goals/delete/999991'),
-        logged_in_client.post('/catalog/delete/999992'),
-        logged_in_client.post('/goals/delete/999993'),
-    ]
-    _assert_third_is_limited(responses)
+    goal_first = logged_in_client.post('/goals/delete/999991')
+    catalog_first = logged_in_client.post('/catalog/delete/999992')
+    goal_second = logged_in_client.post('/goals/delete/999993')
+    goal_third = logged_in_client.post('/goals/delete/999994')
+    assert goal_first.status_code != 429
+    assert catalog_first.status_code != 429
+    assert goal_second.status_code != 429
+    assert goal_third.status_code == 429
 
 
 def test_expensive_analytics_routes_share_one_read_inventory(

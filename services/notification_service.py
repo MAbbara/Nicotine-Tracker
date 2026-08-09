@@ -5,6 +5,7 @@ import json
 import hashlib
 import re
 import requests
+import uuid
 from datetime import datetime, time, timedelta
 from flask import current_app, render_template_string
 from flask_mail import Message
@@ -25,6 +26,7 @@ from services.goal_evaluation_service import (
     evaluate_goal_period,
     latest_completed_week,
 )
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 
 _PERMANENT_FAILURE = object()
@@ -35,6 +37,9 @@ class NotificationService:
     WEEKLY_SCRUBBED_RECIPIENT = '[scrubbed-after-delivery]'
     WEEKLY_SCRUBBED_MESSAGE = '[weekly report delivered]'
     WEEKLY_SCRUBBED_EXTRA = {'retention': 'delivery_metadata_only'}
+    CREDENTIAL_EMAIL_CATEGORIES = frozenset({
+        'email_verification', 'password_reset',
+    })
     
     def __init__(self):
         self.preferences_service = UserPreferencesService()
@@ -80,12 +85,11 @@ class NotificationService:
         ).order_by(NotificationQueue.notification_type).all()
 
     @classmethod
-    def _scrub_delivered_weekly(cls, notification):
+    def _scrub_delivered_weekly(cls, notification, *, message=None):
         notification.recipient = cls.WEEKLY_SCRUBBED_RECIPIENT
         notification.subject = None
-        notification.message = cls.WEEKLY_SCRUBBED_MESSAGE
+        notification.message = message or cls.WEEKLY_SCRUBBED_MESSAGE
         notification.extra_data = dict(cls.WEEKLY_SCRUBBED_EXTRA)
-        notification.error_message = None
 
     @staticmethod
     def _is_weekly_uniqueness_conflict(error, dialect_name):
@@ -358,14 +362,15 @@ class NotificationService:
             # Credential/account messages are never preference-routed: they
             # must go to the account email address and never to Discord.
             possible_channels = (
-                ['email'] if category == 'email_verification'
+                ['email'] if category in self.CREDENTIAL_EMAIL_CATEGORIES
                 else ['email', 'discord']
             )
             queued_count = 0
 
             for channel_type in possible_channels:
                 allowed = (
-                    category == 'email_verification' and channel_type == 'email'
+                    category in self.CREDENTIAL_EMAIL_CATEGORIES
+                    and channel_type == 'email'
                 ) or self.preferences_service.should_send_notification(user_id, category, channel_type)
                 if allowed:
                     if self._queue_single_notification(
@@ -386,18 +391,30 @@ class NotificationService:
                 raise
             return False
 
-    def _queue_single_notification(self, user_id, notification_type, category, subject, message, 
+    def _queue_single_notification(self, user_id, notification_type, category,
+                                   subject, message,
                                  recipient=None, priority=5, extra_data=None,
                                  scheduled_for=None, *, commit=True):
         """Queues a single notification to a specific channel after validation."""
         try:
+            if (
+                category in self.CREDENTIAL_EMAIL_CATEGORIES
+                and notification_type != 'email'
+            ):
+                current_app.logger.warning(
+                    'Credential notification rejected a non-email transport.'
+                )
+                return False
             user = User.query.get(user_id)
             if not user:
                 current_app.logger.error(f'User {user_id} not found for notification')
                 return False
             
             # Check quiet hours
-            if category != 'email_verification' and self.preferences_service.is_quiet_hours(user_id):
+            if (
+                category not in self.CREDENTIAL_EMAIL_CATEGORIES
+                and self.preferences_service.is_quiet_hours(user_id)
+            ):
                 preferences = self.preferences_service.get_or_create_preferences(user_id)
                 if preferences and preferences.quiet_hours_end:
                     from datetime import time
@@ -454,9 +471,14 @@ class NotificationService:
         try:
             # Skip email sending in development mode
             if current_app.config.get('FLASK_ENV') == 'development' or current_app.debug:
-                current_app.logger.info(f'Development mode: Skipping email notification to {notification.recipient}')
-                current_app.logger.info(f'Email subject: {notification.subject}')
-                current_app.logger.info(f'Email content: {notification.message[:200]}...')
+                if notification.category in self.CREDENTIAL_EMAIL_CATEGORIES:
+                    current_app.logger.info(
+                        'Development mode: credential email transport skipped.'
+                    )
+                else:
+                    current_app.logger.info(
+                        'Development mode: notification email transport skipped.'
+                    )
                 return True
             
             if not current_app.config.get('MAIL_USERNAME'):
@@ -482,11 +504,17 @@ class NotificationService:
                 msg.body = notification.message
             
             mail.send(msg)
-            current_app.logger.info(f'Email sent successfully to {notification.recipient}')
+            current_app.logger.info(
+                'Email notification sent successfully (%s).',
+                notification.category,
+            )
             return True
             
-        except Exception as e:
-            current_app.logger.error(f'Failed to send email notification: {e}')
+        except Exception as error:
+            current_app.logger.error(
+                'Email notification transport failed (%s).',
+                type(error).__name__,
+            )
             return False
     
     def send_discord_notification(self, notification):
@@ -507,67 +535,246 @@ class NotificationService:
             )
             return False
     
-    def process_notification_queue(self, limit=50):
-        """Process pending notifications in the queue"""
-        try:
-            # Get pending notifications ordered by priority and scheduled time
-            notifications = NotificationQueue.query.filter(
+    def _claim_notifications(self, *, owner, now_utc, limit):
+        """Atomically lease due rows; conditional UPDATE is portable and exclusive."""
+        lease_seconds = int(current_app.config.get(
+            'NOTIFICATION_CLAIM_LEASE_SECONDS', 300
+        ))
+        stale_before = now_utc - timedelta(seconds=lease_seconds)
+
+        # Rows created by the pre-lease worker have no ownership evidence. They
+        # may already have crossed the transport boundary, so never retry them.
+        legacy_ids = [row[0] for row in db.session.execute(
+            db.select(NotificationQueue.id).where(
+                NotificationQueue.status == 'processing',
+                db.or_(
+                    NotificationQueue.claim_owner.is_(None),
+                    NotificationQueue.claimed_at.is_(None),
+                ),
+            )
+        ).all()]
+        for notification_id in legacy_ids:
+            quarantined = db.session.execute(
+                update(NotificationQueue).where(
+                    NotificationQueue.id == notification_id,
+                    NotificationQueue.status == 'processing',
+                    db.or_(
+                        NotificationQueue.claim_owner.is_(None),
+                        NotificationQueue.claimed_at.is_(None),
+                    ),
+                ).values(
+                    status='failed', claim_owner=None, claimed_at=None,
+                    error_message=(
+                        'delivery outcome unknown for legacy worker claim'
+                    ),
+                )
+            )
+            if quarantined.rowcount != 1:
+                continue
+            notification = db.session.get(
+                NotificationQueue, notification_id, populate_existing=True
+            )
+            if notification.category in self.CREDENTIAL_EMAIL_CATEGORIES:
+                notification.recipient = '[scrubbed-after-delivery-start]'
+                notification.subject = None
+                notification.message = '[credential delivery outcome unknown]'
+                notification.extra_data = None
+            elif notification.category == 'weekly_report':
+                self._scrub_delivered_weekly(
+                    notification,
+                    message='[weekly report delivery outcome unknown]',
+                )
+            self._create_history_record(notification, 'failed')
+
+        stale_started_ids = [row[0] for row in db.session.execute(
+            db.select(NotificationQueue.id).where(
+                NotificationQueue.status == 'processing',
+                NotificationQueue.claimed_at <= stale_before,
+                NotificationQueue.delivery_started_at.isnot(None),
+            )
+        ).all()]
+        for notification_id in stale_started_ids:
+            claimed_failure = db.session.execute(
+                update(NotificationQueue).where(
+                    NotificationQueue.id == notification_id,
+                    NotificationQueue.status == 'processing',
+                    NotificationQueue.claimed_at <= stale_before,
+                    NotificationQueue.delivery_started_at.isnot(None),
+                ).values(
+                    status='failed', claim_owner=None, claimed_at=None,
+                    error_message=(
+                        'delivery outcome unknown after worker lease expired'
+                    ),
+                )
+            )
+            if claimed_failure.rowcount != 1:
+                continue
+            notification = db.session.get(
+                NotificationQueue, notification_id, populate_existing=True
+            )
+            if notification.category == 'weekly_report':
+                self._scrub_delivered_weekly(
+                    notification,
+                    message='[weekly report delivery outcome unknown]',
+                )
+            elif notification.category in self.CREDENTIAL_EMAIL_CATEGORIES:
+                notification.recipient = '[scrubbed-after-delivery-start]'
+                notification.subject = None
+                notification.message = '[credential delivery outcome unknown]'
+                notification.extra_data = None
+            self._create_history_record(notification, 'failed')
+
+        NotificationQueue.query.filter(
+            NotificationQueue.status == 'processing',
+            NotificationQueue.claimed_at <= stale_before,
+            NotificationQueue.delivery_started_at.is_(None),
+        ).update({
+            NotificationQueue.status: 'pending',
+            NotificationQueue.claim_owner: None,
+            NotificationQueue.claimed_at: None,
+        }, synchronize_session=False)
+        db.session.commit()
+
+        candidate_ids = [row[0] for row in db.session.execute(
+            db.select(NotificationQueue.id).where(
                 NotificationQueue.status == 'pending',
-                NotificationQueue.scheduled_for <= datetime.utcnow(),
-                NotificationQueue.attempts < NotificationQueue.max_attempts
+                NotificationQueue.scheduled_for <= now_utc,
+                NotificationQueue.attempts < NotificationQueue.max_attempts,
             ).order_by(
                 NotificationQueue.priority.asc(),
-                NotificationQueue.scheduled_for.asc()
-            ).limit(limit).all()
-            
+                NotificationQueue.scheduled_for.asc(),
+                NotificationQueue.id.asc(),
+            ).limit(limit)
+        ).all()]
+        claimed = []
+        for notification_id in candidate_ids:
+            result = db.session.execute(update(NotificationQueue).where(
+                NotificationQueue.id == notification_id,
+                NotificationQueue.status == 'pending',
+                NotificationQueue.scheduled_for <= now_utc,
+                NotificationQueue.attempts < NotificationQueue.max_attempts,
+            ).values(
+                status='processing', claim_owner=owner, claimed_at=now_utc,
+                delivery_started_at=None,
+            ))
+            if result.rowcount == 1:
+                claimed.append(notification_id)
+        db.session.commit()
+        return claimed
+
+    def _mark_delivery_started(self, notification_id, owner, now_utc):
+        """Persist the at-most-once transport boundary before network I/O."""
+        result = db.session.execute(update(NotificationQueue).where(
+            NotificationQueue.id == notification_id,
+            NotificationQueue.status == 'processing',
+            NotificationQueue.claim_owner == owner,
+            NotificationQueue.delivery_started_at.is_(None),
+        ).values(
+            claimed_at=now_utc,
+            delivery_started_at=now_utc,
+            last_attempt_at=now_utc,
+            attempts=NotificationQueue.attempts + 1,
+        ))
+        db.session.commit()
+        return result.rowcount == 1
+
+    def _finalize_delivery(self, notification_id, owner, success):
+        """Finalize only while the exact transport lease is still owned."""
+        terminal_status = 'sent' if success is True else 'failed'
+        claimed = db.session.execute(update(NotificationQueue).where(
+            NotificationQueue.id == notification_id,
+            NotificationQueue.status == 'processing',
+            NotificationQueue.claim_owner == owner,
+            NotificationQueue.delivery_started_at.isnot(None),
+        ).values(status=terminal_status))
+        if claimed.rowcount != 1:
+            db.session.rollback()
+            return False
+
+        notification = db.session.get(
+            NotificationQueue, notification_id, populate_existing=True
+        )
+        if success is True:
+            if notification.category == 'weekly_report':
+                self._scrub_delivered_weekly(notification)
+        else:
+            notification.error_message = (
+                'delivery rejected before transport'
+                if success is _PERMANENT_FAILURE
+                else 'delivery attempt failed; not retried automatically'
+            )
+            if notification.category == 'weekly_report':
+                self._scrub_delivered_weekly(
+                    notification,
+                    message='[weekly report delivery failed]',
+                )
+            elif notification.category in self.CREDENTIAL_EMAIL_CATEGORIES:
+                notification.recipient = '[scrubbed-after-delivery-start]'
+                notification.subject = None
+                notification.message = '[credential delivery failed]'
+                notification.extra_data = None
+
+        notification.claim_owner = None
+        notification.claimed_at = None
+        self._create_history_record(notification, terminal_status)
+        if notification.category != 'weekly_report':
+            db.session.delete(notification)
+        db.session.commit()
+        return True
+
+    def process_notification_queue(self, limit=50, *, now_utc=None, owner=None):
+        """Claim then deliver due notifications with an at-most-once boundary.
+
+        A stale lease before transport is recoverable. Once delivery starts,
+        an unknown crash outcome is retained as failed for audit and is never
+        automatically resent, preventing duplicate credential/report sends.
+        """
+        supplied_now = now_utc
+        now_utc = supplied_now or datetime.utcnow()
+        owner = owner or uuid.uuid4().hex
+        try:
+            notification_ids = self._claim_notifications(
+                owner=owner, now_utc=now_utc, limit=limit,
+            )
             processed = 0
-            for notification in notifications:
+            for notification_id in notification_ids:
+                boundary_now = supplied_now or datetime.utcnow()
+                if not self._mark_delivery_started(
+                    notification_id, owner, boundary_now
+                ):
+                    continue
+                notification = db.session.get(
+                    NotificationQueue, notification_id
+                )
+                if notification is None:
+                    continue
                 success = self._send_notification(notification)
                 processed += 1
-                
-                if success is True:
-                    # Mark as sent and create history record. Weekly reports
-                    # remain as a minimal idempotency ledger; all delivery and
-                    # health-rich content is scrubbed before durable history.
-                    notification.status = 'sent'
-                    if notification.category == 'weekly_report':
-                        self._scrub_delivered_weekly(notification)
-                    self._create_history_record(notification, 'sent')
-                    if notification.category != 'weekly_report':
-                        db.session.delete(notification)  # Ephemeral queue item
-                else:
-                    # Increment attempts and potentially reschedule
-                    notification.attempts += 1
-                    notification.last_attempt_at = datetime.utcnow()
+                self._finalize_delivery(notification_id, owner, success)
 
-                    if (
-                        success is _PERMANENT_FAILURE
-                        or notification.attempts >= notification.max_attempts
-                    ):
-                        notification.status = 'failed'
-                        self._create_history_record(notification, 'failed')
-                        db.session.delete(notification)  # Remove failed notification
-                    else:
-                        # Reschedule with exponential backoff
-                        backoff_minutes = 2 ** notification.attempts
-                        notification.scheduled_for = datetime.utcnow() + timedelta(minutes=backoff_minutes)
-                        notification.status = 'pending'
-            
-            db.session.commit()
-            current_app.logger.info(f'Processed {processed} notifications from queue')
+            current_app.logger.info(
+                'Processed %s notifications from queue', processed
+            )
             return processed
-            
-        except Exception as e:
+        except Exception as error:
             db.session.rollback()
-            current_app.logger.error(f'Error processing notification queue: {e}')
+            current_app.logger.error(
+                'Error processing notification queue (%s).',
+                type(error).__name__,
+            )
             return 0
     
     def _send_notification(self, notification):
         """Send a single notification based on its type"""
         try:
-            notification.status = 'processing'
-            db.session.commit()
-
+            if (
+                notification.category in self.CREDENTIAL_EMAIL_CATEGORIES
+                and notification.notification_type != 'email'
+            ):
+                current_app.logger.warning(
+                    'Credential notification rejected a non-email transport.'
+                )
+                return _PERMANENT_FAILURE
             if notification.notification_type == 'discord':
                 try:
                     parse_discord_webhook(notification.recipient)
@@ -583,29 +790,26 @@ class NotificationService:
             current_app.logger.error(f'Unknown notification type: {notification.notification_type}')
             return False
                 
-        except Exception as e:
-            current_app.logger.error(f'Error sending notification {notification.id}: {e}')
+        except Exception as error:
+            current_app.logger.error(
+                'Notification dispatch failed (%s).', type(error).__name__
+            )
             return False
 
     
     def _create_history_record(self, notification, delivery_status):
         """Create a history record for the notification"""
-        try:
-            history = NotificationHistory(
-                user_id=notification.user_id,
-                notification_type=notification.notification_type,
-                category=notification.category,
-                subject=notification.subject,
-                recipient=notification.recipient,
-                delivery_status=delivery_status,
-                attempts_made=notification.attempts,
-                original_queue_id=notification.id
-            )
-            
-            db.session.add(history)
-            
-        except Exception as e:
-            current_app.logger.error(f'Error creating history record: {e}')
+        history = NotificationHistory(
+            user_id=notification.user_id,
+            notification_type=notification.notification_type,
+            category=notification.category,
+            subject=notification.subject,
+            recipient=notification.recipient,
+            delivery_status=delivery_status,
+            attempts_made=notification.attempts,
+            original_queue_id=notification.id
+        )
+        db.session.add(history)
     
     def _format_email_html(self, notification):
         """Format email notification as HTML using appropriate template"""

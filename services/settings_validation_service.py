@@ -14,6 +14,7 @@ PASSWORD_MIN = 8
 PASSWORD_MAX = 128
 EMAIL_MAX = 120
 BRAND_MAX = 80
+PREFERRED_BRANDS_MAX = 20
 TIME_RE = re.compile(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", re.ASCII)
 
 
@@ -124,7 +125,11 @@ def parse_preference_settings(payload, *, available_brands):
         errors["units_preference"] = "Choose a valid units preference."
     if not validate_timezone(timezone):
         errors["timezone"] = "Choose a valid time zone."
-    if len(brands) != len(set(brands)) or any(not isinstance(b, str) or not b or len(b) > BRAND_MAX or b not in owned for b in brands):
+    if len(brands) > PREFERRED_BRANDS_MAX:
+        errors["preferred_brands"] = (
+            f"Choose no more than {PREFERRED_BRANDS_MAX} preferred products."
+        )
+    elif len(brands) != len(set(brands)) or any(not isinstance(b, str) or not b or len(b) > BRAND_MAX or b not in owned for b in brands):
         errors["preferred_brands"] = "Choose available products only."
     if errors:
         raise SettingsValidationError(errors)

@@ -15,7 +15,11 @@ from services.api_errors import error_response
 from services.rate_limit_service import (
     auth_account_limit,
     auth_ip_limit,
-    auth_user_limit,
+    forgot_password_limits,
+    login_limits,
+    registration_limits,
+    reset_token_limits,
+    verification_resend_limits,
 )
 from extensions import db, mail
 import re
@@ -109,17 +113,20 @@ def send_reset_email(user, reset_token):
             )
             
             if success:
-                current_app.logger.info(f'Password reset email queued for {user.email}')
+                current_app.logger.info('Password reset email queued.')
             else:
-                current_app.logger.error(f'Failed to queue password reset email for {user.email}')
+                current_app.logger.error('Password reset email queue failed.')
         else:
-            current_app.logger.info(f'Email not configured. Reset token for {user.email}: {reset_token.token}')
+            current_app.logger.info(
+                'Password reset email unavailable: mail transport not configured.'
+            )
     except Exception as e:
-        current_app.logger.error(f'Failed to send reset email: {e}')
+        current_app.logger.error(
+            'Password reset email preparation failed (%s).', type(e).__name__
+        )
 
 @auth_bp.route('/register', methods=['GET', 'POST'])
-@auth_ip_limit()
-@auth_account_limit()
+@registration_limits()
 def register():
     if 'user_id' in session:
         user = get_current_user()
@@ -188,8 +195,7 @@ def register():
     return render_template('register.html')
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
-@auth_ip_limit()
-@auth_account_limit()
+@login_limits()
 def login():
     if 'user_id' in session:
         return redirect(url_for('today.index'))
@@ -269,8 +275,7 @@ def verify_email(token):
     return redirect(url_for('auth.login'))
 
 @auth_bp.route('/resend_verification', methods=['POST'])
-@auth_ip_limit()
-@auth_user_limit()
+@verification_resend_limits()
 def resend_verification():
     """Resend verification email for logged in user"""
     try:
@@ -305,8 +310,7 @@ def resend_verification():
     return redirect(request.referrer or url_for('dashboard.index'))
 
 @auth_bp.route('/forgot_password', methods=['GET', 'POST'])
-@auth_ip_limit()
-@auth_account_limit()
+@forgot_password_limits()
 def forgot_password():
     if request.method == 'POST':
         try:
@@ -341,14 +345,15 @@ def forgot_password():
             
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error(f'Forgot password error: {e}')
+            current_app.logger.error(
+                'Forgot password request failed (%s).', type(e).__name__
+            )
             flash('An error occurred. Please try again.', 'error')
     
     return render_template('forgot_password.html')
 
 @auth_bp.route('/reset_password/<token>', methods=['GET', 'POST'])
-@auth_ip_limit()
-@auth_account_limit(token=True)
+@reset_token_limits()
 def reset_password(token):
     try:
         reset_service = PasswordResetService()
@@ -385,7 +390,9 @@ def reset_password(token):
         return render_template('reset_password.html', token=token)
         
     except Exception as e:
-        current_app.logger.error(f'Password reset error: {e}')
+        current_app.logger.error(
+            'Password reset request failed (%s).', type(e).__name__
+        )
         flash('An error occurred during password reset.', 'error')
         return redirect(url_for('auth.forgot_password'))
 

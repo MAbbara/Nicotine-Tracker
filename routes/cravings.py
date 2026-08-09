@@ -24,6 +24,7 @@ from services.timezone_service import resolve_timezone
 from services.rate_limit_service import (
     analytics_read_limit,
     authenticated_write_limit,
+    canonical_write_limit,
 )
 
 
@@ -32,6 +33,7 @@ cravings_bp = Blueprint('cravings', __name__)
 
 @cravings_bp.before_request
 @authenticated_write_limit()
+@canonical_write_limit()
 def _limit_authenticated_craving_writes():
     return None
 

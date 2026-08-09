@@ -9,6 +9,7 @@ from services import add_log_entry, add_bulk_logs  # use service layer for log c
 from services.rate_limit_service import (
     authenticated_write_limit,
     bulk_add_limit,
+    canonical_write_limit,
     destructive_limit,
     quick_add_limit,
 )
@@ -49,6 +50,7 @@ logging_bp = Blueprint('logging', __name__, template_folder='../templates/loggin
 
 @logging_bp.before_request
 @authenticated_write_limit()
+@canonical_write_limit()
 def _limit_authenticated_logging_writes():
     return None
 
