@@ -651,7 +651,7 @@ test('catalog authority rejects unrelated focus injected into a substituted acco
     });
   });
   await expect(recorder.forScenario(page, 'account', 'Update email').run('rejected'))
-    .rejects.toThrow(/focus|server action invariant/);
+    .rejects.toThrow(/focus/i);
   await page.unroute('**/settings/account');
 });
 
