@@ -391,7 +391,7 @@ function exportFilename(response) {
   }
 }
 
-async function exportRange(root, days) {
+async function exportRange(root, days, { activationScroll = null } = {}) {
   const button = root.querySelector('#export-data');
   if (!button || button.disabled) return;
   if (root.dataset.insightsState === 'empty') {
@@ -399,10 +399,24 @@ async function exportRange(root, days) {
     return;
   }
   const initiatedWithFocus = document.activeElement === button;
+  const interactionScroll = initiatedWithFocus
+    ? activationScroll || { x: window.scrollX, y: window.scrollY }
+    : null;
+  const restoreInteractionScroll = () => new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      window.scrollTo({
+        left: interactionScroll.x,
+        top: interactionScroll.y,
+        behavior: 'instant',
+      });
+      resolve();
+    });
+  });
   button.disabled = true;
   const focusAfterDisable = document.activeElement;
   button.setAttribute('aria-busy', 'true');
   setLoadStatus(root, 'Preparing CSV…');
+  if (interactionScroll) await restoreInteractionScroll();
   try {
     const response = await fetch(`/insights/api/export?days=${days}`);
     if (!response.ok) {
@@ -426,19 +440,27 @@ async function exportRange(root, days) {
   } catch (_) {
     setLoadStatus(root, 'The CSV could not be prepared. Your insights are still available.');
   } finally {
-    button.disabled = false;
-    button.setAttribute('aria-busy', 'false');
     const focusWasNotMoved = (
       document.activeElement === focusAfterDisable
       || document.activeElement === button
     );
+    if (interactionScroll && focusWasNotMoved) await restoreInteractionScroll();
+    button.disabled = false;
+    button.setAttribute('aria-busy', 'false');
     if (
       initiatedWithFocus
       && focusWasNotMoved
       && root.isConnected
       && button.isConnected
       && document.visibilityState === 'visible'
-    ) button.focus();
+    ) button.focus({ preventScroll: true });
+    if (interactionScroll && focusWasNotMoved) {
+      window.scrollTo({
+        left: interactionScroll.x,
+        top: interactionScroll.y,
+        behavior: 'instant',
+      });
+    }
   }
 }
 
@@ -515,7 +537,12 @@ export function createSerialTaskQueue() {
 }
 
 export function captureInsightsFocus(root, activeElement, enabled = true) {
-  if (!enabled || !activeElement || !root?.contains?.(activeElement)) return null;
+  if (!activeElement || !root?.contains?.(activeElement)) return null;
+  const exportControl = activeElement.closest?.('#export-data');
+  if (exportControl && root.contains(exportControl)) {
+    return { kind: 'export', value: 'export-data' };
+  }
+  if (!enabled) return null;
   for (const [selector, kind, dataKey] of [
     ['[data-days]', 'range', 'days'],
     ['.trend-toggle[data-type]', 'trend', 'type'],
@@ -539,11 +566,14 @@ export function restoreInsightsFocus(root, identity, activeDocument = document) 
     range: { selector: '[data-days]', dataKey: 'days' },
     trend: { selector: '.trend-toggle[data-type]', dataKey: 'type' },
     summary: { selector: '.analytics-details > summary', text: true },
+    export: { selector: '#export-data', id: true },
   }[identity.kind];
   if (!definition) return false;
   const replacement = [...root.querySelectorAll(definition.selector)].find((control) => (
     definition.text
       ? control.textContent?.trim() === identity.value
+      : definition.id
+        ? control.id === identity.value
       : String(control.dataset?.[definition.dataKey]) === identity.value
   ));
   if (!replacement?.focus) return false;
@@ -576,11 +606,17 @@ export async function startInsights(scope = document) {
     || document.getElementById('initial-insights-data');
   if (!root || !payload || root.dataset.insightsStarted === 'true') return null;
   root.dataset.insightsStarted = 'true';
+  root.style.overflowAnchor = 'none';
   let currentData = JSON.parse(payload.textContent || '{}');
   let currentRange = Number(currentData.range_days) || 30;
   let trendType = 'daily';
   let requestGeneration = 0;
   let presentationGeneration = 0;
+  const inFlightPresentations = new Set();
+  let deferredPresentationRefresh = false;
+  let exportPending = false;
+  let exportSettlement = Promise.resolve();
+  let exportActivationScroll = null;
   let rangeController = null;
   let activeCharts = [];
   let detailsOpen = Boolean(root.querySelector('.analytics-details')?.open);
@@ -692,8 +728,19 @@ export async function startInsights(scope = document) {
     }
   };
 
-  const commitCandidate = (candidate, data, range, { preserveFocus = false } = {}) => {
+  const commitCandidate = async (
+    candidate,
+    data,
+    range,
+    { preserveFocus = false, loadStatus = null } = {},
+  ) => {
     const focusIdentity = captureInsightsFocus(root, document.activeElement, preserveFocus);
+    const focusScroll = focusIdentity ? { x: window.scrollX, y: window.scrollY } : null;
+    const restoreScroll = focusScroll ? () => window.scrollTo({
+      left: focusScroll.x,
+      top: focusScroll.y,
+      behavior: 'instant',
+    }) : null;
     const previousCharts = activeCharts;
     root.replaceChildren(...candidate.root.childNodes);
     root.dataset.insightsState = candidate.root.dataset.insightsState;
@@ -705,21 +752,68 @@ export async function startInsights(scope = document) {
     detailsOpen = Boolean(root.querySelector('.analytics-details')?.open);
     candidate.host.remove();
     destroyCharts(previousCharts);
+    if (loadStatus) {
+      const status = root.querySelector('[data-insights-load-status]');
+      if (status) {
+        status.textContent = loadStatus.text;
+        status.hidden = loadStatus.hidden;
+      }
+    }
     restoreInsightsFocus(root, focusIdentity, document);
+    if (focusScroll) {
+      restoreScroll();
+      await new Promise((resolve) => {
+        let settledFrames = 0;
+        const settle = () => requestAnimationFrame(() => {
+          restoreScroll();
+          settledFrames += 1;
+          if (settledFrames === 5) resolve();
+          else settle();
+        });
+        settle();
+      });
+      restoreScroll();
+    }
   };
 
-  const renderLive = async ({ preserveFocus = false } = {}) => {
+  const renderLive = async ({
+    preserveFocus = false,
+    preserveLoadStatus = false,
+  } = {}) => {
+    if (exportPending || root.getAttribute('aria-busy') === 'true') {
+      deferredPresentationRefresh = true;
+      return false;
+    }
+    deferredPresentationRefresh = false;
     const generation = ++presentationGeneration;
+    const status = root.querySelector('[data-insights-load-status]');
+    const loadStatus = preserveLoadStatus && status ? {
+      text: status.textContent,
+      hidden: status.hidden,
+    } : null;
+    inFlightPresentations.add(generation);
+    try {
+      const candidate = await buildCandidate(
+        currentData,
+        currentRange,
+        () => generation === presentationGeneration,
+        { strict: false },
+      );
+      if (!candidate || generation !== presentationGeneration) return false;
+      await commitCandidate(candidate, currentData, currentRange, {
+        preserveFocus,
+        loadStatus,
+      });
+      return true;
+    } finally {
+      inFlightPresentations.delete(generation);
+    }
+  };
+
+  const flushDeferredPresentation = async () => {
+    if (!deferredPresentationRefresh || exportPending) return false;
     if (root.getAttribute('aria-busy') === 'true') return false;
-    const candidate = await buildCandidate(
-      currentData,
-      currentRange,
-      () => generation === presentationGeneration,
-      { strict: false },
-    );
-    if (!candidate || generation !== presentationGeneration) return false;
-    commitCandidate(candidate, currentData, currentRange, { preserveFocus });
-    return true;
+    return renderLive({ preserveFocus: true, preserveLoadStatus: true });
   };
 
   const loadRange = async (
@@ -742,27 +836,39 @@ export async function startInsights(scope = document) {
       if (!response.ok) throw new Error(`Insights request failed (${response.status})`);
       const data = await response.json();
       if (generation !== requestGeneration || controller.signal.aborted) return false;
+      if (exportPending) await exportSettlement;
+      if (generation !== requestGeneration || controller.signal.aborted) return false;
       const candidateRange = Number(data.range_days) || Number(days);
       const isTransactionCurrent = () => (
         generation === requestGeneration && !controller.signal.aborted
       );
-      const candidate = await buildLatestPresentation({
-        build: (isCurrent) => buildCandidate(
-          data,
-          candidateRange,
-          isCurrent,
-        ),
-        isTransactionCurrent,
-        nextGeneration: () => ++presentationGeneration,
-        isGenerationCurrent: (candidateGeneration) => (
-          candidateGeneration === presentationGeneration
-        ),
-      });
+      let candidate = null;
+      while (isTransactionCurrent()) {
+        if (exportPending) await exportSettlement;
+        if (!isTransactionCurrent()) return false;
+        candidate = await buildLatestPresentation({
+          build: (isCurrent) => buildCandidate(
+            data,
+            candidateRange,
+            isCurrent,
+          ),
+          isTransactionCurrent,
+          nextGeneration: () => ++presentationGeneration,
+          isGenerationCurrent: (candidateGeneration) => (
+            candidateGeneration === presentationGeneration
+          ),
+        });
+        if (!candidate || !exportPending) break;
+        destroyCharts(candidate.charts);
+        candidate.host.remove();
+        candidate = null;
+      }
       if (!candidate) return false;
       if (generation !== requestGeneration || controller.signal.aborted) return false;
-      commitCandidate(candidate, data, candidateRange, {
+      await commitCandidate(candidate, data, candidateRange, {
         preserveFocus: historyMode === 'push',
       });
+      deferredPresentationRefresh = false;
       const nextUrl = new URL(window.location.href);
       nextUrl.searchParams.set('days', String(currentRange));
       if (historyMode === 'push') {
@@ -781,6 +887,7 @@ export async function startInsights(scope = document) {
       }
       setPending(root, false);
       delete root.dataset.pendingDays;
+      flushDeferredPresentation();
       return true;
     } catch (_) {
       if (generation !== requestGeneration || controller.signal.aborted) return false;
@@ -793,6 +900,7 @@ export async function startInsights(scope = document) {
       }
       setPending(root, false, 'Insights could not refresh. Your current values are still available; choose the range again to retry.');
       delete root.dataset.pendingDays;
+      flushDeferredPresentation();
       return false;
     }
   };
@@ -808,8 +916,13 @@ export async function startInsights(scope = document) {
   const invalidatePendingPresentation = (event) => {
     const action = presentationSensitiveActionFor(event);
     if (!action) return;
+    const invalidatedPresentation = inFlightPresentations.has(presentationGeneration);
     presentationGeneration += 1;
     if (action.id === 'export-data') {
+      if (invalidatedPresentation) deferredPresentationRefresh = true;
+      if (event.type === 'keydown' || event.type === 'pointerdown') {
+        exportActivationScroll = { x: window.scrollX, y: window.scrollY };
+      }
       const liveDetails = root.querySelector('.analytics-details');
       if (liveDetails) detailsOpen = liveDetails.open;
     }
@@ -835,7 +948,19 @@ export async function startInsights(scope = document) {
       renderLive({ preserveFocus: true });
       return;
     }
-    if (event.target.closest?.('#export-data')) exportRange(root, currentRange);
+    if (event.target.closest?.('#export-data')) {
+      if (exportPending) return;
+      exportPending = true;
+      const activationScroll = exportActivationScroll;
+      exportActivationScroll = null;
+      const operation = exportRange(root, currentRange, { activationScroll });
+      exportSettlement = operation;
+      operation.finally(() => {
+        if (exportSettlement !== operation) return;
+        exportPending = false;
+        flushDeferredPresentation();
+      });
+    }
   });
   root.addEventListener('toggle', (event) => {
     if (!event.target.matches?.('.analytics-details')) return;

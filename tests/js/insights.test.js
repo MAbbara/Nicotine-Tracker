@@ -720,18 +720,27 @@ test('Insights commit focus identity restores owned replacement controls without
       textContent: 'Open hourly detail and supporting measures',
       identity: { kind: 'summary', value: 'Open hourly detail and supporting measures' },
     },
+    {
+      selector: '#export-data',
+      dataset: {},
+      id: 'export-data',
+      identity: { kind: 'export', value: 'export-data' },
+      background: true,
+    },
   ]) {
     const current = {
+      id: fixture.id,
       dataset: fixture.dataset,
       textContent: fixture.textContent,
       closest(selector) { return selector === fixture.selector ? this : null; },
     };
     const currentRoot = { contains: (node) => node === current };
-    const identity = module.captureInsightsFocus(currentRoot, current);
+    const identity = module.captureInsightsFocus(currentRoot, current, !fixture.background);
     assert.deepEqual(identity, fixture.identity);
 
     const focusOptions = [];
     const replacement = {
+      id: fixture.id,
       dataset: fixture.dataset,
       textContent: fixture.textContent,
       focus(options) { focusOptions.push(options); },

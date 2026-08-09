@@ -943,6 +943,226 @@ test('pre-activation disclosure input invalidates a fully built background candi
   expect(await page.evaluate(() => window.__summaryCommitRace.maxActive)).toBe(1);
 });
 
+test('Export handoff preserves focus and defers one invalidated disclosure successor', async ({ page }) => {
+  await login(page, 'insights-range@example.com');
+  await page.goto('/insights/?days=30');
+  await page.evaluate(() => {
+    const BaseChart = window.ApexCharts;
+    const liveRoot = document.querySelector(
+      '[data-insights-root]:not([data-insights-candidate])',
+    );
+    window.__exportHandoffRace = {
+      active: 0,
+      maxActive: 0,
+      armed: false,
+      held: false,
+      holdId: null,
+      eligibleIds: [],
+      builtIds: [],
+      liveCommits: 0,
+    };
+    new MutationObserver((records) => {
+      window.__exportHandoffRace.liveCommits += records.filter((record) => (
+        record.type === 'childList' && record.target === liveRoot
+      )).length;
+    }).observe(liveRoot, { childList: true });
+    window.ApexCharts = class HeldDisclosureChart {
+      constructor(target, options) {
+        this.targetId = target.id;
+        this.chart = new BaseChart(target, options);
+      }
+      async render() {
+        const audit = window.__exportHandoffRace;
+        audit.active += 1;
+        audit.maxActive = Math.max(audit.maxActive, audit.active);
+        try {
+          if (audit.armed && !audit.holdId) {
+            await new Promise((resolve) => { window.__releaseExportInspection = resolve; });
+          }
+          await this.chart.render();
+          if (audit.armed) audit.builtIds.push(this.targetId);
+          if (audit.armed && this.targetId === audit.holdId) {
+            audit.armed = false;
+            audit.held = true;
+            await new Promise((resolve) => { window.__releaseExportHandoff = resolve; });
+          }
+        } finally {
+          audit.active -= 1;
+        }
+      }
+      destroy() { this.chart.destroy(); }
+    };
+    window.__armExportHandoff = () => {
+      const audit = window.__exportHandoffRace;
+      audit.armed = true;
+      audit.held = false;
+      audit.holdId = null;
+      audit.eligibleIds = [];
+      audit.builtIds = [];
+      window.__releaseExportInspection = null;
+      window.__releaseExportHandoff = null;
+    };
+  });
+
+  let exportRequests = 0;
+  const releaseResponses = [];
+  await page.route('**/insights/api/export?days=30', async (route) => {
+    exportRequests += 1;
+    await new Promise((resolve) => { releaseResponses.push(resolve); });
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/csv',
+      headers: { 'content-disposition': 'attachment; filename="nicotine_data_20260809.csv"' },
+      body: 'date,nicotine_mg\n2026-08-09,6\n',
+    });
+  });
+
+  const liveRoot = page.locator('[data-insights-root]:not([data-insights-candidate])');
+  const summary = () => liveRoot.getByText(
+    'Open hourly detail and supporting measures', { exact: true },
+  );
+  const exportButton = page.getByRole('button', { name: 'Export CSV' });
+  const freezeScroll = () => page.evaluate(() => {
+    const position = { x: window.scrollX, y: window.scrollY };
+    window.scrollTo({ left: position.x, top: position.y, behavior: 'instant' });
+    return position.y;
+  });
+  const settleCommit = () => page.evaluate(() => new Promise((resolve) => {
+    let frames = 0;
+    const settle = () => requestAnimationFrame(() => {
+      frames += 1;
+      if (frames === 6) resolve();
+      else settle();
+    });
+    settle();
+  }));
+  const armDisclosure = async (key) => {
+    await page.evaluate(() => window.__armExportHandoff());
+    await summary().focus({ preventScroll: true });
+    await summary().press(key);
+    await expect.poll(() => page.evaluate(() => (
+      typeof window.__releaseExportInspection
+    ))).toBe('function');
+    await page.evaluate(() => {
+      const candidate = [...document.querySelectorAll('.insights-staging')]
+        .map((host) => host.shadowRoot?.querySelector('[data-insights-candidate]'))
+        .find(Boolean);
+      const eligible = [...candidate.querySelectorAll('.analytics-chart')]
+        .filter((chart) => !chart.hidden);
+      const audit = window.__exportHandoffRace;
+      audit.eligibleIds = eligible.map((chart) => chart.id);
+      audit.holdId = audit.eligibleIds.at(-1);
+      window.__releaseExportInspection();
+    });
+    await expect.poll(() => page.evaluate(() => ({
+      held: window.__exportHandoffRace.held,
+      releaseReady: typeof window.__releaseExportHandoff === 'function',
+    }))).toEqual({ held: true, releaseReady: true });
+    const builtCandidate = await page.evaluate(() => ({
+      eligible: window.__exportHandoffRace.eligibleIds,
+      built: window.__exportHandoffRace.builtIds,
+    }));
+    expect(builtCandidate.built).toEqual(builtCandidate.eligible);
+  };
+
+  await armDisclosure('Enter');
+  const firstOldExport = await exportButton.elementHandle();
+  await freezeScroll();
+  await firstOldExport.evaluate((node) => {
+    node.addEventListener('focus', () => {
+      window.__exportHandoffRace.focusReleaseScroll = window.scrollY;
+      window.__releaseExportHandoff();
+    }, { once: true });
+    node.focus({ preventScroll: true });
+  });
+  await expect.poll(() => firstOldExport.evaluate((node) => node.isConnected)).toBe(false);
+  await expect(exportButton).toBeFocused();
+  await settleCommit();
+  const firstScroll = await page.evaluate(() => (
+    window.__exportHandoffRace.focusReleaseScroll
+  ));
+  expect(
+    Math.abs((await page.evaluate(() => window.scrollY)) - firstScroll),
+    'focus-event candidate commit must not scroll',
+  )
+    .toBeLessThanOrEqual(1);
+  await page.evaluate(() => {
+    const audit = window.__exportHandoffRace;
+    audit.scrollPhases = [];
+    const root = document.querySelector('[data-insights-root]');
+    for (const eventName of ['keydown', 'click']) {
+      root.addEventListener(eventName, () => {
+        audit.scrollPhases.push({
+          eventName,
+          scrollY: window.scrollY,
+          maxScroll: document.documentElement.scrollHeight - window.innerHeight,
+        });
+      }, { capture: true, once: true });
+    }
+  });
+  await page.keyboard.press('Enter');
+  await expect.poll(() => exportRequests).toBe(1);
+  await expect(exportButton).toBeDisabled();
+  await expect(exportButton).toHaveAttribute('aria-busy', 'true');
+  await expect(page.locator('[data-insights-load-status]')).toContainText('Preparing CSV');
+  const firstPendingGeometry = await page.evaluate(() => ({
+    firstScroll: window.__exportHandoffRace.scrollPhases,
+    scrollY: window.scrollY,
+    maxScroll: document.documentElement.scrollHeight - window.innerHeight,
+  }));
+  expect(
+    Math.abs(firstPendingGeometry.scrollY - firstScroll),
+    JSON.stringify(firstPendingGeometry),
+  ).toBeLessThanOrEqual(1);
+  releaseResponses[0]();
+  await expect(exportButton).toBeEnabled();
+  await expect(exportButton).toHaveAttribute('aria-busy', 'false');
+  await expect(exportButton).toBeFocused();
+
+  await armDisclosure(' ');
+  await exportButton.focus({ preventScroll: true });
+  const secondOldExport = await exportButton.elementHandle();
+  await freezeScroll();
+  const commitsBefore = await page.evaluate(() => window.__exportHandoffRace.liveCommits);
+  await secondOldExport.evaluate((node) => {
+    node.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        window.__exportHandoffRace.keydownReleaseScroll = window.scrollY;
+        window.__releaseExportHandoff();
+      }
+    }, { once: true });
+  });
+  await page.keyboard.press('Enter');
+  await expect.poll(() => exportRequests).toBe(2);
+  await expect(exportButton).toBeDisabled();
+  await expect(exportButton).toHaveAttribute('aria-busy', 'true');
+  await expect(page.locator('[data-insights-load-status]')).toContainText('Preparing CSV');
+  await expect.poll(() => page.evaluate(() => window.__exportHandoffRace.active)).toBe(0);
+  expect(await page.evaluate(() => window.__exportHandoffRace.liveCommits))
+    .toBe(commitsBefore);
+  await page.waitForTimeout(100);
+  await expect(exportButton).toBeDisabled();
+  expect(exportRequests).toBe(2);
+  releaseResponses[1]();
+  await expect.poll(() => secondOldExport.evaluate((node) => node.isConnected)).toBe(false);
+  await expect(exportButton).toBeEnabled();
+  await expect(exportButton).toHaveAttribute('aria-busy', 'false');
+  await expect(exportButton).toBeFocused();
+  await expect.poll(() => page.evaluate(() => window.__exportHandoffRace.liveCommits))
+    .toBe(commitsBefore + 1);
+  await settleCommit();
+  const secondScroll = await page.evaluate(() => (
+    window.__exportHandoffRace.keydownReleaseScroll
+  ));
+  expect(
+    Math.abs((await page.evaluate(() => window.scrollY)) - secondScroll),
+    'deferred post-export successor must not scroll',
+  )
+    .toBeLessThanOrEqual(1);
+  expect(await page.evaluate(() => window.__exportHandoffRace.maxActive)).toBe(1);
+  expect(exportRequests).toBe(2);
+});
+
 test('latest range wins after abort and long snapshot labels stay contained at 320px 200%', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 320, height: 844 });
