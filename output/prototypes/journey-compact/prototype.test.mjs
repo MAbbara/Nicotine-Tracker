@@ -129,12 +129,20 @@ test('light and dark themes retain usable trajectory controls', async () => {
 test('day selection is latest, stable, and keyboard operable', async () => {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   await page.goto(url);
+  const assertSinglePressed = async (expected) => {
+    const selected = page.locator('[data-day][aria-pressed="true"]');
+    assert.equal(await selected.count(), 1);
+    assert.equal(await selected.first().getAttribute('data-date'), expected);
+  };
   const detail = page.locator('[data-day-detail]');
   const before = await detail.boundingBox();
+  await assertSinglePressed('Today');
+
   const tuesday = page.getByRole('button', { name: /Tuesday.*32\.06 mg/ });
   await tuesday.focus();
   await page.keyboard.press('Enter');
   assert.equal(await tuesday.getAttribute('aria-pressed'), 'true');
+  await assertSinglePressed('Tuesday');
   assert.equal(
     await page.getByRole('button', { name: /Today.*33\.19 mg/ }).getAttribute('aria-pressed'),
     'false',
@@ -146,6 +154,31 @@ test('day selection is latest, stable, and keyboard operable', async () => {
   await assert.doesNotReject(() => page.getByRole('button', { name: /Wednesday/ }).evaluate((element) => {
     if (element !== document.activeElement) throw new Error('focus did not move');
   }));
+  await page.keyboard.press('ArrowLeft');
+  await assert.doesNotReject(() => tuesday.evaluate((element) => {
+    if (element !== document.activeElement) throw new Error('focus did not move left');
+  }));
+  await assertSinglePressed('Tuesday');
+
+  const today = page.getByRole('button', { name: /Today.*33\.19 mg/ });
+  const saturday = page.getByRole('button', { name: /Saturday.*29\.81 mg/ });
+  await today.focus();
+  await page.keyboard.press('ArrowLeft');
+  await assert.doesNotReject(() => saturday.evaluate((element) => {
+    if (element !== document.activeElement) throw new Error('left boundary did not wrap');
+  }));
+  await assertSinglePressed('Tuesday');
+
+  await page.keyboard.press('ArrowRight');
+  await assert.doesNotReject(() => today.evaluate((element) => {
+    if (element !== document.activeElement) throw new Error('right boundary did not wrap');
+  }));
+  await assertSinglePressed('Tuesday');
+
+  await page.keyboard.press('Space');
+  assert.equal(await today.getAttribute('aria-pressed'), 'true');
+  await assertSinglePressed('Today');
+  assert.match(await detail.textContent(), /Today.*33\.19 mg.*Current ceiling/);
   await page.close();
 });
 
