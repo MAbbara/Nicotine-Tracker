@@ -190,3 +190,12 @@ def test_preferences_reject_invalid_boundary_and_unowned_brand_atomically(
     assert soup.select_one('#timezone[aria-invalid="true"]')
     assert soup.select_one('#daily_reset_time[aria-invalid="true"]')
     assert soup.select_one('#preferred_brands-error')
+    brand_group = soup.select_one('fieldset.preferences-brand-group')
+    assert brand_group.get('aria-invalid') == 'true'
+    assert set(brand_group.get('aria-describedby', '').split()) == {
+        'preferred-brands-description', 'preferred-brands-error',
+    }
+    for checkbox in brand_group.select('input[name="preferred_brands"]'):
+        assert set(checkbox.get('aria-describedby', '').split()) == {
+            'preferred-brands-description', 'preferred-brands-error',
+        }

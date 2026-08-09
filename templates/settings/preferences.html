@@ -74,7 +74,11 @@
                 <p>Keep the products you use most often easy to reach when logging.</p>
             </header>
 
-            <fieldset class="preferences-brand-group min-w-0 space-y-4 border-0 p-0" aria-describedby="preferred-brands-description">
+            <fieldset
+                class="preferences-brand-group min-w-0 space-y-4 border-0 p-0"
+                aria-describedby="preferred-brands-description{% if field_errors.get('preferred_brands') %} preferred-brands-error{% endif %}"
+                {% if field_errors.get('preferred_brands') %}aria-invalid="true"{% endif %}
+            >
                 <legend class="sr-only">Preferred products</legend>
                 <p class="c-field__description" id="preferred-brands-description">Choose any products you want prioritized for quick access. You can change this list at any time.</p>
                 {% if field_errors.get('preferred_brands') %}<p class="c-field__error" id="preferred_brands-error" role="alert">{{ field_errors.get('preferred_brands') }}</p>{% endif %}
@@ -89,7 +93,8 @@
                             name="preferred_brands"
                             type="checkbox"
                             value="{{ brand }}"
-                            aria-describedby="preferred-brands-description"
+                            aria-describedby="preferred-brands-description{% if field_errors.get('preferred_brands') %} preferred-brands-error{% endif %}"
+                            {% if field_errors.get('preferred_brands') %}aria-invalid="true"{% endif %}
                             {% if brand in preferences.preferred_brands %}checked{% endif %}
                         >
                         <span class="c-field__check-label">{{ brand }}</span>

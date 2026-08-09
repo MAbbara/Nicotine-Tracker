@@ -43,6 +43,14 @@ export function buildInsightsAlternativeModel(data = {}, trendType = 'daily') {
     value: Number(count) || 0,
   }));
   const mgRows = (value) => pairs(value).map(({ label, value: mg }) => ({ label, value: mg }));
+  const tableShares = (rows) => {
+    const total = rows.reduce((sum, row) => sum + Math.max(0, row.value), 0);
+    return rows.map((row) => ({
+      ...row,
+      share: total && row.value > 0
+        ? Math.round((row.value / total) * 1000) / 10 : 0,
+    }));
+  };
   const bars = (rows) => {
     const positive = rows.filter(({ value }) => value > 0).sort((a, b) => b.value - a.value);
     const total = positive.reduce((sum, row) => sum + row.value, 0);
@@ -64,10 +72,12 @@ export function buildInsightsAlternativeModel(data = {}, trendType = 'daily') {
     brands: pairs(data.brand_analysis),
     timeOfDayMg,
     productMg,
+    timeOfDayTable: tableShares(timeOfDayMg),
+    productTable: tableShares(productMg),
     timeOfDayBars: bars(timeOfDayMg),
     productBars: bars(productMg),
     strengthCoverage: data.strength_coverage || {
-      known_pouches: 0, unknown_pouches: 0, total_pouches: 0,
+      known_logs: 0, unknown_logs: 0, total_logs: 0,
       known_percent: 0, complete: true,
     },
     heatmap: (data.heatmap_data || []).flatMap((series) => (
@@ -115,7 +125,7 @@ function renderRows(root, key, rows, emptyMessage) {
   if (!rows.length) {
     const row = body.insertRow();
     const cell = row.insertCell();
-    cell.colSpan = 2;
+    cell.colSpan = body.closest('table')?.querySelectorAll('thead th').length || 2;
     cell.textContent = emptyMessage;
     return;
   }
@@ -127,6 +137,11 @@ function renderRows(root, key, rows, emptyMessage) {
     row.append(heading);
     const cell = row.insertCell();
     cell.textContent = String(value);
+    if ('share' in rows[0]) {
+      const shareCell = row.insertCell();
+      const item = rows.find((candidate) => candidate.label === label);
+      shareCell.textContent = `${item.share}%`;
+    }
   });
 }
 
@@ -166,9 +181,9 @@ function renderHeatmapRows(root, rows) {
 function updateAlternatives(root, data, trendType) {
   const model = buildInsightsAlternativeModel(data, trendType);
   renderRows(root, 'trend', model.trend, 'No consumption logged in this range.');
-  renderRows(root, 'timeOfDay', model.timeOfDayMg, 'No known-strength nicotine logged in this range.');
+  renderRows(root, 'timeOfDay', model.timeOfDayTable, 'No known-strength nicotine logged in this range.');
   renderRows(root, 'dayOfWeek', model.dayOfWeek, 'No weekly pattern available.');
-  renderRows(root, 'brands', model.productMg, 'No known-strength product data in this range.');
+  renderRows(root, 'brands', model.productTable, 'No known-strength product data in this range.');
   renderHeatmapRows(root, model.heatmap);
   return model;
 }
@@ -200,31 +215,101 @@ function commonChart(type, height, theme) {
 }
 
 function barLabelOptions(rows, theme) {
-  const narrow = window.innerWidth <= 480;
-  const limit = narrow ? 18 : 32;
+  const lineLimit = barLabelCharacterLimit();
   return {
-    categories: rows.map(({ label }) => label),
+    categories: rows.map(({ label }) => {
+      const value = String(label);
+      return !/\s/.test(value) && value.length > lineLimit
+        ? wrappedLabelLines(value, lineLimit)
+        : value;
+    }),
     labels: {
-      formatter: (label) => String(label).length > limit
-        ? `${String(label).slice(0, limit - 1)}…`
-        : String(label),
+      formatter: (label) => Array.isArray(label) ? label : String(label),
       style: { colors: theme.foreColor },
     },
   };
+}
+
+function barLabelCharacterLimit() {
+  if (typeof window === 'undefined' || !Number.isFinite(window.innerWidth)) return 18;
+  const zoom = Number.parseFloat(
+    globalThis.getComputedStyle?.(document.documentElement)?.zoom || '1',
+  ) || 1;
+  if (window.innerWidth <= 480 && zoom >= 1.75) return 9;
+  if (window.innerWidth <= 480) return 14;
+  return 18;
+}
+
+function wrappedLabelLines(value, limit = 18) {
+  const words = String(value).trim().split(/\s+/).filter(Boolean).flatMap((word) => {
+    if (word.length <= limit) return [word];
+    return Array.from(
+      { length: Math.ceil(word.length / limit) },
+      (_, index) => word.slice(index * limit, (index + 1) * limit),
+    );
+  });
+  if (!words.length) return [''];
+  const lines = [];
+  for (const word of words) {
+    const current = lines.at(-1);
+    if (!current || `${current} ${word}`.length > limit) lines.push(word);
+    else lines[lines.length - 1] = `${current} ${word}`;
+  }
+  return lines;
 }
 
 function decorateBarLabels(target, rows) {
   target?.querySelectorAll('.apexcharts-yaxis-label').forEach((label, index) => {
     const fullLabel = rows[index]?.label;
     if (!fullLabel) return;
-    label.setAttribute('aria-label', fullLabel);
-    let title = label.querySelector('title');
-    if (!title) {
-      title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-      label.append(title);
-    }
+    const row = rows[index];
+    const accessibleLabel = `${fullLabel}, ${row.mg} mg, ${row.share}% of known nicotine`;
+    const lines = wrappedLabelLines(fullLabel, barLabelCharacterLimit());
+    const currentLines = Array.from(label.querySelectorAll(':scope > tspan'))
+      .map((line) => line.textContent);
+    if (
+      label.getAttribute('aria-label') === accessibleLabel
+      && label.querySelector(':scope > title')?.textContent === fullLabel
+      && currentLines.length === lines.length
+      && currentLines.every((line, lineIndex) => line === lines[lineIndex])
+    ) return;
+    label.setAttribute('aria-label', accessibleLabel);
+    const x = label.getAttribute('x') || '0';
+    label.replaceChildren();
+    const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
     title.textContent = fullLabel;
+    label.append(title);
+    lines.forEach((line, lineIndex) => {
+      const tspan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+      tspan.setAttribute('x', x);
+      tspan.setAttribute('dy', lineIndex === 0 ? `${-0.55 * (lines.length - 1)}em` : '1.1em');
+      tspan.textContent = line;
+      label.append(tspan);
+    });
   });
+}
+
+function keepBarLabelsDecorated(target, rows, chart) {
+  target.__barLabelObserver?.disconnect();
+  let queued = false;
+  const decorate = () => {
+    queued = false;
+    decorateBarLabels(target, rows);
+  };
+  const observer = new MutationObserver(() => {
+    if (queued) return;
+    queued = true;
+    queueMicrotask(decorate);
+  });
+  observer.observe(target, { childList: true, subtree: true });
+  target.__barLabelObserver = observer;
+  decorate();
+  const destroy = chart.destroy.bind(chart);
+  chart.destroy = () => {
+    observer.disconnect();
+    if (target.__barLabelObserver === observer) delete target.__barLabelObserver;
+    return destroy();
+  };
 }
 
 function statusFor(target) {
@@ -251,6 +336,19 @@ export function chartDefinitions(data, trendType) {
       xaxis: barLabelOptions(model.timeOfDayBars, theme),
       yaxis: { labels: { style: { colors: theme.foreColor }, maxWidth: Math.max(72, Math.min(180, Math.floor(window.innerWidth * 0.32))) } },
       colors: ['#55755F'],
+      dataLabels: {
+        enabled: true,
+        formatter: (_value, options) => `${model.timeOfDayBars[options.dataPointIndex]?.share ?? 0}%`,
+      },
+      tooltip: {
+        theme: theme.mode,
+        y: {
+          formatter: (value, options) => {
+            const row = model.timeOfDayBars[options.dataPointIndex];
+            return `${row?.mg ?? value} mg · ${row?.share ?? 0}% of known nicotine`;
+          },
+        },
+      },
       noData: { text: 'No data available' },
     }],
     ['day-of-week-chart', {
@@ -267,6 +365,19 @@ export function chartDefinitions(data, trendType) {
       xaxis: barLabelOptions(model.productBars, theme),
       yaxis: { labels: { style: { colors: theme.foreColor }, maxWidth: Math.max(72, Math.min(180, Math.floor(window.innerWidth * 0.32))) } },
       colors: ['#B76343'],
+      dataLabels: {
+        enabled: true,
+        formatter: (_value, options) => `${model.productBars[options.dataPointIndex]?.share ?? 0}%`,
+      },
+      tooltip: {
+        theme: theme.mode,
+        y: {
+          formatter: (value, options) => {
+            const row = model.productBars[options.dataPointIndex];
+            return `${row?.mg ?? value} mg · ${row?.share ?? 0}% of known nicotine`;
+          },
+        },
+      },
       noData: { text: 'No brand data available' },
     }],
     ['heatmap-chart', {
@@ -315,8 +426,7 @@ function updateEditorial(root, viewModel, rangeDays) {
     if (model.state === 'no-logs') return `No nicotine is available by ${subject} yet. ${model.coverageCopy}`;
     if (model.state === 'unknown-only') return `Nicotine by ${subject} is unavailable because every logged pouch is missing a saved strength. ${model.coverageCopy}`;
     if (model.state === 'known-zero') return `Known strengths in this range add up to 0 mg by ${subject}. ${model.coverageCopy}`;
-    if (model.state === 'single') return `All known nicotine in this range is in one ${subject} category. ${model.coverageCopy}`;
-    return `${model.coverageCopy} Bars show known nicotine only.`;
+    return model.interpretation;
   };
   setText('[data-insights-time-nicotine-copy]', distributionCopy(viewModel.sections.timeNicotine, 'time'));
   setText('[data-insights-product-nicotine-copy]', distributionCopy(viewModel.sections.productNicotine, 'product'));
@@ -666,8 +776,12 @@ export async function startInsights(scope = document) {
       }
       if (chart) {
         charts.push(chart);
-        if (id === 'time-of-day-chart') decorateBarLabels(target, alternative.timeOfDayBars);
-        if (id === 'brand-chart') decorateBarLabels(target, alternative.productBars);
+        if (id === 'time-of-day-chart') {
+          keepBarLabelsDecorated(target, alternative.timeOfDayBars, chart);
+        }
+        if (id === 'brand-chart') {
+          keepBarLabelsDecorated(target, alternative.productBars, chart);
+        }
       }
       if (!isCurrent()) {
         destroyCharts(charts);
@@ -820,7 +934,16 @@ export async function startInsights(scope = document) {
     { historyMode = 'push', targetHistoryIndex = null } = {},
   ) => {
     if (![7, 30, 90, 365].includes(Number(days))) return false;
-    if (historyMode === 'push' && Number(days) === currentRange) return true;
+    if (historyMode === 'push' && Number(days) === currentRange) {
+      presentationGeneration += 1;
+      rangeController?.abort();
+      rangeController = null;
+      requestGeneration += 1;
+      setPending(root, false);
+      delete root.dataset.pendingDays;
+      flushOwedPresentation();
+      return true;
+    }
     presentationGeneration += 1;
     rangeController?.abort();
     rangeController = new AbortController();

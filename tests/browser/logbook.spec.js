@@ -38,6 +38,15 @@ async function expectNoWcagViolations(page) {
 }
 
 
+async function waitForDialogEntrance(dialog) {
+  await expect(dialog).toHaveAttribute('data-dialog-state', 'open');
+  await dialog.locator('[data-dialog-panel]').evaluate(async (panel) => {
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await Promise.all(panel.getAnimations().map((animation) => animation.finished.catch(() => {})));
+  });
+}
+
+
 test('Logbook supports saved/custom add, filter, edit, bulk add, and confirmed delete', async ({ page }, testInfo) => {
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.stack || error.message));
@@ -109,7 +118,9 @@ for (const theme of ['light', 'dark']) {
     await expectNoWcagViolations(page);
 
     await page.getByRole('button', { name: 'Add log', exact: true }).click();
-    await expect(page.getByRole('dialog', { name: 'Add a log' })).toBeVisible();
+    const addLogDialog = page.getByRole('dialog', { name: 'Add a log' });
+    await expect(addLogDialog).toBeVisible();
+    await waitForDialogEntrance(addLogDialog);
     await expectNoWcagViolations(page);
     await page.getByRole('button', { name: 'Close add log dialog' }).click();
 

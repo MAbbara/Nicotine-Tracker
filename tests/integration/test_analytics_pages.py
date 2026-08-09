@@ -304,7 +304,7 @@ def test_insights_live_chain_hides_insufficient_craving_evidence(
     "known_strength, state_copies",
     [
         (Decimal("0.00"), ("add up to 0 mg", "add up to 0 mg")),
-        (Decimal("4.00"), ("one time category", "one product category")),
+        (Decimal("4.00"), ("accounts for 4 mg", "accounts for 4 mg")),
     ],
 )
 def test_insights_server_fallback_keeps_mixed_strength_coverage_explicit(

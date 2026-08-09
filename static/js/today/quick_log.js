@@ -1,6 +1,6 @@
 import { activateActionEnhancement } from './action_enhancement.js';
 import { createTimelineDomAdapter } from './timeline.js';
-import { getOfflineQueueRuntime } from './offline_queue.js';
+import { getOfflineQueueRuntime, retryNotBeforeFromResponse } from './offline_queue.js';
 import { installDialogFocusTrap, restoreDialogFocus } from '../shell/dialog_focus.js';
 import {
   installDialogDismissal,
@@ -301,6 +301,7 @@ export function createQuickLogController({
     status: 'closed', operation: null, draft: null, pendingKey: null,
     canonicalLog: null, error: null, undoDeadline: null,
   };
+  let rateLimitNotBefore = null;
   let requestPromise = null;
   let activeAbort = null;
   let requestGeneration = 0;
@@ -317,6 +318,17 @@ export function createQuickLogController({
   const completionSubscribers = new Set();
   let handoffAttemptSequence = 0;
   let activeHandoffAttempt = null;
+
+  function refreshRateLimitNotBefore(extraDeadline = null) {
+    const currentTime = clock().getTime();
+    const deadlines = [...queuedRecords.values()]
+      .map((record) => Number(record?.not_before))
+      .filter((deadline) => Number.isSafeInteger(deadline) && deadline > currentTime);
+    const extra = Number(extraDeadline);
+    if (Number.isSafeInteger(extra) && extra > currentTime) deadlines.push(extra);
+    rateLimitNotBefore = deadlines.length ? Math.max(...deadlines) : null;
+    return rateLimitNotBefore;
+  }
 
   function publishCompletion(event) {
     for (const subscriber of completionSubscribers) subscriber(event);
@@ -474,6 +486,7 @@ export function createQuickLogController({
     if (source !== 'replay' && !claimedQuickLogState) return false;
 
     completedEventIds.add(pendingKey);
+    refreshRateLimitNotBefore();
     state = nextState;
     timeline.upsertCanonical(log);
     const totalsCurrent = await reconcileMutationToday(body, isCurrent);
@@ -514,6 +527,7 @@ export function createQuickLogController({
     if (result.type === 'pending' && result.record) {
       queuedEventIds.add(result.record.client_event_id);
       queuedRecords.set(result.record.client_event_id, result.record);
+      refreshRateLimitNotBefore();
       timeline.insertQueued(result.record);
       return true;
     }
@@ -529,6 +543,7 @@ export function createQuickLogController({
       }
       queuedEventIds.delete(result.record.client_event_id);
       queuedRecords.delete(result.record.client_event_id);
+      refreshRateLimitNotBefore();
       return acceptCanonicalSuccess({
         body: result,
         log: result.log,
@@ -539,9 +554,31 @@ export function createQuickLogController({
         isCurrent: () => initialized && generation === lifecycleGeneration,
       });
     }
+    if (result.type === 'retryable' && result.record) {
+      queuedEventIds.add(result.record.client_event_id);
+      queuedRecords.set(result.record.client_event_id, result.record);
+      const deadline = Number(result.record.not_before);
+      const now = clock().getTime();
+      refreshRateLimitNotBefore();
+      if (state.pendingKey === result.record.client_event_id) {
+        const waitSeconds = rateLimitNotBefore === null
+          ? null
+          : Math.ceil((rateLimitNotBefore - now) / 1000);
+        const message = waitSeconds === null
+          ? 'Still saved for sync. You can retry when your connection is ready.'
+          : `Saved for sync. The server asked us to wait ${waitSeconds} seconds; we’ll try again automatically.`;
+        view.showQueued(message, {
+          retryDisabled: waitSeconds !== null,
+          notBefore: rateLimitNotBefore,
+        });
+        view.announce(message);
+      }
+      return true;
+    }
     if (result.type === 'needs_attention' && result.record) {
       queuedEventIds.add(result.record.client_event_id);
       queuedRecords.set(result.record.client_event_id, result.record);
+      refreshRateLimitNotBefore();
       timeline.markAttention(result.record.client_event_id);
       publishTerminalHandoff(
         'linked_log_handoff_failed',
@@ -607,6 +644,7 @@ export function createQuickLogController({
       await queueRuntime.remove(clientEventId);
       queuedEventIds.delete(clientEventId);
       queuedRecords.delete(clientEventId);
+      refreshRateLimitNotBefore();
       timeline.removePending(clientEventId);
       if (view.clearRecovery) view.clearRecovery(clientEventId);
       publishTerminalHandoff('linked_log_handoff_closed', queuedRecordDraft(record));
@@ -668,9 +706,29 @@ export function createQuickLogController({
     });
     requestPromise = Promise.resolve(responsePromise).then(async (response) => {
       if (generation !== requestGeneration) return false;
-      const body = await response.json();
+      const responseTime = clock().getTime();
+      const headerRetryNotBefore = retryNotBeforeFromResponse(response, {}, responseTime);
+      let body;
+      try {
+        body = await response.json();
+      } catch (parseFailure) {
+        if (response.ok) throw parseFailure;
+        body = response.status === 429 ? {
+          error: {
+            code: 'rate_limited',
+            message: 'The server asked us to wait before trying again.',
+            field_errors: {},
+            retryable: true,
+          },
+        } : {};
+      }
       if (generation !== requestGeneration) return false;
-      if (!response.ok) throw { httpStatus: response.status, responseBody: body };
+      if (!response.ok) throw {
+        httpStatus: response.status,
+        responseBody: body,
+        retryNotBefore: headerRetryNotBefore
+          ?? retryNotBeforeFromResponse(response, body, responseTime),
+      };
       if (
         queuedEventIds.has(payload.client_event_id)
         && queueRuntime
@@ -703,6 +761,7 @@ export function createQuickLogController({
         }
         queuedEventIds.delete(payload.client_event_id);
         queuedRecords.delete(payload.client_event_id);
+        refreshRateLimitNotBefore();
       }
       if (generation !== requestGeneration) return false;
       const accepted = await acceptCanonicalSuccess({
@@ -724,21 +783,36 @@ export function createQuickLogController({
       ) {
         let queued = null;
         try {
-          queued = await queueRuntime.enqueue(payload);
+          const queueOptions = Number.isSafeInteger(failure?.retryNotBefore)
+            ? { notBefore: failure.retryNotBefore }
+            : undefined;
+          queued = await queueRuntime.enqueue(payload, queueOptions);
         } catch (_) {
           queued = null;
         }
         if (generation !== requestGeneration) return false;
         if (queued?.queued) {
+          const retryDeadline = Number(failure?.retryNotBefore);
           queuedEventIds.add(payload.client_event_id);
           if (queued.record) queuedRecords.set(payload.client_event_id, queued.record);
-          const message = queued.notesOmitted
-            ? 'Waiting for connection. Saved for sync without notes. Notes stay only on this screen.'
-            : 'Waiting for connection.';
+          refreshRateLimitNotBefore(retryDeadline);
+          const waitSeconds = rateLimitNotBefore === null
+            ? null
+            : Math.max(1, Math.ceil((rateLimitNotBefore - clock().getTime()) / 1000));
+          const message = waitSeconds !== null
+            ? `Saved for sync. The server asked us to wait ${waitSeconds} seconds; we’ll try again automatically.`
+            : Number.isSafeInteger(retryDeadline)
+              ? 'Still saved for sync. You can retry when your connection is ready.'
+            : queued.notesOmitted
+              ? 'Waiting for connection. Saved for sync without notes. Notes stay only on this screen.'
+              : 'Waiting for connection.';
           const error = { message, fieldErrors: {} };
           state = quickLogReducer(state, { type: 'CREATE_FAILED', error });
           timeline.markQueued(state.pendingKey);
-          view.showQueued(message);
+          view.showQueued(message, {
+            retryDisabled: waitSeconds !== null,
+            notBefore: rateLimitNotBefore,
+          });
           view.announce(message);
           return false;
         }
@@ -766,6 +840,10 @@ export function createQuickLogController({
     if (!['editing', 'failed'].includes(state.status) || state.operation !== 'create') {
       return null;
     }
+    if (Number.isSafeInteger(rateLimitNotBefore) && clock().getTime() < rateLimitNotBefore) {
+      queueRuntime?.replay?.();
+      return Promise.resolve(false);
+    }
     startLinkedHandoffAttempt(state.draft);
     try {
       validateQuickLogDraft(state.draft, clock());
@@ -786,6 +864,11 @@ export function createQuickLogController({
 
   function retry() {
     if (state.status !== 'failed' || state.operation !== 'create') return null;
+    if (Number.isSafeInteger(rateLimitNotBefore) && clock().getTime() < rateLimitNotBefore) {
+      queueRuntime?.replay?.();
+      return Promise.resolve(false);
+    }
+    rateLimitNotBefore = null;
     startLinkedHandoffAttempt(state.draft);
     try {
       validateQuickLogDraft(state.draft, clock());
@@ -947,6 +1030,7 @@ export function createQuickLogController({
       const beforeNativeClose = () => {
         queuedEventIds.delete(pendingKey);
         queuedRecords.delete(pendingKey);
+        refreshRateLimitNotBefore();
         timeline.removePending(pendingKey);
         state = quickLogReducer(state, { type: 'DISCARD' });
         publishTerminalHandoff('linked_log_handoff_closed', discardedDraft);
@@ -972,27 +1056,38 @@ export function createQuickLogController({
     if (initialized) return initializationPromise;
     initialized = true;
     const generation = ++lifecycleGeneration;
-    view.initialize({
-      open, change, submit, retry, discard, undo, close, loadPouches,
-      editSaved, discardSaved,
-    });
-    if (!queueRuntime) return undefined;
-    if (typeof queueRuntime.subscribe === 'function') {
-      queueUnsubscribe = queueRuntime.subscribe(
-        (result) => handleQueueResult(result, generation),
-      );
+    const bindView = () => {
+      if (!initialized || generation !== lifecycleGeneration) return false;
+      view.initialize({
+        open, change, submit, retry, discard, undo, close, loadPouches,
+        editSaved, discardSaved,
+      });
+      if (queueRuntime && typeof queueRuntime.subscribe === 'function') {
+        queueUnsubscribe = queueRuntime.subscribe(
+          (result) => handleQueueResult(result, generation),
+        );
+      }
+      return true;
+    };
+    if (!queueRuntime) {
+      bindView();
+      initializationPromise = Promise.resolve(true);
+      return initializationPromise;
     }
-    initializationPromise = typeof queueRuntime.list === 'function'
-      ? Promise.resolve(queueRuntime.list()).then((records) => {
+    initializationPromise = (
+      typeof queueRuntime.list === 'function'
+        ? Promise.resolve(queueRuntime.list())
+        : Promise.resolve([])
+    ).then((records) => {
         if (!initialized || generation !== lifecycleGeneration) return false;
         for (const record of records || []) {
           queuedEventIds.add(record.client_event_id);
           queuedRecords.set(record.client_event_id, record);
           timeline.insertQueued(record);
         }
-        return true;
-      })
-      : Promise.resolve(true);
+        refreshRateLimitNotBefore();
+        return bindView();
+      });
     return initializationPromise;
   }
 
@@ -1008,6 +1103,7 @@ export function createQuickLogController({
     queuedRecords.clear();
     completedEventIds.clear();
     activeHandoffAttempt = null;
+    rateLimitNotBefore = null;
     completionSubscribers.clear();
     invalidateActiveRequest();
     if (undoTimer !== null) clearTimeoutImpl(undoTimer);
@@ -1055,6 +1151,7 @@ export function createQuickLogDomView(root, dialog) {
   let removeFocusTrap = null;
   let removeDialogDismissal = null;
   let activeClientEventId = null;
+  let retryBlocked = false;
 
   function confirmLabel() {
     const quantity = Number.parseInt(field('quantity')?.value, 10) || 1;
@@ -1096,6 +1193,7 @@ export function createQuickLogDomView(root, dialog) {
   function open(draft, sourceTrigger) {
     trigger = sourceTrigger;
     clearErrors();
+    retryBlocked = false;
     recovery.hidden = true;
     confirm.hidden = false;
     confirm.disabled = false;
@@ -1129,7 +1227,7 @@ export function createQuickLogDomView(root, dialog) {
 
   function setBusy(value) {
     confirm.disabled = value;
-    retry.disabled = value;
+    retry.disabled = value || retryBlocked;
     discard.disabled = value;
     form.setAttribute('aria-busy', value ? 'true' : 'false');
     if (!confirm.hidden) confirm.textContent = value ? 'Saving…' : confirmLabel();
@@ -1142,6 +1240,7 @@ export function createQuickLogDomView(root, dialog) {
 
   function showFailure(error) {
     clearErrors();
+    retryBlocked = false;
     requestError.hidden = false;
     requestError.textContent = error.message;
     let firstInvalid = null;
@@ -1160,16 +1259,22 @@ export function createQuickLogDomView(root, dialog) {
     (firstInvalid || retry).focus();
   }
 
-  function showQueued(message) {
+  function showQueued(message, { retryDisabled = false, notBefore = null } = {}) {
     clearErrors();
+    retryBlocked = retryDisabled;
     requestError.hidden = false;
     requestError.textContent = message;
     requestError.dataset.tone = 'queued';
     confirm.hidden = true;
     recovery.hidden = false;
-    retry.disabled = false;
+    retry.disabled = retryBlocked;
+    if (Number.isSafeInteger(notBefore)) {
+      retry.dataset.notBefore = String(notBefore);
+    } else {
+      delete retry.dataset.notBefore;
+    }
     discard.disabled = false;
-    retry.focus();
+    (retryBlocked ? discard : retry).focus();
   }
 
   function showSavedAttention() {
@@ -1371,35 +1476,48 @@ export function createQuickLogDomView(root, dialog) {
   };
 }
 
-export function bootstrapQuickLog(documentRef = document) {
+export function bootstrapQuickLog(documentRef = document, {
+  queueRuntimeFactory = getOfflineQueueRuntime,
+  controllerOptions = {},
+  controllerFactory = createQuickLogController,
+  timelineFactory = createTimelineDomAdapter,
+  viewFactory = createQuickLogDomView,
+} = {}) {
   const root = documentRef.querySelector('[data-today-root]');
   const dialog = root?.querySelector('[data-quick-log-dialog]');
   if (!root || !dialog) return null;
   let controller = null;
   try {
     controller = ensureQuickLogController(root, () => {
-      const timeline = createTimelineDomAdapter(root);
+      const timeline = timelineFactory(root);
       if (!timeline) return null;
-      const view = createQuickLogDomView(root, dialog);
+      const view = viewFactory(root, dialog);
       const csrfToken = documentRef.querySelector('meta[name="csrf-token"]')?.content || '';
-      const queueRuntime = getOfflineQueueRuntime({
+      const queueRuntime = queueRuntimeFactory({
         doc: documentRef,
         win: documentRef.defaultView || globalThis.window,
       });
-      return createQuickLogController({
+      return controllerFactory({
+        ...controllerOptions,
         view, timeline, csrfToken, queueRuntime,
       });
     });
     if (!controller) return null;
-    controller.initialize();
-    // Activation is deliberately the last bootstrap step: the slot only
-    // gains data-controller-ready="true" after the timeline adapter, the
-    // dialog view, the offline queue runtime, and the controller all exist
-    // and the enhanced click listener is attached inside
-    // activateActionEnhancement. Repeated bootstraps reuse the WeakMap
-    // controller and the existing activation, so no duplicate listeners.
     const slot = root.querySelector('[data-log-action-slot]');
-    activateActionEnhancement(slot, () => openQuickLogFromEnhancedTrigger(controller, slot));
+    Promise.resolve(controller.initialize()).then((ready) => {
+      if (!ready || QUICK_LOG_CONTROLLERS.get(root) !== controller) return;
+      // Activation is the last bootstrap step, after persisted queue state
+      // has hydrated and the controller's interaction handlers are bound.
+      activateActionEnhancement(
+        slot, () => openQuickLogFromEnhancedTrigger(controller, slot),
+      );
+    }).catch((error) => {
+      rollbackQuickLogController(root, controller);
+      console.error(
+        'Quick Log enhancement is unavailable; the standard logging link remains active.',
+        error instanceof Error ? error.name : 'InitializationError',
+      );
+    });
     return controller;
   } catch (error) {
     rollbackQuickLogController(root, controller);

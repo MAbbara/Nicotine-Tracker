@@ -140,22 +140,41 @@ function expectTransition(style, { properties, duration, timing }, label) {
 }
 
 
-async function sampleDialogFrames(dialog, count) {
-  return dialog.evaluate(async (element, frameCount) => {
+async function sampleDialogTransition(dialog, phase) {
+  return dialog.evaluate(async (element, transitionPhase) => {
     const frames = [];
     const panel = element.querySelector('[data-dialog-panel]');
-    for (let index = 0; index < frameCount; index += 1) {
+    const startedAt = performance.now();
+    let settledFrames = 0;
+    while (performance.now() - startedAt < 1_200) {
       await new Promise((resolve) => requestAnimationFrame(resolve));
+      if (!element.open) break;
+      const panelStyle = getComputedStyle(panel);
+      const transform = panelStyle.transform;
+      const matrix = transform === 'none' ? new DOMMatrixReadOnly() : new DOMMatrixReadOnly(transform);
       frames.push({
         backdropOpacity: Number.parseFloat(getComputedStyle(element, '::backdrop').opacity),
         open: element.open,
-        panelOpacity: Number.parseFloat(getComputedStyle(panel).opacity),
-        panelTransform: getComputedStyle(panel).transform,
+        panelOpacity: Number.parseFloat(panelStyle.opacity),
+        panelScaleX: Math.hypot(matrix.a, matrix.b),
+        panelScaleY: Math.hypot(matrix.c, matrix.d),
+        panelTransform: transform,
+        panelTranslateY: matrix.f,
         state: element.dataset.dialogState || null,
       });
+      const latest = frames.at(-1);
+      const entranceSettled = transitionPhase === 'entrance'
+        && latest.state === 'open'
+        && latest.panelOpacity >= 0.999
+        && latest.backdropOpacity >= 0.999
+        && Math.abs(latest.panelTranslateY) <= 0.01
+        && Math.abs(latest.panelScaleX - 1) <= 0.0001
+        && Math.abs(latest.panelScaleY - 1) <= 0.0001;
+      settledFrames = entranceSettled ? settledFrames + 1 : 0;
+      if (settledFrames >= 2) break;
     }
     return frames;
-  }, count);
+  }, phase);
 }
 
 
@@ -461,24 +480,32 @@ for (const contract of DIALOGS) {
         element.dataset.theme = nextTheme;
       }, theme);
       const current = await openDialog(page, contract);
-      const entranceFrames = await sampleDialogFrames(current.dialog, 14);
-      await page.waitForTimeout(100);
+      const entranceFrames = await sampleDialogTransition(current.dialog, 'entrance');
       const entered = await readDialogVisualContract(current.dialog);
 
       expect(entered.state).toBe('open');
       expect(entered.host.transform).toBe('none');
       expect(entered.host.opacity).toBe('1');
       expect(splitComputedList(entered.host.properties).sort()).toEqual(['display', 'overlay']);
+      expectTransition(entered.panel, {
+        properties: ['opacity', 'transform'],
+        duration: 300,
+        timing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+      }, `${contract.name} ${theme} entrance panel`);
       expectTransition(entered.backdrop, {
         properties: ['opacity'],
         duration: 260,
         timing: 'cubic-bezier(0.16, 1, 0.3, 1)',
       }, `${contract.name} ${theme} entrance backdrop`);
       expect(hasIntermediateOpacity(entranceFrames, 'backdropOpacity')).toBe(true);
-      expect(entranceFrames.every((frame) => frame.panelOpacity === 1)).toBe(true);
-      expect(entranceFrames.every((frame) => frame.panelTransform === 'none')).toBe(true);
+      expect(hasIntermediateOpacity(entranceFrames, 'panelOpacity')).toBe(true);
+      expect(entranceFrames.some((frame) => frame.panelTransform !== 'none')).toBe(true);
+      expect(entranceFrames.some((frame) => Math.abs(frame.panelTranslateY) > 0.1)).toBe(true);
+      expect(entranceFrames.some((frame) => (
+        Math.abs(frame.panelScaleX - 1) > 0.0001
+        && Math.abs(frame.panelScaleY - 1) > 0.0001
+      ))).toBe(true);
       expect(entered.panel.opacity).toBeCloseTo(1, 2);
-      expect(entered.panel.transform).toBe('none');
       expect(entered.backdrop.opacity).toBeCloseTo(1, 2);
       entered.backdrop.background.slice(0, 3).forEach((channel, index) => {
         expect(Math.abs(channel - entered.overlay[index])).toBeLessThanOrEqual(1);
@@ -490,15 +517,24 @@ for (const contract of DIALOGS) {
       await expect(current.dialog).toHaveAttribute('data-dialog-state', 'closing');
       await expect(current.dialog).toBeVisible();
       const exiting = await readDialogVisualContract(current.dialog);
+      expectTransition(exiting.panel, {
+        properties: ['opacity', 'transform'],
+        duration: 220,
+        timing: 'cubic-bezier(0.4, 0, 1, 1)',
+      }, `${contract.name} ${theme} exit panel`);
       expectTransition(exiting.backdrop, {
         properties: ['opacity'],
         duration: 180,
         timing: 'cubic-bezier(0.4, 0, 1, 1)',
       }, `${contract.name} ${theme} exit backdrop`);
-      const exitFrames = await sampleDialogFrames(current.dialog, 10);
+      const exitFrames = await sampleDialogTransition(current.dialog, 'exit');
       expect(hasIntermediateOpacity(exitFrames, 'backdropOpacity')).toBe(true);
-      expect(exitFrames.every((frame) => frame.panelOpacity === 1)).toBe(true);
-      expect(exitFrames.every((frame) => frame.panelTransform === 'none')).toBe(true);
+      expect(hasIntermediateOpacity(exitFrames, 'panelOpacity')).toBe(true);
+      expect(exitFrames.some((frame) => Math.abs(frame.panelTranslateY) > 0.1)).toBe(true);
+      expect(exitFrames.some((frame) => (
+        Math.abs(frame.panelScaleX - 1) > 0.0001
+        && Math.abs(frame.panelScaleY - 1) > 0.0001
+      ))).toBe(true);
       expect(exitFrames.some((frame) => frame.open)).toBe(true);
       await expect(current.dialog).toBeHidden();
       await expect(current.opener).toBeFocused();
@@ -511,8 +547,8 @@ for (const contract of DIALOGS) {
       .map(durationInMilliseconds);
     const backdropDurations = splitComputedList(reducedContract.backdrop.duration)
       .map(durationInMilliseconds);
-    expect(Math.max(...panelDurations)).toBeLessThanOrEqual(1);
-    expect(Math.max(...backdropDurations)).toBeLessThanOrEqual(1);
+    expect(panelDurations).toEqual([contract.compact ? 0.01 : 0]);
+    expect(backdropDurations).toEqual([1]);
     const reducedClose = await reduced.dialog.evaluate((element, openerSelector) => {
       const opener = document.querySelector(openerSelector);
       element.querySelector('.c-dialog__close').click();

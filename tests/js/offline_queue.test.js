@@ -68,11 +68,46 @@ function createMemoryStore(seed = []) {
   };
 }
 
-function jsonResponse(status, body) {
+function jsonResponse(status, body, headers = {}) {
   return {
     status,
     ok: status >= 200 && status < 300,
+    headers: { get: (name) => headers[name] ?? headers[name.toLowerCase()] ?? null },
     async json() { return body; },
+  };
+}
+
+function fakeReplayClock(start) {
+  let current = start;
+  let sequence = 0;
+  const timers = new Map();
+  const cleared = [];
+  return {
+    now: () => current,
+    setTimeout(callback, delay) {
+      const id = ++sequence;
+      timers.set(id, { callback, deadline: current + delay });
+      return id;
+    },
+    clearTimeout(id) {
+      if (timers.delete(id)) cleared.push(id);
+    },
+    pending() {
+      return [...timers.values()].map(({ deadline }) => deadline).sort((a, b) => a - b);
+    },
+    cleared,
+    async advance(milliseconds) {
+      current += milliseconds;
+      const due = [...timers.entries()]
+        .filter(([, timer]) => timer.deadline <= current)
+        .sort((left, right) => left[1].deadline - right[1].deadline);
+      for (const [id, timer] of due) {
+        timers.delete(id);
+        timer.callback();
+      }
+      await new Promise((resolve) => setImmediate(resolve));
+      await new Promise((resolve) => setImmediate(resolve));
+    },
   };
 }
 
@@ -904,6 +939,201 @@ test('retryable and auth statuses classify safely even when JSON parsing fails',
     assert.equal(results.at(-1).type, expectedType);
     assert.doesNotMatch(JSON.stringify(results), /private/);
   }
+});
+
+test('Retry-After persists a not_before boundary and replay waits until it expires', async () => {
+  const { createOfflineQueueRuntime } = await importOfflineQueue();
+  let now = Date.parse('2026-07-31T06:00:00Z');
+  let fetchCount = 0;
+  const store = createMemoryStore([storedRecord()]);
+  const runtime = createOfflineQueueRuntime({
+    config: { enabled: true, offlineQueueId: 'opaque-account-scope' },
+    store,
+    now: () => now,
+    fetchImpl: async () => {
+      fetchCount += 1;
+      if (fetchCount === 1) {
+        return jsonResponse(429, {
+          error: { code: 'rate_limited', retryable: true, retry_after_seconds: 90 },
+        }, { 'Retry-After': '60' });
+      }
+      return jsonResponse(201, {
+        log: { id: 9, client_event_id: storedRecord().client_event_id },
+        today: null,
+        warnings: [],
+      });
+    },
+  });
+
+  assert.equal(await runtime.replay(), false);
+  assert.equal(fetchCount, 1);
+  assert.equal(store.snapshot()[0].not_before, now + 60_000);
+
+  assert.equal(await runtime.replay(), false);
+  assert.equal(fetchCount, 1, 'the persisted boundary prevents an early replay request');
+
+  now += 60_001;
+  assert.equal(await runtime.replay(), true);
+  assert.equal(fetchCount, 2);
+  assert.deepEqual(store.snapshot(), []);
+});
+
+test('one owned timer auto-replays due records, reschedules earlier deadlines, and cleanup cancels it', async () => {
+  const { createOfflineQueueRuntime } = await importOfflineQueue();
+  const startedAt = Date.parse('2026-07-31T06:00:00Z');
+  const clock = fakeReplayClock(startedAt);
+  const store = createMemoryStore();
+  const requests = [];
+  const runtime = createOfflineQueueRuntime({
+    config: { enabled: true, offlineQueueId: 'opaque-account-scope' },
+    store,
+    now: clock.now,
+    setTimeoutImpl: clock.setTimeout,
+    clearTimeoutImpl: clock.clearTimeout,
+    defer: () => {},
+    fetchImpl: async (_url, options) => {
+      const payload = JSON.parse(options.body);
+      requests.push(payload.client_event_id);
+      return jsonResponse(201, {
+        log: { id: requests.length, client_event_id: payload.client_event_id },
+        today: null,
+        warnings: [],
+      });
+    },
+  });
+  await runtime.start();
+
+  const later = eligiblePayload({ client_event_id: '00000000-0000-4000-8000-000000000021' });
+  const earlier = eligiblePayload({ client_event_id: '00000000-0000-4000-8000-000000000022' });
+  await runtime.enqueue(later, { notBefore: startedAt + 1_000 });
+  assert.deepEqual(clock.pending(), [startedAt + 1_000]);
+  await runtime.enqueue(earlier, { notBefore: startedAt + 500 });
+  assert.deepEqual(clock.pending(), [startedAt + 500]);
+  assert.equal(clock.cleared.length, 1, 'the earlier deadline replaces the owned timer');
+
+  assert.equal(await runtime.replay(), false);
+  assert.deepEqual(requests, [], 'manual or online replay cannot bypass not_before');
+  await clock.advance(499);
+  assert.deepEqual(requests, []);
+  await clock.advance(1);
+  assert.deepEqual(requests, [earlier.client_event_id]);
+  assert.deepEqual(clock.pending(), [startedAt + 1_000]);
+  await clock.advance(500);
+  assert.deepEqual(requests, [earlier.client_event_id, later.client_event_id]);
+  assert.deepEqual(store.snapshot(), []);
+
+  await runtime.enqueue(eligiblePayload({
+    client_event_id: '00000000-0000-4000-8000-000000000023',
+  }), { notBefore: startedAt + 2_000 });
+  assert.equal(clock.pending().length, 1);
+  runtime.cleanup();
+  assert.deepEqual(clock.pending(), []);
+});
+
+test('an enqueue whose deadline is already due schedules one next-task replay', async () => {
+  const { createOfflineQueueRuntime } = await importOfflineQueue();
+  const startedAt = Date.parse('2026-07-31T06:00:00Z');
+  const clock = fakeReplayClock(startedAt);
+  const store = createMemoryStore();
+  let requests = 0;
+  const runtime = createOfflineQueueRuntime({
+    config: { enabled: true, offlineQueueId: 'opaque-account-scope' },
+    store,
+    now: clock.now,
+    setTimeoutImpl: clock.setTimeout,
+    clearTimeoutImpl: clock.clearTimeout,
+    defer: () => {},
+    fetchImpl: async (_url, options) => {
+      requests += 1;
+      const payload = JSON.parse(options.body);
+      return jsonResponse(201, {
+        log: { id: 91, client_event_id: payload.client_event_id },
+        today: null,
+        warnings: [],
+      });
+    },
+  });
+  await runtime.start();
+
+  await runtime.enqueue(eligiblePayload(), { notBefore: startedAt });
+  assert.deepEqual(clock.pending(), [startedAt]);
+  assert.equal(requests, 0);
+  await clock.advance(0);
+  assert.equal(requests, 1);
+  assert.deepEqual(store.snapshot(), []);
+  await clock.advance(0);
+  assert.equal(requests, 1, 'the due enqueue owns only one immediate replay');
+});
+
+test('long replay deadlines use bounded timer slices and re-evaluate storage', async () => {
+  const { createOfflineQueueRuntime } = await importOfflineQueue();
+  const startedAt = Date.parse('2026-07-31T06:00:00Z');
+  const clock = fakeReplayClock(startedAt);
+  const store = createMemoryStore();
+  const runtime = createOfflineQueueRuntime({
+    config: { enabled: true, offlineQueueId: 'opaque-account-scope' },
+    store,
+    now: clock.now,
+    setTimeoutImpl: clock.setTimeout,
+    clearTimeoutImpl: clock.clearTimeout,
+    defer: () => {},
+  });
+  await runtime.start();
+  const deadline = startedAt + (40 * 24 * 60 * 60 * 1000);
+  await runtime.enqueue(eligiblePayload(), { notBefore: deadline });
+
+  const firstSlice = clock.pending()[0] - startedAt;
+  assert.ok(firstSlice > 0 && firstSlice <= 2_147_483_647);
+  const persisted = store.snapshot()[0];
+  await store.put({ ...persisted, not_before: startedAt + firstSlice + 500 });
+  await clock.advance(firstSlice);
+  assert.equal(store.snapshot().length, 1);
+  assert.equal(clock.pending().length, 1);
+  assert.equal(clock.pending()[0], startedAt + firstSlice + 500);
+  runtime.cleanup();
+  assert.deepEqual(clock.pending(), []);
+});
+
+test('a non-JSON 429 reads Retry-After before parsing and automatically retries at expiry', async () => {
+  const { createOfflineQueueRuntime } = await importOfflineQueue();
+  const startedAt = Date.parse('2026-07-31T06:00:00Z');
+  const clock = fakeReplayClock(startedAt);
+  const store = createMemoryStore([storedRecord()]);
+  let fetchCount = 0;
+  const runtime = createOfflineQueueRuntime({
+    config: { enabled: true, offlineQueueId: 'opaque-account-scope' },
+    store,
+    now: clock.now,
+    setTimeoutImpl: clock.setTimeout,
+    clearTimeoutImpl: clock.clearTimeout,
+    defer: () => {},
+    fetchImpl: async () => {
+      fetchCount += 1;
+      if (fetchCount === 1) {
+        return {
+          status: 429,
+          ok: false,
+          headers: { get: () => '2' },
+          async json() { throw new SyntaxError('private proxy body'); },
+        };
+      }
+      return jsonResponse(201, {
+        log: { id: 9, client_event_id: storedRecord().client_event_id },
+        today: null,
+        warnings: [],
+      });
+    },
+  });
+  await runtime.start();
+
+  assert.equal(await runtime.replay(), false);
+  assert.equal(store.snapshot()[0].not_before, startedAt + 2_000);
+  assert.deepEqual(clock.pending(), [startedAt + 2_000]);
+  await clock.advance(1_999);
+  assert.equal(fetchCount, 1);
+  await clock.advance(1);
+  assert.equal(fetchCount, 2);
+  assert.deepEqual(store.snapshot(), []);
 });
 
 test('response without a canonical log becomes one sanitized attention result', async () => {

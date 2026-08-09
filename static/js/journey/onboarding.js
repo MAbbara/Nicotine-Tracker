@@ -557,9 +557,11 @@ function createDomView(form, documentRef) {
     const baselineDays = plan.baseline_source === 'recent_logs' && suggestion.loggedDaysUsed
       ? ` · ${suggestion.loggedDaysUsed} logged days` : '';
     appendDefinition(documentRef, decisions, 'Baseline source', `${plan.baseline_source.replaceAll('_', ' ')}${baselineDays}`);
-    appendDefinition(documentRef, decisions, 'Starting pouches', plan.baseline_pouches ?? 'Not used for this plan');
-    appendDefinition(documentRef, decisions, 'Usual pouch strength', plan.baseline_mg_per_pouch == null ? 'Not provided' : `${plan.baseline_mg_per_pouch} mg per pouch`);
     appendDefinition(documentRef, decisions, 'Starting nicotine', plan.baseline_mg == null ? 'Unknown during observation' : `${plan.baseline_mg} mg per day`);
+    appendDefinition(documentRef, decisions, 'Usual pouch strength', plan.baseline_mg_per_pouch == null ? 'Not provided' : `${plan.baseline_mg_per_pouch} mg per pouch`);
+    if (plan.baseline_pouches != null) {
+      appendDefinition(documentRef, decisions, 'Historical pouch context', plan.baseline_pouches);
+    }
     appendDefinition(documentRef, decisions, 'Pace and duration', plan.pace ? `${plan.pace} · ${plan.duration_days} days` : `No reduction pace · ${plan.duration_days} observation days`);
     appendDefinition(documentRef, decisions, 'Dates', `${plan.start_date} to ${plan.target_date}`);
     appendDefinition(documentRef, decisions, 'End target nicotine', plan.end_target_mg == null ? 'No target during observation' : `${plan.end_target_mg} mg per day`);
@@ -578,7 +580,12 @@ function createDomView(form, documentRef) {
       stages.className = 'review-stages';
       for (const stage of preview.stages) {
         const item = documentRef.createElement('li');
-        item.textContent = `${stage.start_date} to ${stage.end_date} · ${stage.target_pouches} pouches · ${stage.nicotine_ceiling_mg} mg ceiling`;
+        const ceiling = stage.nicotine_ceiling_mg == null
+          ? 'Observation — no ceiling'
+          : `${stage.nicotine_ceiling_mg} mg ceiling`;
+        const historical = stage.target_pouches == null
+          ? '' : ` · historical pouch guide ${stage.target_pouches}`;
+        item.textContent = `${stage.start_date} to ${stage.end_date} · ${ceiling}${historical}`;
         stages.append(item);
       }
       stageSection.append(stages);
@@ -595,7 +602,11 @@ function createDomView(form, documentRef) {
     const table = documentRef.createElement('table');
     const thead = documentRef.createElement('thead');
     const header = documentRef.createElement('tr');
-    for (const label of ['Date', 'Pouch target', 'Nicotine ceiling']) {
+    const showHistoricalPouches = preview.days.some((day) => day.target_pouches != null);
+    for (const label of [
+      'Date', 'Nicotine ceiling',
+      ...(showHistoricalPouches ? ['Historical pouch guide'] : []),
+    ]) {
       const cell = documentRef.createElement('th');
       cell.scope = 'col';
       cell.textContent = label;
@@ -608,11 +619,15 @@ function createDomView(form, documentRef) {
       const date = documentRef.createElement('th');
       date.scope = 'row';
       date.textContent = day.local_date;
-      const target = documentRef.createElement('td');
-      target.textContent = day.target_pouches ?? 'Observe';
       const ceiling = documentRef.createElement('td');
-      ceiling.textContent = day.nicotine_ceiling_mg == null ? 'Unknown' : `${day.nicotine_ceiling_mg} mg`;
-      row.append(date, target, ceiling);
+      ceiling.textContent = day.nicotine_ceiling_mg == null
+        ? 'Observation — no ceiling' : `${day.nicotine_ceiling_mg} mg`;
+      row.append(date, ceiling);
+      if (showHistoricalPouches) {
+        const target = documentRef.createElement('td');
+        target.textContent = day.target_pouches ?? '—';
+        row.append(target);
+      }
       tbody.append(row);
     }
     table.append(thead, tbody);

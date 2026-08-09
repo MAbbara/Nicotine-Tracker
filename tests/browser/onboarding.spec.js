@@ -153,12 +153,16 @@ test('registration previews transparently and activates only after final confirm
   await expect(page.getByText(/behavioral tracking aid, not medical advice/i)).toBeVisible();
   const decisions = page.locator('.review-decisions');
   for (const label of [
-    'Intention', 'Baseline source', 'Starting pouches', 'Usual pouch strength',
-    'Starting nicotine', 'Pace and duration', 'Dates', 'End target nicotine',
+    'Intention', 'Baseline source', 'Starting nicotine', 'Usual pouch strength',
+    'Pace and duration', 'Dates', 'End target nicotine',
     'Difficult times', 'Triggers', 'Pouches', 'Reminder',
   ]) {
     await expect(decisions).toContainText(label);
   }
+  await expect(decisions).not.toContainText('Starting pouches');
+  await expect(page.getByRole('columnheader', { name: 'Historical pouch guide' }))
+    .toHaveCount(0);
+  await expect(page.locator('[data-onboarding-preview]')).not.toContainText('Observe');
   expect(creationRequests).toHaveLength(0);
 
   await page.getByRole('button', { name: 'Activate this reviewed plan' }).click();

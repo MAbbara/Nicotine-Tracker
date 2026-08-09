@@ -46,9 +46,9 @@ function readyInsights(days = 7, total = 24) {
     total_nicotine: 144,
     unknown_strength_count: 0,
     strength_coverage: {
-      known_pouches: total,
-      unknown_pouches: 0,
-      total_pouches: total,
+      known_logs: 7,
+      unknown_logs: 0,
+      total_logs: 7,
       known_percent: 100,
       complete: true,
     },

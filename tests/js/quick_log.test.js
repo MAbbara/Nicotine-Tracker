@@ -102,7 +102,7 @@ function makeControllerView() {
     populatedPouches: [], pouchLoadFailures: 0,
     mode: 'editing', requestError: null,
     initialized: 0, cleaned: 0, handlers: null,
-    queued: [], attention: [], clearedRecovery: 0,
+    queued: [], queuedOptions: [], attention: [], clearedRecovery: 0,
     initialize(handlers) { this.initialized += 1; this.handlers = handlers; },
     cleanup() { this.cleaned += 1; },
     open(draft, trigger) { this.opened.push([draft, trigger]); this.mode = 'editing'; },
@@ -119,7 +119,11 @@ function makeControllerView() {
       this.mode = 'recovery';
       this.requestError = error.message;
     },
-    showQueued(message) { this.queued.push(message); this.mode = 'queued'; },
+    showQueued(message, options) {
+      this.queued.push(message);
+      this.queuedOptions.push(options);
+      this.mode = 'queued';
+    },
     showSavedAttention(record) { this.attention.push(record); this.mode = 'attention'; },
     clearRecovery() { this.clearedRecovery += 1; this.mode = 'editing'; },
     restoreEditing() { this.mode = 'editing'; this.requestError = null; },
@@ -164,10 +168,11 @@ function makeQueueRuntime(overrides = {}) {
   };
 }
 
-function jsonResponse(status, body) {
+function jsonResponse(status, body, headers = {}) {
   return {
     ok: status >= 200 && status < 300,
     status,
+    headers: { get: (name) => headers[name] ?? headers[name.toLowerCase()] ?? null },
     async json() { return body; },
   };
 }
@@ -180,6 +185,12 @@ function deferred() {
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
+}
+
+async function settleBootstrap() {
+  await Promise.resolve();
+  await Promise.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
 }
 
 test('dialog focus restoration is inert while the document is hidden', async () => {
@@ -994,8 +1005,8 @@ test('controller initialization binds the Today-root view once and cleanup is id
   const view = makeControllerView();
   const controller = createQuickLogController({ view, timeline: makeControllerTimeline() });
 
-  controller.initialize();
-  controller.initialize();
+  await controller.initialize();
+  await controller.initialize();
   assert.equal(view.initialized, 1);
   assert.equal(typeof view.handlers.open, 'function');
   assert.equal(typeof view.handlers.submit, 'function');
@@ -1048,7 +1059,7 @@ test('startup renders queued intent and canonical replay reconciles it from serv
     today: { status: 'on_track' },
     warnings: [],
   });
-  await new Promise((resolve) => setImmediate(resolve));
+  await settleBootstrap();
 
   assert.deepEqual(timeline.canonical, [canonical]);
   assert.deepEqual(timeline.reconciled, [{ status: 'on_track' }]);
@@ -1085,7 +1096,7 @@ test('permanent replay attention stays inline and Edit hydrates the same UUID fr
   await controller.initialize();
 
   queueRuntime.publish({ type: 'needs_attention', record });
-  await new Promise((resolve) => setImmediate(resolve));
+  await settleBootstrap();
   assert.deepEqual(timeline.attention, [record.client_event_id]);
   assert.deepEqual(view.attention, [record]);
   assert.equal(view.opened.length, 0, 'attention must not automatically open the dialog');
@@ -2030,6 +2041,259 @@ test('retryable HTTP status enqueues while permanent validation stays ordinary r
   assert.equal(permanent.view.failures.at(-1).message, 'Check this log.');
 });
 
+test('a Quick Log 429 forwards Retry-After as a persisted replay boundary', async () => {
+  const { createQuickLogController } = await loadQuickLog();
+  const now = new Date('2026-07-30T18:42:00Z');
+  const enqueueCalls = [];
+  const view = makeControllerView();
+  const queueRuntime = makeQueueRuntime({
+    async enqueue(payload, options) {
+      enqueueCalls.push({ payload, options });
+      return { queued: true, notesOmitted: false, record: null };
+    },
+  });
+  const controller = createQuickLogController({
+    view,
+    timeline: makeControllerTimeline(),
+    queueRuntime,
+    clock: () => now,
+    uuid: () => '550e8400-e29b-41d4-a716-446655440000',
+    timezone: () => 'UTC',
+    fetchImpl: async () => jsonResponse(429, {
+      error: {
+        code: 'rate_limited', message: 'Try later.', field_errors: {},
+        retryable: true, retry_after_seconds: 45,
+      },
+    }, { 'Retry-After': '30' }),
+  });
+  controller.open({ pouchId: 12, brand: 'Steady Mint', nicotineMg: '6.00' }, {});
+
+  assert.equal(await controller.submit(), false);
+  assert.equal(enqueueCalls.length, 1);
+  assert.equal(enqueueCalls[0].options.notBefore, now.getTime() + 30_000);
+  assert.match(view.queued.at(-1), /saved for sync/i);
+  assert.match(view.queued.at(-1), /30 seconds/i);
+  assert.deepEqual(view.queuedOptions.at(-1), {
+    retryDisabled: true,
+    notBefore: now.getTime() + 30_000,
+  });
+});
+
+test('rate-limited Retry cannot POST early and delegates scheduling to the offline queue', async () => {
+  const { createQuickLogController } = await loadQuickLog();
+  let now = new Date('2026-07-30T18:42:00Z');
+  let postCount = 0;
+  const queueRuntime = makeQueueRuntime();
+  const controller = createQuickLogController({
+    view: makeControllerView(),
+    timeline: makeControllerTimeline(),
+    queueRuntime,
+    clock: () => now,
+    uuid: () => '550e8400-e29b-41d4-a716-446655440000',
+    timezone: () => 'UTC',
+    fetchImpl: async () => {
+      postCount += 1;
+      return jsonResponse(429, null, { 'Retry-After': '30' });
+    },
+  });
+  controller.open({ pouchId: 12, brand: 'Steady Mint', nicotineMg: '6.00' }, {});
+  await controller.submit();
+
+  assert.equal(await controller.retry(), false);
+  assert.equal(postCount, 1);
+  assert.equal(queueRuntime.replayed, 1);
+
+  now = new Date(now.getTime() + 30_001);
+  await controller.retry();
+  assert.equal(postCount, 2, 'a direct retry becomes eligible only after the deadline');
+});
+
+test('reload hydrates a persisted queue deadline before edit or direct submit', async () => {
+  const { createQuickLogController } = await loadQuickLog();
+  let now = new Date('2026-07-30T18:42:00Z');
+  const eventId = '550e8400-e29b-41d4-a716-446655440000';
+  const queued = {
+    offline_queue_id: 'opaque-account-scope', client_event_id: eventId,
+    pouch_id: 12, quantity: 1,
+    occurred_at_local: '2026-07-30T18:42:00+00:00', timezone: 'UTC',
+    craving_id: null, queue_order: 1,
+    not_before: now.getTime() + 30_000,
+  };
+  const queueRuntime = makeQueueRuntime({ listed: [queued] });
+  const requests = [];
+  const controller = createQuickLogController({
+    view: makeControllerView(), timeline: makeControllerTimeline(),
+    queueRuntime, clock: () => now,
+    uuid: () => eventId, timezone: () => 'UTC',
+    fetchImpl: async (url) => {
+      requests.push(url);
+      if (url === '/api/pouches') return jsonResponse(200, {
+        success: true,
+        pouches: [{ id: 12, brand: 'Steady Mint', nicotine_mg: '6.00' }],
+      });
+      return jsonResponse(422, { error: { message: 'stop', field_errors: {} } });
+    },
+  });
+  await controller.initialize();
+  assert.equal(await controller.editSaved(eventId), true);
+
+  assert.equal(await controller.submit(), false);
+  assert.deepEqual(requests, ['/api/pouches']);
+  assert.equal(queueRuntime.replayed, 1);
+
+  now = new Date(now.getTime() + 30_001);
+  await controller.submit();
+  assert.deepEqual(requests, ['/api/pouches', '/api/logs']);
+});
+
+test('discarding the only persisted deferred record clears the hydrated deadline', async () => {
+  const { createQuickLogController } = await loadQuickLog();
+  const now = new Date('2026-07-30T18:42:00Z');
+  const eventId = '550e8400-e29b-41d4-a716-446655440000';
+  const queueRuntime = makeQueueRuntime({
+    listed: [{
+      offline_queue_id: 'opaque-account-scope', client_event_id: eventId,
+      pouch_id: 12, quantity: 1,
+      occurred_at_local: '2026-07-30T18:42:00+00:00', timezone: 'UTC',
+      craving_id: null, queue_order: 1, not_before: now.getTime() + 60_000,
+    }],
+  });
+  let posts = 0;
+  const controller = createQuickLogController({
+    view: makeControllerView(), timeline: makeControllerTimeline(),
+    queueRuntime, clock: () => now,
+    uuid: () => '660e8400-e29b-41d4-a716-446655440000', timezone: () => 'UTC',
+    fetchImpl: async () => {
+      posts += 1;
+      return jsonResponse(422, { error: { message: 'stop', field_errors: {} } });
+    },
+  });
+  await controller.initialize();
+  assert.equal(await controller.discardSaved(eventId), true);
+  controller.open({ pouchId: 12, brand: 'Steady Mint', nicotineMg: '6.00' }, {});
+  await controller.submit();
+  assert.equal(posts, 1);
+});
+
+test('in-dialog queued Discard clears the hydrated deadline for the next draft', async () => {
+  const { createQuickLogController } = await loadQuickLog();
+  const now = new Date('2026-07-30T18:42:00Z');
+  const eventIds = [
+    '550e8400-e29b-41d4-a716-446655440000',
+    '660e8400-e29b-41d4-a716-446655440000',
+  ];
+  const queueRuntime = makeQueueRuntime({
+    async enqueue(payload, options) {
+      const record = {
+        offline_queue_id: 'opaque-account-scope',
+        client_event_id: payload.client_event_id,
+        pouch_id: payload.pouch_id, quantity: payload.quantity,
+        occurred_at_local: payload.occurred_at_local,
+        timezone: payload.timezone, craving_id: payload.craving_id,
+        queue_order: 1, not_before: options.notBefore,
+      };
+      return { queued: true, notesOmitted: false, record };
+    },
+  });
+  let posts = 0;
+  const controller = createQuickLogController({
+    view: makeControllerView(), timeline: makeControllerTimeline(),
+    queueRuntime, clock: () => now,
+    uuid: () => eventIds.shift(), timezone: () => 'UTC',
+    fetchImpl: async () => {
+      posts += 1;
+      if (posts === 1) return jsonResponse(429, null, { 'Retry-After': '60' });
+      return jsonResponse(422, { error: { message: 'stop', field_errors: {} } });
+    },
+  });
+  controller.open({ pouchId: 12, brand: 'Steady Mint', nicotineMg: '6.00' }, {});
+  await controller.submit();
+  assert.equal(await controller.discard(), true);
+
+  controller.open({ pouchId: 12, brand: 'Steady Mint', nicotineMg: '6.00' }, {});
+  await controller.submit();
+  assert.equal(posts, 2);
+});
+
+test('Retry-After zero leaves truthful manual Retry while queue replays immediately', async () => {
+  const { createQuickLogController } = await loadQuickLog();
+  const now = new Date('2026-07-30T18:42:00Z');
+  const view = makeControllerView();
+  const controller = createQuickLogController({
+    view, timeline: makeControllerTimeline(), queueRuntime: makeQueueRuntime(),
+    clock: () => now,
+    uuid: () => '550e8400-e29b-41d4-a716-446655440000', timezone: () => 'UTC',
+    fetchImpl: async () => jsonResponse(429, null, { 'Retry-After': '0' }),
+  });
+  controller.open({ pouchId: 12, brand: 'Steady Mint', nicotineMg: '6.00' }, {});
+  await controller.submit();
+  assert.deepEqual(view.queuedOptions.at(-1), {
+    retryDisabled: false,
+    notBefore: null,
+  });
+  assert.match(view.queued.at(-1), /connection is ready/i);
+});
+
+test('an expired replay boundary restores manual Retry instead of inventing another wait', async () => {
+  const { createQuickLogController } = await loadQuickLog();
+  const now = new Date('2026-07-30T18:42:00Z');
+  const view = makeControllerView();
+  const queueRuntime = makeQueueRuntime();
+  const controller = createQuickLogController({
+    view,
+    timeline: makeControllerTimeline(),
+    queueRuntime,
+    clock: () => now,
+    uuid: () => '550e8400-e29b-41d4-a716-446655440000',
+    timezone: () => 'UTC',
+  });
+  await controller.initialize();
+  controller.open({ pouchId: 12, brand: 'Steady Mint', nicotineMg: '6.00' }, {});
+
+  queueRuntime.publish({
+    type: 'retryable',
+    record: {
+      client_event_id: '550e8400-e29b-41d4-a716-446655440000',
+      not_before: now.getTime() - 1,
+    },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.match(view.queued.at(-1), /connection is ready/i);
+  assert.deepEqual(view.queuedOptions.at(-1), {
+    retryDisabled: false,
+    notBefore: null,
+  });
+});
+
+test('empty non-JSON 429 queues the header deadline with sanitized recovery', async () => {
+  const { createQuickLogController } = await loadQuickLog();
+  const now = new Date('2026-07-30T18:42:00Z');
+  const view = makeControllerView();
+  const queueRuntime = makeQueueRuntime();
+  const controller = createQuickLogController({
+    view,
+    timeline: makeControllerTimeline(),
+    queueRuntime,
+    clock: () => now,
+    uuid: () => '550e8400-e29b-41d4-a716-446655440000',
+    timezone: () => 'UTC',
+    fetchImpl: async () => ({
+      ok: false,
+      status: 429,
+      headers: { get: () => '15' },
+      async json() { throw new SyntaxError('private upstream body'); },
+    }),
+  });
+  controller.open({ pouchId: 12, brand: 'Steady Mint', nicotineMg: '6.00' }, {});
+
+  assert.equal(await controller.submit(), false);
+  assert.equal(queueRuntime.enqueued.length, 1);
+  assert.equal(view.failures.length, 0);
+  assert.doesNotMatch(JSON.stringify(view.queued), /private upstream body/);
+  assert.match(view.queued.at(-1), /15 seconds/i);
+});
+
 test('queue adapter failure falls back to the ordinary retained failed draft', async () => {
   const { createQuickLogController } = await loadQuickLog();
   const view = makeControllerView();
@@ -2350,7 +2614,7 @@ test('closing a fresh linked handoff publishes one terminal lifecycle event', as
     uuid: () => 'linked-close-event',
     timezone: () => 'Asia/Riyadh',
   });
-  controller.initialize();
+  await controller.initialize();
   controller.subscribeCompletion((event) => completions.push(event));
   controller.openLinkedCraving({
     pouchId: 12, brand: 'Steady Mint', nicotineMg: '6.00',
@@ -2670,7 +2934,7 @@ test('offline linked replay reaches synced, exposes one Undo, and Undo deletes a
       });
     },
   });
-  controller.initialize();
+  await controller.initialize();
   controller.subscribeCompletion((event) => completions.push(event));
 
   queueRuntime.publish({ type: 'synced', record, log, today, warnings: [] });
@@ -2881,6 +3145,7 @@ test('Quick Log bootstrap marks the slot ready only after construction and opens
   const { documentRef, slot, fallback, enhanced } = makeBootstrapDocument();
 
   const controller = bootstrapQuickLog(documentRef);
+  await new Promise((resolve) => setImmediate(resolve));
 
   assert.ok(controller);
   assert.equal(slot.dataset.controllerReady, 'true');
@@ -2897,12 +3162,97 @@ test('Quick Log bootstrap marks the slot ready only after construction and opens
   await new Promise((resolve) => setImmediate(resolve));
 });
 
+test('Quick Log bootstrap keeps fallback active until persisted deadlines hydrate', async () => {
+  const { bootstrapQuickLog, createQuickLogController } = await loadQuickLog();
+  const { documentRef, slot, fallback, enhanced } = makeBootstrapDocument();
+  const listGate = deferred();
+  const now = new Date('2026-07-30T18:42:00Z');
+  const queueRuntime = makeQueueRuntime({
+    list() { return listGate.promise; },
+  });
+  const requests = [];
+  const controller = bootstrapQuickLog(documentRef, {
+    queueRuntimeFactory: () => queueRuntime,
+    controllerOptions: {
+      clock: () => now,
+      uuid: () => '660e8400-e29b-41d4-a716-446655440000',
+      timezone: () => 'UTC',
+      fetchImpl: async (url) => {
+        requests.push(url);
+        return jsonResponse(422, { error: { message: 'stop', field_errors: {} } });
+      },
+    },
+    controllerFactory: (options) => createQuickLogController({
+      ...options,
+      view: makeControllerView(),
+      timeline: makeControllerTimeline(),
+    }),
+  });
+
+  assert.ok(controller);
+  assert.equal(slot.dataset.controllerReady, undefined);
+  assert.equal(fallback.hidden, false);
+  assert.equal(enhanced.hidden, true);
+  enhanced.dispatchEvent({ type: 'click' });
+  assert.equal(controller.getState().status, 'closed');
+
+  listGate.resolve([{
+    offline_queue_id: 'opaque-account-scope',
+    client_event_id: '550e8400-e29b-41d4-a716-446655440000',
+    pouch_id: 12, quantity: 1,
+    occurred_at_local: '2026-07-30T18:42:00+00:00', timezone: 'UTC',
+    craving_id: null, queue_order: 1, not_before: now.getTime() + 60_000,
+  }]);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(slot.dataset.controllerReady, 'true');
+  assert.equal(fallback.hidden, true);
+  assert.equal(enhanced.hidden, false);
+  enhanced.dispatchEvent({ type: 'click' });
+  assert.equal(await controller.submit(), false);
+  assert.deepEqual(requests, []);
+  assert.equal(queueRuntime.replayed, 1);
+});
+
+test('Quick Log bootstrap rolls back an async hydration failure and retries naturally', async () => {
+  const { bootstrapQuickLog } = await loadQuickLog();
+  const { documentRef, root, slot, fallback, enhanced } = makeBootstrapDocument();
+  const reported = [];
+  const originalError = console.error;
+  console.error = (...args) => { reported.push(args); };
+  try {
+    const first = bootstrapQuickLog(documentRef, {
+      queueRuntimeFactory: () => makeQueueRuntime({
+        list: async () => { throw new Error('private hydration failure'); },
+      }),
+    });
+    assert.ok(first);
+    await settleBootstrap();
+    assert.equal(slot.dataset.controllerReady, undefined);
+    assert.equal(fallback.hidden, false);
+    assert.equal(enhanced.hidden, true);
+    assert.equal(root.listenerCount('click'), 0);
+
+    const second = bootstrapQuickLog(documentRef, {
+      queueRuntimeFactory: () => makeQueueRuntime(),
+    });
+    assert.notEqual(second, first);
+    await settleBootstrap();
+    assert.equal(slot.dataset.controllerReady, 'true');
+    assert.equal(enhanced.listenerCount('click'), 1);
+  } finally {
+    console.error = originalError;
+  }
+  assert.equal(reported.length, 1);
+  assert.doesNotMatch(JSON.stringify(reported), /private hydration failure/);
+});
+
 test('Quick Log bootstrap reuses the WeakMap controller and never duplicates activation listeners', async () => {
   const { bootstrapQuickLog } = await loadQuickLog();
   const { documentRef, root, slot, enhanced } = makeBootstrapDocument();
 
   const first = bootstrapQuickLog(documentRef);
   const second = bootstrapQuickLog(documentRef);
+  await settleBootstrap();
 
   assert.equal(first, second);
   assert.equal(enhanced.listenerCount('click'), 1);
@@ -2960,11 +3310,12 @@ test('Quick Log bootstrap rolls back a partially initialized controller before a
   let first;
   try {
     first = bootstrapQuickLog(documentRef);
+    await settleBootstrap();
   } finally {
     console.error = originalError;
   }
 
-  assert.equal(first, null);
+  assert.ok(first);
   assert.equal(reported.length, 1);
   assert.equal(slot.dataset.controllerReady, undefined);
   assert.equal(fallback.hidden, false);
@@ -2973,6 +3324,7 @@ test('Quick Log bootstrap rolls back a partially initialized controller before a
   assert.equal(root.listenerCount('click'), 0);
 
   const second = bootstrapQuickLog(documentRef);
+  await settleBootstrap();
 
   assert.ok(second);
   assert.equal(slot.dataset.controllerReady, 'true');
@@ -2990,7 +3342,7 @@ test('Quick Log bootstrap rolls back a partially initialized controller before a
   enhanced.dispatchEvent({ type: 'click' });
   assert.equal(second.getState().status, 'editing');
   assert.equal(second.getState().draft.pouchId, 12);
-  await new Promise((resolve) => setImmediate(resolve));
+  await settleBootstrap();
 });
 
 test('Quick Log delegates native cancel and backdrop dismissal to the shared lifecycle', async () => {
@@ -3000,6 +3352,7 @@ test('Quick Log delegates native cancel and backdrop dismissal to the shared lif
   } = makeBootstrapDocument();
 
   const controller = bootstrapQuickLog(documentRef);
+  await new Promise((resolve) => setImmediate(resolve));
 
   assert.ok(controller);
   assert.equal(root.listenerCount('cancel'), 0, 'shared utility owns native cancel');

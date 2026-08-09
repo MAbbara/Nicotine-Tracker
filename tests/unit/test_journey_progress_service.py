@@ -217,7 +217,7 @@ def test_journey_progress_paused_transition_has_no_future_date(
     ).JourneyProgressService
     progress = service.get(test_user.id)
 
-    assert progress.status == 'no_ceiling'
+    assert progress.status == 'nicotine_total_incomplete'
     assert progress.total_complete is False
     assert progress.remaining_mg is None
     assert progress.next_change is not None

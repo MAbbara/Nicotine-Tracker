@@ -160,6 +160,17 @@ class TestNoJavascriptPreviewAndConfirm:
             self, logged_in_client, test_user):
         response, _ = _preview(logged_in_client)
         assert b'Complete daily schedule' in response.data
+        soup = BeautifulSoup(response.data, 'html.parser')
+        decisions = soup.select_one('.review-decisions')
+        terms = [node.get_text(' ', strip=True) for node in decisions.select('dt')]
+        assert 'Historical pouch context' not in terms
+        assert terms.index('Starting nicotine') < terms.index('Usual pouch strength')
+        schedule = soup.select_one('[aria-label="Complete daily schedule"] table')
+        assert [node.get_text(' ', strip=True) for node in schedule.select('thead th')] == [
+            'Date', 'Nicotine ceiling',
+        ]
+        assert all(len(row.select('th, td')) == 2 for row in schedule.select('tbody tr'))
+        assert 'Observe' not in schedule.get_text(' ', strip=True)
         assert ReductionPlan.query.filter_by(user_id=test_user.id).count() == 0
         draft = OnboardingDraft.query.filter_by(user_id=test_user.id).one()
         assert draft.current_step == 'review'

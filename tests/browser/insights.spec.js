@@ -126,6 +126,7 @@ function committedSnapshot(snapshot) {
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const LONG_PRODUCT = 'An intentionally long immutable nicotine product snapshot label';
+const LONG_SINGLE_TOKEN = 'UninterruptedNicotineProductSnapshotIdentifierThatMustWrapWithoutClipping';
 const SPACED_PRODUCT = ' Exact snapshot ';
 
 const INSIGHTS_FIXTURES = {
@@ -146,7 +147,7 @@ const INSIGHTS_FIXTURES = {
     consumption_by_day_of_week: {}, brand_analysis: {}, heatmap_data: [],
     nicotine_by_time_of_day: {}, nicotine_by_product: {},
     strength_coverage: {
-      known_pouches: 0, unknown_pouches: 0, total_pouches: 0,
+      known_logs: 0, unknown_logs: 0, total_logs: 0,
       known_percent: 0, complete: true,
     },
     expectedCopy: {
@@ -193,7 +194,7 @@ const INSIGHTS_FIXTURES = {
     nicotine_by_time_of_day: { Morning: 60, Afternoon: 0 },
     nicotine_by_product: { Main: 36, Backup: 24, 'Known zero': 0 },
     strength_coverage: {
-      known_pouches: 15, unknown_pouches: 0, total_pouches: 15,
+      known_logs: 5, unknown_logs: 0, total_logs: 5,
       known_percent: 100, complete: true,
     },
     expectedCopy: {
@@ -201,10 +202,10 @@ const INSIGHTS_FIXTURES = {
       interpretation: 'This lower total is useful context. Notice what changed in this range and what you may want to repeat.',
       plan: 'Across 3 matched plan days, you logged 15 pouches against a target of 18. 2 of 3 days were on or below target.',
       time: 'Morning is your most active part of the day. Plan support just before it begins.',
-      timeNicotine: 'All known nicotine in this range is in one time category. Every pouch in this range has a saved strength.',
+      timeNicotine: 'Leading category Morning accounts for 60 mg (100% of known nicotine). 5 of 5 logs include nicotine strength.',
       weekly: 'Thursday has the most logged pouches in this range. Use it as a cue to plan support, not a verdict.',
       product: 'Main appears most often in this range. Use that context when you adjust your plan.',
-      productNicotine: 'Every pouch in this range has a saved strength. Bars show known nicotine only.',
+      productNicotine: 'Leading category Main accounts for 36 mg (60% of known nicotine). 5 of 5 logs include nicotine strength.',
       craving: 'Stress appeared in 2 of 3 resolved cravings. You chose a non-nicotine response 66.7% of the time.',
       hourly: 'Monday around 10:00 has the highest logged use in this detail. Consider support before that time.',
       nextStep: ['Plan for Morning', '/journey/'],
@@ -238,18 +239,18 @@ const INSIGHTS_FIXTURES = {
       'Accessible zero category': 0,
     },
     strength_coverage: {
-      known_pouches: 41, unknown_pouches: 1, total_pouches: 42,
-      known_percent: 97.6, complete: false,
+      known_logs: 7, unknown_logs: 1, total_logs: 8,
+      known_percent: 87.5, complete: false,
     },
     expectedCopy: {
       headline: 'You used 40% more than the previous 90 days.',
       interpretation: 'This is useful context, not a verdict. Look for what made this range harder, then choose one adjustment.',
       plan: '',
       time: 'Afternoon is your most active part of the day. Plan support just before it begins.',
-      timeNicotine: '1 pouch had no saved strength, so nicotine totals are incomplete. Bars show known nicotine only.',
+      timeNicotine: 'Leading category Afternoon accounts for 132 mg (73.3% of known nicotine). 7 of 8 logs include nicotine strength. Nicotine totals are incomplete.',
       weekly: 'Friday has the most logged pouches in this range. Use it as a cue to plan support, not a verdict.',
       product: 'Third appears most often in this range. Use that context when you adjust your plan.',
-      productNicotine: '1 pouch had no saved strength, so nicotine totals are incomplete. Bars show known nicotine only.',
+      productNicotine: `Leading category ${LONG_PRODUCT} accounts for 90 mg (50% of known nicotine). 7 of 8 logs include nicotine strength. Nicotine totals are incomplete.`,
       craving: '',
       hourly: 'Tuesday around 18:00 has the highest logged use in this detail. Consider support before that time.',
       nextStep: ['Review your observations', '/journey/'],
@@ -394,6 +395,14 @@ function expectedSemanticSnapshot(payload, days, trendType = 'daily') {
     ? weeklyTrend(payload.consumption_trend)
     : payload.consumption_trend;
   const pairs = (value) => Object.entries(value).map(([label, amount]) => [label, String(Number(amount))]);
+  const nicotinePairs = (value) => {
+    const total = Object.values(value).reduce((sum, amount) => sum + Math.max(0, Number(amount)), 0);
+    return Object.entries(value).map(([label, amount]) => {
+      const numeric = Number(amount);
+      const share = total && numeric > 0 ? Math.round((numeric / total) * 1000) / 10 : 0;
+      return [label, String(numeric), `${share}%`];
+    });
+  };
   const bars = (value) => Object.entries(value)
     .map(([label, amount]) => ({ label, amount: Number(amount) }))
     .filter(({ amount }) => amount > 0)
@@ -449,9 +458,9 @@ function expectedSemanticSnapshot(payload, days, trendType = 'daily') {
     },
     tables: {
       trend: trend.length ? trend.map(({ date, value }) => [date, String(value)]) : emptyRow('No consumption logged in this range.'),
-      timeOfDay: Object.keys(payload.nicotine_by_time_of_day).length ? pairs(payload.nicotine_by_time_of_day) : emptyRow('No known-strength nicotine logged in this range.'),
+      timeOfDay: Object.keys(payload.nicotine_by_time_of_day).length ? nicotinePairs(payload.nicotine_by_time_of_day) : emptyRow('No known-strength nicotine logged in this range.'),
       dayOfWeek: DAYS.map((label, index) => [label, String(weekdays[index])]),
-      brands: Object.keys(payload.nicotine_by_product).length ? pairs(payload.nicotine_by_product) : emptyRow('No known-strength product data in this range.'),
+      brands: Object.keys(payload.nicotine_by_product).length ? nicotinePairs(payload.nicotine_by_product) : emptyRow('No known-strength product data in this range.'),
       heatmap: heatmapRows,
     },
     charts: {
@@ -544,7 +553,7 @@ test('Insights server fallback keeps neutral plan states neutral and reveals onl
   expect(payload.data_sufficiency.time_pattern).toBe(true);
   expect(payload.nicotine_by_time_of_day).toBeTruthy();
   expect(payload.nicotine_by_product).toBeTruthy();
-  expect(payload.strength_coverage).toMatchObject({ complete: true, unknown_pouches: 0 });
+  expect(payload.strength_coverage).toMatchObject({ complete: true, unknown_logs: 0 });
   expect(payload.plan_context.actual_pouches).toBe(15);
   expect(payload.plan_context.target_pouches).toBe(18);
   const privateValues = [
@@ -642,7 +651,7 @@ test('Insights range refresh hides and restores plan and craving evidence from o
   await expect(page.locator('[data-craving-resolved-pattern]')).toHaveText('2 of 3 resolved');
   await expect(page.locator('[data-craving-non-nicotine-rate]')).toHaveText('66.7%');
   await expect(page.locator('[data-insights-product-nicotine-copy]')).toContainText(
-    'one product category',
+    'accounts for',
   );
   const serializedPayload = JSON.stringify(thirtyPayload);
   const renderedHtml = await page.content();
@@ -1480,6 +1489,32 @@ test('latest range wins after abort and long snapshot labels stay contained at 3
     LONG_PRODUCT, SPACED_PRODUCT, 'Third product',
   ]);
   await expect(page.locator('#brand-chart .apexcharts-bar-area')).toHaveCount(3);
+  await expect(page.locator('#brand-chart .apexcharts-datalabel').first()).toContainText('%');
+  await expect(page.locator('[data-insights-product-nicotine-copy]'))
+    .toContainText(`${LONG_PRODUCT} accounts for 90 mg (50% of known nicotine)`);
+  await expect(page.locator('[data-insights-product-nicotine-copy]')).toHaveCSS(
+    'overflow-wrap', 'anywhere',
+  );
+  await page.locator('#brand-chart .apexcharts-bar-area').first().hover();
+  await expect(page.locator('#brand-chart .apexcharts-tooltip'))
+    .toContainText(LONG_PRODUCT);
+  await expect(page.locator('#brand-chart .apexcharts-tooltip'))
+    .toContainText('90 mg · 50% of known nicotine');
+  await expect(page.locator('[data-insights-time-nicotine-copy]'))
+    .toContainText('Afternoon accounts for 132 mg (73.3% of known nicotine)');
+  await page.locator('#time-of-day-chart .apexcharts-bar-area').first().hover();
+  await expect(page.locator('#time-of-day-chart .apexcharts-tooltip'))
+    .toContainText('Afternoon');
+  await expect(page.locator('#time-of-day-chart .apexcharts-tooltip'))
+    .toContainText('132 mg · 73.3% of known nicotine');
+  await expect(productLabels.first()).toHaveAttribute('aria-label', /mg, .*% of known nicotine$/);
+  const wrappedProductLines = await productLabels.first().locator('tspan').allTextContents();
+  expect(wrappedProductLines.length).toBeGreaterThan(1);
+  expect(Math.max(...wrappedProductLines.map((line) => line.length)))
+    .toBeLessThanOrEqual(9);
+  expect(wrappedProductLines.join('')).not.toContain('…');
+  await expect(page.locator('[data-analytics-key="brands"] tr').first())
+    .toContainText('%');
   await page.waitForTimeout(700);
   await expect(page).toHaveURL(/days=90/);
   await expect(page.locator('[data-days="90"]')).toHaveAttribute('aria-current', 'true');
@@ -1494,6 +1529,86 @@ test('latest range wins after abort and long snapshot labels stay contained at 3
   expect(await page.evaluate(() => (
     document.documentElement.scrollWidth - document.documentElement.clientWidth
   ))).toBe(0);
+});
+
+test('single-token product labels wrap into bounded visible chart lines at 320px 200%', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 320, height: 844 });
+  await login(page, 'insights-range@example.com');
+  await installChartConfigProbe(page);
+  await page.goto('/insights/?days=30');
+  await setActualTwoHundredPercentZoom(page);
+  await page.route('**/insights/api/insights?days=90', async (route) => {
+    const payload = apiFixture(90);
+    payload.nicotine_by_product = { [LONG_SINGLE_TOKEN]: 18 };
+    payload.strength_coverage = {
+      known_logs: 2, unknown_logs: 0, total_logs: 2,
+      known_percent: 100, complete: true,
+    };
+    await route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(payload),
+    });
+  });
+
+  await page.getByRole('link', { name: '90 days', exact: true }).click();
+  const label = page.locator('#brand-chart .apexcharts-yaxis-label').first();
+  await expect(label).toHaveAttribute('aria-label', new RegExp(`^${LONG_SINGLE_TOKEN},`));
+  const result = await label.evaluate((node) => {
+    const labelRect = node.getBoundingClientRect();
+    const chartRect = node.closest('.analytics-chart').getBoundingClientRect();
+    return {
+      lines: [...node.querySelectorAll(':scope > tspan')].map((line) => line.textContent),
+      geometry: {
+        labelLeft: labelRect.left,
+        labelRight: labelRect.right,
+        chartLeft: chartRect.left,
+        chartRight: chartRect.right,
+        documentOverflow: document.documentElement.scrollWidth
+          - document.documentElement.clientWidth,
+      },
+    };
+  });
+  const { lines, geometry } = result;
+  expect(lines.length).toBeGreaterThan(1);
+  expect(lines.join('')).toBe(LONG_SINGLE_TOKEN);
+  expect(Math.max(...lines.map((line) => line.length))).toBeLessThanOrEqual(18);
+  expect(geometry.labelLeft).toBeGreaterThanOrEqual(geometry.chartLeft - 1);
+  expect(geometry.labelRight).toBeLessThanOrEqual(geometry.chartRight + 1);
+  expect(geometry.documentOverflow).toBe(0);
+});
+
+test('reselecting the committed range cancels a pending range without changing state', async ({ page }) => {
+  await login(page, 'insights-range@example.com');
+  await page.goto('/insights/?days=30');
+  const before = await fullInsightsSnapshot(page);
+  let sevenAborted = false;
+  page.on('requestfailed', (request) => {
+    if (new URL(request.url()).pathname === '/insights/api/insights'
+        && new URL(request.url()).searchParams.get('days') === '7') {
+      sevenAborted = request.failure()?.errorText === 'net::ERR_ABORTED';
+    }
+  });
+  await page.route('**/insights/api/insights?days=7', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    if (!sevenAborted) {
+      await route.fulfill({
+        status: 200, contentType: 'application/json', body: JSON.stringify(apiFixture(7)),
+      }).catch(() => {});
+    }
+  });
+
+  await page.getByRole('link', { name: '7 days', exact: true }).click();
+  await expect(page.locator('[data-days="7"]')).toHaveAttribute('aria-busy', 'true');
+  await page.getByRole('link', { name: '30 days', exact: true }).click();
+
+  await expect(page.locator('[data-insights-root]')).not.toHaveAttribute('aria-busy', 'true');
+  await expect(page.locator('[data-insights-root]')).not.toHaveAttribute('data-pending-days');
+  await expect(page.locator('[data-days="30"]')).toHaveAttribute('aria-current', 'true');
+  await expect(page).toHaveURL(/days=30/);
+  expect(committedSnapshot(await fullInsightsSnapshot(page))).toEqual(
+    committedSnapshot(before),
+  );
+  await expect.poll(() => sevenAborted).toBe(true);
 });
 
 test('a newer held range keeps ownership after an older candidate commits', async ({ page }) => {
@@ -1705,14 +1820,14 @@ test('known-zero and unknown-only nicotine states stay truthful with authoritati
       payload.nicotine_by_time_of_day = { Morning: 0 };
       payload.nicotine_by_product = { 'Known zero product': 0 };
       payload.strength_coverage = {
-        known_pouches: 2, unknown_pouches: 1, total_pouches: 3,
+        known_logs: 2, unknown_logs: 1, total_logs: 3,
         known_percent: 66.7, complete: false,
       };
     } else {
       payload.nicotine_by_time_of_day = {};
       payload.nicotine_by_product = {};
       payload.strength_coverage = {
-        known_pouches: 0, unknown_pouches: 2, total_pouches: 2,
+        known_logs: 0, unknown_logs: 2, total_logs: 2,
         known_percent: 0, complete: false,
       };
     }
@@ -1746,7 +1861,7 @@ test('client refresh keeps mixed unknown-strength coverage visible for a single 
     payload.nicotine_by_time_of_day = { Morning: 8, Evening: 0 };
     payload.nicotine_by_product = { 'Only positive product': 8, 'Known zero': 0 };
     payload.strength_coverage = {
-      known_pouches: 2, unknown_pouches: 1, total_pouches: 3,
+      known_logs: 2, unknown_logs: 1, total_logs: 3,
       known_percent: 66.7, complete: false,
     };
     await route.fulfill({ response, contentType: 'application/json', body: JSON.stringify(payload) });
@@ -1754,8 +1869,10 @@ test('client refresh keeps mixed unknown-strength coverage visible for a single 
 
   await page.getByRole('link', { name: '90 days', exact: true }).click();
 
-  await expect(page.locator('[data-insights-time-nicotine-copy]')).toContainText('one time category');
-  await expect(page.locator('[data-insights-product-nicotine-copy]')).toContainText('one product category');
+  await expect(page.locator('[data-insights-time-nicotine-copy]'))
+    .toContainText('Morning accounts for 8 mg (100% of known nicotine)');
+  await expect(page.locator('[data-insights-product-nicotine-copy]'))
+    .toContainText('Only positive product accounts for 8 mg (100% of known nicotine)');
   await expect(page.locator('[data-insights-time-nicotine-copy]')).toContainText('incomplete');
   await expect(page.locator('[data-insights-product-nicotine-copy]')).toContainText('incomplete');
   await expect(page.locator('#brand-chart .apexcharts-yaxis-label title')).toHaveText(

@@ -277,7 +277,7 @@ test('legacy pace-only and duration-only edits convert through the nicotine UI',
     const historical = schedule.getByRole('row').filter({ hasText: today });
     const converted = schedule.getByRole('row').filter({ hasText: effectiveDate });
     await expect(historical).not.toContainText('Not used');
-    await expect(converted).toContainText('Not used');
+    await expect(converted).not.toContainText('Not used');
     expect(errors).toEqual([]);
     const signedOut = await page.request.get('/auth/logout');
     expect(signedOut.status()).toBe(200);

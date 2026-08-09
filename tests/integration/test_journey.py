@@ -440,6 +440,7 @@ class TestJourneyComposition:
         days[2].nicotine_ceiling_mg = Decimal('36.00')
         days[3].nicotine_ceiling_mg = Decimal('30.00')
         plan.end_target_pouches = None
+        plan.baseline_pouches = None
         plan.end_target_mg = Decimal('30.00')
         plan.active_revision.end_target_pouches = None
         plan.active_revision.end_target_mg = Decimal('30.00')
@@ -466,6 +467,15 @@ class TestJourneyComposition:
         assert progress.select_one('[data-remaining-mg]').get_text(strip=True) == '24.00 mg'
         assert 'Below today’s ceiling' in progress.get_text(' ', strip=True)
         assert 'Pouches logged 2' in progress.get_text(' ', strip=True)
+
+        complete_schedule = soup.select_one('[data-complete-schedule]')
+        assert [cell.get_text(' ', strip=True) for cell in complete_schedule.select('thead th')] == [
+            'Date', 'Nicotine ceiling',
+        ]
+        assert 'Observation' not in complete_schedule.get_text(' ', strip=True)
+        assert 'Not used' not in complete_schedule.get_text(' ', strip=True)
+        plan_facts = soup.select_one('[aria-labelledby="plan-facts-title"]')
+        assert 'Historical pouch baseline' not in plan_facts.get_text(' ', strip=True)
 
         next_change = soup.select_one('[data-next-change]')
         assert next_change is not None
@@ -522,6 +532,28 @@ class TestJourneyComposition:
         assert '%' not in text
         assert 'on track' not in text.lower()
 
+    def test_paused_plan_keeps_unknown_strength_total_incomplete_and_neutral(
+            self, logged_in_client, db_session, test_user):
+        authority = TodayService.get_summary(test_user.id)
+        plan = _plan(db_session, test_user, status='paused', start=authority.local_date)
+        db_session.add(Log(
+            user_id=test_user.id,
+            log_time=authority.window.start_utc.replace(tzinfo=None) + timedelta(hours=1),
+            quantity=2,
+            nicotine_mg_snapshot=None,
+            product_brand_snapshot='Unknown paused fixture',
+        ))
+        db_session.commit()
+
+        soup = BeautifulSoup(logged_in_client.get('/journey/').data, 'html.parser')
+        progress = soup.select_one('[data-journey-progress]')
+        text = progress.get_text(' ', strip=True)
+        assert 'Plan paused' in text
+        assert 'Nicotine total incomplete' in text
+        assert 'Total Incomplete' in text
+        assert progress.select_one('[data-remaining-mg]') is None
+        assert 'on track' not in text.lower()
+
     def test_active_plan_renders_truthful_baseline_schedule_history_and_milestones(
             self, logged_in_client, db_session, test_user):
         today = date.today()
@@ -570,7 +602,7 @@ class TestJourneyComposition:
         assert soup.select_one('.journey-schedule') is not None
         assert soup.select_one('.journey-history') is not None
         assert 'Manual baseline' in text
-        assert 'Historical pouch baseline 8.00 pouches per day' in text
+        assert 'Historical pouch guide 8.00 pouches per day' in text
         assert '48.00 mg per day' in text
         assert '6.00 mg per pouch' in text
         assert 'Today in this plan' in text
@@ -614,7 +646,7 @@ class TestJourneyComposition:
 
         text = _text(logged_in_client.get('/journey/'))
 
-        assert 'Historical pouch baseline 0.00 pouches per day' in text
+        assert 'Historical pouch guide 0.00 pouches per day' in text
         assert 'Starting nicotine 0.00 mg per day' in text
         assert 'Usual pouch strength 0.00 mg per pouch' in text
 
@@ -686,6 +718,14 @@ class TestJourneyLifecycleActions:
         plan = _plan(
             db_session, test_user, status='paused', start=today - timedelta(days=1)
         )
+        for row in PlanDay.query.filter_by(plan_id=plan.id):
+            row.target_pouches = None
+        plan.end_target_pouches = None
+        plan.active_revision.end_target_pouches = None
+        plan.active_revision.generation_inputs = {
+            'target_basis': 'nicotine_mg',
+            'end_target_mg': str(plan.end_target_mg),
+        }
         event = PlanStatusEvent.query.filter_by(plan_id=plan.id).one()
         event.local_date = today
         event.effective_at_utc = datetime.utcnow()
@@ -701,6 +741,16 @@ class TestJourneyLifecycleActions:
         )
         assert preview_response.status_code == 200
         soup = BeautifulSoup(preview_response.data, 'html.parser')
+        preview_tables = soup.select('[data-resume-preview-stages], [data-resume-preview]')
+        assert preview_tables
+        for table in preview_tables:
+            text = table.get_text(' ', strip=True)
+            assert 'Historical pouch guide' not in text
+            assert 'Not used' not in text
+            assert all(
+                len(row.select('th, td')) == 2
+                for row in table.select('tr')
+            )
         digest = soup.select_one(
             'form[data-resume-confirm] input[name="preview_digest"]'
         )['value']

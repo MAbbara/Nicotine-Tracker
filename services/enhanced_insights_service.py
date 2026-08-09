@@ -102,9 +102,9 @@ def _comparison_metadata(current_df, previous_df, days):
 def _nicotine_distribution(df):
     """Aggregate known nicotine mg from immutable log snapshot columns."""
     empty_coverage = {
-        'known_pouches': 0,
-        'unknown_pouches': 0,
-        'total_pouches': 0,
+        'known_logs': 0,
+        'unknown_logs': 0,
+        'total_logs': 0,
         'known_percent': 0.0,
         'complete': True,
     }
@@ -117,14 +117,14 @@ def _nicotine_distribution(df):
     )
     by_time_raw = {label: Decimal('0.00') for label in time_labels}
     by_product_raw = {}
-    known_pouches = 0
-    unknown_pouches = 0
+    known_logs = 0
+    unknown_logs = 0
     for row in df.itertuples(index=False):
         quantity = int(row.quantity or 0)
         if pd.isna(row.nicotine_mg):
-            unknown_pouches += quantity
+            unknown_logs += 1
             continue
-        known_pouches += quantity
+        known_logs += 1
         strength = Decimal(str(row.nicotine_mg))
         nicotine_total = (Decimal(quantity) * strength).quantize(Decimal('0.01'))
         hour = int(row.user_time.hour)
@@ -141,13 +141,13 @@ def _nicotine_distribution(df):
 
     by_time = sorted_values(by_time_raw)
     by_product = sorted_values(by_product_raw)
-    total_pouches = known_pouches + unknown_pouches
+    total_logs = known_logs + unknown_logs
     coverage = {
-        'known_pouches': known_pouches,
-        'unknown_pouches': unknown_pouches,
-        'total_pouches': total_pouches,
-        'known_percent': round(known_pouches / total_pouches * 100, 1) if total_pouches else 0.0,
-        'complete': unknown_pouches == 0,
+        'known_logs': known_logs,
+        'unknown_logs': unknown_logs,
+        'total_logs': total_logs,
+        'known_percent': round(known_logs / total_logs * 100, 1) if total_logs else 0.0,
+        'complete': unknown_logs == 0,
     }
     return by_time, by_product, coverage
 
@@ -209,10 +209,10 @@ def _plan_context(user_id: int, df: pd.DataFrame, window_end: datetime,
         PlanDay.query.with_entities(
             PlanDay.local_date,
             PlanDay.target_pouches,
+            PlanDay.nicotine_ceiling_mg,
         )
         .filter(
             PlanDay.plan_id == plan.id,
-            PlanDay.target_pouches.isnot(None),
             PlanDay.local_date.in_(logged_dates),
             PlanDay.local_date >= local_start_date,
             PlanDay.local_date <= local_end_date,
@@ -220,6 +220,66 @@ def _plan_context(user_id: int, df: pd.DataFrame, window_end: datetime,
         .order_by(PlanDay.local_date, PlanDay.id)
         .all()
     )
+    generation_inputs = plan.active_revision.generation_inputs or {}
+    nicotine_first = generation_inputs.get('target_basis') == 'nicotine_mg'
+    if nicotine_first:
+        nicotine_days = [
+            row for row in plan_days if row.nicotine_ceiling_mg is not None
+        ]
+        compared_days = len(nicotine_days)
+        result = _neutral_plan_context(
+            plan, state="active_targeted", compared_days=compared_days,
+        )
+        result.update({
+            'target_basis': 'nicotine_mg',
+            'total_complete': True,
+            'actual_mg': None,
+            'target_mg': None,
+            'difference_mg': None,
+        })
+        rows_by_date = {
+            local_date: group
+            for local_date, group in df.assign(
+                local_date=df['user_time'].dt.date,
+            ).groupby('local_date')
+        }
+        total_complete = all(
+            not rows_by_date[plan_day.local_date]['nicotine_mg'].isna().any()
+            for plan_day in nicotine_days
+        )
+        result['total_complete'] = total_complete
+        if compared_days < 3 or not total_complete:
+            return result
+
+        actual_by_date_mg = {}
+        for plan_day in nicotine_days:
+            rows = rows_by_date[plan_day.local_date]
+            actual_by_date_mg[plan_day.local_date] = sum(
+                Decimal(str(row.quantity or 0)) * Decimal(str(row.nicotine_mg))
+                for row in rows.itertuples(index=False)
+            )
+        actual_mg = sum(actual_by_date_mg.values(), Decimal('0.00'))
+        target_mg = sum(
+            (Decimal(str(row.nicotine_ceiling_mg)) for row in nicotine_days),
+            Decimal('0.00'),
+        )
+        days_on_or_below_target = sum(
+            actual_by_date_mg[row.local_date] <= Decimal(str(row.nicotine_ceiling_mg))
+            for row in nicotine_days
+        )
+        result.update({
+            'adherence_available': True,
+            'days_on_or_below_target': days_on_or_below_target,
+            'actual_mg': float(actual_mg),
+            'target_mg': float(target_mg),
+            'difference_mg': float(actual_mg - target_mg),
+            'adherence_rate': round(
+                (days_on_or_below_target / compared_days) * 100, 1,
+            ),
+        })
+        return result
+
+    plan_days = [row for row in plan_days if row.target_pouches is not None]
     compared_days = len(plan_days)
     if compared_days < 3:
         return _neutral_plan_context(
@@ -228,12 +288,14 @@ def _plan_context(user_id: int, df: pd.DataFrame, window_end: datetime,
 
     actual_pouches = sum(
         int(actual_by_date.loc[local_date])
-        for local_date, _target in plan_days
+        for local_date, _target, _ceiling in plan_days
     )
-    target_pouches = sum(int(target) for _local_date, target in plan_days)
+    target_pouches = sum(
+        int(target) for _local_date, target, _ceiling in plan_days
+    )
     days_on_or_below_target = sum(
         int(actual_by_date.loc[local_date]) <= int(target)
-        for local_date, target in plan_days
+        for local_date, target, _ceiling in plan_days
     )
     return {
         'state': 'active_targeted',

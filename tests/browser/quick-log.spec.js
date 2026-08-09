@@ -124,6 +124,11 @@ test('the same dialog adapts to a mobile bottom sheet and centered desktop panel
   await expect(dialog).toBeVisible();
 
   const panel = dialog.locator('[data-dialog-panel]');
+  await expect(dialog).toHaveAttribute('data-dialog-state', 'open');
+  await panel.evaluate(async (element) => {
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await Promise.all(element.getAnimations().map((animation) => animation.finished.catch(() => {})));
+  });
   const geometry = await panel.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const style = getComputedStyle(element);
@@ -256,6 +261,40 @@ test('retryable POST waits for connection, and Retry reuses the event ID', async
   expect(payloads[1].client_event_id).toBe(payloads[0].client_event_id);
   expect(payloads[1]).toEqual(payloads[0]);
   await expect(page.locator(`[data-client-event-id="${payloads[0].client_event_id}"]`)).toHaveCount(1);
+});
+
+test('rate-limited Quick Log waits truthfully without an early direct Retry', async ({ page }) => {
+  let postCount = 0;
+  await page.route('**/api/logs', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    postCount += 1;
+    return route.fulfill({
+      status: 429,
+      headers: { 'Retry-After': '3600' },
+      contentType: 'text/plain',
+      body: 'private upstream throttle body',
+    });
+  });
+  await login(page, 'today-targeted@example.com');
+  await quickLogTrigger(page).click();
+  const dialog = page.getByRole('dialog', { name: 'Log nicotine use' });
+  await dialog.getByRole('button', { name: 'Log one pouch' }).click();
+
+  const retry = dialog.getByRole('button', { name: 'Retry' });
+  const discard = dialog.getByRole('button', { name: 'Discard draft' });
+  const recovery = dialog.locator('[data-quick-log-request-error]');
+  await expect(recovery).toContainText(/saved for sync/i);
+  await expect(recovery).toContainText(/3600 seconds/i);
+  await expect(recovery).not.toContainText(/private upstream/i);
+  await expect(retry).toBeDisabled();
+  await expect(discard).toBeFocused();
+  await retry.click({ force: true });
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await page.waitForTimeout(50);
+  expect(postCount).toBe(1);
+
+  await discard.click();
+  await expect(dialog).toBeHidden();
 });
 
 test('queued recovery visibly discloses omitted notes while a blank note stays concise', async ({ page }) => {

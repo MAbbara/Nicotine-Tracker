@@ -106,6 +106,29 @@ function planContextModel(rawPlanContext = {}) {
     };
   }
 
+  if (rawPlanContext.target_basis === 'nicotine_mg') {
+    const actualMg = finiteNumber(rawPlanContext.actual_mg);
+    const targetMg = finiteNumber(rawPlanContext.target_mg);
+    const daysOnOrBelowTarget = Math.max(
+      0,
+      Math.trunc(finiteNumber(rawPlanContext.days_on_or_below_target)),
+    );
+    return {
+      state,
+      visible: true,
+      available: true,
+      targetBasis: 'nicotine_mg',
+      totalComplete: rawPlanContext.total_complete !== false,
+      comparedDays,
+      actualMg,
+      targetMg,
+      differenceMg: finiteNumber(rawPlanContext.difference_mg),
+      daysOnOrBelowTarget,
+      adherenceRate: finiteNumber(rawPlanContext.adherence_rate),
+      interpretation: `Across ${pluralize(comparedDays, 'matched plan day')}, you logged ${formatNumber(actualMg)} mg against a nicotine ceiling total of ${formatNumber(targetMg)} mg. ${formatNumber(daysOnOrBelowTarget)} of ${formatNumber(comparedDays)} days were on or below the nicotine ceiling.`,
+    };
+  }
+
   const actualPouches = finiteNumber(rawPlanContext.actual_pouches);
   const targetPouches = finiteNumber(rawPlanContext.target_pouches);
   const daysOnOrBelowTarget = Math.max(
@@ -190,22 +213,23 @@ function nicotineDistributionModel(values = {}, coverage = {}) {
     ...row,
     share: totalMg ? Math.round((row.mg / totalMg) * 1000) / 10 : 0,
   }));
-  const totalPouches = Math.max(0, Math.trunc(finiteNumber(coverage.total_pouches)));
-  const knownPouches = Math.max(0, Math.trunc(finiteNumber(coverage.known_pouches)));
-  const state = totalPouches === 0
+  const totalLogs = Math.max(0, Math.trunc(finiteNumber(coverage.total_logs)));
+  const knownLogs = Math.max(0, Math.trunc(finiteNumber(coverage.known_logs)));
+  const state = totalLogs === 0
     ? 'no-logs'
-    : knownPouches === 0
+    : knownLogs === 0
       ? 'unknown-only'
       : !bars.length
         ? 'known-zero'
         : bars.length === 1 ? 'single' : 'ready';
-  const unknown = Math.max(0, Math.trunc(finiteNumber(coverage.unknown_pouches)));
-  const coverageCopy = unknown > 0
-    ? `${pluralize(unknown, 'pouch', 'pouches')} had no saved strength, so nicotine totals are incomplete.`
-    : finiteNumber(coverage.total_pouches) > 0
-      ? 'Every pouch in this range has a saved strength.'
-      : 'Strength coverage will appear after you log a pouch.';
-  return { state, bars, totalMg, coverageCopy };
+  const coverageCopy = totalLogs > 0
+    ? `${formatNumber(knownLogs)} of ${formatNumber(totalLogs)} logs include nicotine strength.${knownLogs < totalLogs ? ' Nicotine totals are incomplete.' : ''}`
+    : 'Strength coverage will appear after you log a pouch.';
+  const leader = bars[0] || null;
+  const interpretation = leader
+    ? `Leading category ${leader.label} accounts for ${formatNumber(leader.mg)} mg (${formatNumber(leader.share)}% of known nicotine). ${coverageCopy}`
+    : coverageCopy;
+  return { state, bars, totalMg, coverageCopy, interpretation };
 }
 
 export function buildInsightsViewModel(data = {}, rangeDays = 30) {

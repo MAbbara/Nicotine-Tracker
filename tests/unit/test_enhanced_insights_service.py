@@ -74,10 +74,10 @@ def test_nicotine_distributions_use_immutable_log_snapshots_and_report_coverage(
         "Zero strength": 0.0,
     }
     assert result["strength_coverage"] == {
-        "known_pouches": 3,
-        "unknown_pouches": 3,
-        "total_pouches": 6,
-        "known_percent": 50.0,
+        "known_logs": 2,
+        "unknown_logs": 1,
+        "total_logs": 3,
+        "known_percent": 66.7,
         "complete": False,
     }
     assert "Changed live catalog brand" not in result["nicotine_by_product"]
@@ -90,7 +90,7 @@ def test_nicotine_distributions_have_meaningful_empty_and_single_category_states
     empty = insights_service.get_enhanced_insights(test_user.id, 7)
     assert empty["nicotine_by_time_of_day"] == {}
     assert empty["nicotine_by_product"] == {}
-    assert empty["strength_coverage"]["total_pouches"] == 0
+    assert empty["strength_coverage"]["total_logs"] == 0
 
     row = _add_log(
         db_session, test_user, test_pouch,
@@ -136,7 +136,7 @@ def test_nicotine_distributions_preserve_fractional_snapshot_precision_and_unkno
         "Exact": Decimal("0.15"),
     }
     assert sum(result["nicotine_by_product"].values()) == Decimal("5.60")
-    assert result["strength_coverage"]["known_pouches"] == 6
+    assert result["strength_coverage"]["known_logs"] == 3
 
 
 def test_nicotine_distribution_preserves_distinct_nonblank_snapshot_whitespace(
@@ -408,6 +408,92 @@ def test_plan_adherence_stays_unavailable_below_three_matched_dates(
         "difference_pouches": None,
         "adherence_rate": None,
     }
+
+
+def test_nicotine_first_adherence_uses_snapshot_mg_and_ceiling_not_pouch_count(
+        db_session, test_user, test_pouch):
+    boundary = datetime(2026, 8, 4, 0, 0)
+    plan = _add_plan(
+        db_session, test_user, mode="reduce", status="active",
+        start=date(2026, 8, 1), targets=(5, 5, 5),
+    )
+    for row in PlanDay.query.filter_by(plan_id=plan.id):
+        row.target_pouches = None
+        row.nicotine_ceiling_mg = Decimal("20.00")
+    plan.active_revision.generation_inputs = {"target_basis": "nicotine_mg"}
+    db_session.commit()
+    frame = _plan_frame(
+        db_session, test_user, test_pouch, boundary=boundary,
+        quantities=((3, 3), (2, 6), (1, 4)),
+    )
+
+    result = insights_service._plan_context(test_user.id, frame, boundary, 7)
+
+    assert result["adherence_available"] is True
+    assert result["target_basis"] == "nicotine_mg"
+    assert result["compared_days"] == 3
+    assert result["actual_mg"] == 52.0
+    assert result["target_mg"] == 60.0
+    assert result["difference_mg"] == -8.0
+    assert result["days_on_or_below_target"] == 2
+    assert result["adherence_rate"] == 66.7
+    assert result["actual_pouches"] is None
+    assert result["target_pouches"] is None
+
+
+def test_nicotine_first_adherence_is_incomplete_when_a_matched_day_has_unknown_strength(
+        db_session, test_user, test_pouch):
+    boundary = datetime(2026, 8, 4, 0, 0)
+    plan = _add_plan(
+        db_session, test_user, mode="reduce", status="active",
+        start=date(2026, 8, 1), targets=(5, 5, 5),
+    )
+    for row in PlanDay.query.filter_by(plan_id=plan.id):
+        row.target_pouches = None
+        row.nicotine_ceiling_mg = Decimal("20.00")
+    plan.active_revision.generation_inputs = {"target_basis": "nicotine_mg"}
+    db_session.commit()
+    frame = _plan_frame(
+        db_session, test_user, test_pouch, boundary=boundary,
+        quantities=((3, 3), (2, 6), (1, 4)),
+    )
+    frame.loc[frame.index[1], "nicotine_mg"] = None
+
+    result = insights_service._plan_context(test_user.id, frame, boundary, 7)
+
+    assert result["target_basis"] == "nicotine_mg"
+    assert result["compared_days"] == 3
+    assert result["total_complete"] is False
+    assert result["adherence_available"] is False
+    assert result["actual_mg"] is None
+    assert result["target_mg"] is None
+    assert result["adherence_rate"] is None
+
+
+def test_nicotine_first_unknown_strength_is_incomplete_before_three_matched_days(
+        db_session, test_user, test_pouch):
+    boundary = datetime(2026, 8, 4, 0, 0)
+    plan = _add_plan(
+        db_session, test_user, mode="reduce", status="active",
+        start=date(2026, 8, 2), targets=(5, 5),
+    )
+    for row in PlanDay.query.filter_by(plan_id=plan.id):
+        row.target_pouches = None
+        row.nicotine_ceiling_mg = Decimal("20.00")
+    plan.active_revision.generation_inputs = {"target_basis": "nicotine_mg"}
+    db_session.commit()
+    frame = _plan_frame(
+        db_session, test_user, test_pouch, boundary=boundary,
+        quantities=((2, 3), (1, 4)),
+    )
+    frame.loc[frame.index[0], "nicotine_mg"] = None
+
+    result = insights_service._plan_context(test_user.id, frame, boundary, 7)
+
+    assert result["compared_days"] == 2
+    assert result["target_basis"] == "nicotine_mg"
+    assert result["total_complete"] is False
+    assert result["adherence_available"] is False
 
 
 def test_craving_pattern_is_unavailable_with_zero_or_two_resolved_events(

@@ -26,9 +26,9 @@ class JourneyProgressService:
         ceiling = today.plan.nicotine_ceiling_mg if today.plan else None
         paused = today.plan is not None and today.plan.status == 'paused'
         complete = today.unknown_strength_events == 0
-        status = 'no_ceiling' if paused else cls._status(
+        status = cls._status(
             known_mg=today.known_nicotine_mg,
-            ceiling_mg=ceiling,
+            ceiling_mg=None if paused else ceiling,
             total_complete=complete,
         )
         return JourneyProgress(

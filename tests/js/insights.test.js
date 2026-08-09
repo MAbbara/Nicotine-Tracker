@@ -146,7 +146,7 @@ test('nicotine bar models are sorted, exclude zero visuals, and preserve complet
       Mint: 24,
     },
     strength_coverage: {
-      known_pouches: 4, unknown_pouches: 2, total_pouches: 6,
+      known_logs: 4, unknown_logs: 2, total_logs: 6,
       known_percent: 66.7, complete: false,
     },
   });
@@ -163,6 +163,16 @@ test('nicotine bar models are sorted, exclude zero visuals, and preserve complet
     { label: 'Night', value: 0 },
     { label: 'Morning', value: 6.5 },
     { label: 'Evening', value: 18 },
+  ]);
+  assert.deepEqual(model.timeOfDayTable, [
+    { label: 'Night', value: 0, share: 0 },
+    { label: 'Morning', value: 6.5, share: 26.5 },
+    { label: 'Evening', value: 18, share: 73.5 },
+  ]);
+  assert.deepEqual(model.productTable, [
+    { label: 'Very long catalog snapshot label that must remain exact', value: 12, share: 33.3 },
+    { label: 'Zero', value: 0, share: 0 },
+    { label: 'Mint', value: 24, share: 66.7 },
   ]);
   assert.equal(model.strengthCoverage.complete, false);
 });
@@ -184,7 +194,26 @@ test('nicotine distributions render horizontal mg bars rather than donuts', asyn
       assert.equal(options.plotOptions.bar.horizontal, true);
       assert.deepEqual(options.series[0].data, [8]);
       assert.equal(options.series[0].name, 'Nicotine (mg)');
+      assert.equal(options.dataLabels.enabled, true);
+      assert.equal(options.dataLabels.formatter(8, { dataPointIndex: 0 }), '100%');
+      assert.equal(
+        options.tooltip.y.formatter(8, { dataPointIndex: 0 }),
+        '8 mg · 100% of known nicotine',
+      );
     }
+    assert.equal(
+      definitions.get('brand-chart').xaxis.labels.formatter(
+        'A complete product snapshot label that must remain readable',
+      ),
+      'A complete product snapshot label that must remain readable',
+    );
+    const singleToken = 'UninterruptedNicotineProductSnapshotIdentifier';
+    const singleTokenOptions = new Map(chartDefinitions({
+      nicotine_by_product: { [singleToken]: 8 },
+    }, 'daily')).get('brand-chart');
+    assert.deepEqual(singleTokenOptions.xaxis.categories, [
+      ['UninterruptedNicot', 'ineProductSnapshot', 'Identifier'],
+    ]);
   } finally {
     global.window = previousWindow;
     global.document = previousDocument;
@@ -194,28 +223,36 @@ test('nicotine distributions render horizontal mg bars rather than donuts', asyn
 test('nicotine distribution copy distinguishes no logs, unknown-only, known zero, single, and ready', async () => {
   const { buildInsightsViewModel } = await importModule('static/js/insights/view_model.js');
   const model = (values, coverage) => buildInsightsViewModel({
-    log_count: coverage.total_pouches,
-    observed_days: coverage.total_pouches ? 1 : 0,
+    log_count: coverage.total_logs,
+    observed_days: coverage.total_logs ? 1 : 0,
     data_sufficiency: {},
     nicotine_by_product: values,
     strength_coverage: coverage,
   }, 7).sections.productNicotine;
 
   assert.equal(model({}, {
-    total_pouches: 0, known_pouches: 0, unknown_pouches: 0, complete: true,
+    total_logs: 0, known_logs: 0, unknown_logs: 0, complete: true,
   }).state, 'no-logs');
   assert.equal(model({}, {
-    total_pouches: 2, known_pouches: 0, unknown_pouches: 2, complete: false,
+    total_logs: 2, known_logs: 0, unknown_logs: 2, complete: false,
   }).state, 'unknown-only');
   assert.equal(model({ Zero: 0 }, {
-    total_pouches: 2, known_pouches: 2, unknown_pouches: 0, complete: true,
+    total_logs: 2, known_logs: 2, unknown_logs: 0, complete: true,
   }).state, 'known-zero');
   assert.equal(model({ Mint: 6, Zero: 0 }, {
-    total_pouches: 2, known_pouches: 2, unknown_pouches: 0, complete: true,
+    total_logs: 2, known_logs: 2, unknown_logs: 0, complete: true,
   }).state, 'single');
   assert.equal(model({ Mint: 6, Citrus: 3 }, {
-    total_pouches: 2, known_pouches: 2, unknown_pouches: 0, complete: true,
+    total_logs: 2, known_logs: 2, unknown_logs: 0, complete: true,
   }).state, 'ready');
+  const mixed = model({ Mint: 6 }, {
+    total_logs: 3, known_logs: 2, unknown_logs: 1, complete: false,
+  });
+  assert.equal(mixed.coverageCopy, '2 of 3 logs include nicotine strength. Nicotine totals are incomplete.');
+  assert.equal(
+    mixed.interpretation,
+    'Leading category Mint accounts for 6 mg (100% of known nicotine). 2 of 3 logs include nicotine strength. Nicotine totals are incomplete.',
+  );
 });
 
 test('weekly trend model is the single source for chart and alternative rows', async () => {
@@ -407,6 +444,28 @@ test('plan context gates plan language and gives neutral state-aware next steps'
   assert.match(aboveTarget.planContext.interpretation, /21 pouches against a target of 18/i);
   assert.match(aboveTarget.planContext.interpretation, /1 of 3 days/i);
   assert.doesNotMatch(JSON.stringify([onTarget, aboveTarget]), /success|failure/i);
+});
+
+test('nicotine-first plan context explains adherence in mg without pouch targets', async () => {
+  const { buildInsightsViewModel } = await importModule('static/js/insights/view_model.js');
+  const model = buildInsightsViewModel({
+    log_count: 3,
+    observed_days: 3,
+    comparison: { current_total: 13, available: false },
+    data_sufficiency: { trend: true },
+    plan_context: {
+      state: 'active_targeted', adherence_available: true,
+      target_basis: 'nicotine_mg', total_complete: true, compared_days: 3,
+      actual_mg: 52, target_mg: 60, difference_mg: -8,
+      days_on_or_below_target: 2, adherence_rate: 66.7,
+      actual_pouches: null, target_pouches: null,
+    },
+  }, 7);
+
+  assert.equal(model.planContext.targetBasis, 'nicotine_mg');
+  assert.match(model.planContext.interpretation, /52 mg against a nicotine ceiling total of 60 mg/i);
+  assert.match(model.planContext.interpretation, /2 of 3 days/i);
+  assert.doesNotMatch(model.planContext.interpretation, /pouch target|target of 0/i);
 });
 
 test('craving pattern model stays hidden until bounded evidence is available', async () => {

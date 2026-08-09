@@ -4,6 +4,26 @@ const runtimeRegistry = new WeakMap();
 const DATABASE_NAME = 'nicotine-tracker';
 const STORE_NAME = 'pending_events';
 
+export function retryNotBeforeFromResponse(response, body = {}, nowValue = Date.now()) {
+  if (response?.status !== 429) return null;
+  const currentTime = Number(nowValue);
+  if (!Number.isFinite(currentTime)) return null;
+  const rawHeader = response.headers?.get?.('Retry-After')?.trim();
+  if (/^\d+$/.test(rawHeader || '')) {
+    const seconds = Number(rawHeader);
+    if (Number.isSafeInteger(seconds)) return currentTime + (seconds * 1000);
+  }
+  if (rawHeader) {
+    const timestamp = Date.parse(rawHeader);
+    if (Number.isFinite(timestamp) && timestamp > currentTime) return timestamp;
+  }
+  const seconds = Number(body?.error?.retry_after_seconds);
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return currentTime + Math.ceil(seconds * 1000);
+  }
+  return null;
+}
+
 export function createIndexedDbStore(indexedDBImpl = globalThis.indexedDB) {
   let databasePromise = null;
 
@@ -223,6 +243,9 @@ export function createOfflineQueueRuntime({
   fetchImpl = (...args) => fetch(...args),
   csrfToken = '',
   defer = (callback) => setTimeout(callback, 0),
+  now = () => Date.now(),
+  setTimeoutImpl = (callback, delay) => setTimeout(callback, delay),
+  clearTimeoutImpl = (timer) => clearTimeout(timer),
   completionLimit = 12,
 } = {}) {
   const enabled = config.enabled === true;
@@ -233,6 +256,10 @@ export function createOfflineQueueRuntime({
   let replayPromise = null;
   let startupPromise = null;
   let startupAllowsReplay = false;
+  let replayTimer = null;
+  let replayDeadline = null;
+  let immediateReplayConsumed = false;
+  const maximumReplayTimerSlice = 60 * 60 * 1000;
   const subscribers = new Set();
   const attentionIds = new Set();
   const completionBuffer = [];
@@ -240,6 +267,59 @@ export function createOfflineQueueRuntime({
   const boundedCompletionLimit = Number.isInteger(completionLimit) && completionLimit > 0
     ? completionLimit
     : 12;
+
+  function cancelReplayTimer() {
+    if (replayTimer !== null) clearTimeoutImpl(replayTimer);
+    replayTimer = null;
+    replayDeadline = null;
+  }
+
+  function armReplayTimer() {
+    if (!Number.isSafeInteger(replayDeadline) || replayTimer !== null) return false;
+    const remaining = Math.max(0, replayDeadline - Number(now()));
+    replayTimer = setTimeoutImpl(() => {
+      replayTimer = null;
+      if (Number(now()) < replayDeadline) {
+        replayDeadline = null;
+        scheduleEarliestReplay();
+        return;
+      }
+      replayDeadline = null;
+      replayAfterStart();
+    }, Math.min(remaining, maximumReplayTimerSlice));
+    return true;
+  }
+
+  function scheduleReplayAt(deadline, { allowImmediate = false } = {}) {
+    const currentTime = Number(now());
+    if (
+      !startupAllowsReplay
+      || !Number.isSafeInteger(deadline)
+      || (deadline <= currentTime && (!allowImmediate || immediateReplayConsumed))
+      || (replayTimer !== null && replayDeadline <= deadline)
+    ) return false;
+    cancelReplayTimer();
+    replayDeadline = deadline;
+    if (deadline <= currentTime) immediateReplayConsumed = true;
+    return armReplayTimer();
+  }
+
+  async function scheduleEarliestReplay() {
+    if (!startupAllowsReplay) return false;
+    const currentTime = Number(now());
+    const deadline = (await list()).reduce((earliest, record) => (
+      Number.isSafeInteger(record.not_before)
+      && record.not_before > currentTime
+      && (earliest === null || record.not_before < earliest)
+        ? record.not_before
+        : earliest
+    ), null);
+    if (deadline === null) {
+      cancelReplayTimer();
+      return false;
+    }
+    return scheduleReplayAt(deadline);
+  }
 
   function publish(result, generation = resultGeneration) {
     if (generation !== resultGeneration) return;
@@ -269,7 +349,7 @@ export function createOfflineQueueRuntime({
     return lastOrder;
   }
 
-  async function enqueue(payload) {
+  async function enqueue(payload, { notBefore = null } = {}) {
     if (!store || typeof store.listAll !== 'function' || typeof store.put !== 'function') {
       return { queued: false, reason: 'storage_unavailable', notesOmitted: false };
     }
@@ -287,7 +367,14 @@ export function createOfflineQueueRuntime({
           notesOmitted: false,
         };
       }
+      if (Number.isSafeInteger(notBefore) && notBefore >= 0) {
+        sanitized.record.not_before = notBefore;
+      }
       await store.put(sanitized.record);
+      if (Number.isSafeInteger(sanitized.record.not_before)) {
+        immediateReplayConsumed = false;
+        scheduleReplayAt(sanitized.record.not_before, { allowImmediate: true });
+      }
       attentionIds.delete(sanitized.record.client_event_id);
       return {
         queued: true,
@@ -316,6 +403,8 @@ export function createOfflineQueueRuntime({
     }
     const removed = await store.remove(offlineQueueId, clientEventId);
     if (removed) attentionIds.delete(clientEventId);
+    if (removed) immediateReplayConsumed = false;
+    if (removed) await scheduleEarliestReplay();
     return removed;
   }
 
@@ -324,6 +413,8 @@ export function createOfflineQueueRuntime({
     try {
       await store.clearAll();
       attentionIds.clear();
+      immediateReplayConsumed = false;
+      cancelReplayTimer();
       return true;
     } catch (_) {
       return false;
@@ -342,6 +433,7 @@ export function createOfflineQueueRuntime({
         }
       }
       const remaining = await store.listAll();
+      await scheduleEarliestReplay();
       return remaining.every((record) => record.offline_queue_id === offlineQueueId);
     } catch (_) {
       return false;
@@ -360,6 +452,8 @@ export function createOfflineQueueRuntime({
           attentionIds.delete(record.client_event_id);
         }
       }
+      immediateReplayConsumed = false;
+      await scheduleEarliestReplay();
       return true;
     } catch (_) {
       return false;
@@ -376,8 +470,14 @@ export function createOfflineQueueRuntime({
 
   async function replayPass(replayGeneration) {
     if (!enabled || !offlineQueueId || !startupAllowsReplay) return false;
+    let deferredRecord = false;
     for (const record of await list()) {
       if (attentionIds.has(record.client_event_id)) return false;
+      if (Number.isSafeInteger(record.not_before) && record.not_before > Number(now())) {
+        deferredRecord = true;
+        scheduleReplayAt(record.not_before);
+        continue;
+      }
       let response;
       try {
         response = await fetchImpl('/api/logs', {
@@ -402,6 +502,7 @@ export function createOfflineQueueRuntime({
         publish({ type: 'retryable', record }, replayGeneration);
         return false;
       }
+      const headerNotBefore = retryNotBeforeFromResponse(response, {}, now());
       let body = {};
       try {
         body = await response.json();
@@ -413,6 +514,21 @@ export function createOfflineQueueRuntime({
         || response.status >= 500
         || body?.error?.retryable === true;
       if (retryable) {
+        if (response.status === 429) {
+          const notBefore = headerNotBefore
+            ?? retryNotBeforeFromResponse(response, body, now());
+          if (Number.isSafeInteger(notBefore)) {
+            try {
+              const deferred = { ...record, not_before: notBefore };
+              await store.put(deferred);
+              scheduleReplayAt(notBefore);
+              publish({ type: 'retryable', record: deferred }, replayGeneration);
+              return false;
+            } catch (_) {
+              // Retain the original record; a future replay can retry safely by event ID.
+            }
+          }
+        }
         publish({ type: 'retryable', record }, replayGeneration);
         return false;
       }
@@ -455,7 +571,7 @@ export function createOfflineQueueRuntime({
         warnings: Array.isArray(body.warnings) ? body.warnings : [],
       }, replayGeneration);
     }
-    return true;
+    return !deferredRecord;
   }
 
   function replayAfterStart() {
@@ -463,8 +579,9 @@ export function createOfflineQueueRuntime({
     const replayGeneration = resultGeneration;
     const trackedReplay = Promise.resolve(startupPromise).then(
       () => replayPass(replayGeneration),
-    ).finally(() => {
+    ).finally(async () => {
       if (replayPromise === trackedReplay) replayPromise = null;
+      await scheduleEarliestReplay();
     });
     replayPromise = trackedReplay;
     return replayPromise;
@@ -490,6 +607,7 @@ export function createOfflineQueueRuntime({
         for (const record of records) publish({ type: 'pending', record });
       }
       if (scheduleReplay) defer(() => replayAfterStart());
+      await scheduleEarliestReplay();
       return records;
     })();
     return startupPromise;
@@ -508,8 +626,10 @@ export function createOfflineQueueRuntime({
     invalidateBufferedResults();
     subscribers.clear();
     attentionIds.clear();
+    immediateReplayConsumed = false;
     startupPromise = null;
     startupAllowsReplay = false;
+    cancelReplayTimer();
   }
 
   return {

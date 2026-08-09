@@ -149,6 +149,7 @@ export function createLogbookQuickAddController({
   endpoint = '/log/api/quick_add',
 } = {}) {
   const active = new WeakMap();
+  let mutationTail = Promise.resolve();
 
   function activate(button) {
     const existing = active.get(button);
@@ -172,7 +173,7 @@ export function createLogbookQuickAddController({
     button.textContent = 'Adding…';
     button.disabled = true;
 
-    const mutation = (async () => {
+    const runMutation = async () => {
       let response;
       let body;
       try {
@@ -264,7 +265,9 @@ export function createLogbookQuickAddController({
         restoreScrollPosition(windowRef, completionScrollPosition);
         active.delete(button);
       }
-    })();
+    };
+    const mutation = mutationTail.then(runMutation, runMutation);
+    mutationTail = mutation.then(() => undefined, () => undefined);
     active.set(button, mutation);
     return mutation;
   }

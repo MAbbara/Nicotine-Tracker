@@ -230,6 +230,67 @@ test('pending live filter values, focus, selection, and user scroll survive repl
   assert.equal(state.scrollY, pendingScroll);
 });
 
+test('controller-wide quick adds serialize transport and commit cumulative authoritative history', async (t) => {
+  const page = await browser.newPage();
+  t.after(() => page.close());
+  await page.setContent(`
+    <meta name="csrf-token" content="csrf-token">
+    <main data-logbook-page>
+      <button id="first-add" data-quick-add data-pouch-id="12" data-quantity="1">First</button>
+      <button id="second-add" data-quick-add data-pouch-id="13" data-quantity="1">Second</button>
+      <section data-logbook-history data-fragment-version="logbook-history-v1">
+        <article data-log-id="7">Existing row</article>
+      </section>
+    </main>
+  `);
+  await page.evaluate(async (source) => {
+    const moduleUrl = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+    const quickAddModule = await import(moduleUrl);
+    URL.revokeObjectURL(moduleUrl);
+    const pending = [];
+    window.__pendingQuickAdds = pending;
+    window.__quickAddController = quickAddModule.createLogbookQuickAddController({
+      fetchImpl: () => new Promise((resolve) => pending.push(resolve)),
+      uuid: (() => {
+        let sequence = 0;
+        return () => `018f3f5c-68af-4e4d-8f5d-${String(++sequence).padStart(12, '0')}`;
+      })(),
+    });
+    window.__firstQuickAdd = window.__quickAddController.activate(
+      document.querySelector('#first-add'),
+    );
+    window.__secondQuickAdd = window.__quickAddController.activate(
+      document.querySelector('#second-add'),
+    );
+  }, quickAddSource);
+
+  await page.waitForFunction(() => window.__pendingQuickAdds.length === 1);
+  assert.equal(await page.evaluate(() => window.__pendingQuickAdds.length), 1);
+  await page.evaluate(() => window.__pendingQuickAdds[0](new Response(JSON.stringify({
+    success: true,
+    message: 'First log saved.',
+    new_log_id: 101,
+    history_html: '<section data-logbook-history data-fragment-version="logbook-history-v1"><p data-total="1">1 total</p><article data-log-id="101">First row</article></section>',
+    fragment_version: 'logbook-history-v1',
+    visible: true,
+  }), { status: 201, headers: { 'Content-Type': 'application/json' } })));
+  await page.evaluate(() => window.__firstQuickAdd);
+  await page.waitForFunction(() => window.__pendingQuickAdds.length === 2);
+  await page.evaluate(() => window.__pendingQuickAdds[1](new Response(JSON.stringify({
+    success: true,
+    message: 'Second log saved.',
+    new_log_id: 202,
+    history_html: '<section data-logbook-history data-fragment-version="logbook-history-v1"><p data-total="2">2 total</p><article data-log-id="202">Second row</article><article data-log-id="101">First row</article></section>',
+    fragment_version: 'logbook-history-v1',
+    visible: true,
+  }), { status: 201, headers: { 'Content-Type': 'application/json' } })));
+  await page.evaluate(() => window.__secondQuickAdd);
+
+  assert.equal(await page.locator('[data-log-id="202"]').count(), 1);
+  assert.equal(await page.locator('[data-log-id="101"]').count(), 1);
+  assert.equal(await page.locator('[data-total="2"]').textContent(), '2 total');
+});
+
 for (const [name, historyHtml] of [
   [
     'missing canonical history marker',

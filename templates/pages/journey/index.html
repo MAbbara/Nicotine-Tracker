@@ -29,9 +29,9 @@
             <p class="eyebrow">{{ today.strftime('%A, %B %-d') }}</p>
             <h2 id="journey-today-title">Today in this plan</h2>
           </div>
-          <p class="journey-progress-status journey-progress-status--{{ 'no_ceiling' if plan.row.status == 'paused' else progress.status }}">
+          <p class="journey-progress-status journey-progress-status--{{ progress.status }}">
             <span class="status-shape" aria-hidden="true">{% if progress.status == 'nicotine_total_incomplete' %}■{% else %}●{% endif %}</span>
-            {{ 'Plan paused' if plan.row.status == 'paused' else progress_status_label }}
+            {% if plan.row.status == 'paused' and not progress.total_complete %}Plan paused · Nicotine total incomplete{% elif plan.row.status == 'paused' %}Plan paused{% else %}{{ progress_status_label }}{% endif %}
           </p>
         </header>
 
@@ -182,15 +182,17 @@
             {% if editor.error_message %}<p role="alert">{{ editor.error_message }}</p>{% endif %}
             {% if editor.message %}<p role="status">{{ editor.message }}</p>{% endif %}
             {% if editor.preview %}
+              {% set preview_stages_with_pouches = editor.preview.stages|selectattr('target_pouches', 'ne', none)|list %}
+              {% set preview_days_with_pouches = editor.preview.days|selectattr('target_pouches', 'ne', none)|list %}
               <table data-{{ editor.kind }}-preview-stages>
                 <caption>Future ceiling stages in this preview</caption>
-                <thead><tr><th scope="col">Dates</th><th scope="col">Nicotine ceiling</th><th scope="col">Historical pouch guide</th></tr></thead>
-                <tbody>{% for stage in editor.preview.stages %}<tr><th scope="row">{{ stage.start_date }} to {{ stage.end_date }}</th><td>{{ stage.nicotine_ceiling_mg ~ ' mg' if stage.nicotine_ceiling_mg is not none else 'Not scheduled' }}</td><td>{{ stage.target_pouches if stage.target_pouches is not none else 'Not used' }}</td></tr>{% endfor %}</tbody>
+                <thead><tr><th scope="col">Dates</th><th scope="col">Nicotine ceiling</th>{% if preview_stages_with_pouches %}<th scope="col">Historical pouch guide</th>{% endif %}</tr></thead>
+                <tbody>{% for stage in editor.preview.stages %}<tr><th scope="row">{{ stage.start_date }} to {{ stage.end_date }}</th><td>{{ stage.nicotine_ceiling_mg ~ ' mg' if stage.nicotine_ceiling_mg is not none else 'Not scheduled' }}</td>{% if preview_stages_with_pouches %}<td>{{ stage.target_pouches if stage.target_pouches is not none else '—' }}</td>{% endif %}</tr>{% endfor %}</tbody>
               </table>
               <table data-{{ editor.kind }}-preview>
                 <caption>Every future day in this preview</caption>
-                <thead><tr><th scope="col">Date</th><th scope="col">Nicotine ceiling</th><th scope="col">Historical pouch guide</th></tr></thead>
-                <tbody>{% for day in editor.preview.days %}<tr><th scope="row">{{ day.local_date }}</th><td>{{ day.nicotine_ceiling_mg ~ ' mg' if day.nicotine_ceiling_mg is not none else 'Not scheduled' }}</td><td>{{ day.target_pouches if day.target_pouches is not none else 'Not used' }}</td></tr>{% endfor %}</tbody>
+                <thead><tr><th scope="col">Date</th><th scope="col">Nicotine ceiling</th>{% if preview_days_with_pouches %}<th scope="col">Historical pouch guide</th>{% endif %}</tr></thead>
+                <tbody>{% for day in editor.preview.days %}<tr><th scope="row">{{ day.local_date }}</th><td>{{ day.nicotine_ceiling_mg ~ ' mg' if day.nicotine_ceiling_mg is not none else 'Not scheduled' }}</td>{% if preview_days_with_pouches %}<td>{{ day.target_pouches if day.target_pouches is not none else '—' }}</td>{% endif %}</tr>{% endfor %}</tbody>
               </table>
               <form method="post" action="{{ url_for('journey.resume_plan' if editor.kind == 'resume' else 'journey.revise_plan', plan_id=plan.row.id) }}" data-{{ editor.kind }}-confirm>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -219,7 +221,7 @@
               <div><dt>Starting nicotine</dt><dd>{{ plan.baseline_mg ~ ' mg per day' if plan.baseline_mg is not none else 'Not known' }}</dd></div>
               <div><dt>End target nicotine</dt><dd>{{ '%.2f mg per day'|format(plan.row.end_target_mg) if plan.row.end_target_mg is not none else 'Not set' }}</dd></div>
               <div><dt>Usual pouch strength</dt><dd>{{ plan.baseline_mg_per_pouch ~ ' mg per pouch' if plan.baseline_mg_per_pouch is not none else 'Not provided' }}</dd></div>
-              <div><dt>Historical pouch baseline</dt><dd>{{ plan.baseline_pouches ~ ' pouches per day' if plan.baseline_pouches is not none else 'Not used' }}</dd></div>
+              {% if plan.baseline_pouches is not none %}<div><dt>Historical pouch guide</dt><dd>{{ plan.baseline_pouches }} pouches per day</dd></div>{% endif %}
             </dl>
           </section>
 
@@ -230,8 +232,9 @@
               <div class="journey-table-scroll horizontal-scroll-region" tabindex="0" role="region" aria-label="Complete schedule" aria-describedby="journey-complete-scroll-help">
                 <table data-complete-schedule>
                   <caption>Every confirmed daily ceiling in this plan</caption>
-                  <thead><tr><th scope="col">Date</th><th scope="col">Nicotine ceiling</th><th scope="col">Historical pouch guide</th></tr></thead>
-                  <tbody>{% for day in plan.days %}<tr{% if day.local_date == today %} aria-current="date"{% endif %}><th scope="row">{{ day.local_date.isoformat() }}</th><td>{% if day.nicotine_ceiling_mg is none %}Not scheduled{% else %}{{ '%.2f'|format(day.nicotine_ceiling_mg) }} mg{% endif %}</td><td>{{ day.target_pouches if day.target_pouches is not none else 'Not used' }}</td></tr>{% endfor %}</tbody>
+                  {% set historical_days = plan.days|selectattr('target_pouches', 'ne', none)|list %}
+                  <thead><tr><th scope="col">Date</th><th scope="col">Nicotine ceiling</th>{% if historical_days %}<th scope="col">Historical pouch guide</th>{% endif %}</tr></thead>
+                  <tbody>{% for day in plan.days %}<tr{% if day.local_date == today %} aria-current="date"{% endif %}><th scope="row">{{ day.local_date.isoformat() }}</th><td>{% if day.nicotine_ceiling_mg is none %}{{ 'Observation — no ceiling' if plan.row.mode == 'observe' else 'Not scheduled' }}{% else %}{{ '%.2f'|format(day.nicotine_ceiling_mg) }} mg{% endif %}</td>{% if historical_days %}<td>{{ day.target_pouches if day.target_pouches is not none else '—' }}</td>{% endif %}</tr>{% endfor %}</tbody>
                 </table>
               </div>
             </section>
