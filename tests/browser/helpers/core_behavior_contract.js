@@ -269,8 +269,15 @@ group(OWNER_TITLES.journeyLifecycle, [
   ['journey', 'Preview revision', 'journeyMutation'],
 ]);
 group(OWNER_TITLES.journeyChoices, [
+  ['journey', 'Fri 46.00 mg Aug 7', 'localFocus'],
   ['journey', 'Log nicotine or respond to a craving', 'navigation'],
+  ['journey', 'Mon 48.00 mg Current', 'localFocus'],
   ['journey', 'Review this draft', 'navigation'],
+  ['journey', 'Sat 45.50 mg Aug 8', 'localFocus'],
+  ['journey', 'Sun 45.00 mg Aug 9', 'localFocus'],
+  ['journey', 'Thu 46.50 mg Aug 6', 'localFocus'],
+  ['journey', 'Tue 47.50 mg Aug 4', 'localFocus'],
+  ['journey', 'Wed 47.00 mg Aug 5', 'localFocus'],
   ['journey-onboarding', 'Quit by a date Build a schedule that ends at zero.', 'onboardingChoice'],
   ['journey-onboarding', 'Understand my baseline first Track for seven days without a reduction target.', 'onboardingChoice'],
 ]);

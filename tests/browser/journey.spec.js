@@ -305,6 +305,16 @@ test('compact Journey hierarchy remains responsive, distinguishable, and motion-
 
     const current = days.filter({ hasText: /Current/ });
     await expect(current).toHaveCount(1);
+    await expect.poll(async () => {
+      const currentContrast = await current.evaluate((element) => {
+        const label = element.querySelector('small');
+        return {
+          foreground: getComputedStyle(label).color,
+          background: getComputedStyle(element).backgroundColor,
+        };
+      });
+      return contrastRatio(currentContrast.foreground, currentContrast.background);
+    }, { message: `${theme} current-day label contrast` }).toBeGreaterThanOrEqual(4.5);
     const currentLabel = await current.getAttribute('data-date-label');
     await days.last().click();
     const selected = trajectory.locator('[data-journey-day][aria-pressed="true"]');

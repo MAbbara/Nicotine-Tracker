@@ -94,9 +94,9 @@ test('functional ownership reconciles the exact post-Task-4 release inventory', 
   const occurrences = Object.values(EXPECTED_ACTIONS).flat();
   expect(RELEASE_PAGES).toHaveLength(21);
   expect(RELEASE_STATES).toHaveLength(45);
-  expect(occurrences).toHaveLength(595);
-  expect(new Set(occurrences).size).toBe(142);
-  expect(CORE_BEHAVIOR_OBLIGATIONS).toHaveLength(183);
+  expect(occurrences).toHaveLength(602);
+  expect(new Set(occurrences).size).toBe(149);
+  expect(CORE_BEHAVIOR_OBLIGATIONS).toHaveLength(190);
   expect(SUPPORTING_ACTION_RECEIPTS).toHaveLength(415);
   expect(TRANSITION_ONLY_BEHAVIOR_ACTIONS).toEqual([
     { state: 'journey', action: 'Archive plan' },
@@ -192,12 +192,17 @@ test('product guard records every release-blocking browser signal', async ({ pag
   await page.route('**/__test__/release/failed-request', (route) => route.abort('failed'));
   const guard = watchForProductProblems(page);
   await page.goto('/');
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     console.error('release guard console fixture');
     setTimeout(() => { throw new Error('release guard page fixture'); }, 0);
-    fetch('/__test__/release/failed-request').catch(() => {});
-    fetch('/static/js/analytics/runtime.js').catch(() => {});
+    await Promise.allSettled([
+      fetch('/__test__/release/failed-request'),
+      fetch('/static/js/analytics/runtime.js'),
+    ]);
   });
+  await expect.poll(() => guard.problems().map((problem) => problem.kind)).toEqual(
+    expect.arrayContaining(['console-error', 'page-error', 'request-failed', 'analytics-bundle']),
+  );
   await page.goto('/__test__/error/500');
   await expect.poll(() => guard.problems().map((problem) => problem.kind)).toEqual(
     expect.arrayContaining([

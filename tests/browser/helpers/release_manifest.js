@@ -266,8 +266,11 @@ const EXPECTED_ACTIONS = {
     'Log nicotine use', 'Log nicotine use Steady Mint · 6.00 mg is ready',
   ]),
   journey: reviewActions([
+    'Fri 46.00 mg Aug 7',
     'Log nicotine or respond to a craving', 'Plan details and history',
-    'Preview revision', 'Review this draft',
+    'Mon 48.00 mg Current', 'Preview revision', 'Review this draft',
+    'Sat 45.50 mg Aug 8', 'Sun 45.00 mg Aug 9', 'Thu 46.50 mg Aug 6',
+    'Tue 47.50 mg Aug 4', 'Wed 47.00 mg Aug 5',
   ]),
   'journey-onboarding': appActions('browser@example.com', [
     'Continue', 'Quit by a date Build a schedule that ends at zero.',
@@ -566,7 +569,10 @@ attachActionCoverage(
     'Plan details and history', 'Preview revision',
   ]),
   ownedBy(ACTION_OWNERS.journeyChoices, [
-    'Log nicotine or respond to a craving', 'Review this draft',
+    'Fri 46.00 mg Aug 7', 'Log nicotine or respond to a craving',
+    'Mon 48.00 mg Current', 'Review this draft', 'Sat 45.50 mg Aug 8',
+    'Sun 45.00 mg Aug 9', 'Thu 46.50 mg Aug 6', 'Tue 47.50 mg Aug 4',
+    'Wed 47.00 mg Aug 5',
   ]),
 );
 

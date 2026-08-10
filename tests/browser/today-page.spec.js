@@ -241,8 +241,11 @@ test('Today supports dark theme, visible focus, 200% text, and reduced motion', 
   await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
 
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(page.locator('[data-log-action-slot]')).toHaveAttribute('data-controller-ready', 'true');
   const primary = page.locator('#today-log-action');
+  await expect(primary).toBeVisible();
   await primary.focus();
+  await expect(primary).toBeFocused();
   const focus = await primary.evaluate((element) => {
     const style = getComputedStyle(element);
     const durations = style.transitionDuration.split(',').map((value) => (

@@ -515,8 +515,9 @@ test('narrow themes support 200% text, touch targets, and reduced motion without
     dialog.getByText('Change details', { exact: true }),
   ]) {
     const box = await control.boundingBox();
-    expect(box.width).toBeGreaterThanOrEqual(44);
-    expect(box.height).toBeGreaterThanOrEqual(44);
+    const name = await control.getAttribute('aria-label') || await control.textContent();
+    expect(box.width, `${name.trim()} width`).toBeGreaterThanOrEqual(44);
+    expect(box.height, `${name.trim()} height`).toBeGreaterThanOrEqual(44);
   }
   expect(problems.errors).toEqual([]);
   expect(problems.forbiddenRequests).toEqual([]);

@@ -858,6 +858,19 @@ test('uncovered onboarding choices and Journey handoffs preserve user control', 
   await signOut(page);
   await loginAs(page, 'journey-review-desktop@example.com');
   await page.goto('/journey/');
+  for (const action of [
+    'Mon 48.00 mg Current', 'Tue 47.50 mg Aug 4', 'Wed 47.00 mg Aug 5',
+    'Thu 46.50 mg Aug 6', 'Fri 46.00 mg Aug 7', 'Sat 45.50 mg Aug 8',
+    'Sun 45.00 mg Aug 9',
+  ]) {
+    const day = page.getByRole('button', { name: action, exact: true });
+    await day.focus();
+    await page.keyboard.press('Enter');
+    await expect(day).toBeFocused();
+    await expect(day).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('[data-journey-day][aria-pressed="true"]')).toHaveCount(1);
+    recorder.record('journey', action, ['focus', 'keyboard']);
+  }
   await expectKeyboardNavigation(
     page, page.getByRole('link', { name: 'Review this draft' }), '/journey/onboarding',
   );
