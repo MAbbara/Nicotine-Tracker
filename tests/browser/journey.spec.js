@@ -75,6 +75,40 @@ async function previewRevision(page, duration = '35') {
   await expect(editor.getByRole('status')).toContainText(/persisted plan is unchanged/i);
 }
 
+test('active overview renders the path chart, tooltip, and animated disclosures', async ({ page }, testInfo) => {
+  await register(page, testInfo, 'overview');
+  await createPlan(page);
+  const errors = watchForErrors(page);
+
+  const steps = page.locator('[data-chart-step]');
+  await expect(steps.first()).toBeAttached();
+  expect(await steps.count()).toBeGreaterThan(2);
+  await expect(page.locator('.chart-today-rule')).toBeAttached();
+
+  const milestone = page.locator('.path-hotspot').first();
+  await milestone.focus();
+  await expect(page.locator('[data-chart-tooltip]')).toBeVisible();
+  await expect(page.locator('[data-chart-tooltip]')).toContainText(/steps down to \d+ pouches/);
+
+  const toggle = page.locator('[data-adjust-toggle]');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await page.waitForTimeout(50);
+  const early = await page.locator('#adjust-body').evaluate((el) => el.offsetHeight);
+  await page.waitForTimeout(500);
+  const open = await page.locator('#adjust-body').evaluate((el) => el.offsetHeight);
+  expect(open).toBeGreaterThan(early);
+
+  await page.locator('.facts summary').click();
+  await page.waitForTimeout(400);
+  expect(await page.locator('[data-accordion-collapse]').evaluate((el) => el.offsetHeight)).toBeGreaterThan(0);
+  await page.locator('.facts summary').click();
+  await page.waitForTimeout(500);
+  expect(await page.locator('details.facts').evaluate((el) => el.open)).toBe(false);
+
+  expect(errors).toEqual([]);
+});
+
 test('no-plan Journey prioritizes creation while neutral tracking remains available', async ({ page }, testInfo) => {
   await register(page, testInfo, 'empty');
   const errors = watchForErrors(page);
