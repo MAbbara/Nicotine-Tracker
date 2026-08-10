@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Design prototype — a new Journey page (active-plan overview) for Nicotine Tracker, in the product's own design language.">
+<meta name="theme-color" content="#f5f1e7">
+<title>Nicotine Tracker — Journey concept v1</title>
+<style>
+/* ============================================================
+   Nicotine Tracker — Journey page prototype (concept v1)
+   Active-plan overview, "the path" direction.
+   Tokens, shell, and component conventions mirror
+   static/css/style.css and the prototypes/home precedent.
+   ============================================================ */
+
+@font-face {
+  font-family: "Newsreader";
+  src: url("fonts/newsreader-opsz-normal.woff2") format("woff2-variations");
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Newsreader";
+  src: url("fonts/newsreader-opsz-italic.woff2") format("woff2-variations");
+  font-style: italic;
+  font-weight: 200 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "DM Sans";
+  src: url("fonts/dm-sans-variable.woff2") format("woff2-variations");
+  font-style: normal;
+  font-weight: 100 1000;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: light;
+  /* Tokens — production values */
+  --color-canvas: #f5f1e7;
+  --color-surface: #fcf9f1;
+  --color-surface-raised: #fffcf4;
+  --color-ink: #1e2a24;
+  --color-text-muted: #5f6962;
+  --color-border: #d7d1c3;
+  --color-border-strong: #afa99b;
+  --color-constructive: #4b6b55;
+  --color-constructive-deep: #3d5847;
+  --color-constructive-soft: #dce7dc;
+  --color-attention: #b76343;
+  --color-attention-deep: #944733;
+  --color-attention-soft: #f1ddd3;
+  --color-milestone: #c5a05a;
+  --color-milestone-soft: #eee2c6;
+  --color-focus: #2f6b4a;
+  --color-danger: #944733;
+  --font-display: "Newsreader", Georgia, serif;
+  --font-interface: "DM Sans", "Trebuchet MS", sans-serif;
+  --text-caption: .75rem;
+  --text-small: .875rem;
+  --text-body: 1rem;
+  --text-lead: clamp(1.125rem, 1.05rem + .35vw, 1.375rem);
+  --text-title: clamp(2rem, 1.45rem + 2.4vw, 3.75rem);
+  --leading-body: 1.55;
+  --leading-display: 1.02;
+  --radius-control: .75rem;
+  --radius-surface: 1.125rem;
+  --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem;
+  --space-6: 1.5rem; --space-8: 2rem; --space-12: 3rem; --space-16: 4rem;
+  --duration-feedback: .18s;
+  --duration-panel: .24s;
+  --duration-enter: .7s;
+  --ease-out-expo: cubic-bezier(.16, 1, .3, 1);
+  --shadow-overlay: 0 1.5rem 4rem #1e2a2429;
+  --gutter: clamp(1rem, 4vw, 4rem);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --color-canvas: #111915;
+  --color-surface: #1b2721;
+  --color-surface-raised: #243129;
+  --color-ink: #eee8d8;
+  --color-text-muted: #a7aea7;
+  --color-border: #344139;
+  --color-border-strong: #59665e;
+  --color-constructive: #94b29a;
+  --color-constructive-deep: #a9c7b1;
+  --color-constructive-soft: #293a30;
+  --color-attention: #d38466;
+  --color-attention-deep: #eda88b;
+  --color-attention-soft: #422d25;
+  --color-milestone: #d4b474;
+  --color-milestone-soft: #3e3525;
+  --color-focus: #b8d2bc;
+  --color-danger: #e09477;
+  --shadow-overlay: none;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-interface);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  font-kerning: normal;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color var(--duration-panel) var(--ease-out-expo),
+              color var(--duration-feedback) var(--ease-out-expo);
+}
+img, svg { display: block; max-width: 100%; }
+p { margin: 0; max-width: 68ch; text-wrap: pretty; }
+h1, h2, h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 520;
+  letter-spacing: -.025em;
+  line-height: var(--leading-display);
+  text-wrap: balance;
+  font-optical-sizing: auto;
+}
+a { color: inherit; text-underline-offset: .18em; }
+button { font: inherit; }
+::selection { background: var(--color-milestone-soft); }
+:focus-visible { outline: .1875rem solid var(--color-focus); outline-offset: .1875rem; border-radius: 2px; }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: fixed;
+  inset-block-start: var(--space-3);
+  inset-inline-start: var(--space-3);
+  z-index: 70;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--color-ink);
+  color: var(--color-canvas);
+  font-weight: 700;
+  text-decoration: none;
+  transform: translateY(-160%);
+  transition: transform var(--duration-panel) var(--ease-out-expo);
+}
+.skip-link:focus-visible { transform: translateY(0); }
+
+.c-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: none;
+  display: inline-block;
+  vertical-align: -.2em;
+}
+
+/* ---------- Eyebrow (production convention) ---------- */
+.eyebrow {
+  margin: 0 0 var(--space-3);
+  color: var(--color-constructive);
+  font-size: var(--text-caption);
+  font-weight: 760;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+}
+
+/* ---------- Buttons ---------- */
+.c-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 2.75rem;
+  padding: var(--space-3) var(--space-6);
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
+  font-weight: 720;
+  font-size: var(--text-small);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color var(--duration-feedback) var(--ease-out-expo),
+              border-color var(--duration-feedback) var(--ease-out-expo),
+              color var(--duration-feedback) var(--ease-out-expo);
+}
+.c-button--primary {
+  background: var(--color-constructive);
+  color: var(--color-canvas);
+}
+.c-button--primary:hover { background: var(--color-constructive-deep); }
+.c-button--secondary {
+  background: var(--color-surface-raised);
+  border-color: var(--color-border-strong);
+  color: var(--color-ink);
+}
+.c-button--secondary:hover { border-color: var(--color-ink); }
+.c-button--ghost {
+  background: transparent;
+  border-color: var(--color-border-strong);
+  color: var(--color-ink);
+}
+.c-button--ghost:hover { border-color: var(--color-ink); }
+
+/* ---------- App shell: topbar ---------- */
+.app-topbar {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 4.5rem;
+  padding-inline: var(--gutter);
+  background: var(--color-canvas);
+  border-block-end: 1px solid var(--color-border);
+}
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 2.75rem;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  text-decoration: none;
+}
+.wordmark img {
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 50%;
+}
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.theme-toggle {
+  min-height: 2.75rem;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-caption);
+  font-weight: 720;
+  cursor: pointer;
+  transition: border-color var(--duration-feedback) var(--ease-out-expo),
+              color var(--duration-feedback) var(--ease-out-expo);
+}
+.theme-toggle:hover { border-color: var(--color-ink); color: var(--color-ink); }
+.app-account-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  color: var(--color-text-muted);
+  font-size: var(--text-small);
+  font-weight: 650;
+  text-decoration: none;
+}
+.app-account-link:hover { color: var(--color-ink); text-decoration: underline; }
+
+/* ---------- App shell: primary nav ---------- */
+.primary-nav {
+  position: sticky;
+  inset-block-start: 4.5rem;
+  z-index: 19;
+  display: flex;
+  gap: var(--space-2);
+  padding-inline: var(--gutter);
+  background: var(--color-canvas);
+  border-block-end: 1px solid var(--color-border);
+}
+.primary-nav__link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 3.25rem;
+  padding-inline: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--text-small);
+  font-weight: 650;
+  text-decoration: none;
+  border-block-end: 2px solid transparent;
+}
+.primary-nav__link:hover { color: var(--color-ink); }
+.primary-nav__link[aria-current="page"] {
+  color: var(--color-ink);
+  font-weight: 760;
+  border-block-end-color: var(--color-constructive);
+}
+.primary-nav__link[aria-current="page"] .c-icon { color: var(--color-constructive); }
+
+/* ---------- App content frame ---------- */
+.app-content {
+  width: min(100%, 68rem);
+  margin-inline: auto;
+  padding: clamp(2rem, 4vw, 3.5rem) var(--gutter) clamp(6rem, 10vw, 8rem);
+}
+
+@media (max-width: 48rem) {
+  .primary-nav {
+    inset-block-start: auto;
+    inset-block-end: 0;
+    position: fixed;
+    inset-inline: 0;
+    border-block-end: 0;
+    border-block-start: 1px solid var(--color-border);
+    padding: 0 var(--space-2) env(safe-area-inset-bottom);
+    justify-content: space-between;
+  }
+  .primary-nav__link {
+    flex: 1;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-height: 3.5rem;
+    padding: var(--space-2) var(--space-1);
+    font-size: var(--text-caption);
+    border-block-end: 0;
+    border-block-start: 2px solid transparent;
+    justify-content: center;
+    align-items: center;
+  }
+  .primary-nav__link[aria-current="page"] { border-block-start-color: var(--color-constructive); }
+  .app-content { padding-block-end: 7rem; }
+}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main-content">Skip to main content</a>
+
+<header class="app-topbar">
+  <a class="wordmark" href="#" aria-label="Nicotine Tracker home">
+    <img src="brand-symbol.png" alt="" aria-hidden="true">
+    <span>Nicotine Tracker</span>
+  </a>
+  <div class="topbar-actions">
+    <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark theme</button>
+    <a class="app-account-link" href="#">you@example.com</a>
+  </div>
+</header>
+
+<nav class="primary-nav" aria-label="Primary">
+  <a class="primary-nav__link" href="#">
+    <svg class="c-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-15.07 1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+    <span>Today</span>
+  </a>
+  <a class="primary-nav__link" href="#" aria-current="page">
+    <svg class="c-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></svg>
+    <span>Journey</span>
+  </a>
+  <a class="primary-nav__link" href="#">
+    <svg class="c-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21v-6M12 21V9M19 21V3"/></svg>
+    <span>Insights</span>
+  </a>
+  <a class="primary-nav__link" href="#">
+    <svg class="c-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
+    <span>You</span>
+  </a>
+</nav>
+
+<main id="main-content" class="app-content" tabindex="-1">
+</main>
+
+<script>
+(() => {
+  const root = document.documentElement;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  const toggle = document.querySelector("[data-theme-toggle]");
+  const apply = (theme) => {
+    root.dataset.theme = theme;
+    toggle.setAttribute("aria-pressed", String(theme === "dark"));
+    toggle.textContent = theme === "dark" ? "Light theme" : "Dark theme";
+    meta?.setAttribute("content", theme === "dark" ? "#111915" : "#f5f1e7");
+  };
+  toggle.addEventListener("click", () => {
+    apply(root.dataset.theme === "dark" ? "light" : "dark");
+  });
+})();
+</script>
+</body>
+</html>
