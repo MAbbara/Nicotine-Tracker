@@ -719,7 +719,7 @@ for (const theme of ['light', 'dark']) {
 
     await expectExplicitTheme(page, theme);
     const schedule = page.getByRole('region', {
-      name: 'Seven-day plan',
+      name: '7-day plan',
       exact: true,
     });
     await expect(schedule).toHaveCount(1);
@@ -810,7 +810,7 @@ test('populated Journey mobile overflow is keyboard accessible', async ({ page }
   await page.goto('/journey/');
 
   const schedule = page.getByRole('region', {
-    name: 'Seven-day plan',
+    name: '7-day plan',
     exact: true,
   });
   await expect(schedule).toHaveCount(1);
