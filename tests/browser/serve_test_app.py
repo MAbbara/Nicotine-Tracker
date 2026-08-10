@@ -409,7 +409,10 @@ with app.app_context():
             legacy_goal_ids=[pouch_goal.id, matching_mg.id],
         ))
 
-        observe_start = date.today() - timedelta(days=7)
+        # Boundary-safe: the app resolves the user day in UTC while this seed
+        # uses the server-local date; starting 8 days back keeps the observe
+        # period strictly complete in both zones around local midnight.
+        observe_start = date.today() - timedelta(days=8)
         observe_plan = ReductionPlan(
             user_id=review_user.id,
             mode='observe',

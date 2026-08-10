@@ -1,5 +1,7 @@
 """Integration contracts for the server-rendered Journey destination."""
 
+import json
+
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
@@ -16,6 +18,7 @@ from models import (
     User,
 )
 from services import log_service
+from services.timezone_service import get_current_user_day, resolve_timezone
 
 
 def _revision(session, plan, effective_date, *, pace='steady', target_date=None,
@@ -145,7 +148,16 @@ class TestJourneyComposition:
 
     def test_active_plan_renders_truthful_baseline_schedule_history_and_milestones(
             self, logged_in_client, db_session, test_user):
-        today = date.today()
+        # Align the fixture with the app's user-day resolution (UTC here) so
+        # date-relative assertions hold around the local/UTC boundary too.
+        reset_time = (
+            test_user.preferences.daily_reset_time
+            if test_user.preferences and test_user.preferences.daily_reset_time
+            else time.min
+        )
+        today = get_current_user_day(
+            resolve_timezone(test_user.timezone).zone, reset_time
+        )
         plan = _plan(db_session, test_user, start=today - timedelta(days=1))
         original = PlanDay.query.filter_by(plan_id=plan.id).order_by(
             PlanDay.local_date
@@ -185,27 +197,43 @@ class TestJourneyComposition:
         response = logged_in_client.get('/journey/')
         soup = BeautifulSoup(response.data, 'html.parser')
         text = soup.get_text(' ', strip=True)
-        assert soup.select_one('.journey-plan') is not None
-        assert soup.select_one('.journey-current') is not None
-        assert soup.select_one('.journey-schedule') is not None
-        assert soup.select_one('.journey-history') is not None
-        assert 'Manual baseline' in text
-        assert '8.00 pouches per day' in text
-        assert '48.00 mg per day' in text
-        assert '6.00 mg per pouch' in text
-        assert 'Current stage' in text
-        assert 'Next seven scheduled days' in text
-        assert len(soup.select('[data-mobile-schedule] tbody tr')) == 7
-        assert len(soup.select('[data-complete-schedule] tbody tr')) == 10
-        assert len(soup.select('.journey-stage-list > li')) == 3
-        assert f'Revision {second.id}' in text
-        assert 'Target changes to 6 pouches' in text
-        assert text.count('Target changes to 6 pouches') == 1
-        assert f'Revision {third.id} stage continues at 6 pouches' in text
-        assert 'paused' in text.lower()
-        assert '2026-01-03 10:00' in text
-        assert '2026-01-05 11:00' in text
-        assert 'ongoing' in text.lower()
+        overview = soup.select_one('.journey-overview')
+        assert overview is not None
+        assert overview['data-plan-id'] == str(plan.id)
+        # hero + status line
+        assert 'Active' in text
+        assert 'Focused pace' in text
+        assert 'Day 2 of 10' in text
+        # today panel (current stage: days 1-4 at 8 pouches / 48.00 mg)
+        assert '8 pouches · 48.00 mg ceiling' in text
+        assert 'day 2 of 4' in text
+        # screen-reader stage table + JSON island (3 stages: 8, 6, 6)
+        assert len(soup.select('[data-stage-table] tbody tr')) == 3
+        payload = json.loads(soup.select_one('[data-path-data]').string)
+        assert [s['pouches'] for s in payload['stages']] == [8, 6, 6]
+        assert payload['stages'][1]['revision'] == second.id
+        # next change (stage 2 starts today+3)
+        assert 'steps down to 6 pouches' in text
+        # facts grid (production phrasing preserved)
+        facts = soup.select_one('.facts__grid').get_text(' ', strip=True)
+        assert 'Manual baseline' in facts
+        assert '8.00 pouches per day' in facts
+        assert '48.00 mg per day' in facts
+        assert '6.00 mg per pouch' in facts
+        # merged history
+        history = soup.select_one('.history__list').get_text(' ', strip=True)
+        assert f'Revision {second.id}' in history
+        assert f'Revision {third.id}' in history
+        assert 'Paused' in history
+        assert 'break' in history
+        assert 'Resumed' in history
+        assert 'resumed' in history
+        # lifecycle forms
+        assert soup.select_one('form[action$="/pause"]') is not None
+        assert soup.select_one('form[action$="/complete"]') is not None
+        assert soup.select_one('form[action$="/archive"]') is not None
+        # old editor internals still live inside the adjust shell
+        assert soup.select_one('[data-plan-editor="revision"]') is not None
         assert 'preview_digest' not in text
 
     def test_null_observe_values_are_unknown_and_proposal_needs_review(
