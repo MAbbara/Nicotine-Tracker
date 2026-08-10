@@ -327,6 +327,10 @@ test('non-nicotine outcomes support both detail skip and normalized detail save'
 
 test('optional details send only touched fields and preserve explicit clears', async ({ page }) => {
   const patches = [];
+  const waitForDetailsPatch = () => page.waitForResponse((response) => (
+    response.request().method() === 'PATCH'
+    && /\/api\/cravings\/\d+$/.test(new URL(response.url()).pathname)
+  ));
   await page.route('**/api/cravings/*', async (route) => {
     if (route.request().method() === 'PATCH') patches.push(route.request().postDataJSON());
     await route.continue();
@@ -338,8 +342,12 @@ test('optional details send only touched fields and preserve explicit clears', a
   await dialog.getByRole('button', { name: 'Save outcome' }).click();
   await dialog.getByText('Add details', { exact: true }).click();
   await dialog.getByLabel('Duration in minutes').fill('3');
+  const firstDetailsResponse = waitForDetailsPatch();
   await dialog.getByRole('button', { name: 'Save details' }).click();
 
+  expect((await firstDetailsResponse).status()).toBe(200);
+  await expect(dialog.getByRole('heading', { name: 'Your craving is saved' })).toBeVisible();
+  expect(patches).toHaveLength(2);
   expect(patches[1]).toEqual({ duration_minutes: 3 });
   await dialog.getByRole('button', { name: 'Done' }).click();
 
@@ -352,8 +360,12 @@ test('optional details send only touched fields and preserve explicit clears', a
   await dialog.getByLabel('Notes').fill('');
   await dialog.getByText('Restless', { exact: true }).click();
   await dialog.getByText('Restless', { exact: true }).click();
+  const clearedDetailsResponse = waitForDetailsPatch();
   await dialog.getByRole('button', { name: 'Save details' }).click();
 
+  expect((await clearedDetailsResponse).status()).toBe(200);
+  await expect(dialog.getByRole('heading', { name: 'Your craving is saved' })).toBeVisible();
+  expect(patches).toHaveLength(4);
   expect(patches[3]).toEqual({ notes: null, physical_symptoms: [] });
 });
 
