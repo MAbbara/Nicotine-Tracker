@@ -27,6 +27,29 @@ const { chromium } = require("playwright");
   }
   await desktop.waitForTimeout(1400); // let entrance motion finish
   await desktop.screenshot({ path: "shot-desktop-full.png", fullPage: true });
+
+  // Adjust flow: preview -> confirm redraws the chart's future
+  const lastStep = () => desktop.locator("[data-chart-step]").last().getAttribute("d");
+  const pathBefore = await lastStep();
+  await desktop.click("[data-adjust-toggle]");
+  await desktop.fill("[data-adjust-date]", "2026-08-12");
+  await desktop.selectOption("[data-adjust-pace]", "focused");
+  await desktop.click("[data-adjust-preview]");
+  await desktop.waitForSelector("[data-preview-summary]:not([hidden])", { timeout: 5000 });
+  const summary = await desktop.textContent("[data-preview-summary]");
+  if (!/stages? change/.test(summary)) {
+    console.error("preview summary wrong:", summary);
+    process.exit(1);
+  }
+  await desktop.click("[data-adjust-confirm]");
+  await desktop.waitForSelector("[data-adjust-status]:not([hidden])", { timeout: 5000 });
+  const pathAfter = await lastStep();
+  if (pathBefore === pathAfter) {
+    console.error("chart path did not change after confirm");
+    process.exit(1);
+  }
+  await desktop.screenshot({ path: "shot-desktop-adjusted.png", fullPage: true });
+
   if (errors.length) {
     console.error("console errors:", errors);
     process.exit(1);

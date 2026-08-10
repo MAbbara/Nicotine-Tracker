@@ -480,7 +480,118 @@ button { font: inherit; }
   transform: translateY(-.3rem);
 }
 
+/* ---------- What changes next ---------- */
+.next-change {
+  padding: var(--space-4) 0;
+  border-block: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 1.02rem;
+  max-width: none;
+}
+.next-change strong, .next-change time { color: var(--color-ink); font-weight: 700; }
+
+/* ---------- Adjust future days ---------- */
+.adjust {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-surface);
+  background: var(--color-surface);
+}
+.adjust__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  width: 100%;
+  min-height: 4.5rem;
+  padding: var(--space-4) clamp(1.25rem, 3vw, 2rem);
+  border: 0;
+  background: transparent;
+  color: var(--color-ink);
+  text-align: start;
+  cursor: pointer;
+  border-radius: var(--radius-surface);
+}
+.adjust__toggle-text { display: grid; gap: var(--space-1); }
+.adjust__title { font-family: var(--font-display); font-size: 1.35rem; font-weight: 520; letter-spacing: -.01em; }
+.adjust__promise { color: var(--color-text-muted); font-size: var(--text-small); }
+.adjust__chev { color: var(--color-constructive); transition: transform var(--duration-panel) var(--ease-out-expo); }
+.adjust__toggle[aria-expanded="true"] .adjust__chev { transform: rotate(180deg); }
+.adjust__body {
+  padding: 0 clamp(1.25rem, 3vw, 2rem) clamp(1.25rem, 3vw, 2rem);
+  border-block-start: 1px solid var(--color-border);
+}
+.adjust__fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+  padding-block-start: var(--space-6);
+}
+.field { display: grid; gap: var(--space-2); align-content: start; }
+.field label {
+  color: var(--color-text-muted);
+  font-size: var(--text-caption);
+  font-weight: 720;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.field input, .field select {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-raised);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: var(--text-small);
+}
+.field input:focus, .field select:focus { border-color: var(--color-focus); }
+.adjust__hint {
+  margin-block-start: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--text-caption);
+}
+.adjust__hint[role="alert"] { color: var(--color-attention-deep); font-weight: 650; }
+.adjust__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-block-start: var(--space-4);
+}
+.adjust__preview {
+  margin-block-start: var(--space-6);
+  padding: var(--space-4);
+  border: 1px dashed var(--color-attention);
+  border-radius: var(--radius-control);
+  background: var(--color-attention-soft);
+}
+.adjust__summary { font-weight: 720; }
+.adjust__diff {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-small);
+}
+.adjust__diff li { display: flex; gap: var(--space-3); align-items: baseline; }
+.adjust__diff li::before {
+  content: "";
+  flex: none;
+  width: .5rem;
+  height: .5rem;
+  background: var(--color-attention);
+  transform: rotate(45deg) translateY(-.05rem);
+}
+.adjust__status {
+  margin-block-start: var(--space-4);
+  color: var(--color-constructive-deep);
+  font-size: var(--text-small);
+  font-weight: 650;
+}
+
 @media (max-width: 48rem) {
+  .adjust__fields { grid-template-columns: 1fr; }
   .today-panel { flex-direction: column; align-items: stretch; }
   .primary-nav {
     inset-block-start: auto;
@@ -545,12 +656,12 @@ button { font: inherit; }
 <main id="main-content" class="app-content" tabindex="-1">
   <header class="journey-hero rise" style="--i:0">
     <p class="eyebrow">Current plan</p>
-    <h1>Down to 2 pouches a day by 5&nbsp;September.</h1>
+    <h1>Down to <span data-hero-target>2</span> pouches a day by <span data-hero-date>5&nbsp;September</span>.</h1>
     <p class="journey-hero__status">
       <span class="status-pill status-pill--active">
         <span class="status-dot" aria-hidden="true"></span> Active
       </span>
-      <span>Day 23 of 49 · Steady pace</span>
+      <span data-hero-status>Day 23 of 49 · Steady pace</span>
     </p>
     <p class="journey-hero__coach">You’re past the steepest part. The next change comes to you — nothing to do early.</p>
   </header>
@@ -559,8 +670,8 @@ button { font: inherit; }
     <div class="today-panel__main">
       <p class="eyebrow">Today · Sunday 10 August</p>
       <h2 id="today-panel-title">4 pouches · 24 mg ceiling</h2>
-      <p class="today-panel__stage">Stage of 9–15 August · day 2 of 7</p>
-      <div class="today-panel__progress" role="progressbar" aria-valuemin="1" aria-valuemax="7" aria-valuenow="2" aria-label="Day 2 of 7 in this stage">
+      <p class="today-panel__stage" data-today-stage>Stage of 9–15 August · day 2 of 7</p>
+      <div class="today-panel__progress" data-today-progress role="progressbar" aria-valuemin="1" aria-valuemax="7" aria-valuenow="2" aria-label="Day 2 of 7 in this stage">
         <span style="inline-size: 28.6%"></span>
       </div>
     </div>
@@ -597,6 +708,55 @@ button { font: inherit; }
       <tbody></tbody>
     </table>
     <p class="path-takeaway">From 42 mg a day to 12 mg — every step scheduled, none improvised.</p>
+  </section>
+
+  <p class="next-change rise" style="--i:3" data-next-change>
+    On <time datetime="2026-08-16">16 August</time> your target steps down to 3 pouches. It will surface in Today when it arrives.
+  </p>
+
+  <section class="adjust rise" style="--i:4" aria-labelledby="adjust-title">
+    <button class="adjust__toggle" type="button" data-adjust-toggle aria-expanded="false" aria-controls="adjust-body">
+      <span class="adjust__toggle-text">
+        <span class="adjust__title" id="adjust-title">Adjust future days</span>
+        <span class="adjust__promise">Preview first. Confirming is the only thing that changes your plan — past days are never rewritten.</span>
+      </span>
+      <svg class="c-icon adjust__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+    <div class="adjust__body" id="adjust-body" hidden>
+      <form data-adjust-form novalidate>
+        <div class="adjust__fields">
+          <div class="field">
+            <label for="adjust-date">Effective date</label>
+            <input id="adjust-date" data-adjust-date type="date" min="2026-08-11" max="2026-09-05" value="2026-08-12" required>
+          </div>
+          <div class="field">
+            <label for="adjust-pace">Pace</label>
+            <select id="adjust-pace" data-adjust-pace>
+              <option value="" selected>Keep steady pace</option>
+              <option value="gentle">Gentle — more time</option>
+              <option value="focused">Focused — sooner</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="adjust-target">End target, pouches a day</label>
+            <input id="adjust-target" data-adjust-target type="number" min="0" max="3" placeholder="Keep 2">
+          </div>
+        </div>
+        <p class="adjust__hint" data-adjust-hint>Choose at least one change. Previewing does not change any plan day.</p>
+        <div class="adjust__buttons">
+          <button class="c-button c-button--primary" type="submit" data-adjust-preview>Preview revision</button>
+        </div>
+      </form>
+      <div class="adjust__preview" data-preview-region hidden>
+        <p class="adjust__summary" data-preview-summary></p>
+        <ul class="adjust__diff" data-preview-diff></ul>
+        <div class="adjust__buttons">
+          <button class="c-button c-button--primary" type="button" data-adjust-confirm>Confirm revision</button>
+          <button class="c-button c-button--ghost" type="button" data-adjust-discard>Discard preview</button>
+        </div>
+      </div>
+      <p class="adjust__status" role="status" data-adjust-status hidden></p>
+    </div>
   </section>
 </main>
 
@@ -717,12 +877,12 @@ button { font: inherit; }
     if (window.JOURNEY && JOURNEY.preview) {
       let d = "";
       JOURNEY.preview.stages.forEach((st, i) => {
-        const x1 = X(st.start);
+        const x1 = Math.min(X(st.start), W - M.right);
         const x2 = stageX2(st);
         const y = Y(st.pouches);
         d += `M ${x1} ${y} H ${x2} `;
         const next = JOURNEY.preview.stages[i + 1];
-        if (next) d += `M ${X(next.start)} ${y} V ${Y(next.pouches)} `;
+        if (next) d += `M ${Math.min(X(next.start), W - M.right)} ${y} V ${Y(next.pouches)} `;
       });
       svg.appendChild(el("path", { d, class: "chart-preview-step" + (reduced ? "" : " fade-in"), "data-preview-path": "" }));
     }
@@ -781,6 +941,221 @@ button { font: inherit; }
 
   window.JOURNEY = { plan: PLAN, preview: null, renderChart };
   renderChart();
+
+  /* ---------- Derived copy (kept honest after a confirmed revision) ---------- */
+  const MONTHS_LONG = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const fmtDayLong = (s) => {
+    const d = new Date(parseDay(s));
+    return d.getUTCDate() + " " + MONTHS_LONG[d.getUTCMonth()];
+  };
+  const fmtRange = (a, b) => {
+    const da = new Date(parseDay(a));
+    const db = new Date(parseDay(b));
+    if (da.getUTCMonth() === db.getUTCMonth()) {
+      return da.getUTCDate() + "–" + db.getUTCDate() + " " + MONTHS_LONG[db.getUTCMonth()];
+    }
+    return fmtDayLong(a) + " – " + fmtDayLong(b);
+  };
+  const PACE_LABELS = { gentle: "Gentle pace", steady: "Steady pace", focused: "Focused pace" };
+  const heroTarget = document.querySelector("[data-hero-target]");
+  const heroDate = document.querySelector("[data-hero-date]");
+  const heroStatus = document.querySelector("[data-hero-status]");
+  const todayStageEl = document.querySelector("[data-today-stage]");
+  const todayProgress = document.querySelector("[data-today-progress]");
+  const nextChangeEl = document.querySelector("[data-next-change]");
+  const dateInput = document.querySelector("[data-adjust-date]");
+
+  function renderDerivedTexts() {
+    const last = PLAN.stages[PLAN.stages.length - 1];
+    heroTarget.textContent = last.pouches;
+    heroDate.textContent = fmtDayLong(PLAN.end).replace(" ", " ");
+    heroStatus.textContent = "Day " + (dayIndex(PLAN.today) + 1) + " of " + (dayIndex(PLAN.end) + 1) + " · " + PACE_LABELS[PLAN.pace || "steady"];
+    const cur = PLAN.stages.find((s) => s.start <= PLAN.today && PLAN.today <= s.end);
+    if (cur) {
+      const stageDays = dayIndex(cur.end) - dayIndex(cur.start) + 1;
+      const dayIn = dayIndex(PLAN.today) - dayIndex(cur.start) + 1;
+      todayStageEl.textContent = "Stage of " + fmtRange(cur.start, cur.end) + " · day " + dayIn + " of " + stageDays;
+      todayProgress.setAttribute("aria-valuemax", String(stageDays));
+      todayProgress.setAttribute("aria-valuenow", String(dayIn));
+      todayProgress.setAttribute("aria-label", "Day " + dayIn + " of " + stageDays + " in this stage");
+      todayProgress.firstElementChild.style.inlineSize = (dayIn / stageDays * 100).toFixed(1) + "%";
+    }
+    const next = PLAN.stages.find((s) => dayIndex(s.start) > dayIndex(PLAN.today));
+    if (next) {
+      nextChangeEl.innerHTML = "On <time datetime=\"" + next.start + "\">" + fmtDayLong(next.start) + "</time> your target steps down to " + next.pouches + " pouches. It will surface in Today when it arrives.";
+    } else {
+      nextChangeEl.textContent = "No more step-downs are scheduled — you’re on the final stage.";
+    }
+    const first = PLAN.stages[0];
+    svg.setAttribute("aria-label",
+      "Stepped chart of daily pouch targets from " + first.pouches + " on " + fmtDayLong(first.start) +
+      " down to " + last.pouches + " on " + fmtDayLong(PLAN.end) + ". Today, " + fmtDayLong(PLAN.today) +
+      ", sits on the " + (cur ? cur.pouches : last.pouches) + "-pouch step.");
+    if (dateInput) dateInput.max = PLAN.end;
+  }
+  renderDerivedTexts();
+
+  /* ---------- Adjust future days (preview → confirm → discard) ---------- */
+  const pouchesAt = (stages, date) => {
+    const st = stages.find((s) => s.start <= date && date <= s.end);
+    return st ? st.pouches : null;
+  };
+  function mergeStages(stages) {
+    const out = [];
+    stages.forEach((st) => {
+      const prev = out[out.length - 1];
+      if (prev && prev.pouches === st.pouches && dayIndex(st.start) === dayIndex(prev.end) + 1) {
+        prev.end = st.end;
+        prev.mg = st.mg;
+      } else {
+        out.push({ ...st });
+      }
+    });
+    return out;
+  }
+  function computePreview({ effectiveDate, pace, endTarget }) {
+    const targetDate = pace === "focused" ? "2026-08-29" : pace === "gentle" ? "2026-09-12" : PLAN.end;
+    const et = endTarget === "" || endTarget == null ? PLAN.endTarget : Number(endTarget);
+    const prevDay = new Date(parseDay(effectiveDate) - DAY).toISOString().slice(0, 10);
+    const startPouches = pouchesAt(PLAN.stages, prevDay) ?? PLAN.stages[0].pouches;
+    const totalDays = Math.round((parseDay(targetDate) - parseDay(effectiveDate)) / DAY) + 1;
+    const values = [];
+    for (let p = Math.max(startPouches, et); p >= et; p--) values.push(p);
+    const n = Math.max(1, values.length);
+    const base = Math.max(1, Math.floor(totalDays / n));
+    const extra = Math.max(0, totalDays - base * n);
+    let cursor = parseDay(effectiveDate);
+    const revision = PLAN.stages[PLAN.stages.length - 1].revision + 1;
+    const stages = values.map((p, i) => {
+      const len = base + (i === 0 ? extra : 0);
+      const start = new Date(cursor).toISOString().slice(0, 10);
+      const end = new Date(cursor + (len - 1) * DAY).toISOString().slice(0, 10);
+      cursor += len * DAY;
+      return { start, end, pouches: p, mg: p * 6, revision };
+    });
+    let firstDifference = null;
+    const changedOld = new Set();
+    const scanEnd = targetDate > PLAN.end ? targetDate : PLAN.end;
+    for (let d = parseDay(effectiveDate); d <= parseDay(scanEnd); d += DAY) {
+      const iso = new Date(d).toISOString().slice(0, 10);
+      if (pouchesAt(PLAN.stages, iso) !== pouchesAt(stages, iso)) {
+        if (!firstDifference) firstDifference = iso;
+        const oldSt = PLAN.stages.find((s) => s.start <= iso && iso <= s.end);
+        if (oldSt) changedOld.add(oldSt.start);
+      }
+    }
+    return { stages, targetDate, endTarget: et, pace: pace || null, firstDifference, changedStages: changedOld.size };
+  }
+  JOURNEY.computePreview = computePreview;
+
+  const adjustToggle = document.querySelector("[data-adjust-toggle]");
+  const adjustBody = document.getElementById("adjust-body");
+  const adjustForm = document.querySelector("[data-adjust-form]");
+  const paceSelect = document.querySelector("[data-adjust-pace]");
+  const targetInput = document.querySelector("[data-adjust-target]");
+  const hintEl = document.querySelector("[data-adjust-hint]");
+  const HINT_DEFAULT = hintEl.textContent;
+  const previewRegion = document.querySelector("[data-preview-region]");
+  const summaryEl = document.querySelector("[data-preview-summary]");
+  const diffEl = document.querySelector("[data-preview-diff]");
+  const confirmBtn = document.querySelector("[data-adjust-confirm]");
+  const discardBtn = document.querySelector("[data-adjust-discard]");
+  const statusEl = document.querySelector("[data-adjust-status]");
+  let pending = null;
+
+  adjustToggle.addEventListener("click", () => {
+    const open = adjustToggle.getAttribute("aria-expanded") === "true";
+    adjustToggle.setAttribute("aria-expanded", String(!open));
+    adjustBody.hidden = open;
+  });
+
+  const hintAlert = (msg) => {
+    hintEl.textContent = msg;
+    hintEl.setAttribute("role", "alert");
+  };
+  const hintReset = () => {
+    hintEl.textContent = HINT_DEFAULT;
+    hintEl.removeAttribute("role");
+  };
+  const addDiff = (text) => {
+    const li = document.createElement("li");
+    li.textContent = text;
+    diffEl.appendChild(li);
+  };
+
+  adjustForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    hintReset();
+    statusEl.hidden = true;
+    const effectiveDate = dateInput.value;
+    const pace = paceSelect.value;
+    const targetRaw = targetInput.value;
+    if (!effectiveDate) { hintAlert("Choose an effective date first."); return; }
+    if (effectiveDate <= PLAN.today) { hintAlert("Pick a date after today — only future days can change."); return; }
+    if (!pace && targetRaw === "") { hintAlert("Choose a pace or an end target — at least one change is needed for a preview."); return; }
+    const pv = computePreview({ effectiveDate, pace: pace || null, endTarget: targetRaw });
+    pending = { effectiveDate };
+    diffEl.textContent = "";
+    if (!pv.firstDifference) {
+      JOURNEY.preview = null;
+      renderChart();
+      summaryEl.textContent = "This matches your current schedule — nothing to change.";
+      confirmBtn.disabled = true;
+      previewRegion.hidden = false;
+      return;
+    }
+    confirmBtn.disabled = false;
+    JOURNEY.preview = { stages: pv.stages, meta: pv };
+    renderChart();
+    summaryEl.textContent = pv.changedStages + " stage" + (pv.changedStages === 1 ? "" : "s") + " change · first difference " + fmtDayLong(pv.firstDifference);
+    if (pv.targetDate !== PLAN.end) addDiff("Target date: " + fmtDayLong(PLAN.end) + " → " + fmtDayLong(pv.targetDate));
+    if (pv.endTarget !== PLAN.endTarget) addDiff("End target: " + PLAN.endTarget + " → " + pv.endTarget + " pouches a day");
+    pv.stages.forEach((st) => addDiff(fmtRange(st.start, st.end) + ": " + st.pouches + " pouches a day · " + st.mg + " mg ceiling"));
+    previewRegion.hidden = false;
+  });
+
+  confirmBtn.addEventListener("click", () => {
+    if (!JOURNEY.preview || !pending) return;
+    const pv = JOURNEY.preview.meta;
+    const effectiveDate = pending.effectiveDate;
+    const oldEndTarget = PLAN.endTarget;
+    const kept = PLAN.stages.filter((s) => s.end < effectiveDate);
+    const overlap = PLAN.stages.find((s) => s.start < effectiveDate && s.end >= effectiveDate);
+    if (overlap) {
+      kept.push({ ...overlap, end: new Date(parseDay(effectiveDate) - DAY).toISOString().slice(0, 10) });
+    }
+    PLAN.stages = mergeStages([...kept, ...pv.stages.map((s) => ({ ...s }))]);
+    PLAN.end = pv.targetDate;
+    PLAN.endTarget = pv.endTarget;
+    if (pv.pace) PLAN.pace = pv.pace;
+    JOURNEY.preview = null;
+    pending = null;
+    renderChart();
+    renderDerivedTexts();
+    const list = document.querySelector("[data-history-list]");
+    if (list) {
+      const parts = [];
+      if (pv.pace) parts.push("pace changed to " + pv.pace);
+      if (pv.endTarget !== oldEndTarget) parts.push("end target now " + pv.endTarget);
+      const li = document.createElement("li");
+      li.innerHTML = "<span class=\"history__when\">" + fmtDay(effectiveDate) + "</span><span><strong>Revision " +
+        PLAN.stages[PLAN.stages.length - 1].revision + "</strong> · " + (parts.join(" · ") || "schedule adjusted") +
+        " · confirmed by you, just now</span>";
+      list.prepend(li);
+    }
+    previewRegion.hidden = true;
+    statusEl.textContent = "Revision confirmed — future days updated. Every past day is unchanged.";
+    statusEl.hidden = false;
+  });
+
+  discardBtn.addEventListener("click", () => {
+    JOURNEY.preview = null;
+    pending = null;
+    renderChart();
+    previewRegion.hidden = true;
+    statusEl.textContent = "Preview discarded. Nothing changed.";
+    statusEl.hidden = false;
+  });
 
   /* ---------- Milestone tooltip ---------- */
   const tip = document.querySelector("[data-chart-tooltip]");
