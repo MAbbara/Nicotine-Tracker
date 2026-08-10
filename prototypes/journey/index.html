@@ -420,10 +420,28 @@ button { font: inherit; }
 .chart-today-rule { stroke: var(--color-attention); stroke-width: 1.5; }
 .chart-today-dot { fill: var(--color-attention); stroke: var(--color-canvas); stroke-width: 2; }
 .chart-today-label { fill: var(--color-attention-deep); font-family: var(--font-interface); font-size: 11px; font-weight: 700; }
-.chart-milestone { fill: var(--color-milestone); }
-[data-milestone] { cursor: pointer; outline: none; }
-[data-milestone]:focus-visible .chart-milestone { stroke: var(--color-focus); stroke-width: 2.5; }
-[data-milestone]:hover .chart-milestone { fill: var(--color-attention); }
+.path-hotspot {
+  position: absolute;
+  width: 1.375rem;
+  height: 1.375rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+.path-hotspot__diamond {
+  width: .65rem;
+  height: .65rem;
+  background: var(--color-milestone);
+  transform: rotate(45deg);
+  transition: background-color var(--duration-feedback) var(--ease-out-expo);
+}
+.path-hotspot:hover .path-hotspot__diamond,
+.path-hotspot:focus-visible .path-hotspot__diamond { background: var(--color-attention); }
 .chart-flag { fill: var(--color-milestone); stroke: none; }
 .chart-flag-pole { stroke: var(--color-milestone); stroke-width: 2; }
 .chart-flag-label { fill: var(--color-ink); font-family: var(--font-interface); font-size: 11px; font-weight: 700; }
@@ -590,7 +608,109 @@ button { font: inherit; }
   font-weight: 650;
 }
 
+/* ---------- Facts (progressive disclosure) ---------- */
+.facts {
+  border-block-start: 1px solid var(--color-border);
+}
+.facts summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: 3.5rem;
+  padding-block: var(--space-3);
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 520;
+  letter-spacing: -.01em;
+  cursor: pointer;
+  list-style: none;
+}
+.facts summary::-webkit-details-marker { display: none; }
+.facts summary::after {
+  content: "";
+  flex: none;
+  width: .6rem;
+  height: .6rem;
+  border-block-end: 2px solid var(--color-constructive);
+  border-inline-end: 2px solid var(--color-constructive);
+  transform: rotate(45deg) translateY(-.15rem);
+  transition: transform var(--duration-panel) var(--ease-out-expo);
+}
+.facts[open] summary::after { transform: rotate(225deg) translateY(-.15rem); }
+.facts__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4) var(--space-8);
+  margin: 0;
+  padding: var(--space-2) 0 var(--space-6);
+}
+.facts__grid div { display: grid; gap: var(--space-1); }
+.facts__grid dt {
+  color: var(--color-text-muted);
+  font-size: var(--text-caption);
+  font-weight: 720;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.facts__grid dd { margin: 0; font-weight: 650; }
+
+/* ---------- History ---------- */
+.history h2, .plan-actions h2 {
+  font-size: clamp(1.35rem, 1.2rem + .7vw, 1.7rem);
+  font-weight: 480;
+  margin-block-end: var(--space-4);
+}
+.history__list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.history__list li {
+  display: flex;
+  gap: var(--space-4);
+  align-items: baseline;
+  padding-block: var(--space-3);
+  border-block-start: 1px solid var(--color-border);
+  font-size: var(--text-small);
+  color: var(--color-text-muted);
+}
+.history__list li strong { color: var(--color-ink); font-weight: 720; }
+.history__when {
+  flex: none;
+  width: 3.5rem;
+  font-family: var(--font-display);
+  font-style: italic;
+  color: var(--color-milestone);
+  font-size: 1rem;
+}
+
+/* ---------- Plan actions ---------- */
+.plan-actions > p { color: var(--color-text-muted); font-size: var(--text-small); }
+.plan-actions__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-block-start: var(--space-4);
+}
+
+/* ---------- Entrance motion ---------- */
+html.js .rise { opacity: 0; transform: translateY(22px); }
+html.js .rise.is-in {
+  opacity: 1;
+  transform: none;
+  transition: opacity .7s var(--ease-out-expo), transform .7s var(--ease-out-expo);
+  transition-delay: calc(var(--i, 0) * 80ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  html.js .rise, html.js .rise.is-in { opacity: 1; transition: none; transform: none; }
+  .chart-step--past.draw-in { animation: none; stroke-dasharray: none; stroke-dashoffset: 0; }
+  .chart-step--future.fade-in, .chart-preview-step.fade-in { animation: none; opacity: 1; }
+}
+
 @media (max-width: 48rem) {
+  .facts__grid { grid-template-columns: 1fr; }
   .adjust__fields { grid-template-columns: 1fr; }
   .today-panel { flex-direction: column; align-items: stretch; }
   .primary-nav {
@@ -758,10 +878,59 @@ button { font: inherit; }
       <p class="adjust__status" role="status" data-adjust-status hidden></p>
     </div>
   </section>
+
+  <details class="facts rise" style="--i:5">
+    <summary>Plan facts and baseline</summary>
+    <dl class="facts__grid">
+      <div><dt>Mode</dt><dd>Reduce</dd></div>
+      <div><dt>Status</dt><dd>Active</dd></div>
+      <div><dt>Pace</dt><dd>Steady · 49 days</dd></div>
+      <div><dt>Start date</dt><dd>19 July 2026</dd></div>
+      <div><dt>Target date</dt><dd>5 September 2026</dd></div>
+      <div><dt>Baseline source</dt><dd>Manual baseline</dd></div>
+      <div><dt>Pouch baseline</dt><dd>7 pouches a day</dd></div>
+      <div><dt>Nicotine baseline</dt><dd>42 mg a day</dd></div>
+      <div><dt>Median strength</dt><dd>6 mg a pouch</dd></div>
+      <div><dt>End target</dt><dd>2 pouches a day</dd></div>
+    </dl>
+  </details>
+
+  <section class="history rise" style="--i:6" aria-labelledby="history-title">
+    <h2 id="history-title">Revisions and pauses</h2>
+    <ol class="history__list" data-history-list>
+      <li>
+        <span class="history__when">2 Aug</span>
+        <span><strong>Revision 2</strong> · pace changed gentle → steady · target date moved to 5 Sep · confirmed by you</span>
+      </li>
+      <li>
+        <span class="history__when">30 Jul</span>
+        <span><strong>Resumed</strong> · remaining days shifted two days · no history rewritten</span>
+      </li>
+      <li>
+        <span class="history__when">28 Jul</span>
+        <span><strong>Paused</strong> · “family visit — two days off” · schedule kept intact</span>
+      </li>
+      <li>
+        <span class="history__when">19 Jul</span>
+        <span><strong>Revision 1</strong> · plan activated from a manual baseline of 7 pouches</span>
+      </li>
+    </ol>
+  </section>
+
+  <section class="plan-actions rise" style="--i:7" aria-labelledby="plan-actions-title">
+    <h2 id="plan-actions-title">Plan actions</h2>
+    <p>Status changes only — your history stays intact.</p>
+    <div class="plan-actions__row">
+      <button class="c-button c-button--ghost" type="button">Pause plan</button>
+      <button class="c-button c-button--ghost" type="button">Mark complete</button>
+      <button class="c-button c-button--ghost" type="button">Archive plan</button>
+    </div>
+  </section>
 </main>
 
 <script>
 (() => {
+  document.documentElement.classList.add("js");
   const root = document.documentElement;
   const meta = document.querySelector('meta[name="theme-color"]');
   const toggle = document.querySelector("[data-theme-toggle]");
@@ -774,6 +943,15 @@ button { font: inherit; }
   toggle.addEventListener("click", () => {
     apply(root.dataset.theme === "dark" ? "light" : "dark");
   });
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((en) => {
+      if (en.isIntersecting) {
+        en.target.classList.add("is-in");
+        io.unobserve(en.target);
+      }
+    });
+  }, { threshold: 0.12 });
+  document.querySelectorAll(".rise").forEach((el) => io.observe(el));
 })();
 </script>
 <script>
@@ -815,6 +993,7 @@ button { font: inherit; }
     return n;
   };
   const svg = document.querySelector("[data-path-chart]");
+  const figure = document.querySelector(".path-figure");
   const tbody = document.querySelector("[data-stage-table] tbody");
   const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const stageX2 = (st) => xIndex(dayIndex(st.end) + 1);
@@ -823,6 +1002,8 @@ button { font: inherit; }
     const reduced = reducedMotion();
     svg.textContent = "";
     tbody.textContent = "";
+    figure.querySelectorAll(".path-hotspot").forEach((b) => b.remove());
+    if (typeof hideTip === "function") hideTip();
     const todayX = X(PLAN.today);
 
     // grid + y labels (pouch counts)
@@ -887,22 +1068,31 @@ button { font: inherit; }
       svg.appendChild(el("path", { d, class: "chart-preview-step" + (reduced ? "" : " fade-in"), "data-preview-path": "" }));
     }
 
-    // milestones (step-down dates)
+    // milestones (step-down dates) — real buttons overlaying the chart image
     PLAN.stages.forEach((st, i) => {
       if (i === 0) return;
       const x = X(st.start);
       const y = Y(st.pouches);
-      const g = el("g", {
-        tabindex: "0", focusable: "true", role: "button",
-        "data-milestone": st.start,
-        "aria-label": fmtDay(st.start) + ": target steps down to " + st.pouches + " pouches",
-        "data-tip-x": x, "data-tip-y": y,
-        "data-tip-text": fmtDay(st.start) + " · steps down to " + st.pouches + " pouches",
-      });
-      const s = 5.2;
-      g.appendChild(el("rect", { x: -11, y: -11, width: 22, height: 22, fill: "transparent", transform: `translate(${x} ${y})` }));
-      g.appendChild(el("rect", { x: -s, y: -s, width: s * 2, height: s * 2, class: "chart-milestone", transform: `translate(${x} ${y}) rotate(45)` }));
-      svg.appendChild(g);
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "path-hotspot";
+      b.dataset.milestone = st.start;
+      b.dataset.tipText = fmtDay(st.start) + " · steps down to " + st.pouches + " pouches";
+      b.dataset.tipX = x;
+      b.dataset.tipY = y;
+      b.style.left = x + "px";
+      b.style.top = y + "px";
+      b.setAttribute("aria-label", fmtDay(st.start) + ": target steps down to " + st.pouches + " pouches");
+      const diamond = document.createElement("span");
+      diamond.className = "path-hotspot__diamond";
+      diamond.setAttribute("aria-hidden", "true");
+      b.appendChild(diamond);
+      b.addEventListener("focus", () => showTip(b));
+      b.addEventListener("blur", () => { if (!pinned) hideTip(); });
+      b.addEventListener("pointerenter", () => showTip(b));
+      b.addEventListener("pointerleave", () => { if (!pinned) hideTip(); });
+      b.addEventListener("click", () => { pinned = true; showTip(b); });
+      figure.appendChild(b);
     });
 
     // today rule, dot, label
@@ -938,6 +1128,24 @@ button { font: inherit; }
       tbody.appendChild(tr);
     });
   }
+
+  /* ---------- Milestone tooltip ---------- */
+  const tip = document.querySelector("[data-chart-tooltip]");
+  let pinned = false;
+  const showTip = (g) => {
+    tip.textContent = g.dataset.tipText;
+    const x = +g.dataset.tipX;
+    const y = +g.dataset.tipY;
+    const tw = 220;
+    tip.style.left = Math.min(Math.max(8, x - tw / 2), 760 - tw - 8) + "px";
+    tip.style.top = Math.max(0, y - 66) + "px";
+    tip.hidden = false;
+  };
+  const hideTip = () => { tip.hidden = true; pinned = false; };
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") hideTip(); });
+  document.addEventListener("pointerdown", (e) => {
+    if (pinned && !(e.target.closest && e.target.closest(".path-hotspot"))) hideTip();
+  });
 
   window.JOURNEY = { plan: PLAN, preview: null, renderChart };
   renderChart();
@@ -1157,29 +1365,6 @@ button { font: inherit; }
     statusEl.hidden = false;
   });
 
-  /* ---------- Milestone tooltip ---------- */
-  const tip = document.querySelector("[data-chart-tooltip]");
-  let pinned = false;
-  const showTip = (g) => {
-    tip.textContent = g.dataset.tipText;
-    const x = +g.dataset.tipX;
-    const y = +g.dataset.tipY;
-    const tw = 220;
-    tip.style.left = Math.min(Math.max(8, x - tw / 2), 760 - tw - 8) + "px";
-    tip.style.top = Math.max(0, y - 66) + "px";
-    tip.hidden = false;
-  };
-  const hideTip = () => { tip.hidden = true; pinned = false; };
-  const milestoneOf = (e) => (e.target.closest ? e.target.closest("[data-milestone]") : null);
-  svg.addEventListener("focusin", (e) => { const g = milestoneOf(e); if (g) showTip(g); });
-  svg.addEventListener("focusout", () => { if (!pinned) hideTip(); });
-  svg.addEventListener("pointerover", (e) => { const g = milestoneOf(e); if (g) showTip(g); });
-  svg.addEventListener("pointerout", (e) => { if (milestoneOf(e) && !pinned) hideTip(); });
-  svg.addEventListener("click", (e) => {
-    const g = milestoneOf(e);
-    if (g) { pinned = true; showTip(g); } else if (pinned) hideTip();
-  });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") hideTip(); });
 })();
 </script>
 </body>

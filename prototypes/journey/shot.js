@@ -28,6 +28,13 @@ const { chromium } = require("playwright");
   await desktop.waitForTimeout(1400); // let entrance motion finish
   await desktop.screenshot({ path: "shot-desktop-full.png", fullPage: true });
 
+  // Dark theme, default plan state
+  await desktop.click("[data-theme-toggle]");
+  await desktop.waitForTimeout(400);
+  await desktop.screenshot({ path: "shot-desktop-dark.png", fullPage: true });
+  await desktop.click("[data-theme-toggle]");
+  await desktop.waitForTimeout(300);
+
   // Adjust flow: preview -> confirm redraws the chart's future
   const lastStep = () => desktop.locator("[data-chart-step]").last().getAttribute("d");
   const pathBefore = await lastStep();
@@ -49,6 +56,24 @@ const { chromium } = require("playwright");
     process.exit(1);
   }
   await desktop.screenshot({ path: "shot-desktop-adjusted.png", fullPage: true });
+  await desktop.close();
+
+  // Mobile, full page
+  const mobile = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+  });
+  mobile.on("pageerror", (err) => errors.push(String(err)));
+  mobile.on("console", (msg) => {
+    if (msg.type() === "error") errors.push(msg.text());
+  });
+  await mobile.goto(url, { waitUntil: "networkidle" });
+  await mobile.waitForSelector("[data-chart-step]", { state: "attached", timeout: 5000 });
+  await mobile.waitForTimeout(1400);
+  await mobile.screenshot({ path: "shot-mobile-full.png", fullPage: true });
+  await mobile.close();
 
   if (errors.length) {
     console.error("console errors:", errors);
