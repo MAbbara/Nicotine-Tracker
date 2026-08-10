@@ -10,9 +10,11 @@
     <h1>Journey</h1>
     {% if plan %}
       <p class="journey-intro__summary">
-        <span><strong>{{ plan.row.mode|replace('_', ' ')|title }} direction</strong>{% if plan.row.pace %} · {{ plan.row.pace|replace('_', ' ')|title }} pace{% endif %}</span>
-        {% if plan.current_day %}
-          <span>Today’s plan day · {% if plan.current_day.nicotine_ceiling_mg is not none %}{{ '%.2f'|format(plan.current_day.nicotine_ceiling_mg) }} mg ceiling{% elif plan.row.mode == 'observe' %}observation without a ceiling{% else %}no nicotine ceiling{% endif %}</span>
+        <span><strong>{{ plan.row.mode|replace('_', ' ')|title }}</strong>{% if plan.row.pace %} · {{ plan.row.pace|replace('_', ' ')|title }} pace{% endif %}</span>
+        {% if plan.row.status == 'paused' %}
+          <span>Plan paused · {% if plan.row.mode == 'observe' %}Neutral observation is not active{% else %}No nicotine ceiling is in effect{% endif %}</span>
+        {% elif plan.current_day %}
+          <span>Today · {% if plan.current_day.nicotine_ceiling_mg is not none %}{{ '%.2f'|format(plan.current_day.nicotine_ceiling_mg) }} mg ceiling{% elif plan.row.mode == 'observe' %}observation without a ceiling{% else %}no nicotine ceiling{% endif %}</span>
         {% elif plan.next_days %}
           <span>Next plan day · {{ plan.next_days[0].local_date.strftime('%B %-d') }}</span>
         {% endif %}

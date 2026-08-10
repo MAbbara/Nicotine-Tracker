@@ -183,8 +183,8 @@ test('first viewport explains nicotine progress and next change before technical
 
   const intro = page.locator('.journey-intro--plan');
   await expect(intro.getByRole('heading', { name: 'Journey', exact: true })).toBeVisible();
-  await expect(intro).toContainText(/Reduce direction · Steady pace/i);
-  await expect(intro).toContainText(/Today’s plan day · 48\.00 mg ceiling/i);
+  await expect(intro).toContainText(/Reduce · Steady pace/i);
+  await expect(intro).toContainText(/Today · 48\.00 mg ceiling/i);
   const introLayout = await intro.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const heading = element.querySelector('h1').getBoundingClientRect();
@@ -272,7 +272,9 @@ test('compact Journey hierarchy remains responsive, distinguishable, and motion-
     .toBeLessThanOrEqual(64);
   await expect(nextChange).toBeInViewport();
   const initialFold = await page.evaluate(() => ({
+    viewportWidth: document.documentElement.clientWidth,
     viewport: window.innerHeight,
+    scrollY: window.scrollY,
     plan: document.querySelector('.journey-plan').getBoundingClientRect().toJSON(),
     today: document.querySelector('[data-journey-progress]').getBoundingClientRect().toJSON(),
     next: document.querySelector('[data-next-change]').getBoundingClientRect().toJSON(),
@@ -287,6 +289,13 @@ test('compact Journey hierarchy remains responsive, distinguishable, and motion-
     .toBeGreaterThanOrEqual(initialFold.next.bottom);
   expect(initialFold.trajectory.top, JSON.stringify(initialFold))
     .toBeGreaterThanOrEqual(initialFold.schedule.top);
+  if (testInfo.project.name.includes('desktop')) {
+    expect(initialFold.viewportWidth).toBe(1280);
+    expect(initialFold.viewport).toBe(720);
+    expect(initialFold.scrollY).toBe(0);
+    expect(initialFold.trajectory.top, JSON.stringify(initialFold))
+      .toBeLessThan(initialFold.viewport);
+  }
   await trajectory.scrollIntoViewIfNeeded();
   await expect(trajectory).toBeInViewport();
 
@@ -437,6 +446,87 @@ test('compact Journey hierarchy remains responsive, distinguishable, and motion-
   expect(maxMotionDuration).toBeLessThanOrEqual(0.001);
 });
 
+test('Journey header and scorecard reflow without clipping at 200% text', async ({ page }, testInfo) => {
+  const project = testInfo.project.name.includes('mobile') ? 'mobile' : 'desktop';
+  await loginFixture(page, `journey-review-${project}@example.com`);
+  await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+
+  for (const viewport of [
+    { width: 320, height: 800 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate((value) => {
+        document.documentElement.dataset.theme = value;
+      }, theme);
+      const layout = await page.evaluate(() => {
+        const intro = document.querySelector('.journey-intro--plan');
+        const heading = intro.querySelector('h1');
+        const summary = intro.querySelector('.journey-intro__summary');
+        const scorecard = document.querySelector('[data-journey-scorecard]');
+        const introRect = intro.getBoundingClientRect();
+        const headingRect = heading.getBoundingClientRect();
+        const summaryRect = summary.getBoundingClientRect();
+        const scorecardRect = scorecard.getBoundingClientRect();
+        const childGeometry = [...scorecard.children].map((item) => {
+          const itemRect = item.getBoundingClientRect();
+          return {
+            item: itemRect.toJSON(),
+            label: item.querySelector('dt').getBoundingClientRect().toJSON(),
+            value: item.querySelector('dd').getBoundingClientRect().toJSON(),
+            clientWidth: item.clientWidth,
+            scrollWidth: item.scrollWidth,
+          };
+        });
+        return {
+          viewportWidth: document.documentElement.clientWidth,
+          viewportHeight: window.innerHeight,
+          scrollY: window.scrollY,
+          documentOverflow: document.documentElement.scrollWidth
+            - document.documentElement.clientWidth,
+          intro: introRect.toJSON(),
+          heading: headingRect.toJSON(),
+          summary: summaryRect.toJSON(),
+          introColumns: getComputedStyle(intro).gridTemplateColumns,
+          summaryOverflowWrap: getComputedStyle(summary).overflowWrap,
+          summaryClientWidth: summary.clientWidth,
+          summaryScrollWidth: summary.scrollWidth,
+          scorecard: scorecardRect.toJSON(),
+          scorecardColumns: getComputedStyle(scorecard).gridTemplateColumns,
+          children: childGeometry,
+        };
+      });
+      expect(layout.scrollY).toBe(0);
+      expect(layout.documentOverflow, `${viewport.width} ${theme}`).toBeLessThanOrEqual(1);
+      expect(layout.introColumns.trim().split(/\s+/)).toHaveLength(1);
+      expect(layout.heading.left).toBeGreaterThanOrEqual(layout.intro.left - 1);
+      expect(layout.heading.right).toBeLessThanOrEqual(layout.intro.right + 1);
+      expect(layout.summary.left).toBeGreaterThanOrEqual(layout.intro.left - 1);
+      expect(layout.summary.right).toBeLessThanOrEqual(layout.intro.right + 1);
+      expect(layout.summaryClientWidth).toBeGreaterThanOrEqual(layout.intro.width - 1);
+      expect(layout.summaryScrollWidth).toBeLessThanOrEqual(layout.summaryClientWidth + 1);
+      expect(layout.summaryOverflowWrap).not.toBe('anywhere');
+      expect(layout.scorecardColumns.trim().split(/\s+/)).toHaveLength(1);
+      expect(layout.scorecard.top - layout.intro.bottom, JSON.stringify(layout))
+        .toBeLessThanOrEqual(448);
+      expect(layout.children).toHaveLength(3);
+      for (const [index, metric] of layout.children.entries()) {
+        expect(metric.scrollWidth, `${viewport.width} ${theme} metric ${index + 1}`)
+          .toBeLessThanOrEqual(metric.clientWidth + 1);
+        for (const rect of [metric.label, metric.value]) {
+          expect(rect.left).toBeGreaterThanOrEqual(metric.item.left - 1);
+          expect(rect.right).toBeLessThanOrEqual(metric.item.right + 1);
+          expect(rect.top).toBeGreaterThanOrEqual(metric.item.top - 1);
+          expect(rect.bottom).toBeLessThanOrEqual(metric.item.bottom + 1);
+        }
+      }
+    }
+  }
+});
+
 test('Journey attention progress states meet text contrast in both themes', async ({ page }, testInfo) => {
   await loginReviewFixture(page, testInfo);
   const status = page.locator('.journey-progress-status');
@@ -494,6 +584,9 @@ test('pre-start and paused Journey explain neutral schedule transitions', async 
   const progress = page.locator('[data-journey-progress]');
   await expect(progress).toContainText(/Plan paused/i);
   await expect(progress.locator('[data-ceiling-mg]')).toHaveText(/Paused.*not in effect/i);
+  const intro = page.locator('.journey-intro--plan');
+  await expect(intro).toContainText(/Plan paused · No nicotine ceiling is in effect/i);
+  await expect(intro).not.toContainText(/Today ·|mg ceiling/i);
   await expect(nextChange).toContainText(/Resume this plan before future ceiling dates are scheduled/i);
   await expect(nextChange.locator('time')).toHaveCount(0);
   await expect(nextChange).not.toContainText(/final scheduled ceiling|mg on/i);

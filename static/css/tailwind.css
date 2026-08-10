@@ -3054,7 +3054,7 @@
   .journey-schedule {
     display: grid;
     grid-template-columns: minmax(12rem, 0.4fr) minmax(0, 0.6fr);
-    gap: var(--space-3);
+    gap: var(--space-1);
   }
 
   .journey-schedule > .journey-section-heading {
@@ -3296,7 +3296,34 @@
     }
   }
 
-  @media (max-width: 20rem) {
+  @media (max-width: 25rem) {
+    .journey-page > .journey-intro--plan {
+      grid-template-columns: minmax(0, 1fr);
+      align-items: start;
+    }
+
+    .journey-intro__summary > span {
+      overflow-wrap: normal;
+      word-break: normal;
+    }
+
+    .journey-intro--plan + .journey-plan {
+      padding-block-start: 0;
+    }
+
+    .journey-today {
+      gap: 0;
+    }
+
+    .journey-today > .journey-section-heading {
+      gap: var(--space-2);
+    }
+
+    .journey-progress-status {
+      min-height: 0;
+      padding-block: var(--space-1);
+    }
+
     .journey-progress-readout {
       grid-template-columns: minmax(0, 1fr);
     }

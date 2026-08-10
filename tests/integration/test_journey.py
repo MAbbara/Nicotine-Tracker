@@ -406,6 +406,11 @@ class TestJourneyComposition:
         ) == 'Paused — not in effect'
         assert soup.select_one('[data-journey-scorecard]') is not None
         assert soup.select_one('[data-difference-mg]') is None
+        intro = soup.select_one('.journey-intro--plan')
+        intro_text = intro.get_text(' ', strip=True)
+        assert 'Plan paused · No nicotine ceiling is in effect' in intro_text
+        assert 'Today ·' not in intro_text
+        assert 'mg ceiling' not in intro_text
         next_change = soup.select_one('[data-next-change]')
         assert 'Resume this plan before future ceiling dates are scheduled' in (
             next_change.get_text(' ', strip=True)
