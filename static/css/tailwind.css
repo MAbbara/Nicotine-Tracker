@@ -688,6 +688,7 @@
   --color-constructive-soft: #DCE7DC;
   --color-attention: #B76343;
   --color-attention-soft: #F1DDD3;
+  --color-journey-attention-text: #8F4D36;
   --color-milestone: #C5A05A;
   --color-milestone-soft: #EEE2C6;
   --color-focus: #2F6B4A;
@@ -740,6 +741,7 @@
   --color-constructive-soft: #293A30;
   --color-attention: #D38466;
   --color-attention-soft: #422D25;
+  --color-journey-attention-text: #D38466;
   --color-milestone: #D4B474;
   --color-milestone-soft: #3E3525;
   --color-focus: #B8D2BC;
@@ -2431,19 +2433,35 @@
 
   .journey-page > .journey-intro--plan {
     max-width: none;
-    height: 0;
-    padding-block: 0;
-    border-block-end: 0;
-    overflow: hidden;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: baseline;
+    gap: 0 var(--space-4);
+    padding-block: var(--space-2);
   }
 
-  .journey-intro--plan > .eyebrow,
-  .journey-intro--plan > p:last-child {
+  .journey-intro--plan > .eyebrow {
     display: none;
   }
 
   .journey-intro--plan h1 {
-    font-size: clamp(2.25rem, 5vw, 3.5rem);
+    font-size: clamp(2rem, 4vw, 3rem);
+  }
+
+  .journey-page > .journey-intro--plan > .journey-intro__summary {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-4);
+    margin-block: 0;
+    color: var(--color-text-muted);
+    font-size: var(--text-caption);
+    line-height: 1.35;
+  }
+
+  .journey-intro__summary > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .journey-plan {
@@ -2488,7 +2506,7 @@
 
   .journey-plan__schedule {
     gap: var(--space-8);
-    padding-block-start: clamp(1.5rem, 3vw, 2.5rem);
+    padding-block-start: var(--space-2);
     border-block-start: 1px solid var(--color-border-strong);
   }
 
@@ -2933,7 +2951,7 @@
 
   .journey-progress-status--above_ceiling,
   .journey-progress-status--nicotine_total_incomplete {
-    color: var(--color-attention);
+    color: var(--color-journey-attention-text);
   }
 
   .journey-progress-readout {
@@ -3059,7 +3077,7 @@
   [data-journey-trajectory] {
     display: grid;
     min-width: 0;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-columns: repeat(var(--journey-day-count), minmax(0, 1fr));
     border-block: 1px solid var(--color-journey-control-border);
   }
 
@@ -3264,7 +3282,7 @@
     }
 
     [data-journey-trajectory] {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(var(--journey-compact-day-count), minmax(0, 1fr));
       border-block-end: 0;
     }
 
@@ -3275,6 +3293,24 @@
 
     [data-journey-day]:last-child {
       border-inline-end: 1px solid var(--color-journey-control-border);
+    }
+  }
+
+  @media (max-width: 20rem) {
+    .journey-progress-readout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .journey-progress-readout__primary {
+      grid-column: auto;
+    }
+
+    .journey-progress-readout > div:last-child {
+      border-inline-start: 0;
+    }
+
+    [data-journey-trajectory] {
+      grid-template-columns: minmax(0, 1fr);
     }
   }
 

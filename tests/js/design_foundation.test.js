@@ -18,8 +18,10 @@ test('Journey compact visual system remains source-authored and accessible', () 
   const css = fs.readFileSync('static/css/tailwind.css', 'utf8');
 
   assert.match(css, /--color-journey-control-border:\s*#[0-9A-Fa-f]{6}/);
+  assert.match(css, /--color-journey-attention-text:\s*#[0-9A-Fa-f]{6}/);
   assert.match(css, /\.journey-progress-readout__primary dd\s*{[^}]*font-size:\s*clamp\(2\.5rem,\s*5vw,\s*4rem\)/s);
-  assert.match(css, /\[data-journey-trajectory\]\s*{[^}]*grid-template-columns:\s*repeat\(7,\s*minmax\(0,\s*1fr\)\)/s);
+  assert.match(css, /\[data-journey-trajectory\]\s*{[^}]*grid-template-columns:\s*repeat\(var\(--journey-day-count\),\s*minmax\(0,\s*1fr\)\)/s);
+  assert.doesNotMatch(css, /\[data-journey-trajectory\]\s*{[^}]*grid-template-columns:\s*repeat\(7,/s);
   assert.match(css, /\[data-journey-day\]\s*{[^}]*min-width:\s*2\.75rem[^}]*min-height:\s*2\.75rem/s);
   assert.match(css, /\[data-journey-day\]\[aria-pressed="true"\]\s*{[^}]*box-shadow:\s*inset 0 -\.1875rem 0 currentColor/s);
   assert.match(css, /\[data-journey-day\]\[data-journey-level\]::after\s*\{[^}]*--journey-level-offset/s);

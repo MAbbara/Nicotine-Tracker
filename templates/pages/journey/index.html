@@ -8,7 +8,18 @@
   <header class="page-intro page-intro--wide journey-intro{% if plan %} journey-intro--plan{% endif %}">
     <p class="eyebrow">Your direction</p>
     <h1>Journey</h1>
-    <p>See today clearly, then look ahead. Your history stays intact when you adjust future days.</p>
+    {% if plan %}
+      <p class="journey-intro__summary">
+        <span><strong>{{ plan.row.mode|replace('_', ' ')|title }} direction</strong>{% if plan.row.pace %} · {{ plan.row.pace|replace('_', ' ')|title }} pace{% endif %}</span>
+        {% if plan.current_day %}
+          <span>Today’s plan day · {% if plan.current_day.nicotine_ceiling_mg is not none %}{{ '%.2f'|format(plan.current_day.nicotine_ceiling_mg) }} mg ceiling{% elif plan.row.mode == 'observe' %}observation without a ceiling{% else %}no nicotine ceiling{% endif %}</span>
+        {% elif plan.next_days %}
+          <span>Next plan day · {{ plan.next_days[0].local_date.strftime('%B %-d') }}</span>
+        {% endif %}
+      </p>
+    {% else %}
+      <p>See today clearly, then look ahead. Your history stays intact when you adjust future days.</p>
+    {% endif %}
   </header>
 
   {% if plan %}

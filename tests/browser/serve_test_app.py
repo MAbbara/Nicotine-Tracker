@@ -784,6 +784,34 @@ with app.app_context():
     seed_review_fixture(
         'journey-review-mobile@example.com', 'e', 'f', targeted=True
     )
+    for project, first_character, second_character in (
+        ('desktop', 'o', 'p'),
+        ('mobile', 'q', 'r'),
+    ):
+        email = f'journey-predecessor-{project}@example.com'
+        seed_review_fixture(
+            email, first_character, second_character, targeted=True
+        )
+        predecessor_user = User.query.filter_by(email=email).one()
+        predecessor_plan = ReductionPlan.query.filter_by(
+            user_id=predecessor_user.id,
+            status='active',
+        ).one()
+        current_row = PlanDay.query.filter_by(
+            plan_id=predecessor_plan.id,
+            local_date=predecessor_plan.start_date,
+        ).one()
+        predecessor_date = predecessor_plan.start_date - timedelta(days=1)
+        predecessor_plan.start_date = predecessor_date
+        predecessor_plan.active_revision.effective_date = predecessor_date
+        current_row.nicotine_ceiling_mg = Decimal('36.00')
+        db.session.add(PlanDay(
+            plan_id=predecessor_plan.id,
+            revision_id=predecessor_plan.active_revision_id,
+            local_date=predecessor_date,
+            target_pouches=None,
+            nicotine_ceiling_mg=Decimal('48.00'),
+        ))
     # The Journey flow mutates its Observe plan to completed. Keep those
     # destructive lifecycle assertions isolated from the immutable release
     # inventory principals exercised later in the same one-worker run.

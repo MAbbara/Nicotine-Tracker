@@ -21,10 +21,11 @@
 {%- endmacro %}
 
 <section class="journey-schedule" aria-labelledby="journey-schedule-title">
+  {% set schedule_day_count = plan.next_days|length %}
   <div class="journey-section-heading">
     <div>
       <p class="eyebrow">Plan ahead</p>
-      <h2 id="journey-schedule-title">Your next seven days</h2>
+      <h2 id="journey-schedule-title">Your next {% if schedule_day_count == 7 %}seven{% else %}{{ schedule_day_count }}{% endif %} {{ 'day' if schedule_day_count == 1 else 'days' }}</h2>
     </div>
     <p>Nicotine ceilings, day by day</p>
   </div>
@@ -47,11 +48,17 @@
       {% endif %}
     </p>
 
-    {% set initial = namespace(day=first_day, previous=none) %}
+    {% set displayed_predecessor = namespace(day=none) %}
+    {% for day in plan.days %}
+      {% if day.local_date < first_day.local_date %}
+        {% set displayed_predecessor.day = day %}
+      {% endif %}
+    {% endfor %}
+    {% set initial = namespace(day=first_day, previous=displayed_predecessor.day) %}
     {% for day in plan.next_days %}
       {% if day.local_date == today %}
         {% set initial.day = day %}
-        {% set initial.previous = plan.next_days[loop.index0 - 1] if loop.index0 > 0 else none %}
+        {% set initial.previous = plan.next_days[loop.index0 - 1] if loop.index0 > 0 else displayed_predecessor.day %}
       {% endif %}
     {% endfor %}
 
@@ -66,9 +73,9 @@
       {% set maximum_ceiling = ceiling_values|max %}
     {% endif %}
 
-    <div data-journey-trajectory role="group" aria-label="{{ plan.next_days|length }}-day {{ 'observation schedule' if plan.row.mode == 'observe' else 'nicotine ceiling trajectory' }}" aria-describedby="journey-trajectory-summary">
+    <div data-journey-trajectory role="group" aria-label="{{ schedule_day_count }}-day {{ 'observation schedule' if plan.row.mode == 'observe' else 'nicotine ceiling trajectory' }}" aria-describedby="journey-trajectory-summary" style="--journey-day-count: {{ schedule_day_count }}; --journey-compact-day-count: {{ schedule_day_count if schedule_day_count <= 3 else 2 }}">
       {% for day in plan.next_days %}
-        {% set previous_day = plan.next_days[loop.index0 - 1] if loop.index0 > 0 else none %}
+        {% set previous_day = plan.next_days[loop.index0 - 1] if loop.index0 > 0 else displayed_predecessor.day %}
         {% if has_comparable_ceilings and day.nicotine_ceiling_mg is not none %}
           {% set ceiling_value = day.nicotine_ceiling_mg|float %}
           {% set journey_level = 0.5 if maximum_ceiling == minimum_ceiling else (ceiling_value - minimum_ceiling) / (maximum_ceiling - minimum_ceiling) %}
@@ -92,9 +99,9 @@
     <p data-journey-day-detail aria-live="polite" aria-atomic="true">{{ initial.day.local_date.strftime('%A') }} · {{ ceiling_label(initial.day) }} · {{ change_label(initial.day, initial.previous) }}</p>
 
     <p id="journey-schedule-scroll-help" class="sr-only">Scroll horizontally to see every schedule column.</p>
-    <div class="journey-table-scroll horizontal-scroll-region" tabindex="0" role="region" aria-label="Seven-day plan" aria-describedby="journey-schedule-scroll-help">
+    <div class="journey-table-scroll horizontal-scroll-region" tabindex="0" role="region" aria-label="{{ schedule_day_count }}-day plan" aria-describedby="journey-schedule-scroll-help">
       <table data-mobile-schedule>
-        <caption>The next seven confirmed schedule days</caption>
+        <caption>The next {{ schedule_day_count }} confirmed schedule {{ 'day' if schedule_day_count == 1 else 'days' }}</caption>
         <thead><tr><th scope="col">Day</th><th scope="col">Nicotine ceiling</th><th scope="col">Context</th></tr></thead>
         <tbody>
           {% for day in plan.next_days %}

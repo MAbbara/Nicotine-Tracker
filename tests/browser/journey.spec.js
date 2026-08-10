@@ -181,6 +181,26 @@ test('first viewport explains nicotine progress and next change before technical
   await createPlan(page);
   const errors = watchForErrors(page);
 
+  const intro = page.locator('.journey-intro--plan');
+  await expect(intro.getByRole('heading', { name: 'Journey', exact: true })).toBeVisible();
+  await expect(intro).toContainText(/Reduce direction · Steady pace/i);
+  await expect(intro).toContainText(/Today’s plan day · 48\.00 mg ceiling/i);
+  const introLayout = await intro.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const heading = element.querySelector('h1').getBoundingClientRect();
+    return {
+      height: rect.height,
+      overflow: getComputedStyle(element).overflow,
+      headingHeight: heading.height,
+      headingInside: heading.top >= rect.top && heading.bottom <= rect.bottom,
+    };
+  });
+  expect(introLayout.height).toBeGreaterThanOrEqual(44);
+  expect(introLayout.height).toBeLessThanOrEqual(192);
+  expect(introLayout.overflow).not.toBe('hidden');
+  expect(introLayout.headingHeight).toBeGreaterThan(0);
+  expect(introLayout.headingInside).toBe(true);
+
   const progress = page.locator('[data-journey-progress]');
   await expect(progress.getByRole('heading', { name: 'Today in this plan' })).toBeVisible();
   await expect(progress.locator('[data-known-mg]')).toHaveText('0.00 mg');
@@ -261,8 +281,13 @@ test('compact Journey hierarchy remains responsive, distinguishable, and motion-
     summary: document.querySelector('[data-journey-trajectory-summary]').getBoundingClientRect().toJSON(),
     trajectory: document.querySelector('[data-journey-trajectory]').getBoundingClientRect().toJSON(),
   }));
+  expect(initialFold.next.bottom, JSON.stringify(initialFold))
+    .toBeLessThanOrEqual(initialFold.viewport + 1);
+  expect(initialFold.schedule.top, JSON.stringify(initialFold))
+    .toBeGreaterThanOrEqual(initialFold.next.bottom);
   expect(initialFold.trajectory.top, JSON.stringify(initialFold))
-    .toBeLessThan(initialFold.viewport);
+    .toBeGreaterThanOrEqual(initialFold.schedule.top);
+  await trajectory.scrollIntoViewIfNeeded();
   await expect(trajectory).toBeInViewport();
 
   await page.setViewportSize({ width: 320, height: 800 });
@@ -277,6 +302,36 @@ test('compact Journey hierarchy remains responsive, distinguishable, and motion-
       document.documentElement.scrollWidth - document.documentElement.clientWidth
     ));
     expect(overflow, `${theme} overflow`).toBeLessThanOrEqual(1);
+
+    const scorecardGeometry = await page.locator('[data-journey-scorecard]').evaluate((scorecard) => (
+      [...scorecard.children].map((item) => {
+        const itemRect = item.getBoundingClientRect();
+        const labelRect = item.querySelector('dt').getBoundingClientRect();
+        const valueRect = item.querySelector('dd').getBoundingClientRect();
+        return {
+          item: itemRect.toJSON(),
+          label: labelRect.toJSON(),
+          value: valueRect.toJSON(),
+          clientWidth: item.clientWidth,
+          scrollWidth: item.scrollWidth,
+        };
+      })
+    ));
+    expect(scorecardGeometry).toHaveLength(3);
+    for (const [index, metric] of scorecardGeometry.entries()) {
+      expect(metric.scrollWidth, `${theme} scorecard ${index + 1} scroll width`)
+        .toBeLessThanOrEqual(metric.clientWidth + 1);
+      for (const [kind, rect] of [['label', metric.label], ['value', metric.value]]) {
+        expect(rect.left, `${theme} scorecard ${index + 1} ${kind} left`)
+          .toBeGreaterThanOrEqual(metric.item.left - 1);
+        expect(rect.right, `${theme} scorecard ${index + 1} ${kind} right`)
+          .toBeLessThanOrEqual(metric.item.right + 1);
+        expect(rect.top, `${theme} scorecard ${index + 1} ${kind} top`)
+          .toBeGreaterThanOrEqual(metric.item.top - 1);
+        expect(rect.bottom, `${theme} scorecard ${index + 1} ${kind} bottom`)
+          .toBeLessThanOrEqual(metric.item.bottom + 1);
+      }
+    }
 
     const geometry = await days.evaluateAll((elements) => elements.map((element) => {
       const rect = element.getBoundingClientRect();
@@ -380,6 +435,45 @@ test('compact Journey hierarchy remains responsive, distinguishable, and motion-
       .map(toMilliseconds));
   });
   expect(maxMotionDuration).toBeLessThanOrEqual(0.001);
+});
+
+test('Journey attention progress states meet text contrast in both themes', async ({ page }, testInfo) => {
+  await loginReviewFixture(page, testInfo);
+  const status = page.locator('.journey-progress-status');
+  await expect(status).toBeVisible();
+
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate((value) => {
+      document.documentElement.dataset.theme = value;
+    }, theme);
+    for (const variant of ['above_ceiling', 'nicotine_total_incomplete']) {
+      const colors = await status.evaluate((element, state) => {
+        element.className = `journey-progress-status journey-progress-status--${state}`;
+        const style = getComputedStyle(element);
+        return {
+          foreground: style.color,
+          background: getComputedStyle(element.closest('.journey-plan')).backgroundColor,
+        };
+      }, variant);
+      expect(
+        contrastRatio(colors.foreground, colors.background),
+        `${theme} ${variant}: ${JSON.stringify(colors)}`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  }
+});
+
+test('first displayed Journey day compares with the preceding confirmed day', async ({ page }, testInfo) => {
+  const project = testInfo.project.name.includes('mobile') ? 'mobile' : 'desktop';
+  await loginFixture(page, `journey-predecessor-${project}@example.com`);
+
+  const firstDay = page.locator('[data-journey-day]').first();
+  await expect(firstDay).toHaveAttribute('aria-pressed', 'true');
+  await expect(firstDay).toHaveAttribute('data-ceiling-label', '36.00 mg ceiling');
+  await expect(firstDay).toHaveAttribute('data-change-label', '12.00 mg lower');
+  await expect(page.locator('[data-journey-day-detail]')).toContainText(
+    /36\.00 mg ceiling · 12\.00 mg lower/,
+  );
 });
 
 test('pre-start and paused Journey explain neutral schedule transitions', async ({ page }, testInfo) => {

@@ -576,9 +576,12 @@ class TestJourneyComposition:
 
         trajectory = soup.select_one('[data-journey-trajectory]')
         buttons = trajectory.select('[data-journey-day]')
-        assert buttons[0]['data-change-label'] == 'Current ceiling'
+        assert buttons[0]['data-change-label'] == '12.00 mg lower'
         assert buttons[1]['data-change-label'] == 'Ceiling unchanged'
         assert buttons[2]['data-change-label'] == '6.00 mg lower'
+        assert soup.select_one('[data-journey-day-detail]').get_text(
+            ' ', strip=True
+        ).endswith('12.00 mg lower')
 
         complete_schedule = soup.select_one('[data-complete-schedule]')
         assert [cell.get_text(' ', strip=True) for cell in complete_schedule.select('thead th')] == [
@@ -721,6 +724,17 @@ class TestJourneyComposition:
         assert '6.00 mg per pouch' in text
         assert 'Today in this plan' in text
         assert 'Your next seven days' in text
+        trajectory = soup.select_one('[data-journey-trajectory]')
+        assert trajectory['style'] == (
+            '--journey-day-count: 7; --journey-compact-day-count: 2'
+        )
+        schedule_table = soup.select_one('[data-mobile-schedule]')
+        assert schedule_table.find_parent(attrs={'role': 'region'})['aria-label'] == (
+            '7-day plan'
+        )
+        assert schedule_table.caption.get_text(' ', strip=True) == (
+            'The next 7 confirmed schedule days'
+        )
         assert len(soup.select('[data-mobile-schedule] tbody tr')) == 7
         assert len(soup.select('[data-complete-schedule] tbody tr')) == 10
         assert len(soup.select('.journey-history-list > li')) >= 3
@@ -778,6 +792,22 @@ class TestJourneyComposition:
             count=3,
             accessible_name='3-day observation schedule',
         )
+        assert soup.select_one('#journey-schedule-title').get_text(
+            ' ', strip=True
+        ) == 'Your next 3 days'
+        assert trajectory['style'] == (
+            '--journey-day-count: 3; --journey-compact-day-count: 3'
+        )
+        schedule_table = soup.select_one('[data-mobile-schedule]')
+        assert schedule_table.find_parent(attrs={'role': 'region'})['aria-label'] == (
+            '3-day plan'
+        )
+        assert schedule_table.caption.get_text(' ', strip=True) == (
+            'The next 3 confirmed schedule days'
+        )
+        assert 'seven days' not in schedule_table.find_parent(
+            class_='journey-schedule'
+        ).get_text(' ', strip=True).lower()
         assert selected['data-date-label'] == authority.local_date.strftime(
             '%A'
         )
@@ -853,6 +883,19 @@ class TestJourneyComposition:
             soup,
             count=3,
             accessible_name='3-day nicotine ceiling trajectory',
+        )
+        assert soup.select_one('#journey-schedule-title').get_text(
+            ' ', strip=True
+        ) == 'Your next 3 days'
+        assert soup.select_one('[data-journey-trajectory]')['style'] == (
+            '--journey-day-count: 3; --journey-compact-day-count: 3'
+        )
+        schedule_table = soup.select_one('[data-mobile-schedule]')
+        assert schedule_table.find_parent(attrs={'role': 'region'})['aria-label'] == (
+            '3-day plan'
+        )
+        assert schedule_table.caption.get_text(' ', strip=True) == (
+            'The next 3 confirmed schedule days'
         )
         assert selected['data-date-label'] == authority.local_date.strftime(
             '%A'
