@@ -205,6 +205,63 @@ def _plan_presentation(plan, today):
         and plan.baseline_source == 'observe'
         and not revisions
     )
+    start_date = plan.start_date
+    target_date = plan.target_date
+    day_number = (today - start_date).days + 1 if start_date else None
+    total_days = (
+        (target_date - start_date).days + 1
+        if start_date and target_date else None
+    )
+    stage_day_number = stage_day_count = None
+    if current_stage is not None:
+        stage_day_number = (today - current_stage['start_date']).days + 1
+        stage_day_count = len(current_stage['days'])
+    next_milestone = next(
+        (m for m in milestones if m['date'] > today), None
+    )
+    next_milestone_payload = None
+    if next_milestone is not None:
+        milestone_stage = next(
+            (s for s in stages
+             if s['start_date'] == next_milestone['date']), None
+        )
+        next_milestone_payload = {
+            'date': next_milestone['date'],
+            'pouches': (
+                milestone_stage['target_pouches']
+                if milestone_stage else None
+            ),
+        }
+    end_mg = None
+    if (
+        plan.end_target_pouches is not None
+        and plan.baseline_mg_per_pouch is not None
+    ):
+        end_mg = _decimal_display(
+            Decimal(plan.end_target_pouches) * plan.baseline_mg_per_pouch
+        )
+    schedule_end = target_date or (stages[-1]['end_date'] if stages else today)
+    use_path_overview = (
+        plan.status == 'active'
+        and plan.mode != 'observe'
+        and not proposal
+    )
+    path_payload = {
+        'start': start_date.isoformat() if start_date else None,
+        'end': schedule_end.isoformat(),
+        'today': today.isoformat(),
+        'endTarget': plan.end_target_pouches,
+        'stages': [
+            {
+                'start': stage['start_date'].isoformat(),
+                'end': stage['end_date'].isoformat(),
+                'pouches': stage['target_pouches'],
+                'mg': stage['nicotine_ceiling_mg'],
+                'revision': stage['revision_id'],
+            }
+            for stage in stages
+        ],
+    }
     return {
         'row': plan,
         'baseline_source_label': _BASELINE_LABELS.get(
@@ -225,6 +282,14 @@ def _plan_presentation(plan, today):
         'intervals': intervals,
         'milestones': milestones,
         'is_observe_proposal': proposal,
+        'use_path_overview': use_path_overview,
+        'day_number': day_number,
+        'total_days': total_days,
+        'stage_day_number': stage_day_number,
+        'stage_day_count': stage_day_count,
+        'next_milestone': next_milestone_payload,
+        'end_mg': end_mg,
+        'path_payload': path_payload,
     }
 
 

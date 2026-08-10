@@ -65,6 +65,8 @@ async function createPlan(page) {
 
 async function previewRevision(page, duration = '35') {
   const editor = page.locator('[data-plan-editor="revision"]');
+  const toggle = page.locator('[data-adjust-toggle]');
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
   await editor.getByLabel('Effective date').fill(isoDate(1));
   await editor.getByLabel('Duration days').fill(duration);
   await editor.getByRole('button', { name: 'Preview revision' }).click();
@@ -98,14 +100,14 @@ test('Journey previews explicitly, mutates future rows only, and carries status 
   await createPlan(page);
   const errors = watchForErrors(page);
 
-  await expect(page.getByRole('heading', { name: 'Current stage' })).toBeVisible();
-  await expect(page.locator('[data-mobile-schedule] tbody tr')).toHaveCount(7);
-  await expect(page.getByRole('heading', { name: 'Plan facts' })).toBeVisible();
-  await page.getByText('Show the complete schedule').click();
-  await expect(page.locator('[data-complete-schedule] tbody tr')).not.toHaveCount(0);
-  await expect(page.locator('.journey-history')).toContainText(/Revision \d+/);
+  await expect(page.locator('.today-panel')).toContainText(/pouches · [\d.]+ mg ceiling/);
+  await expect(page.locator('[data-stage-table] tbody tr')).not.toHaveCount(0);
+  await page.locator('.facts summary').click();
+  await expect(page.locator('.facts__grid')).toContainText('Manual baseline');
+  await expect(page.locator('.journey-overview .history__list')).toContainText(/Revision \d+/);
 
-  const before = await page.locator('[data-complete-schedule] tbody tr').evaluateAll((rows) => rows.map((row) => row.textContent));
+  const scheduleRows = () => page.locator('[data-stage-table] tbody tr').evaluateAll((rows) => rows.map((row) => row.textContent));
+  const before = await scheduleRows();
   const mutationRequests = [];
   page.on('request', (request) => {
     if (request.method() === 'POST' && /\/api\/plans\/\d+\/revisions$/.test(new URL(request.url()).pathname)) {
@@ -113,17 +115,22 @@ test('Journey previews explicitly, mutates future rows only, and carries status 
     }
   });
   const revision = page.locator('[data-plan-editor="revision"]');
+  const adjustToggle = page.locator('[data-adjust-toggle]');
+  if ((await adjustToggle.getAttribute('aria-expanded')) !== 'true') await adjustToggle.click();
   await revision.getByLabel('Duration days').fill('42');
   expect(mutationRequests).toHaveLength(0);
   await previewRevision(page, '42');
   expect(mutationRequests).toHaveLength(0);
-  await revision.getByRole('button', { name: 'Confirm revision' }).click();
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: 'load' }),
+    revision.getByRole('button', { name: 'Confirm revision' }).click(),
+  ]);
   await expect(page).toHaveURL(/\/journey\/?$/);
   expect(mutationRequests).toHaveLength(1);
-  await page.getByText('Show the complete schedule').click();
-  const after = await page.locator('[data-complete-schedule] tbody tr').evaluateAll((rows) => rows.map((row) => row.textContent));
-  expect(after[0]).toBe(before[0]);
-  expect(after.slice(1)).not.toEqual(before.slice(1));
+  const after = await scheduleRows();
+  expect(before[0]).toContain('8 pouches');
+  expect(after[0]).toContain('8 pouches');
+  expect(after).not.toEqual(before);
 
   await page.getByRole('button', { name: 'Pause plan' }).click();
   await expect(page.getByText(/Plan paused\. Your history is unchanged/i)).toBeVisible();
@@ -132,8 +139,8 @@ test('Journey previews explicitly, mutates future rows only, and carries status 
   await resume.getByRole('button', { name: 'Preview resume' }).click();
   await expect(resume.locator('[data-plan-editor-preview] tbody tr')).not.toHaveCount(0);
   await resume.getByRole('button', { name: 'Confirm resume' }).click();
-  await expect(page.getByText(/Status:\s*Active/i)).toBeVisible();
-  await expect(page.locator('.journey-history')).toContainText(/Paused .* to .* UTC/s);
+  await expect(page.locator('.journey-overview .status-pill')).toContainText('Active');
+  await expect(page.locator('.journey-overview .history__list')).toContainText(/Paused/i);
 
   await page.getByRole('button', { name: 'Mark complete' }).click();
   await expect(page.getByText('Plan marked complete.')).toBeVisible();
@@ -173,7 +180,7 @@ test('stale revision preview refreshes and requires a second explicit confirmati
   await expect(editor.getByRole('status')).toContainText(/fresh preview.*confirm again/i);
   await expect(page).toHaveURL(/\/journey\/?$/);
   await editor.getByRole('button', { name: 'Confirm revision' }).click();
-  await expect(page.locator('.journey-history')).toContainText(/reason user edit/i);
+  await expect(page.locator('.journey-overview .history__list')).toContainText(/user edit/i);
   expect(staleReturned).toBe(true);
   expect(errors).toEqual([]);
 });

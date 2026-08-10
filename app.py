@@ -15,6 +15,7 @@ from flask_wtf.csrf import CSRFError
 import logging
 from logging.handlers import RotatingFileHandler
 import os
+from datetime import date
 
 def create_app(config_name=None):
     app = Flask(__name__)
@@ -37,6 +38,14 @@ def create_app(config_name=None):
     bcrypt.init_app(app)
     mail.init_app(app)
     csrf.init_app(app)
+
+    @app.template_filter('human_date')
+    def human_date(value):
+        if value is None:
+            return 'Unknown'
+        if isinstance(value, str):
+            value = date.fromisoformat(value)
+        return f"{value.day} {value.strftime('%B')}"
 
     # Request correlation: X-Request-ID in/out + log record stamping
     init_request_context(app)

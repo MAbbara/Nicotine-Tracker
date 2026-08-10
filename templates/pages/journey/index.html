@@ -11,7 +11,9 @@
     <p>See what today belongs to, inspect the schedule ahead, and change future days without rewriting your history.</p>
   </header>
 
-  {% if plan %}
+  {% if plan and plan.use_path_overview %}
+    {% include "pages/journey/_active_overview.html" %}
+  {% elif plan %}
     <article class="journey-plan" data-plan-id="{{ plan.row.id }}" aria-labelledby="current-plan-title">
       <header>
         <p class="eyebrow">{% if plan.is_observe_proposal %}Proposed baseline{% else %}Current plan{% endif %}</p>
@@ -232,5 +234,10 @@
 {% block preline_js %}{% endblock %}
 
 {% block extra_js %}
-  <script type="module" src="{{ url_for('static', filename='js/journey/plan_editor.js') }}"></script>
+  {% if plan and plan.use_path_overview %}
+    <script type="module" src="{{ url_for('static', filename='js/journey/plan_editor.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/journey/active_overview.js') }}"></script>
+  {% else %}
+    <script type="module" src="{{ url_for('static', filename='js/journey/plan_editor.js') }}"></script>
+  {% endif %}
 {% endblock %}
