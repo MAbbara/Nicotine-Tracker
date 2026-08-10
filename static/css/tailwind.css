@@ -2475,7 +2475,7 @@
   }
 
   .journey-intro--plan + .journey-plan {
-    gap: var(--space-6);
+    gap: var(--space-2);
     margin-block-start: 0;
     padding-block-start: var(--space-2);
   }
@@ -2506,7 +2506,7 @@
 
   .journey-plan__schedule {
     gap: var(--space-8);
-    padding-block-start: var(--space-2);
+    padding-block-start: 0;
     border-block-start: 1px solid var(--color-border-strong);
   }
 
@@ -2925,7 +2925,7 @@
   .journey-today {
     display: grid;
     gap: var(--space-2);
-    padding-block: var(--space-1) var(--space-2);
+    padding-block: var(--space-1);
     border-block-end: 1px solid var(--color-border-strong);
   }
 
@@ -3054,7 +3054,7 @@
   .journey-schedule {
     display: grid;
     grid-template-columns: minmax(12rem, 0.4fr) minmax(0, 0.6fr);
-    gap: var(--space-1);
+    gap: 0;
   }
 
   .journey-schedule > .journey-section-heading {

@@ -277,11 +277,17 @@ test('compact Journey hierarchy remains responsive, distinguishable, and motion-
     scrollY: window.scrollY,
     plan: document.querySelector('.journey-plan').getBoundingClientRect().toJSON(),
     today: document.querySelector('[data-journey-progress]').getBoundingClientRect().toJSON(),
+    todayHeading: document.querySelector('[data-journey-progress] > .journey-section-heading').getBoundingClientRect().toJSON(),
+    scorecard: document.querySelector('[data-journey-scorecard]').getBoundingClientRect().toJSON(),
+    todayContext: document.querySelector('.journey-today__context').getBoundingClientRect().toJSON(),
     next: document.querySelector('[data-next-change]').getBoundingClientRect().toJSON(),
     schedule: document.querySelector('.journey-schedule').getBoundingClientRect().toJSON(),
     scheduleHeading: document.querySelector('.journey-schedule .journey-section-heading').getBoundingClientRect().toJSON(),
     summary: document.querySelector('[data-journey-trajectory-summary]').getBoundingClientRect().toJSON(),
     trajectory: document.querySelector('[data-journey-trajectory]').getBoundingClientRect().toJSON(),
+    firstDay: document.querySelector('[data-journey-day]').getBoundingClientRect().toJSON(),
+    firstDayLabel: document.querySelector('[data-journey-day] > span').getBoundingClientRect().toJSON(),
+    firstDayValue: document.querySelector('[data-journey-day] > strong').getBoundingClientRect().toJSON(),
   }));
   expect(initialFold.next.bottom, JSON.stringify(initialFold))
     .toBeLessThanOrEqual(initialFold.viewport + 1);
@@ -293,8 +299,15 @@ test('compact Journey hierarchy remains responsive, distinguishable, and motion-
     expect(initialFold.viewportWidth).toBe(1280);
     expect(initialFold.viewport).toBe(720);
     expect(initialFold.scrollY).toBe(0);
-    expect(initialFold.trajectory.top, JSON.stringify(initialFold))
-      .toBeLessThan(initialFold.viewport);
+    const firstDayVisibleHeight = Math.min(initialFold.firstDay.bottom, initialFold.viewport)
+      - Math.max(initialFold.firstDay.top, 0);
+    expect(firstDayVisibleHeight, JSON.stringify(initialFold)).toBeGreaterThanOrEqual(44);
+    expect(initialFold.firstDayLabel.top, JSON.stringify(initialFold)).toBeGreaterThanOrEqual(0);
+    expect(initialFold.firstDayLabel.bottom, JSON.stringify(initialFold))
+      .toBeLessThanOrEqual(initialFold.viewport);
+    expect(initialFold.firstDayValue.top, JSON.stringify(initialFold)).toBeGreaterThanOrEqual(0);
+    expect(initialFold.firstDayValue.bottom, JSON.stringify(initialFold))
+      .toBeLessThanOrEqual(initialFold.viewport);
   }
   await trajectory.scrollIntoViewIfNeeded();
   await expect(trajectory).toBeInViewport();
