@@ -534,6 +534,22 @@ button { font: inherit; }
 .adjust__promise { color: var(--color-text-muted); font-size: var(--text-small); }
 .adjust__chev { color: var(--color-constructive); transition: transform var(--duration-panel) var(--ease-out-expo); }
 .adjust__toggle[aria-expanded="true"] .adjust__chev { transform: rotate(180deg); }
+.adjust__collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--duration-panel) var(--ease-out-expo);
+}
+.adjust__collapse.is-open { grid-template-rows: 1fr; }
+.adjust__collapse-inner {
+  min-height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  transition: visibility 0s var(--duration-panel);
+}
+.adjust__collapse.is-open .adjust__collapse-inner {
+  visibility: visible;
+  transition-delay: 0s;
+}
 .adjust__body {
   padding: 0 clamp(1.25rem, 3vw, 2rem) clamp(1.25rem, 3vw, 2rem);
   border-block-start: 1px solid var(--color-border);
@@ -707,6 +723,7 @@ html.js .rise.is-in {
   html.js .rise, html.js .rise.is-in { opacity: 1; transition: none; transform: none; }
   .chart-step--past.draw-in { animation: none; stroke-dasharray: none; stroke-dashoffset: 0; }
   .chart-step--future.fade-in, .chart-preview-step.fade-in { animation: none; opacity: 1; }
+  .adjust__collapse, .adjust__collapse-inner { transition: none; }
 }
 
 @media (max-width: 48rem) {
@@ -842,40 +859,44 @@ html.js .rise.is-in {
       </span>
       <svg class="c-icon adjust__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
     </button>
-    <div class="adjust__body" id="adjust-body" hidden>
-      <form data-adjust-form novalidate>
-        <div class="adjust__fields">
-          <div class="field">
-            <label for="adjust-date">Effective date</label>
-            <input id="adjust-date" data-adjust-date type="date" min="2026-08-11" max="2026-09-05" value="2026-08-12" required>
+    <div class="adjust__collapse" id="adjust-body">
+      <div class="adjust__collapse-inner">
+        <div class="adjust__body">
+          <form data-adjust-form novalidate>
+          <div class="adjust__fields">
+            <div class="field">
+              <label for="adjust-date">Effective date</label>
+              <input id="adjust-date" data-adjust-date type="date" min="2026-08-11" max="2026-09-05" value="2026-08-12" required>
+            </div>
+            <div class="field">
+              <label for="adjust-pace">Pace</label>
+              <select id="adjust-pace" data-adjust-pace>
+                <option value="" selected>Keep steady pace</option>
+                <option value="gentle">Gentle — more time</option>
+                <option value="focused">Focused — sooner</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="adjust-target">End target, pouches a day</label>
+              <input id="adjust-target" data-adjust-target type="number" min="0" max="3" placeholder="Keep 2">
+            </div>
           </div>
-          <div class="field">
-            <label for="adjust-pace">Pace</label>
-            <select id="adjust-pace" data-adjust-pace>
-              <option value="" selected>Keep steady pace</option>
-              <option value="gentle">Gentle — more time</option>
-              <option value="focused">Focused — sooner</option>
-            </select>
+          <p class="adjust__hint" data-adjust-hint>Choose at least one change. Previewing does not change any plan day.</p>
+          <div class="adjust__buttons">
+            <button class="c-button c-button--primary" type="submit" data-adjust-preview>Preview revision</button>
           </div>
-          <div class="field">
-            <label for="adjust-target">End target, pouches a day</label>
-            <input id="adjust-target" data-adjust-target type="number" min="0" max="3" placeholder="Keep 2">
+        </form>
+        <div class="adjust__preview" data-preview-region hidden>
+          <p class="adjust__summary" data-preview-summary></p>
+          <ul class="adjust__diff" data-preview-diff></ul>
+          <div class="adjust__buttons">
+            <button class="c-button c-button--primary" type="button" data-adjust-confirm>Confirm revision</button>
+            <button class="c-button c-button--ghost" type="button" data-adjust-discard>Discard preview</button>
           </div>
         </div>
-        <p class="adjust__hint" data-adjust-hint>Choose at least one change. Previewing does not change any plan day.</p>
-        <div class="adjust__buttons">
-          <button class="c-button c-button--primary" type="submit" data-adjust-preview>Preview revision</button>
-        </div>
-      </form>
-      <div class="adjust__preview" data-preview-region hidden>
-        <p class="adjust__summary" data-preview-summary></p>
-        <ul class="adjust__diff" data-preview-diff></ul>
-        <div class="adjust__buttons">
-          <button class="c-button c-button--primary" type="button" data-adjust-confirm>Confirm revision</button>
-          <button class="c-button c-button--ghost" type="button" data-adjust-discard>Discard preview</button>
+          <p class="adjust__status" role="status" data-adjust-status hidden></p>
         </div>
       </div>
-      <p class="adjust__status" role="status" data-adjust-status hidden></p>
     </div>
   </section>
 
@@ -1274,7 +1295,7 @@ html.js .rise.is-in {
   adjustToggle.addEventListener("click", () => {
     const open = adjustToggle.getAttribute("aria-expanded") === "true";
     adjustToggle.setAttribute("aria-expanded", String(!open));
-    adjustBody.hidden = open;
+    adjustBody.classList.toggle("is-open", !open);
   });
 
   const hintAlert = (msg) => {

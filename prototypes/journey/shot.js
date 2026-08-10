@@ -39,6 +39,14 @@ const { chromium } = require("playwright");
   const lastStep = () => desktop.locator("[data-chart-step]").last().getAttribute("d");
   const pathBefore = await lastStep();
   await desktop.click("[data-adjust-toggle]");
+  await desktop.waitForTimeout(60);
+  const hEarly = await desktop.evaluate(() => document.getElementById("adjust-body").offsetHeight);
+  await desktop.waitForTimeout(500);
+  const hOpen = await desktop.evaluate(() => document.getElementById("adjust-body").offsetHeight);
+  if (!(hOpen > hEarly)) {
+    console.error("adjust section did not animate open:", hEarly, "->", hOpen);
+    process.exit(1);
+  }
   await desktop.fill("[data-adjust-date]", "2026-08-12");
   await desktop.selectOption("[data-adjust-pace]", "focused");
   await desktop.click("[data-adjust-preview]");
