@@ -391,6 +391,95 @@ button { font: inherit; }
 }
 .today-panel .c-button { flex: none; }
 
+/* ---------- Section rhythm ---------- */
+.app-content > * + * { margin-block-start: clamp(2.5rem, 6vw, 4.5rem); }
+.section-heading { margin-block-end: var(--space-6); }
+.section-heading h2 { font-size: clamp(1.7rem, 1.45rem + 1.1vw, 2.25rem); font-weight: 480; }
+.section-heading p { margin-block-start: var(--space-2); color: var(--color-text-muted); max-width: 46ch; }
+
+/* ---------- The path chart ---------- */
+:root { --color-ink-soft: var(--color-border-strong); }
+@supports (color: color-mix(in oklab, red, blue)) {
+  :root { --color-ink-soft: color-mix(in oklab, var(--color-ink) 62%, transparent); }
+}
+.path-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-color: var(--color-border-strong) transparent;
+  padding-block-end: var(--space-2);
+}
+.path-scroll:focus-visible { outline-offset: 6px; }
+.path-figure { position: relative; width: 760px; margin: 0; }
+.path-figure svg { display: block; }
+.chart-grid { stroke: var(--color-border); stroke-width: 1; }
+.chart-axis-label { fill: var(--color-text-muted); font-family: var(--font-interface); font-size: 11px; }
+.chart-step { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.chart-step--past { stroke: var(--color-constructive); stroke-width: 2.5; }
+.chart-step--future { stroke: var(--color-ink-soft); stroke-width: 2; stroke-dasharray: 6 6; }
+.chart-preview-step { fill: none; stroke: var(--color-attention); stroke-width: 2; stroke-dasharray: 3 5; stroke-linecap: round; }
+.chart-today-rule { stroke: var(--color-attention); stroke-width: 1.5; }
+.chart-today-dot { fill: var(--color-attention); stroke: var(--color-canvas); stroke-width: 2; }
+.chart-today-label { fill: var(--color-attention-deep); font-family: var(--font-interface); font-size: 11px; font-weight: 700; }
+.chart-milestone { fill: var(--color-milestone); }
+[data-milestone] { cursor: pointer; outline: none; }
+[data-milestone]:focus-visible .chart-milestone { stroke: var(--color-focus); stroke-width: 2.5; }
+[data-milestone]:hover .chart-milestone { fill: var(--color-attention); }
+.chart-flag { fill: var(--color-milestone); stroke: none; }
+.chart-flag-pole { stroke: var(--color-milestone); stroke-width: 2; }
+.chart-flag-label { fill: var(--color-ink); font-family: var(--font-interface); font-size: 11px; font-weight: 700; }
+.chart-step--past.draw-in { stroke-dasharray: 1; stroke-dashoffset: 1; animation: chart-draw .8s var(--ease-out-expo) forwards; }
+.chart-step--future.fade-in, .chart-preview-step.fade-in { opacity: 0; animation: chart-fade .6s var(--ease-out-expo) .35s forwards; }
+@keyframes chart-draw { to { stroke-dashoffset: 0; } }
+@keyframes chart-fade { to { opacity: 1; } }
+.path-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-6);
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--color-text-muted);
+  font-size: var(--text-caption);
+  font-weight: 650;
+}
+.path-legend li { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 1.9rem; }
+.mark { flex: none; width: 1.4rem; height: .8rem; position: relative; }
+.mark--past::before { content: ""; position: absolute; inset-block-start: 50%; inset-inline: 0; border-block-start: 2.5px solid var(--color-constructive); border-radius: 2px; }
+.mark--future::before { content: ""; position: absolute; inset-block-start: 50%; inset-inline: 0; border-block-start: 2px dashed var(--color-ink-soft); }
+.mark--milestone::before { content: ""; position: absolute; inset-block-start: 50%; inset-inline-start: 50%; width: .55rem; height: .55rem; background: var(--color-milestone); transform: translate(-50%, -50%) rotate(45deg); }
+.mark--today::before { content: ""; position: absolute; inset-block: 0; inset-inline-start: 50%; border-inline-start: 1.5px solid var(--color-attention); }
+.mark--today::after { content: ""; position: absolute; inset-block-start: 50%; inset-inline-start: 50%; width: .45rem; height: .45rem; background: var(--color-attention); border-radius: 50%; transform: translate(-50%, -50%); }
+.path-tooltip {
+  position: absolute;
+  z-index: 5;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  max-width: 15rem;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-overlay);
+  color: var(--color-ink);
+  font-size: var(--text-caption);
+  font-weight: 650;
+  pointer-events: none;
+}
+.path-takeaway {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  margin-block-start: var(--space-8);
+  max-width: 46rem;
+  font-size: 1.02rem;
+}
+.path-takeaway::before {
+  content: "";
+  flex: none;
+  width: 2rem;
+  border-block-start: 2px solid var(--color-attention);
+  transform: translateY(-.3rem);
+}
+
 @media (max-width: 48rem) {
   .today-panel { flex-direction: column; align-items: stretch; }
   .primary-nav {
@@ -477,6 +566,38 @@ button { font: inherit; }
     </div>
     <a class="c-button c-button--primary" href="#">Open Today’s next step</a>
   </section>
+
+  <section class="path-section rise" style="--i:2" aria-labelledby="path-title">
+    <div class="section-heading">
+      <h2 id="path-title">The path you’re on</h2>
+      <p>Every scheduled step, from your baseline to your target.</p>
+    </div>
+    <div class="path-scroll" tabindex="0" role="region" aria-label="Plan path chart — scroll horizontally to see every date">
+      <figure class="path-figure">
+        <svg data-path-chart viewBox="0 0 760 340" width="760" height="340" role="img"
+             aria-label="Stepped chart of daily pouch targets from 7 on 19 July down to 2 on 5 September. Today, 10 August, sits on the 4-pouch step."></svg>
+        <p class="path-tooltip" data-chart-tooltip hidden></p>
+        <figcaption class="sr-only">
+          Daily pouch targets step down: 7 from 19 to 25 July, 6 to 1 August, 5 to 8 August,
+          4 to 15 August, 3 to 26 August, then 2 until 5 September.
+        </figcaption>
+      </figure>
+    </div>
+    <ul class="path-legend">
+      <li><span class="mark mark--past" aria-hidden="true"></span> Behind you</li>
+      <li><span class="mark mark--future" aria-hidden="true"></span> Scheduled ahead</li>
+      <li><span class="mark mark--milestone" aria-hidden="true"></span> Target steps down</li>
+      <li><span class="mark mark--today" aria-hidden="true"></span> Today</li>
+    </ul>
+    <table class="sr-only" data-stage-table>
+      <caption>Stage targets for the whole plan</caption>
+      <thead>
+        <tr><th scope="col">Dates</th><th scope="col">Daily target</th><th scope="col">Nicotine ceiling</th><th scope="col">Revision</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <p class="path-takeaway">From 42 mg a day to 12 mg — every step scheduled, none improvised.</p>
+  </section>
 </main>
 
 <script>
@@ -493,6 +614,197 @@ button { font: inherit; }
   toggle.addEventListener("click", () => {
     apply(root.dataset.theme === "dark" ? "light" : "dark");
   });
+})();
+</script>
+<script>
+(() => {
+  /* ---------- Plan data (fixed sample set, see spec) ---------- */
+  const PLAN = {
+    start: "2026-07-19",
+    end: "2026-09-05",
+    today: "2026-08-10",
+    endTarget: 2,
+    stages: [
+      { start: "2026-07-19", end: "2026-07-25", pouches: 7, mg: 42, revision: 1 },
+      { start: "2026-07-26", end: "2026-08-01", pouches: 6, mg: 36, revision: 1 },
+      { start: "2026-08-02", end: "2026-08-08", pouches: 5, mg: 30, revision: 2 },
+      { start: "2026-08-09", end: "2026-08-15", pouches: 4, mg: 24, revision: 2 },
+      { start: "2026-08-16", end: "2026-08-26", pouches: 3, mg: 18, revision: 2 },
+      { start: "2026-08-27", end: "2026-09-05", pouches: 2, mg: 12, revision: 2 },
+    ],
+  };
+  const SVGNS = "http://www.w3.org/2000/svg";
+  const DAY = 86400000;
+  const parseDay = (s) => Date.parse(s + "T00:00:00Z");
+  const dayIndex = (s) => Math.round((parseDay(s) - parseDay(PLAN.start)) / DAY);
+  const M = { top: 30, right: 46, bottom: 42, left: 38 };
+  const W = 760, H = 340;
+  const IW = W - M.left - M.right;
+  const IH = H - M.top - M.bottom;
+  const X = (s) => M.left + dayIndex(s) * (IW / 48);
+  const xIndex = (i) => M.left + Math.min(i, 48) * (IW / 48);
+  const Y = (p) => M.top + (1 - p / 8) * IH;
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const fmtDay = (s) => {
+    const d = new Date(parseDay(s));
+    return d.getUTCDate() + " " + MONTHS[d.getUTCMonth()];
+  };
+  const el = (tag, attrs) => {
+    const n = document.createElementNS(SVGNS, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    return n;
+  };
+  const svg = document.querySelector("[data-path-chart]");
+  const tbody = document.querySelector("[data-stage-table] tbody");
+  const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const stageX2 = (st) => xIndex(dayIndex(st.end) + 1);
+
+  function renderChart() {
+    const reduced = reducedMotion();
+    svg.textContent = "";
+    tbody.textContent = "";
+    const todayX = X(PLAN.today);
+
+    // grid + y labels (pouch counts)
+    for (let p = 0; p <= 8; p += 2) {
+      svg.appendChild(el("line", { x1: M.left, x2: W - M.right, y1: Y(p), y2: Y(p), class: "chart-grid" }));
+      if (p > 0) {
+        const t = el("text", { x: M.left - 8, y: Y(p) + 4, "text-anchor": "end", class: "chart-axis-label" });
+        t.textContent = p;
+        svg.appendChild(t);
+      }
+    }
+    // x labels (deduped dates)
+    const tickIdx = [...new Set([0, 13, 27, 41, dayIndex(PLAN.end)])].sort((a, b) => a - b);
+    tickIdx.forEach((i) => {
+      const d = new Date(parseDay(PLAN.start) + i * DAY).toISOString().slice(0, 10);
+      const t = el("text", { x: xIndex(i), y: H - 14, "text-anchor": "middle", class: "chart-axis-label" });
+      t.textContent = fmtDay(d);
+      svg.appendChild(t);
+    });
+
+    const pastCls = "chart-step chart-step--past" + (reduced ? "" : " draw-in");
+    const futureCls = "chart-step chart-step--future" + (reduced ? "" : " fade-in");
+    const addSeg = (x1, y1, x2, y2, cls, draw) => {
+      const d = y1 === y2 ? `M ${x1} ${y1} H ${x2}` : `M ${x1} ${y1} V ${y2}`;
+      const attrs = { d, class: cls, "data-chart-step": "" };
+      if (draw) attrs["pathLength"] = "1";
+      svg.appendChild(el("path", attrs));
+    };
+
+    // stage steps (split at today)
+    PLAN.stages.forEach((st, i) => {
+      const x1 = X(st.start);
+      const x2 = stageX2(st);
+      const y = Y(st.pouches);
+      if (x1 < todayX && x2 > todayX) {
+        addSeg(x1, y, todayX, y, pastCls, !reduced);
+        addSeg(todayX, y, x2, y, futureCls, false);
+      } else if (x2 <= todayX) {
+        addSeg(x1, y, x2, y, pastCls, !reduced);
+      } else {
+        addSeg(x1, y, x2, y, futureCls, false);
+      }
+      const next = PLAN.stages[i + 1];
+      if (next) {
+        const xr = X(next.start);
+        const isPast = xr <= todayX;
+        addSeg(xr, y, xr, Y(next.pouches), isPast ? pastCls : futureCls, !reduced && isPast);
+      }
+    });
+
+    // preview overlay (proposed future)
+    if (window.JOURNEY && JOURNEY.preview) {
+      let d = "";
+      JOURNEY.preview.stages.forEach((st, i) => {
+        const x1 = X(st.start);
+        const x2 = stageX2(st);
+        const y = Y(st.pouches);
+        d += `M ${x1} ${y} H ${x2} `;
+        const next = JOURNEY.preview.stages[i + 1];
+        if (next) d += `M ${X(next.start)} ${y} V ${Y(next.pouches)} `;
+      });
+      svg.appendChild(el("path", { d, class: "chart-preview-step" + (reduced ? "" : " fade-in"), "data-preview-path": "" }));
+    }
+
+    // milestones (step-down dates)
+    PLAN.stages.forEach((st, i) => {
+      if (i === 0) return;
+      const x = X(st.start);
+      const y = Y(st.pouches);
+      const g = el("g", {
+        tabindex: "0", focusable: "true", role: "button",
+        "data-milestone": st.start,
+        "aria-label": fmtDay(st.start) + ": target steps down to " + st.pouches + " pouches",
+        "data-tip-x": x, "data-tip-y": y,
+        "data-tip-text": fmtDay(st.start) + " · steps down to " + st.pouches + " pouches",
+      });
+      const s = 5.2;
+      g.appendChild(el("rect", { x: -11, y: -11, width: 22, height: 22, fill: "transparent", transform: `translate(${x} ${y})` }));
+      g.appendChild(el("rect", { x: -s, y: -s, width: s * 2, height: s * 2, class: "chart-milestone", transform: `translate(${x} ${y}) rotate(45)` }));
+      svg.appendChild(g);
+    });
+
+    // today rule, dot, label
+    svg.appendChild(el("line", { x1: todayX, x2: todayX, y1: M.top, y2: H - M.bottom, class: "chart-today-rule" }));
+    const cur = PLAN.stages.find((s) => dayIndex(s.start) <= dayIndex(PLAN.today) && dayIndex(PLAN.today) <= dayIndex(s.end));
+    if (cur) svg.appendChild(el("circle", { cx: todayX, cy: Y(cur.pouches), r: 4.5, class: "chart-today-dot" }));
+    const tl = el("text", { x: todayX, y: M.top - 10, "text-anchor": "middle", class: "chart-today-label" });
+    tl.textContent = "Today";
+    svg.appendChild(tl);
+
+    // end flag
+    const last = PLAN.stages[PLAN.stages.length - 1];
+    const ex = X(PLAN.end);
+    const ey = Y(last.pouches);
+    svg.appendChild(el("line", { x1: ex, x2: ex, y1: ey - 16, y2: ey, class: "chart-flag-pole" }));
+    svg.appendChild(el("path", { d: `M ${ex} ${ey - 16} l 10 4 l -10 4 Z`, class: "chart-flag" }));
+    const fl = el("text", { x: Math.min(ex + 10, W - 4), y: ey - 24, "text-anchor": "end", class: "chart-flag-label" });
+    fl.textContent = fmtDay(PLAN.end) + " · " + last.pouches + " pouches";
+    svg.appendChild(fl);
+
+    // screen-reader stage table
+    PLAN.stages.forEach((st) => {
+      const tr = document.createElement("tr");
+      const th = document.createElement("th");
+      th.scope = "row";
+      th.textContent = fmtDay(st.start) + " to " + fmtDay(st.end);
+      tr.appendChild(th);
+      [st.pouches + " pouches", st.mg + " mg", "Revision " + st.revision].forEach((txt) => {
+        const td = document.createElement("td");
+        td.textContent = txt;
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+  }
+
+  window.JOURNEY = { plan: PLAN, preview: null, renderChart };
+  renderChart();
+
+  /* ---------- Milestone tooltip ---------- */
+  const tip = document.querySelector("[data-chart-tooltip]");
+  let pinned = false;
+  const showTip = (g) => {
+    tip.textContent = g.dataset.tipText;
+    const x = +g.dataset.tipX;
+    const y = +g.dataset.tipY;
+    const tw = 220;
+    tip.style.left = Math.min(Math.max(8, x - tw / 2), 760 - tw - 8) + "px";
+    tip.style.top = Math.max(0, y - 66) + "px";
+    tip.hidden = false;
+  };
+  const hideTip = () => { tip.hidden = true; pinned = false; };
+  const milestoneOf = (e) => (e.target.closest ? e.target.closest("[data-milestone]") : null);
+  svg.addEventListener("focusin", (e) => { const g = milestoneOf(e); if (g) showTip(g); });
+  svg.addEventListener("focusout", () => { if (!pinned) hideTip(); });
+  svg.addEventListener("pointerover", (e) => { const g = milestoneOf(e); if (g) showTip(g); });
+  svg.addEventListener("pointerout", (e) => { if (milestoneOf(e) && !pinned) hideTip(); });
+  svg.addEventListener("click", (e) => {
+    const g = milestoneOf(e);
+    if (g) { pinned = true; showTip(g); } else if (pinned) hideTip();
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") hideTip(); });
 })();
 </script>
 </body>
