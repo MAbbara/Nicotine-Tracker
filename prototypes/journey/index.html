@@ -309,7 +309,90 @@ button { font: inherit; }
   padding: clamp(2rem, 4vw, 3.5rem) var(--gutter) clamp(6rem, 10vw, 8rem);
 }
 
+/* ---------- Journey hero (orientation) ---------- */
+.journey-hero {
+  padding-block-start: clamp(1rem, 3vw, 2.5rem);
+  margin-block-end: clamp(2.5rem, 5vw, 4rem);
+}
+.journey-hero h1 {
+  font-size: var(--text-title);
+  font-weight: 470;
+  max-width: 15ch;
+}
+.journey-hero__status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-block-start: var(--space-6);
+  color: var(--color-text-muted);
+  font-size: var(--text-small);
+  font-weight: 650;
+}
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-radius: 999px;
+  background: var(--color-constructive-soft);
+  color: var(--color-constructive-deep);
+  font-size: var(--text-caption);
+  font-weight: 720;
+  letter-spacing: .02em;
+}
+.status-dot {
+  width: .5rem;
+  height: .5rem;
+  border-radius: 50%;
+  background: var(--color-constructive);
+}
+.journey-hero__coach {
+  margin-block-start: var(--space-4);
+  color: var(--color-text-muted);
+  font-size: var(--text-lead);
+  max-width: 44ch;
+}
+
+/* ---------- Today panel ---------- */
+.today-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6) var(--space-8);
+  padding: clamp(1.25rem, 3vw, 2rem);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-surface);
+}
+.today-panel__main { min-width: 0; }
+.today-panel h2 {
+  font-size: clamp(1.6rem, 1.3rem + 1.4vw, 2.25rem);
+  font-weight: 500;
+}
+.today-panel__stage {
+  margin-block-start: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--text-small);
+}
+.today-panel__progress {
+  margin-block-start: var(--space-4);
+  height: .375rem;
+  max-width: 22rem;
+  border-radius: 999px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+.today-panel__progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-constructive);
+}
+.today-panel .c-button { flex: none; }
+
 @media (max-width: 48rem) {
+  .today-panel { flex-direction: column; align-items: stretch; }
   .primary-nav {
     inset-block-start: auto;
     inset-block-end: 0;
@@ -371,6 +454,29 @@ button { font: inherit; }
 </nav>
 
 <main id="main-content" class="app-content" tabindex="-1">
+  <header class="journey-hero rise" style="--i:0">
+    <p class="eyebrow">Current plan</p>
+    <h1>Down to 2 pouches a day by 5&nbsp;September.</h1>
+    <p class="journey-hero__status">
+      <span class="status-pill status-pill--active">
+        <span class="status-dot" aria-hidden="true"></span> Active
+      </span>
+      <span>Day 23 of 49 · Steady pace</span>
+    </p>
+    <p class="journey-hero__coach">You’re past the steepest part. The next change comes to you — nothing to do early.</p>
+  </header>
+
+  <section class="today-panel rise" style="--i:1" aria-labelledby="today-panel-title">
+    <div class="today-panel__main">
+      <p class="eyebrow">Today · Sunday 10 August</p>
+      <h2 id="today-panel-title">4 pouches · 24 mg ceiling</h2>
+      <p class="today-panel__stage">Stage of 9–15 August · day 2 of 7</p>
+      <div class="today-panel__progress" role="progressbar" aria-valuemin="1" aria-valuemax="7" aria-valuenow="2" aria-label="Day 2 of 7 in this stage">
+        <span style="inline-size: 28.6%"></span>
+      </div>
+    </div>
+    <a class="c-button c-button--primary" href="#">Open Today’s next step</a>
+  </section>
 </main>
 
 <script>

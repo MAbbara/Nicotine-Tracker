@@ -15,6 +15,8 @@ const { chromium } = require("playwright");
   });
   await desktop.goto(url, { waitUntil: "networkidle" });
   await desktop.waitForSelector(".app-topbar", { timeout: 5000 });
+  await desktop.waitForSelector(".journey-hero__status", { timeout: 5000 });
+  await desktop.waitForSelector(".today-panel__progress", { timeout: 5000 });
   await desktop.waitForTimeout(1400); // let entrance motion finish
   await desktop.screenshot({ path: "shot-desktop-full.png", fullPage: true });
   if (errors.length) {
