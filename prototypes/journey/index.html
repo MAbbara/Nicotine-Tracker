@@ -54,6 +54,7 @@
   --color-attention-soft: #f1ddd3;
   --color-milestone: #c5a05a;
   --color-milestone-soft: #eee2c6;
+  --color-milestone-deep: #7d5f2a;
   --color-focus: #2f6b4a;
   --color-danger: #944733;
   --font-display: "Newsreader", Georgia, serif;
@@ -94,6 +95,7 @@
   --color-attention-soft: #422d25;
   --color-milestone: #d4b474;
   --color-milestone-soft: #3e3525;
+  --color-milestone-deep: #d4b474;
   --color-focus: #b8d2bc;
   --color-danger: #e09477;
   --shadow-overlay: none;
@@ -654,6 +656,13 @@ button { font: inherit; }
   transition: transform var(--duration-panel) var(--ease-out-expo);
 }
 .facts[open] summary::after { transform: rotate(225deg) translateY(-.15rem); }
+.facts__collapse { display: grid; grid-template-rows: 1fr; }
+html.js .facts__collapse {
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--duration-panel) var(--ease-out-expo);
+}
+html.js .facts__collapse.is-open { grid-template-rows: 1fr; }
+.facts__collapse-inner { min-height: 0; overflow: hidden; }
 .facts__grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -698,7 +707,7 @@ button { font: inherit; }
   width: 3.5rem;
   font-family: var(--font-display);
   font-style: italic;
-  color: var(--color-milestone);
+  color: var(--color-milestone-deep);
   font-size: 1rem;
 }
 
@@ -724,6 +733,7 @@ html.js .rise.is-in {
   .chart-step--past.draw-in { animation: none; stroke-dasharray: none; stroke-dashoffset: 0; }
   .chart-step--future.fade-in, .chart-preview-step.fade-in { animation: none; opacity: 1; }
   .adjust__collapse, .adjust__collapse-inner { transition: none; }
+  html.js .facts__collapse { grid-template-rows: 1fr; transition: none; }
 }
 
 @media (max-width: 48rem) {
@@ -900,20 +910,24 @@ html.js .rise.is-in {
     </div>
   </section>
 
-  <details class="facts rise" style="--i:5">
+  <details class="facts rise" style="--i:5" data-accordion>
     <summary>Plan facts and baseline</summary>
-    <dl class="facts__grid">
-      <div><dt>Mode</dt><dd>Reduce</dd></div>
-      <div><dt>Status</dt><dd>Active</dd></div>
-      <div><dt>Pace</dt><dd>Steady · 49 days</dd></div>
-      <div><dt>Start date</dt><dd>19 July 2026</dd></div>
-      <div><dt>Target date</dt><dd>5 September 2026</dd></div>
-      <div><dt>Baseline source</dt><dd>Manual baseline</dd></div>
-      <div><dt>Pouch baseline</dt><dd>7 pouches a day</dd></div>
-      <div><dt>Nicotine baseline</dt><dd>42 mg a day</dd></div>
-      <div><dt>Median strength</dt><dd>6 mg a pouch</dd></div>
-      <div><dt>End target</dt><dd>2 pouches a day</dd></div>
-    </dl>
+    <div class="facts__collapse" data-accordion-collapse>
+      <div class="facts__collapse-inner">
+        <dl class="facts__grid">
+          <div><dt>Mode</dt><dd>Reduce</dd></div>
+          <div><dt>Status</dt><dd>Active</dd></div>
+          <div><dt>Pace</dt><dd>Steady · 49 days</dd></div>
+          <div><dt>Start date</dt><dd>19 July 2026</dd></div>
+          <div><dt>Target date</dt><dd>5 September 2026</dd></div>
+          <div><dt>Baseline source</dt><dd>Manual baseline</dd></div>
+          <div><dt>Pouch baseline</dt><dd>7 pouches a day</dd></div>
+          <div><dt>Nicotine baseline</dt><dd>42 mg a day</dd></div>
+          <div><dt>Median strength</dt><dd>6 mg a pouch</dd></div>
+          <div><dt>End target</dt><dd>2 pouches a day</dd></div>
+        </dl>
+      </div>
+    </div>
   </details>
 
   <section class="history rise" style="--i:6" aria-labelledby="history-title">
@@ -973,6 +987,51 @@ html.js .rise.is-in {
     });
   }, { threshold: 0.12 });
   document.querySelectorAll(".rise").forEach((el) => io.observe(el));
+
+  /* Animated accordions: details[data-accordion] unfold via grid-rows.
+     The open attribute is kept during the close transition so the content
+     stays visible while collapsing; reduced motion keeps native instant
+     toggling. */
+  const reducedMotionNow = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  document.querySelectorAll("details[data-accordion]").forEach((details) => {
+    const summary = details.querySelector("summary");
+    const collapse = details.querySelector("[data-accordion-collapse]");
+    if (!summary || !collapse) return;
+    let animating = false;
+    const afterTransition = (fn) => {
+      let done = false;
+      const wrap = (e) => {
+        if (e && e.propertyName && e.propertyName !== "grid-template-rows") return;
+        if (done) return;
+        done = true;
+        collapse.removeEventListener("transitionend", wrap);
+        animating = false;
+        fn();
+      };
+      collapse.addEventListener("transitionend", wrap);
+      setTimeout(wrap, 350); // safety: transition duration + margin
+    };
+    summary.addEventListener("click", (e) => {
+      if (animating) {
+        e.preventDefault();
+        return;
+      }
+      if (reducedMotionNow()) return; // native instant toggle
+      e.preventDefault();
+      animating = true;
+      if (!details.open) {
+        details.open = true; // children render (UA unhides)
+        void collapse.offsetHeight; // flush the 0fr state so the transition has a start
+        collapse.classList.add("is-open"); // 0fr -> 1fr
+        afterTransition(() => {});
+      } else {
+        collapse.classList.remove("is-open"); // 1fr -> 0fr
+        afterTransition(() => {
+          details.open = false; // UA re-hides the collapsed content
+        });
+      }
+    });
+  });
 })();
 </script>
 <script>

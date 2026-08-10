@@ -64,6 +64,28 @@ const { chromium } = require("playwright");
     process.exit(1);
   }
   await desktop.screenshot({ path: "shot-desktop-adjusted.png", fullPage: true });
+
+  // Facts accordion animates open, then fully closes
+  const factsH = () => desktop.evaluate(() => document.querySelector("[data-accordion-collapse]").offsetHeight);
+  await desktop.click(".facts summary");
+  await desktop.waitForTimeout(60);
+  const fEarly = await factsH();
+  await desktop.waitForTimeout(500);
+  const fOpen = await factsH();
+  if (!(fOpen > fEarly)) {
+    console.error("facts accordion did not animate open:", fEarly, "->", fOpen);
+    process.exit(1);
+  }
+  await desktop.click(".facts summary");
+  await desktop.waitForTimeout(500);
+  const factsState = await desktop.evaluate(() => ({
+    open: document.querySelector("details.facts").open,
+    h: document.querySelector("[data-accordion-collapse]").offsetHeight,
+  }));
+  if (factsState.open || factsState.h !== 0) {
+    console.error("facts accordion did not fully close:", factsState);
+    process.exit(1);
+  }
   await desktop.close();
 
   // Mobile, full page
