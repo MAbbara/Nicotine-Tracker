@@ -5800,29 +5800,7 @@ html.journey-js .journey-overview .facts__collapse.is-open {
   border-color: var(--color-ink);
 }
 
-/* ---------- Entrance motion ---------- */
-html.journey-js .journey-overview .rise {
-  opacity: 0;
-  transform: translateY(22px);
-}
-
-html.journey-js .journey-overview .rise.is-in {
-  opacity: 1;
-  transform: none;
-  transition:
-    opacity 0.7s var(--ease-out-expo),
-    transform 0.7s var(--ease-out-expo);
-  transition-delay: calc(var(--i, 0) * 80ms);
-}
-
 @media (prefers-reduced-motion: reduce) {
-  html.journey-js .journey-overview .rise,
-  html.journey-js .journey-overview .rise.is-in {
-    opacity: 1;
-    transition: none;
-    transform: none;
-  }
-
   .journey-overview .chart-step--past.draw-in {
     animation: none;
     stroke-dasharray: none;

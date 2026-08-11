@@ -11,6 +11,18 @@ async function expectNoWcagViolations(page) {
 }
 
 
+/* Entrance fades leave text mid-opacity; audits must measure the settled
+   state users actually read. */
+async function settleEntranceMotion(page) {
+  await page.evaluate(() => {
+    document.querySelectorAll('.landing-rise, .rise').forEach((el) => {
+      el.style.transition = 'none';
+      el.classList.add('is-in');
+    });
+  });
+}
+
+
 async function login(page, email) {
   await page.goto('/auth/login');
   await page.getByLabel('Email address').fill(email);
@@ -58,6 +70,7 @@ for (const path of ['/', '/auth/register', '/auth/forgot_password']) {
   test(`public page ${path} has no WCAG A/AA violations`, async ({ page }) => {
     await page.goto(path);
     await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+    await settleEntranceMotion(page);
     await expectNoWcagViolations(page);
   });
 }
@@ -173,3 +186,81 @@ test('authenticated 404 has one main landmark and a Today recovery link', async 
   await expect(main).toHaveCount(1);
   await expect(main.getByRole('link', { name: 'Today', exact: true })).toBeVisible();
 });
+
+
+function deterministicA11yEmail(testInfo, label) {
+  const source = `${testInfo.project.name}:${testInfo.title}:${label}`;
+  let hash = 0;
+  for (const character of source) hash = ((hash * 31) + character.charCodeAt(0)) >>> 0;
+  return `a11y-journey-${hash}@example.com`;
+}
+
+
+function isoDate(daysFromToday = 0) {
+  const value = new Date();
+  value.setUTCDate(value.getUTCDate() + daysFromToday);
+  return value.toISOString().slice(0, 10);
+}
+
+
+async function registerAndCreatePlan(page, testInfo, label) {
+  await page.goto('/auth/register');
+  await page.getByLabel('Email address').fill(deterministicA11yEmail(testInfo, label));
+  await page.getByLabel('Password', { exact: true }).fill('browser-password');
+  await page.getByLabel('Confirm Password').fill('browser-password');
+  await page.getByLabel(/I understand this is a personal tracking tool/i).check();
+  await page.getByRole('button', { name: 'Create Account' }).click();
+  await expect(page).toHaveURL(/\/journey\/onboarding\/?$/);
+  await page.locator('input[name="intention"][value="reduce"]').check();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.locator('input[name="baseline_source"][value="manual"]').check();
+  await page.locator('#field-baseline_pouches').fill('8');
+  await page.locator('#field-baseline_mg_per_pouch').fill('6');
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByLabel(/Steady · 49 days/).check();
+  await page.getByLabel(/End target in pouches per day/).fill('2');
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByLabel('No reminder').check();
+  await page.getByLabel('Plan start date').fill(isoDate());
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('button', { name: 'Activate this reviewed plan' }).click();
+  await expect(page).toHaveURL(/\/today\/?$/);
+}
+
+
+for (const theme of ['light', 'dark']) {
+  test(`active Journey overview has no WCAG A/AA violations in explicit ${theme} theme`, async ({ page }, testInfo) => {
+    await useExplicitTheme(page, theme);
+    await registerAndCreatePlan(page, testInfo, `overview-${theme}`);
+    await page.goto('/journey/');
+
+    await expectExplicitTheme(page, theme);
+    await expect(page.locator('.journey-overview h1')).toHaveCount(1);
+
+    // The richest state: adjust open with a preview and its confirm showing.
+    await page.locator('[data-adjust-toggle]').click();
+    await page.getByLabel('Effective date').fill(isoDate(1));
+    await page.getByLabel('Duration days').fill('42');
+    await page.getByRole('button', { name: 'Preview revision' }).click();
+    await expect(page.locator('[data-preview-summary]')).toContainText(/stages? change/);
+
+    // Reveal every .rise section so the audit cannot skip below-fold content.
+    await page.evaluate(() => document.querySelectorAll('.rise').forEach((el) => {
+      el.style.transition = 'none'; // instant reveal; axe measures full opacity
+      el.classList.add('is-in');
+    }));
+    await expectNoWcagViolations(page);
+
+    // Milestone tooltip is keyboard-reachable and visible without a pointer.
+    await page.locator('.path-hotspot').first().focus();
+    await expect(page.locator('[data-chart-tooltip]')).toBeVisible();
+    await expectNoWcagViolations(page);
+
+    // The chart scroll region stays keyboard-accessible at 200% text.
+    const scroll = page.locator('.path-scroll');
+    await expect(scroll).toHaveAttribute('tabindex', '0');
+    await expect(scroll).toHaveAccessibleName(/path chart/i);
+    await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+    expect(await scroll.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+  });
+}

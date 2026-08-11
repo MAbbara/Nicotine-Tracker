@@ -5,11 +5,13 @@
 
 {% block content %}
 <div class="journey-page">
-  <header class="page-intro page-intro--wide">
-    <p class="eyebrow">Your direction</p>
-    <h1>Journey</h1>
-    <p>See what today belongs to, inspect the schedule ahead, and change future days without rewriting your history.</p>
-  </header>
+  {% if not (plan and plan.use_path_overview) %}
+    <header class="page-intro page-intro--wide">
+      <p class="eyebrow">Your direction</p>
+      <h1>Journey</h1>
+      <p>See what today belongs to, inspect the schedule ahead, and change future days without rewriting your history.</p>
+    </header>
+  {% endif %}
 
   {% if plan and plan.use_path_overview %}
     {% include "pages/journey/_active_overview.html" %}

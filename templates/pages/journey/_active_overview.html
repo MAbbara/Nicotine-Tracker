@@ -1,5 +1,5 @@
 <article class="journey-overview" data-plan-id="{{ plan.row.id }}" aria-labelledby="journey-overview-title">
-  <header class="journey-hero rise" style="--i:0">
+  <header class="journey-hero">
     <p class="eyebrow">Current plan</p>
     <h1 id="journey-overview-title">
       {% if plan.row.mode == 'quit_by_date' and plan.row.target_date %}
@@ -19,7 +19,7 @@
     <p class="journey-hero__coach">You’re past the steepest part. The next change comes to you — nothing to do early.</p>
   </header>
 
-  <section class="today-panel rise" style="--i:1" aria-labelledby="today-panel-title">
+  <section class="today-panel" aria-labelledby="today-panel-title">
     <div class="today-panel__main">
       <p class="eyebrow">Today · {{ today.strftime('%A') }} {{ today|human_date }}</p>
       <h2 id="today-panel-title">
@@ -47,7 +47,7 @@
     <a class="c-button c-button--primary" href="{{ url_for('today.index') }}">Open Today’s next step</a>
   </section>
 
-  <section class="path-section rise" style="--i:2" aria-labelledby="path-title">
+  <section class="path-section" aria-labelledby="path-title">
     <div class="section-heading">
       <h2 id="path-title">The path you’re on</h2>
       <p>Every scheduled step, from your baseline to your target.</p>
@@ -98,7 +98,7 @@
     </p>
   </section>
 
-  <p class="next-change rise" style="--i:3">
+  <p class="next-change">
     {% if plan.next_milestone and plan.next_milestone.pouches is not none %}
       On <time datetime="{{ plan.next_milestone.date.isoformat() }}">{{ plan.next_milestone.date|human_date }}</time> your target steps down to {{ plan.next_milestone.pouches }} pouches. It will surface in Today when it arrives.
     {% elif plan.next_milestone %}
@@ -109,7 +109,7 @@
   </p>
 
   {% set adjust_open = editor.kind == 'revision' %}
-  <section class="adjust rise" style="--i:4" aria-labelledby="adjust-title">
+  <section class="adjust" aria-labelledby="adjust-title">
     <button class="adjust__toggle" type="button" data-adjust-toggle aria-expanded="{{ 'true' if adjust_open else 'false' }}" aria-controls="adjust-body">
       <span class="adjust__toggle-text">
         <span class="adjust__title" id="adjust-title">Adjust future days</span>
@@ -195,7 +195,7 @@
     </div>
   </section>
 
-  <details class="facts rise" style="--i:5" data-accordion>
+  <details class="facts" data-accordion>
     <summary>Plan facts and baseline</summary>
     <div class="facts__collapse" data-accordion-collapse>
       <div class="facts__collapse-inner">
@@ -215,7 +215,7 @@
     </div>
   </details>
 
-  <section class="history rise" style="--i:6" aria-labelledby="history-title">
+  <section class="history" aria-labelledby="history-title">
     <h2 id="history-title">Revisions and pauses</h2>
     {% set ns = namespace(entries=[], saw_pause=false) %}
     {% for rev in plan.revisions %}
@@ -247,7 +247,7 @@
     </ol>
   </section>
 
-  <section class="plan-actions rise" style="--i:7" aria-labelledby="plan-actions-title">
+  <section class="plan-actions" aria-labelledby="plan-actions-title">
     <h2 id="plan-actions-title">Plan actions</h2>
     <p>Status changes only — your history stays intact.</p>
     <div class="plan-actions__row">

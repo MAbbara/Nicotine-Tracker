@@ -168,17 +168,6 @@ if (overview) {
     window.JOURNEY_OVERVIEW = { chart, payload };
   }
 
-  // Entrance: reveal .rise sections as they enter view.
-  const io = new IntersectionObserver((entries) => {
-    entries.forEach((entry) => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('is-in');
-        io.unobserve(entry.target);
-      }
-    });
-  }, { threshold: 0.12 });
-  overview.querySelectorAll('.rise').forEach((el) => io.observe(el));
-
   // Adjust section collapse (grid-rows animation).
   const adjustToggle = overview.querySelector('[data-adjust-toggle]');
   const adjustBody = document.getElementById('adjust-body');
