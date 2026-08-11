@@ -10,12 +10,12 @@ test('public landing exposes one promise and working account actions', async ({ 
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
   await expect(page.getByRole('heading', {
     level: 1,
-    name: 'Start with the next useful action.',
+    name: 'Cut back at the pace of your own life.',
   })).toBeVisible();
 
   const actions = page.locator('.landing-actions');
   const createAccount = actions.getByRole('link', { name: 'Create account', exact: true });
-  const signIn = actions.getByRole('link', { name: 'Sign in', exact: true });
+  const signIn = page.locator('.marketing-actions').getByRole('link', { name: 'Sign in', exact: true });
   await expect(createAccount).toHaveAttribute('href', '/auth/register');
   await expect(signIn).toHaveAttribute('href', '/auth/login');
 
@@ -33,6 +33,21 @@ test('public landing exposes one promise and working account actions', async ({ 
   await expect(page.getByRole('heading', {
     level: 1,
     name: 'Sign in to your account',
+  })).toBeVisible();
+});
+
+test('landing follows the saved dark theme', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('nicotine-tracker-theme', 'dark');
+  });
+  await page.reload();
+
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  const canvas = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  expect(canvas).toBe('rgb(17, 25, 21)');
+  await expect(page.getByRole('heading', {
+    level: 1,
+    name: 'Cut back at the pace of your own life.',
   })).toBeVisible();
 });
 

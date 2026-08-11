@@ -66,3 +66,8 @@ playwright-report/
 .worktrees/
 /TASK*.md
 /TASK_*.md
+
+# Test and verification artifacts
+output/
+prototypes/home/shot-*.png
+prototypes/home/prod-*.png

@@ -1,0 +1,1509 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Design prototype — a full home page redesign for Nicotine Tracker, in the product's own design language.">
+<meta name="theme-color" content="#f5f1e7">
+<title>Nicotine Tracker — home concept v3</title>
+<style>
+/* ============================================================
+   Nicotine Tracker — home page prototype (concept v3)
+   Full redesign in the product's own design language.
+   Tokens, components, and iconography mirror static/css/style.css
+   (c-button, eyebrow, c-status, today-summary, quick-pouch,
+   craving-action, goal-card, activity-list, quick-log-undo).
+   ============================================================ */
+
+@font-face {
+  font-family: "Newsreader";
+  src: url("fonts/newsreader-opsz-normal.woff2") format("woff2-variations");
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Newsreader";
+  src: url("fonts/newsreader-opsz-italic.woff2") format("woff2-variations");
+  font-style: italic;
+  font-weight: 200 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "DM Sans";
+  src: url("fonts/dm-sans-variable.woff2") format("woff2-variations");
+  font-style: normal;
+  font-weight: 100 1000;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: light;
+  /* Tokens — production values */
+  --color-canvas: #f5f1e7;
+  --color-surface: #fcf9f1;
+  --color-surface-raised: #fffcf4;
+  --color-ink: #1e2a24;
+  --color-text-muted: #5f6962;
+  --color-border: #d7d1c3;
+  --color-border-strong: #afa99b;
+  --color-constructive: #4b6b55;
+  --color-constructive-deep: #3d5847;
+  --color-constructive-soft: #dce7dc;
+  --color-attention: #b76343;
+  --color-attention-deep: #944733;
+  --color-attention-soft: #f1ddd3;
+  --color-milestone: #c5a05a;
+  --color-milestone-soft: #eee2c6;
+  --color-focus: #2f6b4a;
+  --color-danger: #944733;
+  --font-display: "Newsreader", Georgia, serif;
+  --font-interface: "DM Sans", "Trebuchet MS", sans-serif;
+  --text-caption: .75rem;
+  --text-small: .875rem;
+  --text-body: 1rem;
+  --text-lead: clamp(1.125rem, 1.05rem + .35vw, 1.375rem);
+  --text-title: clamp(2rem, 1.45rem + 2.4vw, 3.75rem);
+  --leading-body: 1.55;
+  --leading-display: 1.02;
+  --radius-control: .75rem;
+  --radius-surface: 1.125rem;
+  --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem;
+  --space-6: 1.5rem; --space-8: 2rem; --space-12: 3rem; --space-16: 4rem;
+  --space-section: clamp(4.5rem, 3.2rem + 5vw, 8rem);
+  --duration-feedback: .18s;
+  --duration-panel: .24s;
+  --duration-enter: .7s;
+  --ease-out-expo: cubic-bezier(.16, 1, .3, 1);
+  --shadow-overlay: 0 1.5rem 4rem #1e2a2429;
+  --gutter: clamp(1rem, 4vw, 4rem);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-interface);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  font-kerning: normal;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+img, svg { display: block; max-width: 100%; }
+p { margin: 0; max-width: 68ch; text-wrap: pretty; }
+h1, h2, h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 520;
+  letter-spacing: -.025em;
+  line-height: var(--leading-display);
+  text-wrap: balance;
+  font-optical-sizing: auto;
+}
+a { color: inherit; text-underline-offset: .18em; }
+button { font: inherit; }
+::selection { background: var(--color-milestone-soft); }
+:focus-visible { outline: .1875rem solid var(--color-focus); outline-offset: .1875rem; border-radius: 2px; }
+
+.skip-link {
+  position: fixed;
+  inset-block-start: var(--space-3);
+  inset-inline-start: var(--space-3);
+  z-index: 70;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--color-ink);
+  color: var(--color-canvas);
+  font-weight: 700;
+  text-decoration: none;
+  transform: translateY(-160%);
+  transition: transform var(--duration-panel) var(--ease-out-expo);
+}
+.skip-link:focus-visible { transform: translateY(0); }
+
+.frame {
+  width: min(100% - (var(--gutter) * 2), 76rem);
+  margin-inline: auto;
+}
+
+/* ---------- Icons (production sprite paths, inlined) ---------- */
+.c-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: none;
+  display: inline-block;
+  vertical-align: -.2em;
+}
+
+/* ---------- Header (mirrors .marketing-header / .wordmark) ---------- */
+.marketing-header {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 20;
+  background: var(--color-canvas);
+  border-block-end: 1px solid var(--color-border);
+}
+.marketing-header__inner {
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 4.5rem;
+  display: flex;
+}
+.wordmark {
+  align-items: center;
+  gap: var(--space-3);
+  letter-spacing: -.02em;
+  min-height: 2.75rem;
+  font-weight: 700;
+  text-decoration: none;
+  display: inline-flex;
+}
+.wordmark > [aria-hidden="true"] {
+  border: 1px solid var(--color-border-strong);
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.wordmark__tag {
+  font-size: var(--text-caption);
+  font-weight: 650;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 999px;
+  padding: .2rem .65rem;
+  margin-inline-start: var(--space-2);
+  white-space: nowrap;
+}
+.marketing-actions { align-items: center; gap: var(--space-4); display: flex; }
+.marketing-actions .signin {
+  min-height: 2.75rem;
+  color: var(--color-text-muted);
+  font-size: var(--text-small);
+  align-items: center;
+  font-weight: 650;
+  display: inline-flex;
+  text-decoration: none;
+}
+.marketing-actions .signin:hover { color: var(--color-ink); text-decoration: underline; }
+
+/* ---------- Buttons (mirrors .c-button) ---------- */
+.c-button {
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-control);
+  min-height: 2.75rem;
+  font-size: var(--text-small);
+  text-align: center;
+  cursor: pointer;
+  transition: color var(--duration-feedback) var(--ease-out-expo),
+    background-color var(--duration-feedback) var(--ease-out-expo),
+    border-color var(--duration-feedback) var(--ease-out-expo),
+    transform .1s var(--ease-out-expo);
+  border: 1px solid #0000;
+  padding: .7rem 1rem;
+  font-weight: 720;
+  line-height: 1.15;
+  text-decoration: none;
+  display: inline-flex;
+}
+.c-button:active:not(:disabled) { transform: translateY(1px); }
+.c-button:not(:disabled):hover { transform: translateY(-1px); }
+.c-button--primary { background: var(--color-ink); color: var(--color-canvas); }
+.c-button--primary:hover { background: var(--color-constructive); }
+.c-button--secondary { border-color: var(--color-border-strong); background: var(--color-surface); color: var(--color-ink); }
+.c-button--secondary:hover { background: var(--color-constructive-soft); }
+.c-button--quiet { color: var(--color-ink); background: transparent; }
+.c-button--quiet:hover { background: var(--color-constructive-soft); }
+
+.text-link {
+  min-height: 2.75rem;
+  color: var(--color-constructive);
+  font-size: var(--text-small);
+  align-items: center;
+  font-weight: 720;
+  display: inline-flex;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: none;
+}
+.text-link:hover { text-decoration: underline; }
+
+/* ---------- Eyebrow & status (mirrors .eyebrow / .c-status) ---------- */
+.eyebrow {
+  color: var(--color-constructive);
+  font-size: var(--text-caption);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  font-weight: 760;
+  margin: 0;
+}
+.c-status {
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 1.75rem;
+  padding-inline: var(--space-3);
+  border: 1px solid var(--color-border);
+  font-size: var(--text-caption);
+  border-radius: 999px;
+  font-weight: 720;
+  display: inline-flex;
+  white-space: nowrap;
+}
+.c-status__mark { border: 1px solid; border-radius: 50%; width: .45rem; height: .45rem; }
+.c-status--constructive { border-color: var(--color-constructive); background: var(--color-constructive-soft); color: var(--color-constructive); }
+.c-status--attention { border-color: var(--color-attention); background: var(--color-attention-soft); color: var(--color-attention-deep); }
+
+/* ---------- Hero ---------- */
+.hero {
+  display: grid;
+  grid-template-columns: 1.02fr .98fr;
+  gap: clamp(2.5rem, 5vw, 4.5rem);
+  align-items: start;
+  padding-block: clamp(3rem, 7vw, 6.5rem) clamp(3.5rem, 6vw, 6rem);
+}
+.hero__copy { padding-block-start: clamp(0rem, 2vw, 1.5rem); }
+.hero h1 {
+  font-size: clamp(2.8rem, 6.2vw, 5.2rem);
+  font-weight: 480;
+  max-width: 12ch;
+  margin-block-start: var(--space-4);
+}
+.hero h1 em { font-style: italic; font-weight: 430; }
+.hero__lead {
+  margin-block-start: var(--space-6);
+  font-size: var(--text-lead);
+  color: var(--color-text-muted);
+  max-width: 33rem;
+}
+.hero__lead strong { color: var(--color-ink); font-weight: 650; }
+.hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-block-start: var(--space-8);
+}
+.hero__meta {
+  margin: var(--space-8) 0 0;
+  padding: var(--space-4) 0 0;
+  border-block-start: 1px solid var(--color-border);
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-6);
+  font-size: var(--text-small);
+  color: var(--color-text-muted);
+}
+.hero__meta li { display: flex; align-items: center; gap: var(--space-2); }
+.hero__meta li::before {
+  content: "";
+  width: .5rem;
+  height: .5rem;
+  background: var(--color-milestone);
+  transform: rotate(45deg);
+  flex: none;
+}
+
+/* ---------- Live app sketch (Today) ---------- */
+.sketch {
+  position: relative;
+  border: 1px solid var(--color-border);
+  border-radius: 1.35rem;
+  background: var(--color-canvas);
+  padding: clamp(1rem, 2.5vw, 1.75rem);
+  box-shadow: 0 1.75rem 3.5rem -2.5rem rgba(30, 42, 36, .35);
+  display: grid;
+  gap: var(--space-4);
+}
+.sketch__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.sketch__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 720;
+  font-size: var(--text-small);
+}
+.sketch__title .c-icon { color: var(--color-constructive); }
+
+/* today-summary — production pattern */
+.today-summary {
+  gap: var(--space-6);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-surface);
+  background: var(--color-surface);
+  padding: clamp(1.25rem, 3vw, 2rem);
+  display: grid;
+  grid-template-columns: minmax(9rem, 1fr) minmax(13rem, 1fr);
+  align-items: end;
+}
+.today-summary__value {
+  margin: var(--space-1) 0 0;
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.055em;
+  font-size: clamp(3.25rem, 5.4vw, 4.5rem);
+  font-weight: 480;
+  line-height: .9;
+}
+.today-summary__label { margin: var(--space-2) 0 0; color: var(--color-text-muted); font-size: var(--text-small); }
+.today-summary__details { gap: var(--space-2); margin: 0; display: grid; }
+.today-summary__details > div {
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-4);
+  padding-block: var(--space-2);
+  border-block-end: 1px solid var(--color-border);
+  display: flex;
+}
+.today-summary__details > div:last-child { border-block-end: 0; padding-block-end: 0; }
+.today-summary__details dt { color: var(--color-text-muted); font-size: var(--text-caption); }
+.today-summary__details dd { font-variant-numeric: tabular-nums; margin: 0; font-weight: 720; font-size: var(--text-small); }
+
+/* quick actions — production pattern */
+.quick-actions { display: grid; gap: var(--space-3); }
+.section-heading {
+  justify-content: space-between;
+  align-items: end;
+  gap: var(--space-4);
+  display: flex;
+}
+.section-heading h2 { font-size: var(--text-lead); line-height: 1.15; font-family: var(--font-display); font-weight: 520; }
+.quick-pouch-list { gap: var(--space-3); display: flex; }
+.quick-pouch {
+  place-content: center start;
+  gap: var(--space-1);
+  flex: 1;
+  min-width: 0;
+  min-height: 4.75rem;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-surface);
+  background: var(--color-surface-raised);
+  color: var(--color-ink);
+  text-align: start;
+  display: grid;
+  cursor: pointer;
+  transition: background-color var(--duration-feedback) var(--ease-out-expo),
+    border-color var(--duration-feedback) var(--ease-out-expo),
+    transform .1s var(--ease-out-expo);
+}
+.quick-pouch:hover { background: var(--color-constructive-soft); transform: translateY(-1px); }
+.quick-pouch:active { transform: translateY(1px); }
+.quick-pouch span { font-weight: 720; }
+.quick-pouch small { color: var(--color-text-muted); font-size: var(--text-caption); }
+
+/* craving action — production pattern */
+.craving-action {
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border-inline-start: .25rem solid var(--color-attention);
+  border-radius: 0 var(--radius-control) var(--radius-control) 0;
+  background: var(--color-attention-soft);
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  text-decoration: none;
+  display: grid;
+  border-top: 0; border-right: 0; border-bottom: 0;
+  cursor: pointer;
+  width: 100%;
+  text-align: start;
+  color: var(--color-ink);
+}
+.craving-action .c-icon { color: var(--color-attention); width: 1.5rem; height: 1.5rem; }
+.craving-action span { display: grid; }
+.craving-action small { color: var(--color-attention-deep); font-size: var(--text-caption); }
+.craving-action .chev { transition: transform var(--duration-panel) var(--ease-out-expo); color: var(--color-attention-deep); }
+.craving-action[aria-expanded="true"] .chev { transform: rotate(180deg); }
+
+/* pause panel */
+.pause { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--duration-panel) var(--ease-out-expo); }
+.pause.is-open { grid-template-rows: 1fr; }
+.pause__inner { overflow: hidden; min-height: 0; }
+.pause__card {
+  background: var(--color-attention-soft);
+  border: 1px solid color-mix(in oklab, var(--color-attention) 35%, var(--color-surface));
+  border-radius: var(--radius-surface);
+  padding: var(--space-4) var(--space-4) var(--space-6);
+}
+.pause__title { font-family: var(--font-display); font-size: 1.3rem; font-weight: 520; line-height: 1.15; margin-block-end: var(--space-2); }
+.pause__body { font-size: var(--text-small); max-width: 38ch; }
+.pause__breath {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-block: var(--space-4);
+  font-size: var(--text-caption);
+  font-weight: 650;
+  color: var(--color-attention-deep);
+}
+.breath-dot { flex: none; width: 1.6rem; height: 1.6rem; border-radius: 50%; border: 2px solid var(--color-attention); position: relative; }
+.breath-dot::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--color-attention);
+  animation: breathe 5s cubic-bezier(.25, 1, .5, 1) infinite;
+}
+@keyframes breathe { 0%, 100% { transform: scale(.35); } 50% { transform: scale(1); } }
+.pause__choices { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.pause__resolved { margin-block-start: var(--space-3); font-size: var(--text-small); color: var(--color-constructive-deep); font-weight: 650; min-height: 1.3em; }
+
+/* undo toast — production .quick-log-undo pattern */
+.undo-toast {
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-surface);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-overlay);
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  display: grid;
+  position: relative;
+  overflow: hidden;
+}
+.undo-toast[hidden] { display: none; }
+.undo-toast > div { gap: var(--space-1); display: grid; }
+.undo-toast > div span { color: var(--color-text-muted); font-size: var(--text-caption); }
+.undo-toast__rule {
+  background: var(--color-constructive);
+  transform-origin: 0;
+  height: .2rem;
+  position: absolute;
+  inset: auto 0 0;
+  transform: scaleX(1);
+}
+.undo-toast__rule--running { animation: undo-countdown 10s linear forwards; }
+@keyframes undo-countdown { to { transform: scaleX(0); } }
+
+.sketch__caption { font-size: var(--text-caption); color: var(--color-text-muted); text-align: center; }
+
+/* ---------- Sections ---------- */
+.section { padding-block: var(--space-section); border-block-start: 1px solid var(--color-border); }
+.section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-block-end: clamp(1.75rem, 3vw, 2.75rem);
+}
+.section__folio { font-family: var(--font-display); font-style: italic; font-size: 1.05rem; color: var(--color-milestone); }
+.section__title { font-size: var(--text-title); font-weight: 470; max-width: 20ch; margin-block-end: var(--space-4); }
+.section__intro { font-size: var(--text-lead); color: var(--color-text-muted); max-width: 42rem; }
+
+/* ---------- Steps (how it works) ---------- */
+.steps { margin: clamp(2rem, 4vw, 3rem) 0 0; padding: 0; list-style: none; counter-reset: step; }
+.steps li {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 16rem) minmax(0, 1fr);
+  gap: var(--space-4) clamp(1.5rem, 4vw, 3.5rem);
+  align-items: baseline;
+  padding-block: clamp(1.5rem, 3vw, 2.25rem);
+  border-block-start: 1px solid var(--color-border);
+}
+.steps__num { font-family: var(--font-display); font-style: italic; font-size: clamp(1.6rem, 2.4vw, 2.1rem); color: var(--color-milestone); line-height: 1; }
+.steps__term { font-family: var(--font-display); font-size: clamp(1.5rem, 2.5vw, 2rem); font-weight: 500; line-height: 1.1; }
+.steps__desc { color: var(--color-text-muted); max-width: 36rem; }
+.steps__desc strong { color: var(--color-ink); font-weight: 650; }
+
+/* ---------- Tour ---------- */
+.tour { display: grid; gap: clamp(3.5rem, 7vw, 6rem); margin-block-start: clamp(2.5rem, 5vw, 4rem); }
+.tour-item {
+  display: grid;
+  grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+  gap: clamp(2rem, 5vw, 4.5rem);
+  align-items: center;
+}
+.tour-item--flip .tour-item__copy { order: 2; }
+.tour-item--flip .tour-item__vignette { order: 1; }
+.tour-item__eyebrow { display: flex; align-items: baseline; gap: var(--space-3); margin-block-end: var(--space-3); }
+.tour-item__num { font-family: var(--font-display); font-style: italic; color: var(--color-milestone); font-size: 1.05rem; }
+.tour-item h3 { font-size: clamp(1.9rem, 3.2vw, 2.6rem); font-weight: 480; margin-block-end: var(--space-4); }
+.tour-item__copy p + p { margin-block-start: var(--space-4); }
+.tour-item__copy p { color: var(--color-text-muted); }
+.tour-item__copy p strong { color: var(--color-ink); font-weight: 650; }
+.mini-list { margin: var(--space-6) 0 0; padding: 0; list-style: none; }
+.mini-list li {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  padding-block: var(--space-3);
+  border-block-start: 1px solid var(--color-border);
+  font-size: var(--text-small);
+  color: var(--color-text-muted);
+}
+.mini-list li::before { content: ""; flex: none; width: .5rem; height: .5rem; background: var(--color-constructive); border-radius: 50%; }
+.mini-list strong { color: var(--color-ink); font-weight: 650; }
+.vignette {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-surface);
+  background: var(--color-surface);
+  padding: clamp(1.25rem, 3vw, 2rem);
+  display: grid;
+  gap: var(--space-4);
+}
+.vignette__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.vignette__head h4 { margin: 0; font-family: var(--font-display); font-size: 1.3rem; font-weight: 520; }
+.vignette__caption { font-size: var(--text-caption); color: var(--color-text-muted); }
+
+/* goal-card — production pattern */
+.goal-card {
+  gap: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-surface);
+  background: var(--color-surface-raised);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  padding: clamp(1rem, 2.5vw, 1.75rem);
+  display: grid;
+}
+.goal-card__icon { width: 1.75rem; height: 1.75rem; color: var(--color-constructive); }
+.goal-card h4 { margin: 0; font-family: var(--font-display); font-size: 1.25rem; font-weight: 520; line-height: 1.2; }
+.goal-card p { margin: var(--space-1) 0 0; color: var(--color-text-muted); font-size: var(--text-small); }
+.past-plan-list { margin: 0; padding: 0; list-style: none; }
+.past-plan-list li {
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-block: var(--space-3);
+  border-block-end: 1px solid var(--color-border);
+  display: flex;
+  font-size: var(--text-small);
+}
+.past-plan-list li:last-child { border-block-end: 0; }
+.past-plan-list small { color: var(--color-text-muted); font-size: var(--text-caption); }
+
+/* cravings vignette */
+.field-label { font-size: var(--text-caption); font-weight: 720; letter-spacing: .06em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 var(--space-2); }
+.dot-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.dot {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  border: 2px solid var(--color-border-strong);
+  background: var(--color-surface-raised);
+  cursor: pointer;
+  padding: 0;
+  font-size: var(--text-caption);
+  font-weight: 720;
+  color: var(--color-text-muted);
+  transition: background-color var(--duration-feedback) var(--ease-out-expo), border-color var(--duration-feedback) var(--ease-out-expo), color var(--duration-feedback) var(--ease-out-expo);
+}
+.dot[aria-pressed="true"] { background: var(--color-attention); border-color: var(--color-attention); color: var(--color-surface-raised); }
+.chip-row { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.chip {
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface-raised);
+  border-radius: 999px;
+  padding: .5rem .95rem;
+  min-height: 2.4rem;
+  font-size: var(--text-small);
+  font-weight: 650;
+  color: var(--color-ink);
+  cursor: pointer;
+  transition: background-color var(--duration-feedback) var(--ease-out-expo), border-color var(--duration-feedback) var(--ease-out-expo);
+}
+.chip[aria-pressed="true"] { background: var(--color-constructive-soft); border-color: var(--color-constructive); color: var(--color-constructive-deep); }
+.outcome-row { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
+.outcome-row .note { font-size: var(--text-caption); color: var(--color-text-muted); }
+
+/* insights vignette */
+.chart-legend { display: flex; gap: var(--space-6); flex-wrap: wrap; font-size: var(--text-caption); color: var(--color-text-muted); }
+.chart-legend span { display: inline-flex; align-items: center; gap: var(--space-2); }
+.legend-bar { width: .8rem; height: .8rem; border-radius: 2px; background: var(--color-constructive); }
+.legend-line { width: 1.4rem; border-block-start: 2px dashed var(--color-ink); }
+
+/* ---------- Day timeline ---------- */
+.day-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-color: var(--color-border-strong) transparent;
+  padding-block-end: var(--space-2);
+  margin-block-start: clamp(2rem, 4vw, 3rem);
+}
+.day-scroll:focus-visible { outline-offset: 6px; }
+.day-figure { min-width: 680px; margin: 0; }
+.day-figure svg { width: 100%; height: auto; }
+.day-legend { display: flex; flex-wrap: wrap; gap: var(--space-6); margin: var(--space-4) 0 0; padding: 0; font-size: var(--text-small); color: var(--color-text-muted); }
+.day-legend li { display: flex; align-items: center; gap: var(--space-2); list-style: none; }
+.mark-square { width: .7rem; height: .7rem; border: 2px solid var(--color-ink); border-radius: 2px; }
+.mark-ring { width: .7rem; height: .7rem; border: 2px solid var(--color-constructive); border-radius: 50%; background: var(--color-canvas); }
+.mark-diamond { width: .7rem; height: .7rem; background: var(--color-attention); transform: rotate(45deg); }
+.day-takeaway { margin-block-start: var(--space-8); display: flex; gap: var(--space-3); align-items: baseline; max-width: 46rem; font-size: 1.02rem; }
+.day-takeaway::before { content: ""; flex: none; width: 2rem; border-block-start: 2px solid var(--color-attention); transform: translateY(-.3rem); }
+.day-takeaway strong { font-weight: 700; }
+
+/* ---------- Hard days ---------- */
+.hardday { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: clamp(2.5rem, 6vw, 5rem); align-items: start; }
+.hardday__quote {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 450;
+  font-size: clamp(2.1rem, 4.6vw, 3.7rem);
+  line-height: 1.08;
+  letter-spacing: -.015em;
+  max-width: 15ch;
+  margin: 0;
+}
+.hardday__quote::before { content: ""; display: block; width: clamp(3.5rem, 8vw, 6rem); border-block-start: 4px solid var(--color-attention); margin-block-end: var(--space-6); }
+.hardday__body { color: var(--color-text-muted); font-size: 1.05rem; }
+.hardday__body strong { color: var(--color-ink); font-weight: 650; }
+.hardday__steps { margin: var(--space-6) 0 0; padding: 0; list-style: none; }
+.hardday__steps li {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  padding-block: var(--space-3);
+  border-block-start: 1px solid var(--color-border);
+  font-size: .98rem;
+}
+.hardday__steps li::before {
+  content: "";
+  flex: none;
+  width: .65rem;
+  height: .65rem;
+  border: 2px solid var(--color-constructive);
+  border-radius: 50%;
+  background: var(--color-canvas);
+}
+.hardday__steps span { font-weight: 650; }
+
+/* ---------- Data ---------- */
+.data-rows { margin: clamp(2rem, 4vw, 3rem) 0 0; padding: 0; list-style: none; }
+.data-rows li {
+  display: grid;
+  grid-template-columns: 2.25rem minmax(0, 15rem) minmax(0, 1fr);
+  gap: var(--space-4) clamp(1.5rem, 4vw, 3rem);
+  align-items: baseline;
+  padding-block: clamp(1.25rem, 2.5vw, 1.75rem);
+  border-block-start: 1px solid var(--color-border);
+}
+.data-rows li:first-child { border-block-start: 0; }
+.data-rows .c-icon { width: 1.5rem; height: 1.5rem; color: var(--color-constructive); }
+.data-rows__term { font-weight: 720; font-size: 1.05rem; }
+.data-rows__desc { color: var(--color-text-muted); max-width: 38rem; }
+
+/* ---------- FAQ ---------- */
+.faq { margin-block-start: clamp(1.5rem, 3vw, 2.5rem); }
+.faq details { border-block-start: 1px solid var(--color-border); }
+.faq details:last-child { border-block-end: 1px solid var(--color-border); }
+.faq summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-block: 1.15rem;
+  font-weight: 650;
+  font-size: 1.05rem;
+  min-height: 2.75rem;
+}
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary .c-icon { color: var(--color-constructive); transition: transform var(--duration-panel) var(--ease-out-expo); }
+.faq details[open] summary .c-icon { transform: rotate(180deg); }
+.faq details p { color: var(--color-text-muted); padding-block-end: 1.35rem; max-width: 60ch; }
+
+/* ---------- CTA ---------- */
+.cta { position: relative; overflow: hidden; }
+.cta__inner { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-8) clamp(2rem, 5vw, 4rem); align-items: end; }
+.cta h2 { font-size: clamp(2.6rem, 6vw, 4.6rem); font-weight: 470; max-width: 12ch; }
+.cta h2 em { font-style: italic; }
+.cta__side { display: grid; gap: var(--space-4); justify-items: start; padding-block-end: var(--space-2); }
+.cta__side p { font-size: var(--text-small); color: var(--color-text-muted); max-width: 26ch; }
+.cta__mark { position: absolute; inset-block-start: -3.2rem; inset-inline-end: -2.5rem; width: clamp(11rem, 22vw, 17rem); opacity: .07; pointer-events: none; transform: rotate(8deg); }
+
+/* ---------- Footer ---------- */
+.site-footer { border-block-start: 1px solid var(--color-border); padding-block: var(--space-12) var(--space-8); }
+.site-footer__grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-8); }
+.site-footer__brand { display: grid; gap: var(--space-3); justify-items: start; }
+.site-footer__brand p { color: var(--color-text-muted); font-size: var(--text-small); max-width: 30ch; }
+.site-footer h3 { font-family: var(--font-interface); font-size: var(--text-caption); font-weight: 760; letter-spacing: .1em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 var(--space-3); }
+.site-footer ul { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--space-2); }
+.site-footer ul a { color: var(--color-text-muted); font-size: var(--text-small); text-decoration: none; min-height: 1.9rem; display: inline-flex; align-items: center; }
+.site-footer ul a:hover { color: var(--color-ink); text-decoration: underline; }
+.site-footer__legal {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-8);
+  margin-block-start: var(--space-12);
+  padding-block-start: var(--space-6);
+  border-block-start: 1px solid var(--color-border);
+  font-size: var(--text-caption);
+  color: var(--color-text-muted);
+}
+
+/* ---------- Entrance motion ---------- */
+.rise { opacity: 0; transform: translateY(22px); }
+.rise.is-in {
+  opacity: 1;
+  transform: none;
+  transition: opacity var(--duration-enter) var(--ease-out-expo), transform var(--duration-enter) var(--ease-out-expo);
+  transition-delay: calc(var(--i, 0) * 80ms);
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 64rem) {
+  .hero { grid-template-columns: 1fr; }
+  .hero h1 { max-width: 14ch; }
+  .sketch { max-width: 36rem; }
+  .tour-item, .tour-item--flip { grid-template-columns: 1fr; }
+  .tour-item--flip .tour-item__copy { order: 1; }
+  .tour-item--flip .tour-item__vignette { order: 2; }
+  .hardday { grid-template-columns: 1fr; }
+  .steps li { grid-template-columns: 3.4rem minmax(0, 1fr); }
+  .steps__desc { grid-column: 2; }
+  .data-rows li { grid-template-columns: 2.25rem minmax(0, 1fr); }
+  .data-rows__desc { grid-column: 2; }
+  .cta__inner { grid-template-columns: 1fr; align-items: start; }
+  .site-footer__grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 40rem) {
+  .wordmark__tag { display: none; }
+  .marketing-actions { gap: var(--space-3); }
+  .hero__actions .c-button { flex: 1 1 100%; }
+  .quick-pouch-list { flex-direction: column; }
+  .today-summary { grid-template-columns: 1fr; align-items: start; }
+  .section__head { flex-direction: column; gap: var(--space-1); }
+  .site-footer__grid { grid-template-columns: 1fr; }
+}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .rise { opacity: 1; transform: none; transition: none; }
+  .breath-dot::after { animation: none; transform: scale(.7); }
+  .pause { transition: none; }
+  .undo-toast__rule--running { animation: none; transform: scaleX(1); }
+  .c-button, .quick-pouch { transition: none; }
+  .c-button:not(:disabled):hover, .c-button:active:not(:disabled) { transform: none; }
+}
+</style>
+</head>
+<body>
+
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<header class="marketing-header">
+  <div class="frame marketing-header__inner">
+    <a class="wordmark" href="#">
+      <img src="brand-symbol.png" alt="" aria-hidden="true">
+      <span>Nicotine Tracker</span>
+      <span class="wordmark__tag">Home concept v3</span>
+    </a>
+    <nav class="marketing-actions" aria-label="Account">
+      <a class="signin" href="#">Sign in</a>
+      <a class="c-button c-button--primary" href="#">Create account</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ============ Hero + live Today sketch ============ -->
+  <section class="hero frame" aria-labelledby="hero-title">
+    <div class="hero__copy">
+      <p class="eyebrow rise" style="--i:0">A calmer way forward</p>
+      <h1 id="hero-title" class="rise" style="--i:1">Cut back at the pace of <em>your own life.</em></h1>
+      <p class="hero__lead rise" style="--i:2">
+        Nicotine Tracker helps pouch users cut down or quit, one honest day at a time.
+        Log in two taps, ride out cravings with a guided pause, and always know whether
+        <strong>today</strong> is on pace — no streaks to protect, no verdicts.
+      </p>
+      <div class="hero__actions rise" style="--i:3">
+        <a class="c-button c-button--primary" href="#">Create account</a>
+        <a class="c-button c-button--secondary" href="#how">See how it works</a>
+      </div>
+      <ul class="hero__meta rise" style="--i:4">
+        <li>Works offline, installs on your phone</li>
+        <li>Your data stays yours</li>
+        <li>Free to start</li>
+      </ul>
+    </div>
+
+    <div class="rise" style="--i:2">
+      <div class="sketch" aria-label="Interactive sketch of the Today screen">
+        <div class="sketch__bar">
+          <p class="sketch__title">
+            <svg class="c-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-15.07 1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+            Today · Thursday, August 6
+          </p>
+          <span class="c-status c-status--attention"><span class="c-status__mark" aria-hidden="true"></span>Live sketch — try it</span>
+        </div>
+
+        <section class="today-summary" aria-label="Today so far">
+          <div>
+            <p class="eyebrow">So far</p>
+            <p class="today-summary__value" aria-live="polite" aria-atomic="true"><span id="sumCount">3</span></p>
+            <p class="today-summary__label">pouches logged</p>
+          </div>
+          <dl class="today-summary__details">
+            <div><dt>Nicotine tracked</dt><dd id="sumMg">13.0 mg</dd></div>
+            <div><dt>Log entries</dt><dd id="sumEntries">3</dd></div>
+            <div><dt>Plan for today</dt><dd>6 pouches</dd></div>
+          </dl>
+        </section>
+
+        <section class="quick-actions" aria-label="Quick log">
+          <div class="section-heading">
+            <div><p class="eyebrow">Quick action</p><h2>Log a pouch</h2></div>
+            <a class="text-link" href="#">Add details</a>
+          </div>
+          <div class="quick-pouch-list">
+            <button class="quick-pouch" type="button" data-brand="Velo" data-mg="6"><span>Velo</span><small>6 mg</small></button>
+            <button class="quick-pouch" type="button" data-brand="ZYN" data-mg="3"><span>ZYN</span><small>3 mg</small></button>
+            <button class="quick-pouch" type="button" data-brand="On!" data-mg="4"><span>On!</span><small>4 mg</small></button>
+          </div>
+        </section>
+
+        <button class="craving-action" type="button" id="cravingBtn" aria-expanded="false" aria-controls="pausePanel">
+          <svg class="c-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.8 19.6A2 2 0 1 0 14 16H2M17.5 8a2.5 2.5 0 1 1 2 4H2M9.8 4.4A2 2 0 1 1 11 8H2"/></svg>
+          <span><strong>Having a craving?</strong><small>Pause, note it, and choose what helps next.</small></span>
+          <svg class="c-icon chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+
+        <div class="pause" id="pausePanel">
+          <div class="pause__inner">
+            <div class="pause__card">
+              <p class="pause__title">Pause. The urge has a shape — and an end.</p>
+              <p class="pause__body">Notice where it sits. Give it one slow breath, then choose what happens next.</p>
+              <p class="pause__breath"><span class="breath-dot" aria-hidden="true"></span>Breathe with the dot — in as it grows, out as it settles.</p>
+              <div class="pause__choices">
+                <button class="c-button c-button--secondary" type="button" id="passedBtn">It passed</button>
+                <button class="c-button c-button--quiet" type="button" id="logAnywayBtn">Log one anyway</button>
+              </div>
+              <p class="pause__resolved" id="pauseResolved" aria-live="polite"></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="undo-toast" id="undoToast" hidden role="status" aria-live="polite">
+          <div>
+            <strong id="toastTitle">Velo · 6 mg logged</strong>
+            <span id="toastSub">4 of 6 today — inside your plan</span>
+          </div>
+          <button class="text-link" type="button" id="toastUndo">Undo</button>
+          <span class="undo-toast__rule" id="toastRule" aria-hidden="true"></span>
+        </div>
+      </div>
+      <p class="sketch__caption">The real Today screen, simplified — every control above works.</p>
+    </div>
+  </section>
+
+  <!-- ============ How it works ============ -->
+  <section class="section" id="how" aria-labelledby="how-title">
+    <div class="frame">
+      <div class="section__head rise">
+        <p class="eyebrow">How it works</p>
+        <p class="section__folio" aria-hidden="true">01</p>
+      </div>
+      <h2 class="section__title rise" id="how-title" style="--i:1">Three moves. No overhaul of your life required.</h2>
+      <p class="section__intro rise" style="--i:2">
+        Most people don&rsquo;t quit in one heroic gesture — they taper, wobble, adjust, and
+        get there. Nicotine Tracker is built around that reality.
+      </p>
+
+      <ol class="steps">
+        <li class="rise" style="--i:2">
+          <span class="steps__num" aria-hidden="true">01</span>
+          <h3 class="steps__term">Set your pace.</h3>
+          <p class="steps__desc"><strong>Tell it what you use now — honestly.</strong> You get a starting
+            ceiling and a gentle step-down schedule. Nothing changes overnight; the plan is
+            allowed to be easy at first.</p>
+        </li>
+        <li class="rise" style="--i:3">
+          <span class="steps__num" aria-hidden="true">02</span>
+          <h3 class="steps__term">Log in two taps.</h3>
+          <p class="steps__desc"><strong>Your usual pouches sit one tap away.</strong> Strength and totals
+            are tracked automatically, every log is undoable, and offline days queue up and
+            sync later. Recording a pouch never takes longer than using one.</p>
+        </li>
+        <li class="rise" style="--i:4">
+          <span class="steps__num" aria-hidden="true">03</span>
+          <h3 class="steps__term">Adjust with evidence.</h3>
+          <p class="steps__desc"><strong>Review when you&rsquo;re ready, not on a streak&rsquo;s schedule.</strong>
+            See what the week actually looked like, then tighten the plan, loosen it, or leave it
+            alone. Every revision keeps its history.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ============ A closer look ============ -->
+  <section class="section" aria-labelledby="tour-title">
+    <div class="frame">
+      <div class="section__head rise">
+        <p class="eyebrow">A closer look</p>
+        <p class="section__folio" aria-hidden="true">02</p>
+      </div>
+      <h2 class="section__title rise" id="tour-title" style="--i:1">Four tools that share one calm interface.</h2>
+      <p class="section__intro rise" style="--i:2">
+        Everything below is drawn from the product itself — same surfaces, same type,
+        same rules. Daily use stays focused; depth opens up when you go looking for it.
+      </p>
+
+      <div class="tour">
+        <!-- Your plan -->
+        <div class="tour-item">
+          <div class="tour-item__copy rise">
+            <div class="tour-item__eyebrow"><span class="tour-item__num" aria-hidden="true">01</span><p class="eyebrow">Your plan</p></div>
+            <h3>A ceiling you chose, not a score to keep.</h3>
+            <p>
+              A goal in Nicotine Tracker is a daily ceiling — pouches or milligrams — that steps
+              down at a pace you set. <strong>Rhythm replaces streaks:</strong> the app counts how many
+              days you&rsquo;ve been at your current pace and remembers your best, without turning
+              one hard day into a reset to zero.
+            </p>
+            <ul class="mini-list">
+              <li><span><strong>Step-down scheduling.</strong> Lower the ceiling weekly or hold it steady — both are valid.</span></li>
+              <li><span><strong>Revisions keep history.</strong> Every past plan stays visible, with what you learned from it.</span></li>
+              <li><span><strong>Adjust in place.</strong> Changing a goal never wipes the record that got you there.</span></li>
+            </ul>
+          </div>
+          <div class="tour-item__vignette rise" style="--i:1">
+            <div class="vignette" aria-label="Example of a reduction plan">
+              <article class="goal-card">
+                <svg class="goal-card__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></svg>
+                <div>
+                  <p class="eyebrow">Active goal</p>
+                  <h4>Stay at or below 6 pouches a day</h4>
+                  <p>Current rhythm: 5 days. Your best is 12.</p>
+                </div>
+                <a class="text-link" href="#">Adjust plan</a>
+              </article>
+              <ul class="past-plan-list">
+                <li><span>8 pouches daily</span><small>Best rhythm: 9 days · revised July 20</small></li>
+                <li><span>10 pouches daily</span><small>Best rhythm: 14 days · revised June 28</small></li>
+              </ul>
+              <p class="vignette__caption">From the Journey screen — where plans live and bend.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cravings -->
+        <div class="tour-item tour-item--flip">
+          <div class="tour-item__copy rise">
+            <div class="tour-item__eyebrow"><span class="tour-item__num" aria-hidden="true">02</span><p class="eyebrow">Cravings</p></div>
+            <h3>Name the urge. Then choose what happens next.</h3>
+            <p>
+              A craving you record is data; a craving you ride out is progress. Log the intensity
+              and what set it off in seconds, take the guided pause when you want it, and either
+              outcome is fine — <strong>&ldquo;used a pouch&rdquo; is recorded without a frown.</strong>
+            </p>
+            <ul class="mini-list">
+              <li><span><strong>A guided pause, always near.</strong> One slow breath, timed, before you decide.</span></li>
+              <li><span><strong>Trigger patterns.</strong> After a few weeks you&rsquo;ll see your top three — and can plan around them.</span></li>
+              <li><span><strong>Ridden-out cravings count.</strong> They show up on your day as wins, not gaps.</span></li>
+            </ul>
+          </div>
+          <div class="tour-item__vignette rise" style="--i:1">
+            <div class="vignette" aria-label="Example of logging a craving">
+              <div class="vignette__head">
+                <h4>Log a craving</h4>
+                <span class="c-status c-status--attention"><span class="c-status__mark" aria-hidden="true"></span>Try the controls</span>
+              </div>
+              <div>
+                <p class="field-label" id="intensityLabel">Intensity — <span id="intensityValue">6</span> of 10</p>
+                <div class="dot-row" role="group" aria-labelledby="intensityLabel">
+                  <button class="dot" type="button" aria-pressed="true" aria-label="Intensity 1">1</button>
+                  <button class="dot" type="button" aria-pressed="true" aria-label="Intensity 2">2</button>
+                  <button class="dot" type="button" aria-pressed="true" aria-label="Intensity 3">3</button>
+                  <button class="dot" type="button" aria-pressed="true" aria-label="Intensity 4">4</button>
+                  <button class="dot" type="button" aria-pressed="true" aria-label="Intensity 5">5</button>
+                  <button class="dot" type="button" aria-pressed="true" aria-label="Intensity 6">6</button>
+                  <button class="dot" type="button" aria-pressed="false" aria-label="Intensity 7">7</button>
+                  <button class="dot" type="button" aria-pressed="false" aria-label="Intensity 8">8</button>
+                  <button class="dot" type="button" aria-pressed="false" aria-label="Intensity 9">9</button>
+                  <button class="dot" type="button" aria-pressed="false" aria-label="Intensity 10">10</button>
+                </div>
+              </div>
+              <div>
+                <p class="field-label">What set it off?</p>
+                <div class="chip-row">
+                  <button class="chip" type="button" aria-pressed="true">Coffee</button>
+                  <button class="chip" type="button" aria-pressed="true">Stress</button>
+                  <button class="chip" type="button" aria-pressed="false">After a meal</button>
+                  <button class="chip" type="button" aria-pressed="false">Driving</button>
+                  <button class="chip" type="button" aria-pressed="false">Boredom</button>
+                  <button class="chip" type="button" aria-pressed="false">With alcohol</button>
+                </div>
+              </div>
+              <div class="outcome-row">
+                <span class="c-status c-status--constructive"><span class="c-status__mark" aria-hidden="true"></span>Rode it out · 12 this week</span>
+                <span class="c-status"><span class="c-status__mark" aria-hidden="true"></span>Used a pouch · 3</span>
+                <span class="note">Both outcomes are recorded the same way — as information.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Insights -->
+        <div class="tour-item">
+          <div class="tour-item__copy rise">
+            <div class="tour-item__eyebrow"><span class="tour-item__num" aria-hidden="true">03</span><p class="eyebrow">Insights</p></div>
+            <h3>Depth when you want it. Never as homework.</h3>
+            <p>
+              Milligrams per day against your plan, the hours your urges keep, the weeks behind
+              you — <strong>every chart answers a real question</strong> or it doesn&rsquo;t ship. When a
+              trend is clear, the app says so in plain words next to the numbers.
+            </p>
+            <ul class="mini-list">
+              <li><span><strong>Milligrams, not just pouches.</strong> Strength is tracked so switching brands stays honest.</span></li>
+              <li><span><strong>Time-of-day patterns.</strong> See the hours that carry your habit, week by week.</span></li>
+              <li><span><strong>Export anytime.</strong> Your history downloads as CSV or JSON — it was always yours.</span></li>
+            </ul>
+          </div>
+          <div class="tour-item__vignette rise" style="--i:1">
+            <div class="vignette" aria-label="Example insights chart">
+              <div class="vignette__head">
+                <h4>Nicotine per day</h4>
+                <span class="c-status c-status--constructive"><span class="c-status__mark" aria-hidden="true"></span>Down 22% in two weeks</span>
+              </div>
+              <svg viewBox="0 0 580 252" role="img" aria-labelledby="chartTitle chartDesc" font-family="DM Sans, sans-serif">
+                <title id="chartTitle">Fourteen days of nicotine use against the plan</title>
+                <desc id="chartDesc">Bar chart of milligrams per day falling from 32 to 19 over two weeks, alongside a dashed plan line stepping down from 30 to 20 milligrams.</desc>
+                <g stroke="#d7d1c3" stroke-width="1">
+                  <line x1="44" y1="158" x2="536" y2="158"/>
+                  <line x1="44" y1="106" x2="536" y2="106"/>
+                  <line x1="44" y1="54" x2="536" y2="54"/>
+                </g>
+                <g fill="#5f6962" font-size="10.5" text-anchor="end" font-variant-numeric="tabular-nums">
+                  <text x="36" y="162">10</text>
+                  <text x="36" y="110">20</text>
+                  <text x="36" y="58">30 mg</text>
+                </g>
+                <g fill="#4b6b55">
+                  <rect x="50" y="44" width="22" height="166" rx="3"/>
+                  <rect x="86" y="54" width="22" height="156" rx="3"/>
+                  <rect x="121" y="49" width="22" height="161" rx="3"/>
+                  <rect x="157" y="64" width="22" height="146" rx="3"/>
+                  <rect x="193" y="59" width="22" height="151" rx="3"/>
+                  <rect x="228" y="70" width="22" height="140" rx="3"/>
+                  <rect x="264" y="75" width="22" height="135" rx="3"/>
+                  <rect x="300" y="75" width="22" height="135" rx="3"/>
+                  <rect x="336" y="85" width="22" height="125" rx="3"/>
+                  <rect x="371" y="80" width="22" height="130" rx="3"/>
+                  <rect x="407" y="96" width="22" height="114" rx="3"/>
+                  <rect x="443" y="101" width="22" height="109" rx="3"/>
+                  <rect x="478" y="106" width="22" height="104" rx="3"/>
+                  <rect x="514" y="111" width="22" height="99" rx="3"/>
+                </g>
+                <polyline points="61,54 97,58 132,62 168,66 204,70 239,74 275,78 311,82 347,86 382,90 418,94 454,98 489,102 525,106"
+                  fill="none" stroke="#1e2a24" stroke-width="2" stroke-dasharray="5 5" stroke-linecap="round"/>
+                <line x1="44" y1="210" x2="536" y2="210" stroke="#afa99b" stroke-width="1.5"/>
+                <g fill="#5f6962" font-size="10.5" text-anchor="middle">
+                  <text x="61" y="228">M</text><text x="97" y="228">T</text><text x="132" y="228">W</text>
+                  <text x="168" y="228">T</text><text x="204" y="228">F</text><text x="239" y="228">S</text>
+                  <text x="275" y="228">S</text><text x="311" y="228">M</text><text x="347" y="228">T</text>
+                  <text x="382" y="228">W</text><text x="418" y="228">T</text><text x="454" y="228">F</text>
+                  <text x="489" y="228">S</text><text x="525" y="228">S</text>
+                </g>
+              </svg>
+              <div class="chart-legend">
+                <span><span class="legend-bar" aria-hidden="true"></span>Nicotine per day</span>
+                <span><span class="legend-line" aria-hidden="true"></span>Your plan, stepping down</span>
+              </div>
+              <p class="vignette__caption">Near the line is the goal — days above it are information, not alarms.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Day timeline ============ -->
+  <section class="section" id="day" aria-labelledby="day-title">
+    <div class="frame">
+      <div class="section__head rise">
+        <p class="eyebrow">Your day, honestly</p>
+        <p class="section__folio" aria-hidden="true">03</p>
+      </div>
+      <h2 class="section__title rise" id="day-title" style="--i:1">One honest line, not a wall of charts.</h2>
+      <p class="section__intro rise" style="--i:2">
+        A day reads as a single timeline: what you planned, what happened, and the urges you
+        rode out. Enough to answer the only question that matters right now — am I on pace?
+      </p>
+
+      <div class="day-scroll rise" style="--i:3" tabindex="0" role="group" aria-label="Example day timeline, scrollable horizontally">
+        <figure class="day-figure">
+          <svg viewBox="0 0 1160 300" role="img" aria-labelledby="daySvgTitle daySvgDesc" font-family="DM Sans, sans-serif">
+            <title id="daySvgTitle">An example day on the plan</title>
+            <desc id="daySvgDesc">A timeline from 07:00 to 23:00. Six planned pouches marked as hollow squares. Four actual logs marked as green rings at 08:20, 10:45, 13:35 and 15:50. One craving marked as a terracotta diamond at 15:05 that was ridden out. The day ends inside the plan.</desc>
+            <g stroke="#d7d1c3" stroke-width="1">
+              <line x1="60" y1="176" x2="60" y2="196"/><line x1="125" y1="182" x2="125" y2="190"/>
+              <line x1="190" y1="182" x2="190" y2="190"/><line x1="255" y1="182" x2="255" y2="190"/>
+              <line x1="320" y1="176" x2="320" y2="196"/><line x1="385" y1="182" x2="385" y2="190"/>
+              <line x1="450" y1="182" x2="450" y2="190"/><line x1="515" y1="182" x2="515" y2="190"/>
+              <line x1="580" y1="176" x2="580" y2="196"/><line x1="645" y1="182" x2="645" y2="190"/>
+              <line x1="710" y1="182" x2="710" y2="190"/><line x1="775" y1="176" x2="775" y2="196"/>
+              <line x1="840" y1="182" x2="840" y2="190"/><line x1="905" y1="182" x2="905" y2="190"/>
+              <line x1="970" y1="176" x2="970" y2="196"/><line x1="1035" y1="182" x2="1035" y2="190"/>
+              <line x1="1100" y1="176" x2="1100" y2="196"/>
+            </g>
+            <line x1="60" y1="186" x2="1100" y2="186" stroke="#afa99b" stroke-width="1.5"/>
+            <g fill="#5f6962" font-size="12.5" text-anchor="middle" font-variant-numeric="tabular-nums">
+              <text x="60" y="218">07:00</text><text x="320" y="218">11:00</text>
+              <text x="580" y="218">15:00</text><text x="775" y="218">18:00</text>
+              <text x="970" y="218">21:00</text><text x="1100" y="218">23:00</text>
+            </g>
+            <!-- planned (hollow squares) -->
+            <g fill="none" stroke="#1e2a24" stroke-width="2">
+              <rect x="118" y="179" width="14" height="14" rx="2"/><rect x="281" y="179" width="14" height="14" rx="2"/>
+              <rect x="443" y="179" width="14" height="14" rx="2"/><rect x="606" y="179" width="14" height="14" rx="2"/>
+              <rect x="768" y="179" width="14" height="14" rx="2"/><rect x="931" y="179" width="14" height="14" rx="2"/>
+            </g>
+            <!-- logs (green rings, matching activity markers) -->
+            <g fill="#f5f1e7" stroke="#4b6b55" stroke-width="3">
+              <circle cx="147" cy="186" r="8"/><circle cx="304" cy="186" r="8"/>
+              <circle cx="488" cy="186" r="8"/><circle cx="634" cy="186" r="8"/>
+            </g>
+            <g fill="#1e2a24" font-size="13.5" text-anchor="middle" font-variant-numeric="tabular-nums" font-weight="600">
+              <text x="147" y="150">08:20</text><text x="304" y="150">10:45</text>
+              <text x="488" y="150">13:35</text><text x="634" y="150">15:50</text>
+            </g>
+            <g stroke="#4b6b55" stroke-width="1.25">
+              <line x1="147" y1="158" x2="147" y2="176"/><line x1="304" y1="158" x2="304" y2="176"/>
+              <line x1="488" y1="158" x2="488" y2="176"/><line x1="634" y1="158" x2="634" y2="176"/>
+            </g>
+            <!-- craving -->
+            <rect x="577" y="178" width="15" height="15" transform="rotate(45 584.5 185.5)" fill="#b76343"/>
+            <line x1="585" y1="96" x2="585" y2="172" stroke="#b76343" stroke-width="1.25" stroke-dasharray="3 4"/>
+            <text x="585" y="76" fill="#944733" font-size="14.5" text-anchor="middle" font-weight="650"><tspan font-variant-numeric="tabular-nums">15:05</tspan> — a craving, ridden out</text>
+            <!-- closing annotation -->
+            <text x="1100" y="96" text-anchor="end" font-family="Newsreader, Georgia, serif" font-style="italic" font-size="23" fill="#1e2a24">4 of 6 by evening —</text>
+            <text x="1100" y="122" text-anchor="end" font-family="Newsreader, Georgia, serif" font-style="italic" font-size="23" fill="#1e2a24">comfortably inside the plan.</text>
+            <line x1="952" y1="132" x2="1100" y2="132" stroke="#4b6b55" stroke-width="2"/>
+          </svg>
+        </figure>
+        <ul class="day-legend" aria-label="Legend">
+          <li><span class="mark-square" aria-hidden="true"></span>Planned by you</li>
+          <li><span class="mark-ring" aria-hidden="true"></span>Logged</li>
+          <li><span class="mark-diamond" aria-hidden="true"></span>Craving ridden out</li>
+        </ul>
+      </div>
+
+      <p class="day-takeaway rise">
+        <span><strong>Every mark answers a question.</strong> Planned slots come from your own
+        reduction plan — never a generic quota — and a craving you survived is drawn as progress,
+        not as a gap in the data.</span>
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ When it goes sideways ============ -->
+  <section class="section" aria-labelledby="hardday-title">
+    <div class="frame">
+      <div class="section__head rise">
+        <p class="eyebrow">When it goes sideways</p>
+        <p class="section__folio" aria-hidden="true">04</p>
+      </div>
+      <div class="hardday">
+        <blockquote class="hardday__quote rise" style="--i:1" id="hardday-title">
+          A hard day isn&rsquo;t a failed day.
+        </blockquote>
+        <div class="hardday__body rise" style="--i:2">
+          <p>
+            Some days the plan doesn&rsquo;t survive contact with real life. Log it anyway.
+            Honesty is the whole practice — the app treats a rough Tuesday the way a good coach
+            would: <strong>as data, not as a character flaw.</strong>
+          </p>
+          <ul class="hardday__steps">
+            <li><span>Log it anyway.</span> Two taps, even past the plan.</li>
+            <li><span>See what really happened.</span> Timing, triggers, the shape of the day.</li>
+            <li><span>Wake to an adjusted plan.</span> Tomorrow meets you where you are.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Your data ============ -->
+  <section class="section" aria-labelledby="data-title">
+    <div class="frame">
+      <div class="section__head rise">
+        <p class="eyebrow">Your data</p>
+        <p class="section__folio" aria-hidden="true">05</p>
+      </div>
+      <h2 class="section__title rise" id="data-title" style="--i:1">Kept like a journal, not a profile.</h2>
+      <p class="section__intro rise" style="--i:2">
+        What you log is sensitive — it&rsquo;s about your body and your habits. It&rsquo;s treated
+        that way.
+      </p>
+
+      <ul class="data-rows">
+        <li class="rise" style="--i:2">
+          <svg class="c-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          <span class="data-rows__term">Export anytime</span>
+          <p class="data-rows__desc">Your full history downloads as CSV or JSON whenever you want it — no waiting, no asking permission, no lock-in.</p>
+        </li>
+        <li class="rise" style="--i:3">
+          <svg class="c-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M12 18h.01"/></svg>
+          <span class="data-rows__term">Works offline</span>
+          <p class="data-rows__desc">Install it on your phone like a native app. Logs made without a signal queue quietly and sync when you&rsquo;re back.</p>
+        </li>
+        <li class="rise" style="--i:4">
+          <svg class="c-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1 1 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
+          <span class="data-rows__term">No ads, no sale of data</span>
+          <p class="data-rows__desc">There is no advertising here and nothing about you is for sale. If the product ever charges money, it will be for the product.</p>
+        </li>
+        <li class="rise" style="--i:5">
+          <svg class="c-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+          <span class="data-rows__term">Delete means delete</span>
+          <p class="data-rows__desc">Closing your account removes your logs, plans, and history. Leaving shouldn&rsquo;t require a support ticket.</p>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ FAQ ============ -->
+  <section class="section" aria-labelledby="faq-title">
+    <div class="frame">
+      <div class="section__head rise">
+        <p class="eyebrow">Fair questions</p>
+        <p class="section__folio" aria-hidden="true">06</p>
+      </div>
+      <h2 class="section__title rise" id="faq-title" style="--i:1">Asked by people like you.</h2>
+
+      <div class="faq rise" style="--i:2">
+        <details>
+          <summary>Do I have to quit completely to use this?
+            <svg class="c-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </summary>
+          <p>No. Cutting down is a first-class goal, not a warm-up act. Most people start by capping
+            their day and stepping down slowly; some stay at a lower level for a long time. Quitting
+            entirely is one option among several, and the app works the same way for all of them.</p>
+        </details>
+        <details>
+          <summary>What happens when I go over my plan?
+            <svg class="c-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </summary>
+          <p>It gets noted — not judged. There are no red screens and nothing resets. The day is
+            recorded honestly, and if harder days keep coming, the suggestion you&rsquo;ll see is to
+            bend the plan to fit, not to try harder at one that isn&rsquo;t working.</p>
+        </details>
+        <details>
+          <summary>Is it only for nicotine pouches?
+            <svg class="c-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </summary>
+          <p>It&rsquo;s tuned for pouches — brands, strengths, quick logging — but anything with a
+            known strength in milligrams can be tracked the same way. The milligram total keeps the
+            record honest even if you switch products.</p>
+        </details>
+        <details>
+          <summary>Will it nag me with notifications?
+            <svg class="c-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </summary>
+          <p>Only the nudges you ask for. Reminders are opt-in, quiet in tone, and easy to change or
+            turn off. A coach you can mute isn&rsquo;t a coach worth having.</p>
+        </details>
+        <details>
+          <summary>What does it cost?
+            <svg class="c-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </summary>
+          <p>It&rsquo;s free to start, and your logs are always yours to export. If paid plans ever
+            arrive, they&rsquo;ll pay for the product — your data will never be the product.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CTA ============ -->
+  <section class="section cta" aria-labelledby="cta-title">
+    <img class="cta__mark" src="brand-symbol.png" alt="" aria-hidden="true">
+    <div class="frame cta__inner">
+      <h2 id="cta-title" class="rise">Begin with <em>today.</em></h2>
+      <div class="cta__side rise" style="--i:1">
+        <a class="c-button c-button--primary" href="#">Create your account</a>
+        <p>Set a starting point in about two minutes. Your data stays yours.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="frame">
+    <div class="site-footer__grid">
+      <div class="site-footer__brand">
+        <a class="wordmark" href="#">
+          <img src="brand-symbol.png" alt="" aria-hidden="true">
+          <span>Nicotine Tracker</span>
+        </a>
+        <p>Built for steady progress, without judgment.</p>
+      </div>
+      <nav aria-label="Product">
+        <h3>Product</h3>
+        <ul>
+          <li><a href="#">Today</a></li>
+          <li><a href="#">Your plan</a></li>
+          <li><a href="#">Cravings</a></li>
+          <li><a href="#">Insights</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="Support">
+        <h3>Support</h3>
+        <ul>
+          <li><a href="#">Privacy</a></li>
+          <li><a href="#">Export your data</a></li>
+          <li><a href="#">Contact</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="site-footer__legal">
+      <p>&copy; 2026 Nicotine Tracker</p>
+      <p>Design prototype — home concept v3</p>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------- Entrance reveals ---------- */
+  var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var riseEls = Array.prototype.slice.call(document.querySelectorAll(".rise"));
+  if (reduceMotion || !("IntersectionObserver" in window)) {
+    riseEls.forEach(function (el) { el.classList.add("is-in"); });
+  } else {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("is-in");
+          io.unobserve(entry.target);
+        }
+      });
+    }, { rootMargin: "0px 0px -8% 0px", threshold: 0.05 });
+    riseEls.forEach(function (el) { io.observe(el); });
+  }
+
+  /* ---------- Live Today sketch ---------- */
+  var PLAN = 6;
+  var state = { count: 3, mg: 13.0, entries: 3 };
+  var lastLog = null;
+  var hideTimer = null;
+
+  var sumCount = document.getElementById("sumCount");
+  var sumMg = document.getElementById("sumMg");
+  var sumEntries = document.getElementById("sumEntries");
+  var toast = document.getElementById("undoToast");
+  var toastTitle = document.getElementById("toastTitle");
+  var toastSub = document.getElementById("toastSub");
+  var toastRule = document.getElementById("toastRule");
+  var toastUndo = document.getElementById("toastUndo");
+
+  function paceLine() {
+    if (state.count < PLAN) {
+      return state.count + " of " + PLAN + " today — inside your plan";
+    }
+    if (state.count === PLAN) {
+      return "6 of 6 — plan complete for today";
+    }
+    return state.count + " of " + PLAN + " — past the plan, noted without judgment";
+  }
+
+  function renderSummary() {
+    sumCount.textContent = state.count;
+    sumMg.textContent = state.mg.toFixed(1) + " mg";
+    sumEntries.textContent = state.entries;
+  }
+
+  function showToast() {
+    toast.hidden = false;
+    toastRule.classList.remove("undo-toast__rule--running");
+    void toastRule.offsetWidth; /* restart the countdown animation */
+    toastRule.classList.add("undo-toast__rule--running");
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(hideToast, 10000);
+  }
+
+  function hideToast() {
+    toast.hidden = true;
+    lastLog = null;
+    clearTimeout(hideTimer);
+  }
+
+  function logPouch(brand, mg) {
+    state.count += 1;
+    state.mg += mg;
+    state.entries += 1;
+    lastLog = { brand: brand, mg: mg };
+    renderSummary();
+    toastTitle.textContent = brand + " · " + mg + " mg logged";
+    toastSub.textContent = paceLine();
+    showToast();
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll(".quick-pouch"), function (btn) {
+    btn.addEventListener("click", function () {
+      logPouch(btn.dataset.brand, parseFloat(btn.dataset.mg));
+    });
+  });
+
+  toastUndo.addEventListener("click", function () {
+    if (!lastLog) { hideToast(); return; }
+    state.count -= 1;
+    state.mg -= lastLog.mg;
+    state.entries -= 1;
+    renderSummary();
+    hideToast();
+  });
+
+  /* ---------- Craving pause ---------- */
+  var cravingBtn = document.getElementById("cravingBtn");
+  var pausePanel = document.getElementById("pausePanel");
+  var passedBtn = document.getElementById("passedBtn");
+  var logAnywayBtn = document.getElementById("logAnywayBtn");
+  var pauseResolved = document.getElementById("pauseResolved");
+
+  cravingBtn.addEventListener("click", function () {
+    var open = pausePanel.classList.toggle("is-open");
+    cravingBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) { pauseResolved.textContent = ""; }
+  });
+  passedBtn.addEventListener("click", function () {
+    pauseResolved.textContent = "Noted — that urge passed. That counts.";
+  });
+  logAnywayBtn.addEventListener("click", function () {
+    logPouch("A pouch", 6);
+    pauseResolved.textContent = "Logged. Honesty beats perfection.";
+  });
+
+  /* ---------- Craving intensity + triggers ---------- */
+  var dots = Array.prototype.slice.call(document.querySelectorAll(".dot"));
+  var intensityValue = document.getElementById("intensityValue");
+  dots.forEach(function (dot, i) {
+    dot.addEventListener("click", function () {
+      var level = i + 1;
+      intensityValue.textContent = level;
+      dots.forEach(function (d, j) {
+        d.setAttribute("aria-pressed", j < level ? "true" : "false");
+      });
+    });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll(".chip"), function (chip) {
+    chip.addEventListener("click", function () {
+      chip.setAttribute("aria-pressed", chip.getAttribute("aria-pressed") === "true" ? "false" : "true");
+    });
+  });
+
+  renderSummary();
+})();
+</script>
+</body>
+</html>
