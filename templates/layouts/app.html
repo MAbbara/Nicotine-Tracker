@@ -55,7 +55,7 @@
   <a class="skip-link" href="#main-content">Skip to main content</a>
   <div class="app-frame">
     <header class="app-topbar">
-      <a class="wordmark" href="{{ url_for('today.index') if session.user_id else url_for('index') }}" aria-label="Nicotine Tracker home"><span aria-hidden="true">N/T</span><span>Nicotine Tracker</span></a>
+      <a class="wordmark" href="{{ url_for('today.index') if session.user_id else url_for('index') }}" aria-label="Nicotine Tracker home"><img src="{{ url_for('static', filename='brand/nicotine-tracker-two-point-n-symbol.png') }}" alt="" aria-hidden="true"><span>Nicotine Tracker</span></a>
       {% block utility_navigation %}
         {% if session.user_id %}<a class="app-account-link" href="{{ url_for('you.index') }}">{{ session.user_email or 'Your space' }}</a>{% endif %}
       {% endblock %}
