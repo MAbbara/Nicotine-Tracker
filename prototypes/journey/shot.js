@@ -1,0 +1,117 @@
+/* Screenshot + smoke-test script for the Journey page prototype. */
+const { chromium } = require("playwright");
+
+(async () => {
+  const browser = await chromium.launch();
+  const url = "http://127.0.0.1:8613/prototypes/journey/";
+  const errors = [];
+  const desktop = await browser.newPage({
+    viewport: { width: 1440, height: 900 },
+    deviceScaleFactor: 1.5,
+  });
+  desktop.on("pageerror", (err) => errors.push(String(err)));
+  desktop.on("console", (msg) => {
+    if (msg.type() === "error") errors.push(msg.text());
+  });
+  await desktop.goto(url, { waitUntil: "networkidle" });
+  await desktop.waitForSelector(".app-topbar", { timeout: 5000 });
+  await desktop.waitForSelector(".journey-hero__status", { timeout: 5000 });
+  await desktop.waitForSelector(".today-panel__progress", { timeout: 5000 });
+  await desktop.waitForSelector("[data-chart-step]", { state: "attached", timeout: 5000 });
+  await desktop.focus("[data-milestone='2026-08-16']");
+  await desktop.waitForSelector("[data-chart-tooltip]:not([hidden])", { timeout: 5000 });
+  const tip = await desktop.textContent("[data-chart-tooltip]");
+  if (!tip.includes("3 pouches")) {
+    console.error("tooltip text wrong:", tip);
+    process.exit(1);
+  }
+  await desktop.waitForTimeout(1400); // let entrance motion finish
+  await desktop.screenshot({ path: "shot-desktop-full.png", fullPage: true });
+
+  // Dark theme, default plan state
+  await desktop.click("[data-theme-toggle]");
+  await desktop.waitForTimeout(400);
+  await desktop.screenshot({ path: "shot-desktop-dark.png", fullPage: true });
+  await desktop.click("[data-theme-toggle]");
+  await desktop.waitForTimeout(300);
+
+  // Adjust flow: preview -> confirm redraws the chart's future
+  const lastStep = () => desktop.locator("[data-chart-step]").last().getAttribute("d");
+  const pathBefore = await lastStep();
+  await desktop.click("[data-adjust-toggle]");
+  await desktop.waitForTimeout(60);
+  const hEarly = await desktop.evaluate(() => document.getElementById("adjust-body").offsetHeight);
+  await desktop.waitForTimeout(500);
+  const hOpen = await desktop.evaluate(() => document.getElementById("adjust-body").offsetHeight);
+  if (!(hOpen > hEarly)) {
+    console.error("adjust section did not animate open:", hEarly, "->", hOpen);
+    process.exit(1);
+  }
+  await desktop.fill("[data-adjust-date]", "2026-08-12");
+  await desktop.selectOption("[data-adjust-pace]", "focused");
+  await desktop.click("[data-adjust-preview]");
+  await desktop.waitForSelector("[data-preview-summary]:not([hidden])", { timeout: 5000 });
+  const summary = await desktop.textContent("[data-preview-summary]");
+  if (!/stages? change/.test(summary)) {
+    console.error("preview summary wrong:", summary);
+    process.exit(1);
+  }
+  await desktop.click("[data-adjust-confirm]");
+  await desktop.waitForSelector("[data-adjust-status]:not([hidden])", { timeout: 5000 });
+  const pathAfter = await lastStep();
+  if (pathBefore === pathAfter) {
+    console.error("chart path did not change after confirm");
+    process.exit(1);
+  }
+  await desktop.screenshot({ path: "shot-desktop-adjusted.png", fullPage: true });
+
+  // Facts accordion animates open, then fully closes
+  const factsH = () => desktop.evaluate(() => document.querySelector("[data-accordion-collapse]").offsetHeight);
+  await desktop.click(".facts summary");
+  await desktop.waitForTimeout(60);
+  const fEarly = await factsH();
+  await desktop.waitForTimeout(500);
+  const fOpen = await factsH();
+  if (!(fOpen > fEarly)) {
+    console.error("facts accordion did not animate open:", fEarly, "->", fOpen);
+    process.exit(1);
+  }
+  await desktop.click(".facts summary");
+  await desktop.waitForTimeout(500);
+  const factsState = await desktop.evaluate(() => ({
+    open: document.querySelector("details.facts").open,
+    h: document.querySelector("[data-accordion-collapse]").offsetHeight,
+  }));
+  if (factsState.open || factsState.h !== 0) {
+    console.error("facts accordion did not fully close:", factsState);
+    process.exit(1);
+  }
+  await desktop.close();
+
+  // Mobile, full page
+  const mobile = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+  });
+  mobile.on("pageerror", (err) => errors.push(String(err)));
+  mobile.on("console", (msg) => {
+    if (msg.type() === "error") errors.push(msg.text());
+  });
+  await mobile.goto(url, { waitUntil: "networkidle" });
+  await mobile.waitForSelector("[data-chart-step]", { state: "attached", timeout: 5000 });
+  await mobile.waitForTimeout(1400);
+  await mobile.screenshot({ path: "shot-mobile-full.png", fullPage: true });
+  await mobile.close();
+
+  if (errors.length) {
+    console.error("console errors:", errors);
+    process.exit(1);
+  }
+  await browser.close();
+  console.log("smoke ok");
+})().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

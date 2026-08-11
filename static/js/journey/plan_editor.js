@@ -311,6 +311,9 @@ function text(value) {
 export function previewTable(documentObject, caption, rows, dateKey) {
   const wrapper = documentObject.createElement('div');
   wrapper.className = 'journey-table-scroll';
+  wrapper.tabIndex = 0;
+  wrapper.setAttribute('role', 'region');
+  wrapper.setAttribute('aria-label', caption);
   const table = documentObject.createElement('table');
   const tableCaption = documentObject.createElement('caption');
   tableCaption.textContent = caption;
@@ -349,6 +352,12 @@ export function createDomPlanEditorView(root, { documentObject = document } = {}
   const confirmButton = root.querySelector('[data-plan-editor-confirm]');
   const previewButton = root.querySelector('[data-plan-editor-preview-button]');
   const listeners = [];
+
+  function emit(type, detail = {}) {
+    const EventConstructor = documentObject.defaultView?.CustomEvent || globalThis.CustomEvent;
+    if (typeof root.dispatchEvent !== 'function' || !EventConstructor) return;
+    root.dispatchEvent(new EventConstructor(type, { bubbles: true, detail }));
+  }
 
   function on(target, type, handler) {
     target.addEventListener(type, handler);
@@ -395,6 +404,7 @@ export function createDomPlanEditorView(root, { documentObject = document } = {}
       host.hidden = true;
       confirmButton.hidden = true;
       digest.value = '';
+      emit('journey:plan-preview-clear');
     },
     renderPreview(payload) {
       clearErrors();
@@ -408,6 +418,7 @@ export function createDomPlanEditorView(root, { documentObject = document } = {}
       );
       host.hidden = false;
       confirmButton.hidden = false;
+      emit('journey:plan-preview', { stages: payload.stages || [] });
     },
     setBusy(value) {
       previewButton.disabled = value;

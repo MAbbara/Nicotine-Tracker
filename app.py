@@ -17,6 +17,7 @@ import math
 import time
 from logging.handlers import RotatingFileHandler
 import os
+from datetime import date
 from urllib.parse import urlsplit
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -49,6 +50,14 @@ def create_app(config_name=None):
     mail.init_app(app)
     csrf.init_app(app)
     limiter.init_app(app)
+
+    @app.template_filter('human_date')
+    def human_date(value):
+        if value is None:
+            return ''
+        if isinstance(value, str):
+            value = date.fromisoformat(value)
+        return f"{value.strftime('%B')} {value.day}"
 
     # Request correlation: X-Request-ID in/out + log record stamping
     init_request_context(app)

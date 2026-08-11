@@ -15,12 +15,12 @@ test('public landing exposes one promise and working account actions', async ({ 
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
   await expect(page.getByRole('heading', {
     level: 1,
-    name: 'Start with the next useful action.',
+    name: 'Cut back at the pace of your own life.',
   })).toBeVisible();
 
   const actions = page.locator('.landing-actions');
   const createAccount = actions.getByRole('link', { name: 'Create account', exact: true });
-  const signIn = actions.getByRole('link', { name: 'Sign in', exact: true });
+  const signIn = page.locator('.marketing-actions').getByRole('link', { name: 'Sign in', exact: true });
   await expect(createAccount).toHaveAttribute('href', '/auth/register');
   await expect(signIn).toHaveAttribute('href', '/auth/login');
 
@@ -33,12 +33,11 @@ test('public landing exposes one promise and working account actions', async ({ 
     expect(size.height).toBeGreaterThanOrEqual(44);
   }
 
-  for (const [name, path, heading] of [
-    ['Create account', '/auth/register', 'Create your account'],
-    ['Sign in', '/auth/login', 'Sign in to your account'],
+  for (const [action, name, path, heading] of [
+    [createAccount, 'Create account', '/auth/register', 'Create your account'],
+    [signIn, 'Sign in', '/auth/login', 'Sign in to your account'],
   ]) {
     await page.goto('/');
-    const action = page.locator('.landing-actions').getByRole('link', { name, exact: true });
     const responsePending = page.waitForResponse((response) => (
       response.request().isNavigationRequest()
       && new URL(response.url()).pathname === path
@@ -54,21 +53,133 @@ test('public landing exposes one promise and working account actions', async ({ 
     await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible();
     recorder.record('landing', name, ['keyboard', 'request']);
   }
+
+  const navigationCases = [
+    ['Add details', () => page.getByRole('link', { name: 'Add details', exact: true }), '/log/add', 302],
+    ['Adjust plan', () => page.getByRole('link', { name: 'Adjust plan', exact: true }), '/journey/', 302],
+    ['Cravings', () => page.getByRole('contentinfo').getByRole('link', { name: 'Cravings', exact: true }), '/cravings/cravings', 302],
+    ['Create your account', () => page.getByRole('link', { name: 'Create your account', exact: true }), '/auth/register', 200],
+    ['Export your data', () => page.getByRole('contentinfo').getByRole('link', { name: 'Export your data', exact: true }), '/settings/data', 302],
+    ['Insights', () => page.getByRole('contentinfo').getByRole('link', { name: 'Insights', exact: true }), '/insights/', 302],
+    ['Privacy & your data', () => page.getByRole('contentinfo').getByRole('link', { name: 'Privacy & your data', exact: true }), '/settings/data', 302],
+    ['Today', () => page.getByRole('contentinfo').getByRole('link', { name: 'Today', exact: true }), '/today/', 302],
+    ['Your plan', () => page.getByRole('contentinfo').getByRole('link', { name: 'Your plan', exact: true }), '/journey/', 302],
+  ];
+  for (const [name, locate, path, status] of navigationCases) {
+    await page.goto('/');
+    const action = locate();
+    const responsePending = page.waitForResponse((response) => (
+      response.request().isNavigationRequest()
+      && new URL(response.url()).pathname === path
+    ));
+    await action.focus();
+    await expect(action).toBeFocused();
+    await page.keyboard.press('Enter');
+    const response = await responsePending;
+    expect(response.request().method()).toBe('GET');
+    expect(response.request().postData()).toBeNull();
+    expect(response.status()).toBe(status);
+    if (status === 200) {
+      await expect.poll(() => new URL(page.url()).pathname).toBe(path);
+    } else {
+      await expect(page).toHaveURL(/\/auth\/login/);
+    }
+    recorder.record('landing', name, ['keyboard', 'request']);
+  }
+
+  await page.goto('/');
+  const howLink = page.getByRole('link', { name: 'See how it works', exact: true });
+  await howLink.focus();
+  await expect(howLink).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/#how$/);
+  await expect(page.getByRole('heading', {
+    level: 2,
+    name: 'Three moves. No overhaul of your life required.',
+  })).toBeVisible();
+  recorder.record('landing', 'See how it works', ['keyboard']);
+
+  await page.goto('/');
+  let expectedCount = 3;
+  for (const name of ['Velo 6 mg', 'ZYN 3 mg', 'On! 4 mg']) {
+    const action = page.getByRole('button', { name, exact: true });
+    await action.focus();
+    await expect(action).toBeFocused();
+    await page.keyboard.press('Enter');
+    expectedCount += 1;
+    await expect(page.locator('#sumCount')).toHaveText(String(expectedCount));
+    await expect(page.locator('#undoToast')).toBeVisible();
+    recorder.record('landing', name, ['focus', 'keyboard']);
+  }
+
+  const craving = page.getByRole('button', {
+    name: 'Having a craving? Pause, note it, and choose what helps next.',
+    exact: true,
+  });
+  await craving.focus();
+  await page.keyboard.press('Enter');
+  await expect(craving).toBeFocused();
+  await expect(craving).toHaveAttribute('aria-expanded', 'true');
+  recorder.record('landing', 'Having a craving? Pause, note it, and choose what helps next.', ['focus', 'keyboard']);
+
+  const passed = page.getByRole('button', { name: 'It passed', exact: true });
+  await passed.focus();
+  await page.keyboard.press('Enter');
+  await expect(passed).toBeFocused();
+  await expect(page.locator('#pauseResolved')).toHaveText('Noted — that urge passed. That counts.');
+  recorder.record('landing', 'It passed', ['focus', 'keyboard']);
+
+  const logAnyway = page.getByRole('button', { name: 'Log one anyway', exact: true });
+  await logAnyway.focus();
+  await page.keyboard.press('Enter');
+  expectedCount += 1;
+  await expect(logAnyway).toBeFocused();
+  await expect(page.locator('#sumCount')).toHaveText(String(expectedCount));
+  await expect(page.locator('#pauseResolved')).toHaveText('Logged. Honesty beats perfection.');
+  recorder.record('landing', 'Log one anyway', ['focus', 'keyboard']);
+
+  for (let level = 1; level <= 10; level += 1) {
+    const name = `Intensity ${level}`;
+    const action = page.getByRole('button', { name, exact: true });
+    await action.focus();
+    await page.keyboard.press('Enter');
+    await expect(action).toBeFocused();
+    await expect(page.locator('#intensityValue')).toHaveText(String(level));
+    recorder.record('landing', name, ['focus', 'keyboard']);
+  }
+
+  for (const name of ['Coffee', 'Stress', 'After a meal', 'Driving', 'Boredom', 'With alcohol']) {
+    const action = page.getByRole('button', { name, exact: true });
+    const before = await action.getAttribute('aria-pressed');
+    await action.focus();
+    await page.keyboard.press('Enter');
+    await expect(action).toBeFocused();
+    await expect(action).toHaveAttribute('aria-pressed', before === 'true' ? 'false' : 'true');
+    recorder.record('landing', name, ['focus', 'keyboard']);
+  }
+
+  for (const name of [
+    'Do I have to quit completely to use this?',
+    'What happens when I go over my plan?',
+    'Is it only for nicotine pouches?',
+    'Will it nag me with notifications?',
+    'What does it cost?',
+  ]) {
+    const action = page.locator('summary').filter({ hasText: name });
+    await action.focus();
+    await page.keyboard.press('Enter');
+    await expect(action).toBeFocused();
+    await expect(action.locator('xpath=..')).toHaveAttribute('open', '');
+    recorder.record('landing', name, ['focus', 'keyboard']);
+  }
+
   recorder.assertComplete();
 
   await expect(page.getByRole('heading', {
     level: 1,
-    name: 'Sign in to your account',
+    name: 'Cut back at the pace of your own life.',
   })).toBeVisible();
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
-  await expect(page.locator('.auth-panel')).toHaveCount(1);
-
-  const submit = page.locator('.auth-panel').getByRole('button', { name: 'Sign in', exact: true });
-  const submitSize = await submit.evaluate((element) => {
-    const box = element.getBoundingClientRect();
-    return { width: box.width, height: box.height };
-  });
-  expect(submitSize.height).toBeGreaterThanOrEqual(44);
 });
 
 
@@ -149,6 +260,21 @@ test('registration clears stale mismatch when only password is edited to match',
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
   await postRequest;
   expect(consoleErrors).toEqual([]);
+});
+
+test('landing follows the saved dark theme', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('nicotine-tracker-theme', 'dark');
+  });
+  await page.reload();
+
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  const canvas = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  expect(canvas).toBe('rgb(17, 25, 21)');
+  await expect(page.getByRole('heading', {
+    level: 1,
+    name: 'Cut back at the pace of your own life.',
+  })).toBeVisible();
 });
 
 

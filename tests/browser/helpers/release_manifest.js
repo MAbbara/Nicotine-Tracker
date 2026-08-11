@@ -236,10 +236,37 @@ function reviewActions(extras = []) {
 }
 
 
+const LANDING_ACTIONS = [
+  'Add details', 'Adjust plan', 'After a meal', 'Boredom', 'Coffee', 'Cravings',
+  'Create account', 'Create your account', 'Do I have to quit completely to use this?',
+  'Driving', 'Export your data',
+  'Having a craving? Pause, note it, and choose what helps next.', 'Insights',
+  ...Array.from({ length: 10 }, (_, index) => `Intensity ${index + 1}`),
+  'Is it only for nicotine pouches?', 'It passed', 'Log one anyway', 'On! 4 mg',
+  'Privacy & your data', 'See how it works', 'Sign in', 'Stress', 'Today',
+  'Velo 6 mg', 'What does it cost?', 'What happens when I go over my plan?',
+  'Will it nag me with notifications?', 'With alcohol', 'Your plan', 'ZYN 3 mg',
+];
+const JOURNEY_DEEP_ACTIONS = [
+  '1 September: nicotine ceiling changes to 33.50 mg',
+  '12 August: nicotine ceiling changes to 43.50 mg',
+  '13 September: nicotine ceiling changes to 27.50 mg',
+  '16 August: nicotine ceiling changes to 41.50 mg',
+  '17 September: nicotine ceiling changes to 25.50 mg',
+  '20 August: nicotine ceiling changes to 39.50 mg',
+  '24 August: nicotine ceiling changes to 37.50 mg',
+  '28 August: nicotine ceiling changes to 35.50 mg',
+  '4 August: nicotine ceiling changes to 47.50 mg',
+  '5 September: nicotine ceiling changes to 31.50 mg',
+  '8 August: nicotine ceiling changes to 45.50 mg',
+  '9 September: nicotine ceiling changes to 29.50 mg',
+];
+
+
 const EXPECTED_ACTIONS = {
   landing: sortedActions(
     ['Nicotine Tracker home', 'Skip to main content'],
-    ['Create account', 'Sign in'],
+    LANDING_ACTIONS,
   ),
   login: sortedActions(
     ['Nicotine Tracker home', 'Skip to main content'],
@@ -266,6 +293,7 @@ const EXPECTED_ACTIONS = {
     'Log nicotine use', 'Log nicotine use Steady Mint · 6.00 mg is ready',
   ]),
   journey: reviewActions([
+    JOURNEY_DEEP_ACTIONS,
     'Fri 46.00 mg Aug 7',
     'Log nicotine or respond to a craving', 'Plan details and history',
     'Mon 48.00 mg Current', 'Preview revision', 'Review this draft',
@@ -420,6 +448,7 @@ const ACTION_OWNERS = {
   insightsExact: OWNER_TITLES.insights,
   journeyChoices: OWNER_TITLES.journeyChoices,
   journeyLifecycle: OWNER_TITLES.journeyLifecycle,
+  journeyOverview: OWNER_TITLES.journeyOverview,
   journeyObserve: OWNER_TITLES.journeyObserve,
   landing: OWNER_TITLES.landing,
   onboarding: OWNER_TITLES.onboarding,
@@ -488,7 +517,7 @@ for (const stateName of ['landing', 'login', 'register', 'forgot-password', 'res
     'Nicotine Tracker home', 'Skip to main content',
   ])];
   if (stateName === 'landing') {
-    actionOwners.push(ownedBy(ACTION_OWNERS.landing, ['Create account', 'Sign in']));
+    actionOwners.push(ownedBy(ACTION_OWNERS.landing, LANDING_ACTIONS));
   } else if (stateName === 'register') {
     actionOwners.push(
       ownedBy(ACTION_OWNERS.onboarding, [
@@ -568,6 +597,7 @@ attachActionCoverage(
   ownedBy(ACTION_OWNERS.journeyLifecycle, [
     'Plan details and history', 'Preview revision',
   ]),
+  ownedBy(ACTION_OWNERS.journeyOverview, JOURNEY_DEEP_ACTIONS),
   ownedBy(ACTION_OWNERS.journeyChoices, [
     'Fri 46.00 mg Aug 7', 'Log nicotine or respond to a craving',
     'Mon 48.00 mg Current', 'Review this draft', 'Sat 45.50 mg Aug 8',

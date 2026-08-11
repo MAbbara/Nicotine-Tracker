@@ -64,6 +64,18 @@ async function expectProjectTouchTargets(page) {
 }
 
 
+/* Entrance fades leave text mid-opacity; audits must measure the settled
+   state users actually read. */
+async function settleEntranceMotion(page) {
+  await page.evaluate(() => {
+    document.querySelectorAll('.landing-rise, .rise').forEach((el) => {
+      el.style.transition = 'none';
+      el.classList.add('is-in');
+    });
+  });
+}
+
+
 async function login(page, email) {
   await page.goto('/auth/login');
   await page.getByLabel('Email address').fill(email);
@@ -248,7 +260,7 @@ test('login page has semantic structure, natural tab order, and no WCAG A/AA vio
 
 
 for (const [path, heading] of [
-  ['/', 'Start with the next useful action.'],
+  ['/', 'Cut back at the pace of your own life.'],
   ['/auth/register', 'Create your account'],
   ['/auth/forgot_password', 'Reset your password'],
   ['/auth/reset_password/browser-accessibility-reset-token', 'Choose a new password'],
@@ -849,6 +861,106 @@ for (const theme of ['light', 'dark']) {
 
     await expectExplicitTheme(page, theme);
     await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible();
+    await expectNoWcagViolations(page);
+  });
+}
+
+
+function deterministicA11yEmail(testInfo, label) {
+  const retry = Number(testInfo.retry) || 0;
+  const repeat = Number(testInfo.repeatEachIndex) || 0;
+  const source = `${testInfo.project.name}:${testInfo.title}:${retry}:${repeat}:${label}`;
+  let hash = 0;
+  for (const character of source) hash = ((hash * 31) + character.charCodeAt(0)) >>> 0;
+  return `a11y-journey-${hash}@example.com`;
+}
+
+
+async function releaseIsoDate(page, daysFromToday = 0) {
+  const response = await page.request.get('/__test__/release-clock');
+  expect(response.status()).toBe(200);
+  const { fixed_now: fixedNow } = await response.json();
+  const value = new Date(fixedNow);
+  value.setUTCDate(value.getUTCDate() + daysFromToday);
+  return value.toISOString().slice(0, 10);
+}
+
+
+async function registerAndCreatePlan(page, testInfo, label) {
+  await page.goto('/auth/register');
+  await page.getByLabel('Email address').fill(deterministicA11yEmail(testInfo, label));
+  await page.getByRole('textbox', { name: 'Password', exact: true }).fill('browser-password');
+  await page.getByLabel('Confirm Password').fill('browser-password');
+  await page.getByLabel(/I understand this is a personal tracking tool/i).check();
+  await page.getByRole('button', { name: 'Create Account' }).click();
+  await expect(page).toHaveURL(/\/journey\/onboarding\/?$/);
+  await page.locator('input[name="intention"][value="reduce"]').check();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.locator('input[name="baseline_source"][value="manual"]').check();
+  await page.locator('#field-baseline_mg').fill('48');
+  await page.locator('#field-baseline_mg_per_pouch').fill('6');
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByLabel(/Steady · 49 days/).check();
+  await page.getByLabel(/End target nicotine per day/).fill('12');
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByLabel('No reminder').check();
+  await page.getByLabel('Plan start date').fill(await releaseIsoDate(page));
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('button', { name: 'Activate this reviewed plan' }).click();
+  await expect(page).toHaveURL(/\/today\/?$/);
+}
+
+
+for (const theme of ['light', 'dark']) {
+  test(`active Journey overview has no WCAG A/AA violations in explicit ${theme} theme`, async ({ page }, testInfo) => {
+    await useExplicitTheme(page, theme);
+    await registerAndCreatePlan(page, testInfo, `overview-${theme}`);
+    await page.goto('/journey/');
+
+    await expectExplicitTheme(page, theme);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+    await expect(page.locator('[data-journey-scorecard]')).toContainText(/mg/i);
+    await expect(page.locator('[data-next-change]')).toContainText(/mg/i);
+    await expect(page.locator('[data-path-chart]')).toHaveAttribute(
+      'aria-label',
+      /nicotine.*mg/i,
+    );
+    await expect(page.locator('[data-plan-editor="revision"]')).toHaveCount(1);
+    await expect(page.locator('[data-path-editor]')).toHaveCount(0);
+    for (const action of ['pause', 'complete', 'archive']) {
+      await expect(page.locator(`.journey-plan form[action$="/${action}"]`)).toHaveCount(1);
+    }
+
+    // Audit the richest state with the sole feature editor's preview visible.
+    const editor = page.locator('[data-plan-editor="revision"]');
+    await editor.getByLabel('Effective date').fill(await releaseIsoDate(page, 1));
+    await editor.getByLabel('Duration days').fill('42');
+    await editor.getByRole('button', { name: 'Preview revision' }).click();
+    await expect(editor.locator('[data-plan-editor-preview] tbody tr')).not.toHaveCount(0);
+    await expect(editor.getByRole('button', { name: 'Confirm revision' })).toBeVisible();
+
+    // Entrance effects must not leave audited text partially transparent.
+    await page.evaluate(() => document.querySelectorAll('.rise').forEach((el) => {
+      el.style.transition = 'none';
+      el.classList.add('is-in');
+    }));
+    await expectNoWcagViolations(page);
+
+    // Milestone tooltip is keyboard-reachable and visible without a pointer.
+    await page.locator('.path-hotspot').first().focus();
+    await expect(page.locator('[data-chart-tooltip]')).toBeVisible();
+    await expect(page.locator('[data-chart-tooltip]')).toContainText(/\d+(?:\.\d{2})? mg/i);
+    await expect(page.locator('[data-chart-tooltip]')).not.toContainText(/pouches?/i);
+    await expectNoWcagViolations(page);
+
+    // The chart scroll region stays keyboard-accessible at 200% text.
+    const scroll = page.locator('.path-scroll');
+    await expect(scroll).toHaveAttribute('tabindex', '0');
+    await expect(scroll).toHaveAccessibleName(/nicotine ceiling path/i);
+    await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+    if (testInfo.project.name.includes('mobile')) {
+      expect(await scroll.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    }
     await expectNoWcagViolations(page);
   });
 }

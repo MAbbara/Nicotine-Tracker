@@ -16,7 +16,7 @@
         {% elif plan.current_day %}
           <span>Today · {% if plan.current_day.nicotine_ceiling_mg is not none %}{{ '%.2f'|format(plan.current_day.nicotine_ceiling_mg) }} mg ceiling{% elif plan.row.mode == 'observe' %}observation without a ceiling{% else %}no nicotine ceiling{% endif %}</span>
         {% elif plan.next_days %}
-          <span>Next plan day · {{ plan.next_days[0].local_date.strftime('%B %-d') }}</span>
+          <span>Next plan day · {{ plan.next_days[0].local_date|human_date }}</span>
         {% endif %}
       </p>
     {% else %}
@@ -39,7 +39,7 @@
         {% else %}
         <header class="journey-section-heading">
           <div>
-            <p class="eyebrow">{{ today.strftime('%A, %B %-d') }}</p>
+            <p class="eyebrow">{{ today.strftime('%A') }}, {{ today|human_date }}</p>
             <h2 id="journey-today-title">Today in this plan</h2>
           </div>
           <p class="journey-progress-status journey-progress-status--{{ progress.status }}">
@@ -95,9 +95,9 @@
           {% elif progress.next_change and progress.next_change.kind == 'resume_required' %}
             Resume this plan before future ceiling dates are scheduled
           {% elif progress.next_change and progress.next_change.kind == 'first_ceiling' %}
-            First ceiling begins at {{ '%.2f'|format(progress.next_change.ceiling_mg) }} mg on <time datetime="{{ progress.next_change.local_date.isoformat() }}">{{ progress.next_change.local_date.strftime('%B %-d') }}</time>
+            First ceiling begins at {{ '%.2f'|format(progress.next_change.ceiling_mg) }} mg on <time datetime="{{ progress.next_change.local_date.isoformat() }}">{{ progress.next_change.local_date|human_date }}</time>
           {% elif progress.next_change and progress.next_change.ceiling_mg is not none %}
-            {{ '%.2f'|format(progress.next_change.ceiling_mg) }} mg on <time datetime="{{ progress.next_change.local_date.isoformat() }}">{{ progress.next_change.local_date.strftime('%B %-d') }}</time>
+            {{ '%.2f'|format(progress.next_change.ceiling_mg) }} mg on <time datetime="{{ progress.next_change.local_date.isoformat() }}">{{ progress.next_change.local_date|human_date }}</time>
           {% else %}
             No further ceiling change is scheduled
           {% endif %}
@@ -128,6 +128,10 @@
       <div class="journey-plan__schedule">
         {% include "pages/journey/_schedule.html" %}
       </div>
+
+      {% if plan.use_path_overview %}
+        {% include "pages/journey/_active_overview.html" %}
+      {% endif %}
 
       <div class="journey-plan__maintenance">
         {% if plan.row.status == 'paused' %}
@@ -223,9 +227,9 @@
         {% endif %}
       </div>
 
-      <details class="journey-details">
+      <details class="journey-details facts" data-accordion>
         <summary>Plan details and history</summary>
-        <div class="journey-details__body">
+        <div class="journey-details__body" data-accordion-collapse>
           <section aria-labelledby="plan-facts-title">
             <h2 id="plan-facts-title">Plan assumptions</h2>
             <dl class="journey-facts">
@@ -298,4 +302,8 @@
 {% endblock %}
 
 {% block preline_js %}{% endblock %}
-{% block extra_js %}<script type="module" src="{{ url_for('static', filename='js/journey/progress.js') }}"></script><script type="module" src="{{ url_for('static', filename='js/journey/plan_editor.js') }}"></script>{% endblock %}
+{% block extra_js %}
+  <script type="module" src="{{ url_for('static', filename='js/journey/progress.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/journey/plan_editor.js') }}"></script>
+  {% if plan and plan.use_path_overview %}<script type="module" src="{{ url_for('static', filename='js/journey/active_overview.js') }}"></script>{% endif %}
+{% endblock %}

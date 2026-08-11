@@ -150,8 +150,10 @@ test('enhanced preview keeps nicotine primary and null pouch targets historical'
       this.children = [];
       this.textContent = '';
       this.innerHTML = '';
+      this.attributes = {};
     }
     append(...children) { this.children.push(...children); }
+    setAttribute(name, value) { this.attributes[name] = value; }
   }
   const documentObject = {
     createElement(tagName) { return new Element(tagName); },
@@ -166,6 +168,9 @@ test('enhanced preview keeps nicotine primary and null pouch targets historical'
   const head = table.children[1];
   const row = table.children[2].children[0];
 
+  assert.equal(wrapper.tabIndex, 0);
+  assert.equal(wrapper.attributes.role, 'region');
+  assert.equal(wrapper.attributes['aria-label'], 'Future days');
   assert.equal(
     head.innerHTML,
     '<tr><th scope="col">Date</th><th scope="col">Nicotine ceiling</th><th scope="col">Historical pouch guide</th></tr>',

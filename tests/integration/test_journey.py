@@ -1,5 +1,7 @@
 """Integration contracts for the server-rendered Journey destination."""
 
+import json
+
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
@@ -20,6 +22,7 @@ from services import log_service
 from services.plan_schedule import PlanGenerationInput, PlanScheduleGenerator
 from services.plan_service import PlanService
 from services.today_service import TodayService
+from services.timezone_service import get_current_user_day, resolve_timezone
 
 
 def _revision(session, plan, effective_date, *, pace='steady', target_date=None,
@@ -325,6 +328,12 @@ class TestJourneyComposition:
             form['action']: _form_contract(form)
             for form in soup.select('.journey-plan form[action]')
         }
+        for suffix in ('pause', 'complete', 'archive', 'revision'):
+            assert len(soup.select(
+                f'.journey-plan form[action$="/{suffix}"]'
+            )) == 1
+        assert len(soup.select('[data-plan-editor="revision"]')) == 1
+        assert soup.select_one('[data-path-editor]') is None
         csrf_only = [('input', 'hidden', 'csrf_token', '<csrf>')]
         assert forms[f'/journey/plans/{plan.id}/pause'] == {
             'method': 'post',
@@ -678,7 +687,16 @@ class TestJourneyComposition:
 
     def test_active_plan_renders_truthful_baseline_schedule_history_and_milestones(
             self, logged_in_client, db_session, test_user):
-        today = date.today()
+        # Align the fixture with the app's user-day resolution (UTC here) so
+        # date-relative assertions hold around the local/UTC boundary too.
+        reset_time = (
+            test_user.preferences.daily_reset_time
+            if test_user.preferences and test_user.preferences.daily_reset_time
+            else time.min
+        )
+        today = get_current_user_day(
+            resolve_timezone(test_user.timezone).zone, reset_time
+        )
         plan = _plan(db_session, test_user, start=today - timedelta(days=1))
         original = PlanDay.query.filter_by(plan_id=plan.id).order_by(
             PlanDay.local_date
@@ -718,11 +736,21 @@ class TestJourneyComposition:
         response = logged_in_client.get('/journey/')
         soup = BeautifulSoup(response.data, 'html.parser')
         text = soup.get_text(' ', strip=True)
-        assert soup.select_one('.journey-plan') is not None
-        assert soup.select_one('.journey-today') is not None
-        assert soup.select_one('.journey-next-change') is not None
-        assert soup.select_one('.journey-schedule') is not None
-        assert soup.select_one('.journey-history') is not None
+        plan_owner = soup.select_one('.journey-plan')
+        assert plan_owner is not None
+        assert len(soup.select('h1')) == 1
+        today_owner = plan_owner.select_one(':scope > .journey-today')
+        next_change_owner = plan_owner.select_one(':scope > .journey-next-change')
+        schedule_owner = plan_owner.select_one(':scope > .journey-plan__schedule')
+        deep_owner = plan_owner.select_one('[data-journey-deep-overview]')
+        assert today_owner is not None
+        assert next_change_owner is not None
+        assert schedule_owner.select_one('.journey-schedule') is not None
+        assert deep_owner is not None
+        assert plan_owner.select_one('.journey-history') is not None
+        assert schedule_owner.find_next(
+            attrs={'data-journey-deep-overview': True}
+        ) == deep_owner
         assert 'Manual baseline' in text
         assert 'Historical pouch guide 8.00 pouches per day' in text
         assert '48.00 mg per day' in text
@@ -750,7 +778,74 @@ class TestJourneyComposition:
         assert '2026-01-03 10:00' in text
         assert '2026-01-05 11:00' in text
         assert 'ongoing' in text.lower()
+
+        # The deep path is nicotine-authoritative even when historical pouch
+        # context remains available elsewhere on the page.
+        assert deep_owner.select_one('[data-path-chart]') is not None
+        assert len(deep_owner.select('[data-stage-table] tbody tr')) == 3
+        payload = json.loads(soup.select_one('[data-path-data]').string)
+        assert [float(stage['mg']) for stage in payload['stages']] == [
+            48.0, 36.0, 36.0,
+        ]
+        assert all('pouches' not in stage for stage in payload['stages'])
+        assert payload['stages'][1]['revision'] == second.id
+        assert payload['stages'][2]['milestoneLabel'] == (
+            'Scheduled ceiling continues at 36.00 mg'
+        )
+        assert 'nicotine ceiling changes to 36.00 mg' in text.lower()
+
+        # The composed page retains one editor and one lifecycle action owner.
+        editor = soup.select_one('[data-plan-editor="revision"]')
+        assert editor['data-plan-id'] == str(plan.id)
+        for name in ('effective_date', 'pace', 'duration_days', 'end_target_mg'):
+            assert editor.select_one(f'[name="{name}"]') is not None
+        assert soup.select_one('[data-path-editor]') is None
+        for suffix in ('pause', 'complete', 'archive'):
+            assert len(plan_owner.select(f'form[action$="/{suffix}"]')) == 1
         assert 'preview_digest' not in text
+
+    def test_deep_next_boundary_names_an_unchanged_ceiling_as_continuity(
+            self, logged_in_client, db_session, test_user):
+        reset_time = (
+            test_user.preferences.daily_reset_time
+            if test_user.preferences and test_user.preferences.daily_reset_time
+            else time.min
+        )
+        today = get_current_user_day(
+            resolve_timezone(test_user.timezone).zone, reset_time
+        )
+        plan = _plan(
+            db_session, test_user, start=today - timedelta(days=7), length=10
+        )
+        days = PlanDay.query.filter_by(plan_id=plan.id).order_by(
+            PlanDay.local_date
+        ).all()
+        second = _revision(
+            db_session, plan, today - timedelta(days=3), pace='focused',
+            target_date=today + timedelta(days=2), end_target=4,
+            end_target_mg='36.00', reason='user_edit',
+        )
+        for row in days[4:]:
+            row.revision_id = second.id
+            row.nicotine_ceiling_mg = Decimal('36.00')
+        third = _revision(
+            db_session, plan, today + timedelta(days=1), pace='focused',
+            target_date=today + timedelta(days=2), end_target=4,
+            end_target_mg='36.00', reason='user_edit',
+        )
+        for row in days[8:]:
+            row.revision_id = third.id
+        plan.active_revision_id = third.id
+        db_session.commit()
+
+        soup = BeautifulSoup(
+            logged_in_client.get('/journey/').data, 'html.parser'
+        )
+        deep_next = soup.select_one(
+            '[data-journey-deep-overview] .next-change'
+        ).get_text(' ', strip=True)
+        assert 'Scheduled ceiling continues at 36.00 mg' in deep_next
+        assert 'changes to 36.00 mg' not in deep_next
 
     def test_null_observe_values_are_unknown_and_proposal_needs_review(
             self, logged_in_client, db_session, test_user):

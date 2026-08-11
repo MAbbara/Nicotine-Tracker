@@ -285,7 +285,7 @@ test('every core chrome action runs in its exact representative state', async ({
     );
     await expectKeyboardNavigation(
       page,
-      page.getByRole('link', { name: 'Nicotine Tracker home' }),
+      page.getByRole('banner').getByRole('link', { name: 'Nicotine Tracker home' }),
       state.email ? '/today/' : '/',
     );
     recorder.record(state.name, 'Nicotine Tracker home', ['keyboard', 'request']);

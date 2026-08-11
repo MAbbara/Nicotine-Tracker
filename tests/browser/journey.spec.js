@@ -156,6 +156,66 @@ async function keyboardPost(page, button, pathSuffix) {
   await expect(page).toHaveURL(/\/journey\/?$/);
 }
 
+test('active Journey keeps the compact mg overview ahead of one deep path and control set', async ({ page }, testInfo) => {
+  const recorder = createBehaviorRecorder(OWNER_TITLES.journeyOverview, expect);
+  await loginFixture(page, 'journey-review-desktop@example.com');
+  const errors = watchForErrors(page);
+
+  await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+  const plan = page.locator('.journey-plan');
+  const scorecard = plan.locator('[data-journey-scorecard]');
+  const nextChange = plan.locator('[data-next-change]');
+  const trajectory = plan.locator('[data-journey-trajectory]');
+  const path = plan.locator('[data-path-chart]');
+  await expect(scorecard).toContainText(/mg/i);
+  await expect(nextChange).toContainText(/mg/i);
+  await expect(trajectory).toHaveAttribute('aria-label', /nicotine ceiling trajectory/i);
+  await expect(path).toHaveAttribute('aria-label', /nicotine.*mg/i);
+  expect(await plan.evaluate((element) => {
+    const scorecardElement = element.querySelector('[data-journey-scorecard]');
+    const nextChangeElement = element.querySelector('[data-next-change]');
+    const trajectoryElement = element.querySelector('[data-journey-trajectory]');
+    const pathElement = element.querySelector('[data-path-chart]');
+    return [scorecardElement, nextChangeElement, trajectoryElement].every((owner) => (
+      owner && pathElement && Boolean(
+        owner.compareDocumentPosition(pathElement) & Node.DOCUMENT_POSITION_FOLLOWING,
+      )
+    ));
+  })).toBe(true);
+
+  const steps = page.locator('[data-chart-step]');
+  await expect(steps.first()).toBeAttached();
+  expect(await steps.count()).toBeGreaterThan(2);
+  await expect(page.locator('.chart-today-rule')).toBeAttached();
+
+  const milestones = page.locator('.path-hotspot');
+  for (let index = 0; index < await milestones.count(); index += 1) {
+    const milestone = milestones.nth(index);
+    const name = await milestone.getAttribute('aria-label');
+    await milestone.focus();
+    await expect(milestone).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('[data-chart-tooltip]')).toBeVisible();
+    await expect(page.locator('[data-chart-tooltip]')).toContainText(/\d+(?:\.\d{2})? mg/i);
+    await expect(page.locator('[data-chart-tooltip]')).not.toContainText(/pouches?/i);
+    recorder.record('journey', name, ['focus', 'keyboard']);
+  }
+  recorder.assertComplete();
+
+  const details = page.locator('details.journey-details');
+  await details.getByText('Plan details and history').click();
+  await expect.poll(() => details.evaluate((element) => element.open)).toBe(true);
+  await expect(details).toContainText(/starting nicotine/i);
+
+  await expect(page.locator('[data-plan-editor="revision"]')).toHaveCount(1);
+  await expect(page.locator('[data-path-editor]')).toHaveCount(0);
+  for (const action of ['pause', 'complete', 'archive']) {
+    await expect(plan.locator(`form[action$="/${action}"]`)).toHaveCount(1);
+  }
+
+  expect(errors).toEqual([]);
+});
+
 test('no-plan Journey prioritizes creation while neutral tracking remains available', async ({ page }, testInfo) => {
   await register(page, testInfo, 'empty');
   const errors = watchForErrors(page);
@@ -590,6 +650,8 @@ test('pre-start and paused Journey explain neutral schedule transitions', async 
   await expect(nextChange).toContainText(/48\.00 mg/i);
   await expect(nextChange.locator('time')).toHaveAttribute('datetime', startDate);
   await expect(nextChange).not.toContainText(/final scheduled ceiling/i);
+  await expect(page.locator('[data-path-chart] .chart-today-rule')).toHaveCount(0);
+  await expect(page.locator('[data-path-chart] .chart-today-label')).toHaveCount(0);
 
   await page.getByText('Plan details and history').click();
   await keyboardPost(page, page.getByRole('button', { name: 'Pause plan' }), '/pause');
@@ -681,7 +743,9 @@ test('Journey previews explicitly, mutates future rows only, and carries status 
   recorder.record('journey', 'Plan details and history', ['focus', 'keyboard']);
   await expect(page.locator('.journey-history')).toContainText(/Plan change \d+/);
 
-  const before = await page.locator('[data-complete-schedule] tbody tr').evaluateAll((rows) => rows.map((row) => row.textContent));
+  const before = await completeSchedule.locator('tbody tr').evaluateAll(
+    (rows) => rows.map((row) => row.textContent),
+  );
   const mutationRequests = [];
   page.on('request', (request) => {
     if (request.method() === 'POST' && /\/api\/plans\/\d+\/revisions$/.test(new URL(request.url()).pathname)) {
@@ -797,6 +861,7 @@ test('Journey planning flow stays contiguous and balanced across target viewport
       const today = plan.querySelector(':scope > .journey-today');
       const nextChange = plan.querySelector(':scope > .journey-next-change');
       const schedule = plan.querySelector(':scope > .journey-plan__schedule');
+      const trajectory = plan.querySelector(':scope > [data-journey-deep-overview]');
       const maintenance = plan.querySelector(':scope > .journey-plan__maintenance');
       const details = plan.querySelector(':scope > .journey-details');
       const editor = maintenance.querySelector('[data-plan-editor="revision"]');
@@ -820,6 +885,7 @@ test('Journey planning flow stays contiguous and balanced across target viewport
         .map((element) => ({
           className: String(element.className || ''),
           insideSchedule: Boolean(element.closest('.journey-plan__schedule')),
+          insideTrajectory: Boolean(element.closest('[data-journey-deep-overview]')),
         }));
       return {
         documentWidth: document.documentElement.clientWidth,
@@ -827,6 +893,7 @@ test('Journey planning flow stays contiguous and balanced across target viewport
         today: rect(today),
         nextChange: rect(nextChange),
         schedule: rect(schedule),
+        trajectory: rect(trajectory),
         maintenance: rect(maintenance),
         details: rect(details),
         editor: rect(editor),
@@ -836,17 +903,25 @@ test('Journey planning flow stays contiguous and balanced across target viewport
         actualHorizontalScrollers,
         scheduleBeforeEditor: Boolean(schedule.compareDocumentPosition(editor)
           & Node.DOCUMENT_POSITION_FOLLOWING),
+        scheduleBeforeTrajectory: Boolean(schedule.compareDocumentPosition(trajectory)
+          & Node.DOCUMENT_POSITION_FOLLOWING),
+        trajectoryBeforeEditor: Boolean(trajectory.compareDocumentPosition(editor)
+          & Node.DOCUMENT_POSITION_FOLLOWING),
         editorBeforeDetails: Boolean(editor.compareDocumentPosition(details)
           & Node.DOCUMENT_POSITION_FOLLOWING),
       };
     });
 
     expect(layout.scheduleBeforeEditor).toBe(true);
+    expect(layout.scheduleBeforeTrajectory).toBe(true);
+    expect(layout.trajectoryBeforeEditor).toBe(true);
     expect(layout.editorBeforeDetails).toBe(true);
     expect(layout.nextChange.top).toBeGreaterThanOrEqual(layout.today.bottom);
     expect(layout.schedule.top).toBeGreaterThanOrEqual(layout.nextChange.bottom);
-    expect(layout.editor.top - layout.schedule.bottom).toBeGreaterThanOrEqual(0);
-    expect(layout.editor.top - layout.schedule.bottom).toBeLessThanOrEqual(96);
+    expect(layout.trajectory.top - layout.schedule.bottom).toBeGreaterThanOrEqual(0);
+    expect(layout.trajectory.top - layout.schedule.bottom).toBeLessThanOrEqual(96);
+    expect(layout.editor.top - layout.trajectory.bottom).toBeGreaterThanOrEqual(0);
+    expect(layout.editor.top - layout.trajectory.bottom).toBeLessThanOrEqual(96);
     expect(layout.editor.width).toBeGreaterThanOrEqual(layout.schedule.width * 0.95);
     expect(Math.max(0, ...layout.emptyGaps)).toBeLessThanOrEqual(192);
     const fullWidthValues = layout.fullWidthItems.map((item) => item.width);
@@ -864,7 +939,9 @@ test('Journey planning flow stays contiguous and balanced across target viewport
     } else {
       expect(columnStarts.size).toBe(1);
       expect(layout.documentScrollWidth).toBeLessThanOrEqual(layout.documentWidth + 1);
-      expect(layout.actualHorizontalScrollers.every(({ insideSchedule }) => insideSchedule)).toBe(true);
+      expect(layout.actualHorizontalScrollers.every(({ insideSchedule, insideTrajectory }) => (
+        insideSchedule || insideTrajectory
+      ))).toBe(true);
     }
   }
 });

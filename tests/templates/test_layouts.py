@@ -46,7 +46,7 @@ def test_all_user_facing_layouts_expose_pwa_metadata(app, layout):
 @pytest.mark.parametrize('layout', ['app', 'auth', 'marketing'])
 def test_all_layouts_use_the_two_point_n_brand_home(app, layout):
     soup = BeautifulSoup(_render_layout(app, layout), 'html.parser')
-    brand_home = soup.select_one('a.wordmark[aria-label="Nicotine Tracker home"]')
+    brand_home = soup.select_one('header a.wordmark[href="/"]')
 
     assert brand_home is not None
     assert brand_home.find('img', attrs={
@@ -57,9 +57,17 @@ def test_all_layouts_use_the_two_point_n_brand_home(app, layout):
     assert 'N/T' not in brand_home.get_text(' ', strip=True)
     assert Path('static/brand/nicotine-tracker-two-point-n-symbol.png').is_file()
     assert Path('static/brand/nicotine-tracker-two-point-n-lockup.png').is_file()
+    assert brand_home.get('aria-label') == 'Nicotine Tracker home'
     if layout == 'auth':
         assert brand_home.parent.name == 'header'
         assert 'auth-brand' in brand_home.parent.get('class', [])
+
+
+def test_human_date_filter_uses_portable_editorial_order(app):
+    formatter = app.jinja_env.filters['human_date']
+
+    assert formatter('2026-08-09') == 'August 9'
+    assert formatter(None) == ''
 
 
 def test_app_layout_has_one_main_skip_link_and_flash_region(app):

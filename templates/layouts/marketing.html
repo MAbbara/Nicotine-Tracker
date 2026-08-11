@@ -29,7 +29,35 @@
     {% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<div class="flash-message flash-message--{{ category }}" role="status">{{ message }}</div>{% endfor %}{% endwith %}
   </div>
   <main id="main-content" tabindex="-1">{% block content %}{% endblock %}</main>
-  <footer class="marketing-footer"><p>Built for steady progress, without judgment.</p><p>&copy; {{ current_year or 2026 }} Nicotine Tracker</p></footer>
+  <footer class="marketing-footer">
+    <div class="marketing-footer__grid">
+      <div class="marketing-footer__brand">
+        <a class="wordmark" href="{{ url_for('index') }}" aria-label="Nicotine Tracker home"><img src="{{ url_for('static', filename='brand/nicotine-tracker-two-point-n-symbol.png') }}" alt="" aria-hidden="true"><span>Nicotine Tracker</span></a>
+        <p>Built for steady progress, without judgment.</p>
+      </div>
+      <nav aria-label="Product" class="marketing-footer__nav">
+        <h2>Product</h2>
+        <ul>
+          <li><a href="{{ url_for('today.index') }}">Today</a></li>
+          <li><a href="{{ url_for('journey.index') }}">Your plan</a></li>
+          <li><a href="{{ url_for('cravings.cravings_page') }}">Cravings</a></li>
+          <li><a href="{{ url_for('insights.insights_page') }}">Insights</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="Support" class="marketing-footer__nav">
+        <h2>Support</h2>
+        <ul>
+          <li><a href="{{ url_for('settings.data') }}">Privacy &amp; your data</a></li>
+          <li><a href="{{ url_for('settings.data') }}">Export your data</a></li>
+          <li><a href="{{ url_for('auth.login') }}">Sign in</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="marketing-footer__legal">
+      <p>&copy; {{ current_year or 2026 }} Nicotine Tracker</p>
+      <p>Built for steady progress, without judgment.</p>
+    </div>
+  </footer>
   <script type="module" src="{{ url_for('static', filename='js/shell/theme.js') }}"></script>
   <script type="module" src="{{ url_for('static', filename='js/shell/pwa.js') }}"></script>
   {% block extra_js %}{% endblock %}

@@ -1,0 +1,1451 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Design prototype — a new Journey page (active-plan overview) for Nicotine Tracker, in the product's own design language.">
+<meta name="theme-color" content="#f5f1e7">
+<title>Nicotine Tracker — Journey concept v1</title>
+<style>
+/* ============================================================
+   Nicotine Tracker — Journey page prototype (concept v1)
+   Active-plan overview, "the path" direction.
+   Tokens, shell, and component conventions mirror
+   static/css/style.css and the prototypes/home precedent.
+   ============================================================ */
+
+@font-face {
+  font-family: "Newsreader";
+  src: url("fonts/newsreader-opsz-normal.woff2") format("woff2-variations");
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Newsreader";
+  src: url("fonts/newsreader-opsz-italic.woff2") format("woff2-variations");
+  font-style: italic;
+  font-weight: 200 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "DM Sans";
+  src: url("fonts/dm-sans-variable.woff2") format("woff2-variations");
+  font-style: normal;
+  font-weight: 100 1000;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: light;
+  /* Tokens — production values */
+  --color-canvas: #f5f1e7;
+  --color-surface: #fcf9f1;
+  --color-surface-raised: #fffcf4;
+  --color-ink: #1e2a24;
+  --color-text-muted: #5f6962;
+  --color-border: #d7d1c3;
+  --color-border-strong: #afa99b;
+  --color-constructive: #4b6b55;
+  --color-constructive-deep: #3d5847;
+  --color-constructive-soft: #dce7dc;
+  --color-attention: #b76343;
+  --color-attention-deep: #944733;
+  --color-attention-soft: #f1ddd3;
+  --color-milestone: #c5a05a;
+  --color-milestone-soft: #eee2c6;
+  --color-milestone-deep: #7d5f2a;
+  --color-focus: #2f6b4a;
+  --color-danger: #944733;
+  --font-display: "Newsreader", Georgia, serif;
+  --font-interface: "DM Sans", "Trebuchet MS", sans-serif;
+  --text-caption: .75rem;
+  --text-small: .875rem;
+  --text-body: 1rem;
+  --text-lead: clamp(1.125rem, 1.05rem + .35vw, 1.375rem);
+  --text-title: clamp(2rem, 1.45rem + 2.4vw, 3.75rem);
+  --leading-body: 1.55;
+  --leading-display: 1.02;
+  --radius-control: .75rem;
+  --radius-surface: 1.125rem;
+  --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem;
+  --space-6: 1.5rem; --space-8: 2rem; --space-12: 3rem; --space-16: 4rem;
+  --duration-feedback: .18s;
+  --duration-panel: .24s;
+  --duration-enter: .7s;
+  --ease-out-expo: cubic-bezier(.16, 1, .3, 1);
+  --shadow-overlay: 0 1.5rem 4rem #1e2a2429;
+  --gutter: clamp(1rem, 4vw, 4rem);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --color-canvas: #111915;
+  --color-surface: #1b2721;
+  --color-surface-raised: #243129;
+  --color-ink: #eee8d8;
+  --color-text-muted: #a7aea7;
+  --color-border: #344139;
+  --color-border-strong: #59665e;
+  --color-constructive: #94b29a;
+  --color-constructive-deep: #a9c7b1;
+  --color-constructive-soft: #293a30;
+  --color-attention: #d38466;
+  --color-attention-deep: #eda88b;
+  --color-attention-soft: #422d25;
+  --color-milestone: #d4b474;
+  --color-milestone-soft: #3e3525;
+  --color-milestone-deep: #d4b474;
+  --color-focus: #b8d2bc;
+  --color-danger: #e09477;
+  --shadow-overlay: none;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-interface);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  font-kerning: normal;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color var(--duration-panel) var(--ease-out-expo),
+              color var(--duration-feedback) var(--ease-out-expo);
+}
+img, svg { display: block; max-width: 100%; }
+p { margin: 0; max-width: 68ch; text-wrap: pretty; }
+h1, h2, h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 520;
+  letter-spacing: -.025em;
+  line-height: var(--leading-display);
+  text-wrap: balance;
+  font-optical-sizing: auto;
+}
+a { color: inherit; text-underline-offset: .18em; }
+button { font: inherit; }
+::selection { background: var(--color-milestone-soft); }
+:focus-visible { outline: .1875rem solid var(--color-focus); outline-offset: .1875rem; border-radius: 2px; }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: fixed;
+  inset-block-start: var(--space-3);
+  inset-inline-start: var(--space-3);
+  z-index: 70;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--color-ink);
+  color: var(--color-canvas);
+  font-weight: 700;
+  text-decoration: none;
+  transform: translateY(-160%);
+  transition: transform var(--duration-panel) var(--ease-out-expo);
+}
+.skip-link:focus-visible { transform: translateY(0); }
+
+.c-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: none;
+  display: inline-block;
+  vertical-align: -.2em;
+}
+
+/* ---------- Eyebrow (production convention) ---------- */
+.eyebrow {
+  margin: 0 0 var(--space-3);
+  color: var(--color-constructive);
+  font-size: var(--text-caption);
+  font-weight: 760;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+}
+
+/* ---------- Buttons ---------- */
+.c-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 2.75rem;
+  padding: var(--space-3) var(--space-6);
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
+  font-weight: 720;
+  font-size: var(--text-small);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color var(--duration-feedback) var(--ease-out-expo),
+              border-color var(--duration-feedback) var(--ease-out-expo),
+              color var(--duration-feedback) var(--ease-out-expo);
+}
+.c-button--primary {
+  background: var(--color-constructive);
+  color: var(--color-canvas);
+}
+.c-button--primary:hover { background: var(--color-constructive-deep); }
+.c-button--secondary {
+  background: var(--color-surface-raised);
+  border-color: var(--color-border-strong);
+  color: var(--color-ink);
+}
+.c-button--secondary:hover { border-color: var(--color-ink); }
+.c-button--ghost {
+  background: transparent;
+  border-color: var(--color-border-strong);
+  color: var(--color-ink);
+}
+.c-button--ghost:hover { border-color: var(--color-ink); }
+
+/* ---------- App shell: topbar ---------- */
+.app-topbar {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 4.5rem;
+  padding-inline: var(--gutter);
+  background: var(--color-canvas);
+  border-block-end: 1px solid var(--color-border);
+}
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 2.75rem;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  text-decoration: none;
+}
+.wordmark img {
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 50%;
+}
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.theme-toggle {
+  min-height: 2.75rem;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-caption);
+  font-weight: 720;
+  cursor: pointer;
+  transition: border-color var(--duration-feedback) var(--ease-out-expo),
+              color var(--duration-feedback) var(--ease-out-expo);
+}
+.theme-toggle:hover { border-color: var(--color-ink); color: var(--color-ink); }
+.app-account-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  color: var(--color-text-muted);
+  font-size: var(--text-small);
+  font-weight: 650;
+  text-decoration: none;
+}
+.app-account-link:hover { color: var(--color-ink); text-decoration: underline; }
+
+/* ---------- App shell: primary nav ---------- */
+.primary-nav {
+  position: sticky;
+  inset-block-start: 4.5rem;
+  z-index: 19;
+  display: flex;
+  gap: var(--space-2);
+  padding-inline: var(--gutter);
+  background: var(--color-canvas);
+  border-block-end: 1px solid var(--color-border);
+}
+.primary-nav__link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 3.25rem;
+  padding-inline: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--text-small);
+  font-weight: 650;
+  text-decoration: none;
+  border-block-end: 2px solid transparent;
+}
+.primary-nav__link:hover { color: var(--color-ink); }
+.primary-nav__link[aria-current="page"] {
+  color: var(--color-ink);
+  font-weight: 760;
+  border-block-end-color: var(--color-constructive);
+}
+.primary-nav__link[aria-current="page"] .c-icon { color: var(--color-constructive); }
+
+/* ---------- App content frame ---------- */
+.app-content {
+  width: min(100%, 68rem);
+  margin-inline: auto;
+  padding: clamp(2rem, 4vw, 3.5rem) var(--gutter) clamp(6rem, 10vw, 8rem);
+}
+
+/* ---------- Journey hero (orientation) ---------- */
+.journey-hero {
+  padding-block-start: clamp(1rem, 3vw, 2.5rem);
+  margin-block-end: clamp(2.5rem, 5vw, 4rem);
+}
+.journey-hero h1 {
+  font-size: var(--text-title);
+  font-weight: 470;
+  max-width: 15ch;
+}
+.journey-hero__status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-block-start: var(--space-6);
+  color: var(--color-text-muted);
+  font-size: var(--text-small);
+  font-weight: 650;
+}
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-radius: 999px;
+  background: var(--color-constructive-soft);
+  color: var(--color-constructive-deep);
+  font-size: var(--text-caption);
+  font-weight: 720;
+  letter-spacing: .02em;
+}
+.status-dot {
+  width: .5rem;
+  height: .5rem;
+  border-radius: 50%;
+  background: var(--color-constructive);
+}
+.journey-hero__coach {
+  margin-block-start: var(--space-4);
+  color: var(--color-text-muted);
+  font-size: var(--text-lead);
+  max-width: 44ch;
+}
+
+/* ---------- Today panel ---------- */
+.today-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6) var(--space-8);
+  padding: clamp(1.25rem, 3vw, 2rem);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-surface);
+}
+.today-panel__main { min-width: 0; }
+.today-panel h2 {
+  font-size: clamp(1.6rem, 1.3rem + 1.4vw, 2.25rem);
+  font-weight: 500;
+}
+.today-panel__stage {
+  margin-block-start: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--text-small);
+}
+.today-panel__progress {
+  margin-block-start: var(--space-4);
+  height: .375rem;
+  max-width: 22rem;
+  border-radius: 999px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+.today-panel__progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-constructive);
+}
+.today-panel .c-button { flex: none; }
+
+/* ---------- Section rhythm ---------- */
+.app-content > * + * { margin-block-start: clamp(2.5rem, 6vw, 4.5rem); }
+.section-heading { margin-block-end: var(--space-6); }
+.section-heading h2 { font-size: clamp(1.7rem, 1.45rem + 1.1vw, 2.25rem); font-weight: 480; }
+.section-heading p { margin-block-start: var(--space-2); color: var(--color-text-muted); max-width: 46ch; }
+
+/* ---------- The path chart ---------- */
+:root { --color-ink-soft: var(--color-border-strong); }
+@supports (color: color-mix(in oklab, red, blue)) {
+  :root { --color-ink-soft: color-mix(in oklab, var(--color-ink) 62%, transparent); }
+}
+.path-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-color: var(--color-border-strong) transparent;
+  padding-block-end: var(--space-2);
+}
+.path-scroll:focus-visible { outline-offset: 6px; }
+.path-figure { position: relative; width: 760px; margin: 0; }
+.path-figure svg { display: block; }
+.chart-grid { stroke: var(--color-border); stroke-width: 1; }
+.chart-axis-label { fill: var(--color-text-muted); font-family: var(--font-interface); font-size: 11px; }
+.chart-step { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.chart-step--past { stroke: var(--color-constructive); stroke-width: 2.5; }
+.chart-step--future { stroke: var(--color-ink-soft); stroke-width: 2; stroke-dasharray: 6 6; }
+.chart-preview-step { fill: none; stroke: var(--color-attention); stroke-width: 2; stroke-dasharray: 3 5; stroke-linecap: round; }
+.chart-today-rule { stroke: var(--color-attention); stroke-width: 1.5; }
+.chart-today-dot { fill: var(--color-attention); stroke: var(--color-canvas); stroke-width: 2; }
+.chart-today-label { fill: var(--color-attention-deep); font-family: var(--font-interface); font-size: 11px; font-weight: 700; }
+.path-hotspot {
+  position: absolute;
+  width: 1.375rem;
+  height: 1.375rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+.path-hotspot__diamond {
+  width: .65rem;
+  height: .65rem;
+  background: var(--color-milestone);
+  transform: rotate(45deg);
+  transition: background-color var(--duration-feedback) var(--ease-out-expo);
+}
+.path-hotspot:hover .path-hotspot__diamond,
+.path-hotspot:focus-visible .path-hotspot__diamond { background: var(--color-attention); }
+.chart-flag { fill: var(--color-milestone); stroke: none; }
+.chart-flag-pole { stroke: var(--color-milestone); stroke-width: 2; }
+.chart-flag-label { fill: var(--color-ink); font-family: var(--font-interface); font-size: 11px; font-weight: 700; }
+.chart-step--past.draw-in { stroke-dasharray: 1; stroke-dashoffset: 1; animation: chart-draw .8s var(--ease-out-expo) forwards; }
+.chart-step--future.fade-in, .chart-preview-step.fade-in { opacity: 0; animation: chart-fade .6s var(--ease-out-expo) .35s forwards; }
+@keyframes chart-draw { to { stroke-dashoffset: 0; } }
+@keyframes chart-fade { to { opacity: 1; } }
+.path-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-6);
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--color-text-muted);
+  font-size: var(--text-caption);
+  font-weight: 650;
+}
+.path-legend li { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 1.9rem; }
+.mark { flex: none; width: 1.4rem; height: .8rem; position: relative; }
+.mark--past::before { content: ""; position: absolute; inset-block-start: 50%; inset-inline: 0; border-block-start: 2.5px solid var(--color-constructive); border-radius: 2px; }
+.mark--future::before { content: ""; position: absolute; inset-block-start: 50%; inset-inline: 0; border-block-start: 2px dashed var(--color-ink-soft); }
+.mark--milestone::before { content: ""; position: absolute; inset-block-start: 50%; inset-inline-start: 50%; width: .55rem; height: .55rem; background: var(--color-milestone); transform: translate(-50%, -50%) rotate(45deg); }
+.mark--today::before { content: ""; position: absolute; inset-block: 0; inset-inline-start: 50%; border-inline-start: 1.5px solid var(--color-attention); }
+.mark--today::after { content: ""; position: absolute; inset-block-start: 50%; inset-inline-start: 50%; width: .45rem; height: .45rem; background: var(--color-attention); border-radius: 50%; transform: translate(-50%, -50%); }
+.path-tooltip {
+  position: absolute;
+  z-index: 5;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  max-width: 15rem;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-overlay);
+  color: var(--color-ink);
+  font-size: var(--text-caption);
+  font-weight: 650;
+  pointer-events: none;
+}
+.path-takeaway {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  margin-block-start: var(--space-8);
+  max-width: 46rem;
+  font-size: 1.02rem;
+}
+.path-takeaway::before {
+  content: "";
+  flex: none;
+  width: 2rem;
+  border-block-start: 2px solid var(--color-attention);
+  transform: translateY(-.3rem);
+}
+
+/* ---------- What changes next ---------- */
+.next-change {
+  padding: var(--space-4) 0;
+  border-block: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 1.02rem;
+  max-width: none;
+}
+.next-change strong, .next-change time { color: var(--color-ink); font-weight: 700; }
+
+/* ---------- Adjust future days ---------- */
+.adjust {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-surface);
+  background: var(--color-surface);
+}
+.adjust__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  width: 100%;
+  min-height: 4.5rem;
+  padding: var(--space-4) clamp(1.25rem, 3vw, 2rem);
+  border: 0;
+  background: transparent;
+  color: var(--color-ink);
+  text-align: start;
+  cursor: pointer;
+  border-radius: var(--radius-surface);
+}
+.adjust__toggle-text { display: grid; gap: var(--space-1); }
+.adjust__title { font-family: var(--font-display); font-size: 1.35rem; font-weight: 520; letter-spacing: -.01em; }
+.adjust__promise { color: var(--color-text-muted); font-size: var(--text-small); }
+.adjust__chev { color: var(--color-constructive); transition: transform var(--duration-panel) var(--ease-out-expo); }
+.adjust__toggle[aria-expanded="true"] .adjust__chev { transform: rotate(180deg); }
+.adjust__collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--duration-panel) var(--ease-out-expo);
+}
+.adjust__collapse.is-open { grid-template-rows: 1fr; }
+.adjust__collapse-inner {
+  min-height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  transition: visibility 0s var(--duration-panel);
+}
+.adjust__collapse.is-open .adjust__collapse-inner {
+  visibility: visible;
+  transition-delay: 0s;
+}
+.adjust__body {
+  padding: 0 clamp(1.25rem, 3vw, 2rem) clamp(1.25rem, 3vw, 2rem);
+  border-block-start: 1px solid var(--color-border);
+}
+.adjust__fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+  padding-block-start: var(--space-6);
+}
+.field { display: grid; gap: var(--space-2); align-content: start; }
+.field label {
+  color: var(--color-text-muted);
+  font-size: var(--text-caption);
+  font-weight: 720;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.field input, .field select {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-raised);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: var(--text-small);
+}
+.field input:focus, .field select:focus { border-color: var(--color-focus); }
+.adjust__hint {
+  margin-block-start: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--text-caption);
+}
+.adjust__hint[role="alert"] { color: var(--color-attention-deep); font-weight: 650; }
+.adjust__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-block-start: var(--space-4);
+}
+.adjust__preview {
+  margin-block-start: var(--space-6);
+  padding: var(--space-4);
+  border: 1px dashed var(--color-attention);
+  border-radius: var(--radius-control);
+  background: var(--color-attention-soft);
+}
+.adjust__summary { font-weight: 720; }
+.adjust__diff {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-small);
+}
+.adjust__diff li { display: flex; gap: var(--space-3); align-items: baseline; }
+.adjust__diff li::before {
+  content: "";
+  flex: none;
+  width: .5rem;
+  height: .5rem;
+  background: var(--color-attention);
+  transform: rotate(45deg) translateY(-.05rem);
+}
+.adjust__status {
+  margin-block-start: var(--space-4);
+  color: var(--color-constructive-deep);
+  font-size: var(--text-small);
+  font-weight: 650;
+}
+
+/* ---------- Facts (progressive disclosure) ---------- */
+.facts {
+  border-block-start: 1px solid var(--color-border);
+}
+.facts summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: 3.5rem;
+  padding-block: var(--space-3);
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 520;
+  letter-spacing: -.01em;
+  cursor: pointer;
+  list-style: none;
+}
+.facts summary::-webkit-details-marker { display: none; }
+.facts summary::after {
+  content: "";
+  flex: none;
+  width: .6rem;
+  height: .6rem;
+  border-block-end: 2px solid var(--color-constructive);
+  border-inline-end: 2px solid var(--color-constructive);
+  transform: rotate(45deg) translateY(-.15rem);
+  transition: transform var(--duration-panel) var(--ease-out-expo);
+}
+.facts[open] summary::after { transform: rotate(225deg) translateY(-.15rem); }
+.facts__collapse { display: grid; grid-template-rows: 1fr; }
+html.js .facts__collapse {
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--duration-panel) var(--ease-out-expo);
+}
+html.js .facts__collapse.is-open { grid-template-rows: 1fr; }
+.facts__collapse-inner { min-height: 0; overflow: hidden; }
+.facts__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4) var(--space-8);
+  margin: 0;
+  padding: var(--space-2) 0 var(--space-6);
+}
+.facts__grid div { display: grid; gap: var(--space-1); }
+.facts__grid dt {
+  color: var(--color-text-muted);
+  font-size: var(--text-caption);
+  font-weight: 720;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.facts__grid dd { margin: 0; font-weight: 650; }
+
+/* ---------- History ---------- */
+.history h2, .plan-actions h2 {
+  font-size: clamp(1.35rem, 1.2rem + .7vw, 1.7rem);
+  font-weight: 480;
+  margin-block-end: var(--space-4);
+}
+.history__list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.history__list li {
+  display: flex;
+  gap: var(--space-4);
+  align-items: baseline;
+  padding-block: var(--space-3);
+  border-block-start: 1px solid var(--color-border);
+  font-size: var(--text-small);
+  color: var(--color-text-muted);
+}
+.history__list li strong { color: var(--color-ink); font-weight: 720; }
+.history__when {
+  flex: none;
+  width: 3.5rem;
+  font-family: var(--font-display);
+  font-style: italic;
+  color: var(--color-milestone-deep);
+  font-size: 1rem;
+}
+
+/* ---------- Plan actions ---------- */
+.plan-actions > p { color: var(--color-text-muted); font-size: var(--text-small); }
+.plan-actions__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-block-start: var(--space-4);
+}
+
+/* ---------- Entrance motion ---------- */
+html.js .rise { opacity: 0; transform: translateY(22px); }
+html.js .rise.is-in {
+  opacity: 1;
+  transform: none;
+  transition: opacity .7s var(--ease-out-expo), transform .7s var(--ease-out-expo);
+  transition-delay: calc(var(--i, 0) * 80ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  html.js .rise, html.js .rise.is-in { opacity: 1; transition: none; transform: none; }
+  .chart-step--past.draw-in { animation: none; stroke-dasharray: none; stroke-dashoffset: 0; }
+  .chart-step--future.fade-in, .chart-preview-step.fade-in { animation: none; opacity: 1; }
+  .adjust__collapse, .adjust__collapse-inner { transition: none; }
+  html.js .facts__collapse { grid-template-rows: 1fr; transition: none; }
+}
+
+@media (max-width: 48rem) {
+  .facts__grid { grid-template-columns: 1fr; }
+  .adjust__fields { grid-template-columns: 1fr; }
+  .today-panel { flex-direction: column; align-items: stretch; }
+  .primary-nav {
+    inset-block-start: auto;
+    inset-block-end: 0;
+    position: fixed;
+    inset-inline: 0;
+    border-block-end: 0;
+    border-block-start: 1px solid var(--color-border);
+    padding: 0 var(--space-2) env(safe-area-inset-bottom);
+    justify-content: space-between;
+  }
+  .primary-nav__link {
+    flex: 1;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-height: 3.5rem;
+    padding: var(--space-2) var(--space-1);
+    font-size: var(--text-caption);
+    border-block-end: 0;
+    border-block-start: 2px solid transparent;
+    justify-content: center;
+    align-items: center;
+  }
+  .primary-nav__link[aria-current="page"] { border-block-start-color: var(--color-constructive); }
+  .app-content { padding-block-end: 7rem; }
+}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main-content">Skip to main content</a>
+
+<header class="app-topbar">
+  <a class="wordmark" href="#" aria-label="Nicotine Tracker home">
+    <img src="brand-symbol.png" alt="" aria-hidden="true">
+    <span>Nicotine Tracker</span>
+  </a>
+  <div class="topbar-actions">
+    <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark theme</button>
+    <a class="app-account-link" href="#">you@example.com</a>
+  </div>
+</header>
+
+<nav class="primary-nav" aria-label="Primary">
+  <a class="primary-nav__link" href="#">
+    <svg class="c-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-15.07 1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+    <span>Today</span>
+  </a>
+  <a class="primary-nav__link" href="#" aria-current="page">
+    <svg class="c-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></svg>
+    <span>Journey</span>
+  </a>
+  <a class="primary-nav__link" href="#">
+    <svg class="c-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21v-6M12 21V9M19 21V3"/></svg>
+    <span>Insights</span>
+  </a>
+  <a class="primary-nav__link" href="#">
+    <svg class="c-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
+    <span>You</span>
+  </a>
+</nav>
+
+<main id="main-content" class="app-content" tabindex="-1">
+  <header class="journey-hero rise" style="--i:0">
+    <p class="eyebrow">Current plan</p>
+    <h1>Down to <span data-hero-target>2</span> pouches a day by <span data-hero-date>5&nbsp;September</span>.</h1>
+    <p class="journey-hero__status">
+      <span class="status-pill status-pill--active">
+        <span class="status-dot" aria-hidden="true"></span> Active
+      </span>
+      <span data-hero-status>Day 23 of 49 · Steady pace</span>
+    </p>
+    <p class="journey-hero__coach">You’re past the steepest part. The next change comes to you — nothing to do early.</p>
+  </header>
+
+  <section class="today-panel rise" style="--i:1" aria-labelledby="today-panel-title">
+    <div class="today-panel__main">
+      <p class="eyebrow">Today · Sunday 10 August</p>
+      <h2 id="today-panel-title">4 pouches · 24 mg ceiling</h2>
+      <p class="today-panel__stage" data-today-stage>Stage of 9–15 August · day 2 of 7</p>
+      <div class="today-panel__progress" data-today-progress role="progressbar" aria-valuemin="1" aria-valuemax="7" aria-valuenow="2" aria-label="Day 2 of 7 in this stage">
+        <span style="inline-size: 28.6%"></span>
+      </div>
+    </div>
+    <a class="c-button c-button--primary" href="#">Open Today’s next step</a>
+  </section>
+
+  <section class="path-section rise" style="--i:2" aria-labelledby="path-title">
+    <div class="section-heading">
+      <h2 id="path-title">The path you’re on</h2>
+      <p>Every scheduled step, from your baseline to your target.</p>
+    </div>
+    <div class="path-scroll" tabindex="0" role="region" aria-label="Plan path chart — scroll horizontally to see every date">
+      <figure class="path-figure">
+        <svg data-path-chart viewBox="0 0 760 340" width="760" height="340" role="img"
+             aria-label="Stepped chart of daily pouch targets from 7 on 19 July down to 2 on 5 September. Today, 10 August, sits on the 4-pouch step."></svg>
+        <p class="path-tooltip" data-chart-tooltip hidden></p>
+        <figcaption class="sr-only">
+          Daily pouch targets step down: 7 from 19 to 25 July, 6 to 1 August, 5 to 8 August,
+          4 to 15 August, 3 to 26 August, then 2 until 5 September.
+        </figcaption>
+      </figure>
+    </div>
+    <ul class="path-legend">
+      <li><span class="mark mark--past" aria-hidden="true"></span> Behind you</li>
+      <li><span class="mark mark--future" aria-hidden="true"></span> Scheduled ahead</li>
+      <li><span class="mark mark--milestone" aria-hidden="true"></span> Target steps down</li>
+      <li><span class="mark mark--today" aria-hidden="true"></span> Today</li>
+    </ul>
+    <table class="sr-only" data-stage-table>
+      <caption>Stage targets for the whole plan</caption>
+      <thead>
+        <tr><th scope="col">Dates</th><th scope="col">Daily target</th><th scope="col">Nicotine ceiling</th><th scope="col">Revision</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <p class="path-takeaway">From 42 mg a day to 12 mg — every step scheduled, none improvised.</p>
+  </section>
+
+  <p class="next-change rise" style="--i:3" data-next-change>
+    On <time datetime="2026-08-16">16 August</time> your target steps down to 3 pouches. It will surface in Today when it arrives.
+  </p>
+
+  <section class="adjust rise" style="--i:4" aria-labelledby="adjust-title">
+    <button class="adjust__toggle" type="button" data-adjust-toggle aria-expanded="false" aria-controls="adjust-body">
+      <span class="adjust__toggle-text">
+        <span class="adjust__title" id="adjust-title">Adjust future days</span>
+        <span class="adjust__promise">Preview first. Confirming is the only thing that changes your plan — past days are never rewritten.</span>
+      </span>
+      <svg class="c-icon adjust__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+    <div class="adjust__collapse" id="adjust-body">
+      <div class="adjust__collapse-inner">
+        <div class="adjust__body">
+          <form data-adjust-form novalidate>
+          <div class="adjust__fields">
+            <div class="field">
+              <label for="adjust-date">Effective date</label>
+              <input id="adjust-date" data-adjust-date type="date" min="2026-08-11" max="2026-09-05" value="2026-08-12" required>
+            </div>
+            <div class="field">
+              <label for="adjust-pace">Pace</label>
+              <select id="adjust-pace" data-adjust-pace>
+                <option value="" selected>Keep steady pace</option>
+                <option value="gentle">Gentle — more time</option>
+                <option value="focused">Focused — sooner</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="adjust-target">End target, pouches a day</label>
+              <input id="adjust-target" data-adjust-target type="number" min="0" max="3" placeholder="Keep 2">
+            </div>
+          </div>
+          <p class="adjust__hint" data-adjust-hint>Choose at least one change. Previewing does not change any plan day.</p>
+          <div class="adjust__buttons">
+            <button class="c-button c-button--primary" type="submit" data-adjust-preview>Preview revision</button>
+          </div>
+        </form>
+        <div class="adjust__preview" data-preview-region hidden>
+          <p class="adjust__summary" data-preview-summary></p>
+          <ul class="adjust__diff" data-preview-diff></ul>
+          <div class="adjust__buttons">
+            <button class="c-button c-button--primary" type="button" data-adjust-confirm>Confirm revision</button>
+            <button class="c-button c-button--ghost" type="button" data-adjust-discard>Discard preview</button>
+          </div>
+        </div>
+          <p class="adjust__status" role="status" data-adjust-status hidden></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <details class="facts rise" style="--i:5" data-accordion>
+    <summary>Plan facts and baseline</summary>
+    <div class="facts__collapse" data-accordion-collapse>
+      <div class="facts__collapse-inner">
+        <dl class="facts__grid">
+          <div><dt>Mode</dt><dd>Reduce</dd></div>
+          <div><dt>Status</dt><dd>Active</dd></div>
+          <div><dt>Pace</dt><dd>Steady · 49 days</dd></div>
+          <div><dt>Start date</dt><dd>19 July 2026</dd></div>
+          <div><dt>Target date</dt><dd>5 September 2026</dd></div>
+          <div><dt>Baseline source</dt><dd>Manual baseline</dd></div>
+          <div><dt>Pouch baseline</dt><dd>7 pouches a day</dd></div>
+          <div><dt>Nicotine baseline</dt><dd>42 mg a day</dd></div>
+          <div><dt>Median strength</dt><dd>6 mg a pouch</dd></div>
+          <div><dt>End target</dt><dd>2 pouches a day</dd></div>
+        </dl>
+      </div>
+    </div>
+  </details>
+
+  <section class="history rise" style="--i:6" aria-labelledby="history-title">
+    <h2 id="history-title">Revisions and pauses</h2>
+    <ol class="history__list" data-history-list>
+      <li>
+        <span class="history__when">2 Aug</span>
+        <span><strong>Revision 2</strong> · pace changed gentle → steady · target date moved to 5 Sep · confirmed by you</span>
+      </li>
+      <li>
+        <span class="history__when">30 Jul</span>
+        <span><strong>Resumed</strong> · remaining days shifted two days · no history rewritten</span>
+      </li>
+      <li>
+        <span class="history__when">28 Jul</span>
+        <span><strong>Paused</strong> · “family visit — two days off” · schedule kept intact</span>
+      </li>
+      <li>
+        <span class="history__when">19 Jul</span>
+        <span><strong>Revision 1</strong> · plan activated from a manual baseline of 7 pouches</span>
+      </li>
+    </ol>
+  </section>
+
+  <section class="plan-actions rise" style="--i:7" aria-labelledby="plan-actions-title">
+    <h2 id="plan-actions-title">Plan actions</h2>
+    <p>Status changes only — your history stays intact.</p>
+    <div class="plan-actions__row">
+      <button class="c-button c-button--ghost" type="button">Pause plan</button>
+      <button class="c-button c-button--ghost" type="button">Mark complete</button>
+      <button class="c-button c-button--ghost" type="button">Archive plan</button>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  document.documentElement.classList.add("js");
+  const root = document.documentElement;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  const toggle = document.querySelector("[data-theme-toggle]");
+  const apply = (theme) => {
+    root.dataset.theme = theme;
+    toggle.setAttribute("aria-pressed", String(theme === "dark"));
+    toggle.textContent = theme === "dark" ? "Light theme" : "Dark theme";
+    meta?.setAttribute("content", theme === "dark" ? "#111915" : "#f5f1e7");
+  };
+  toggle.addEventListener("click", () => {
+    apply(root.dataset.theme === "dark" ? "light" : "dark");
+  });
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((en) => {
+      if (en.isIntersecting) {
+        en.target.classList.add("is-in");
+        io.unobserve(en.target);
+      }
+    });
+  }, { threshold: 0.12 });
+  document.querySelectorAll(".rise").forEach((el) => io.observe(el));
+
+  /* Animated accordions: details[data-accordion] unfold via grid-rows.
+     The open attribute is kept during the close transition so the content
+     stays visible while collapsing; reduced motion keeps native instant
+     toggling. */
+  const reducedMotionNow = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  document.querySelectorAll("details[data-accordion]").forEach((details) => {
+    const summary = details.querySelector("summary");
+    const collapse = details.querySelector("[data-accordion-collapse]");
+    if (!summary || !collapse) return;
+    let animating = false;
+    const afterTransition = (fn) => {
+      let done = false;
+      const wrap = (e) => {
+        if (e && e.propertyName && e.propertyName !== "grid-template-rows") return;
+        if (done) return;
+        done = true;
+        collapse.removeEventListener("transitionend", wrap);
+        animating = false;
+        fn();
+      };
+      collapse.addEventListener("transitionend", wrap);
+      setTimeout(wrap, 350); // safety: transition duration + margin
+    };
+    summary.addEventListener("click", (e) => {
+      if (animating) {
+        e.preventDefault();
+        return;
+      }
+      if (reducedMotionNow()) return; // native instant toggle
+      e.preventDefault();
+      animating = true;
+      if (!details.open) {
+        details.open = true; // children render (UA unhides)
+        void collapse.offsetHeight; // flush the 0fr state so the transition has a start
+        collapse.classList.add("is-open"); // 0fr -> 1fr
+        afterTransition(() => {});
+      } else {
+        collapse.classList.remove("is-open"); // 1fr -> 0fr
+        afterTransition(() => {
+          details.open = false; // UA re-hides the collapsed content
+        });
+      }
+    });
+  });
+})();
+</script>
+<script>
+(() => {
+  /* ---------- Plan data (fixed sample set, see spec) ---------- */
+  const PLAN = {
+    start: "2026-07-19",
+    end: "2026-09-05",
+    today: "2026-08-10",
+    endTarget: 2,
+    stages: [
+      { start: "2026-07-19", end: "2026-07-25", pouches: 7, mg: 42, revision: 1 },
+      { start: "2026-07-26", end: "2026-08-01", pouches: 6, mg: 36, revision: 1 },
+      { start: "2026-08-02", end: "2026-08-08", pouches: 5, mg: 30, revision: 2 },
+      { start: "2026-08-09", end: "2026-08-15", pouches: 4, mg: 24, revision: 2 },
+      { start: "2026-08-16", end: "2026-08-26", pouches: 3, mg: 18, revision: 2 },
+      { start: "2026-08-27", end: "2026-09-05", pouches: 2, mg: 12, revision: 2 },
+    ],
+  };
+  const SVGNS = "http://www.w3.org/2000/svg";
+  const DAY = 86400000;
+  const parseDay = (s) => Date.parse(s + "T00:00:00Z");
+  const dayIndex = (s) => Math.round((parseDay(s) - parseDay(PLAN.start)) / DAY);
+  const M = { top: 30, right: 46, bottom: 42, left: 38 };
+  const W = 760, H = 340;
+  const IW = W - M.left - M.right;
+  const IH = H - M.top - M.bottom;
+  const X = (s) => M.left + dayIndex(s) * (IW / 48);
+  const xIndex = (i) => M.left + Math.min(i, 48) * (IW / 48);
+  const Y = (p) => M.top + (1 - p / 8) * IH;
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const fmtDay = (s) => {
+    const d = new Date(parseDay(s));
+    return d.getUTCDate() + " " + MONTHS[d.getUTCMonth()];
+  };
+  const el = (tag, attrs) => {
+    const n = document.createElementNS(SVGNS, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    return n;
+  };
+  const svg = document.querySelector("[data-path-chart]");
+  const figure = document.querySelector(".path-figure");
+  const tbody = document.querySelector("[data-stage-table] tbody");
+  const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const stageX2 = (st) => xIndex(dayIndex(st.end) + 1);
+
+  function renderChart() {
+    const reduced = reducedMotion();
+    svg.textContent = "";
+    tbody.textContent = "";
+    figure.querySelectorAll(".path-hotspot").forEach((b) => b.remove());
+    if (typeof hideTip === "function") hideTip();
+    const todayX = X(PLAN.today);
+
+    // grid + y labels (pouch counts)
+    for (let p = 0; p <= 8; p += 2) {
+      svg.appendChild(el("line", { x1: M.left, x2: W - M.right, y1: Y(p), y2: Y(p), class: "chart-grid" }));
+      if (p > 0) {
+        const t = el("text", { x: M.left - 8, y: Y(p) + 4, "text-anchor": "end", class: "chart-axis-label" });
+        t.textContent = p;
+        svg.appendChild(t);
+      }
+    }
+    // x labels (deduped dates)
+    const tickIdx = [...new Set([0, 13, 27, 41, dayIndex(PLAN.end)])].sort((a, b) => a - b);
+    tickIdx.forEach((i) => {
+      const d = new Date(parseDay(PLAN.start) + i * DAY).toISOString().slice(0, 10);
+      const t = el("text", { x: xIndex(i), y: H - 14, "text-anchor": "middle", class: "chart-axis-label" });
+      t.textContent = fmtDay(d);
+      svg.appendChild(t);
+    });
+
+    const pastCls = "chart-step chart-step--past" + (reduced ? "" : " draw-in");
+    const futureCls = "chart-step chart-step--future" + (reduced ? "" : " fade-in");
+    const addSeg = (x1, y1, x2, y2, cls, draw) => {
+      const d = y1 === y2 ? `M ${x1} ${y1} H ${x2}` : `M ${x1} ${y1} V ${y2}`;
+      const attrs = { d, class: cls, "data-chart-step": "" };
+      if (draw) attrs["pathLength"] = "1";
+      svg.appendChild(el("path", attrs));
+    };
+
+    // stage steps (split at today)
+    PLAN.stages.forEach((st, i) => {
+      const x1 = X(st.start);
+      const x2 = stageX2(st);
+      const y = Y(st.pouches);
+      if (x1 < todayX && x2 > todayX) {
+        addSeg(x1, y, todayX, y, pastCls, !reduced);
+        addSeg(todayX, y, x2, y, futureCls, false);
+      } else if (x2 <= todayX) {
+        addSeg(x1, y, x2, y, pastCls, !reduced);
+      } else {
+        addSeg(x1, y, x2, y, futureCls, false);
+      }
+      const next = PLAN.stages[i + 1];
+      if (next) {
+        const xr = X(next.start);
+        const isPast = xr <= todayX;
+        addSeg(xr, y, xr, Y(next.pouches), isPast ? pastCls : futureCls, !reduced && isPast);
+      }
+    });
+
+    // preview overlay (proposed future)
+    if (window.JOURNEY && JOURNEY.preview) {
+      let d = "";
+      JOURNEY.preview.stages.forEach((st, i) => {
+        const x1 = Math.min(X(st.start), W - M.right);
+        const x2 = stageX2(st);
+        const y = Y(st.pouches);
+        d += `M ${x1} ${y} H ${x2} `;
+        const next = JOURNEY.preview.stages[i + 1];
+        if (next) d += `M ${Math.min(X(next.start), W - M.right)} ${y} V ${Y(next.pouches)} `;
+      });
+      svg.appendChild(el("path", { d, class: "chart-preview-step" + (reduced ? "" : " fade-in"), "data-preview-path": "" }));
+    }
+
+    // milestones (step-down dates) — real buttons overlaying the chart image
+    PLAN.stages.forEach((st, i) => {
+      if (i === 0) return;
+      const x = X(st.start);
+      const y = Y(st.pouches);
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "path-hotspot";
+      b.dataset.milestone = st.start;
+      b.dataset.tipText = fmtDay(st.start) + " · steps down to " + st.pouches + " pouches";
+      b.dataset.tipX = x;
+      b.dataset.tipY = y;
+      b.style.left = x + "px";
+      b.style.top = y + "px";
+      b.setAttribute("aria-label", fmtDay(st.start) + ": target steps down to " + st.pouches + " pouches");
+      const diamond = document.createElement("span");
+      diamond.className = "path-hotspot__diamond";
+      diamond.setAttribute("aria-hidden", "true");
+      b.appendChild(diamond);
+      b.addEventListener("focus", () => showTip(b));
+      b.addEventListener("blur", () => { if (!pinned) hideTip(); });
+      b.addEventListener("pointerenter", () => showTip(b));
+      b.addEventListener("pointerleave", () => { if (!pinned) hideTip(); });
+      b.addEventListener("click", () => { pinned = true; showTip(b); });
+      figure.appendChild(b);
+    });
+
+    // today rule, dot, label
+    svg.appendChild(el("line", { x1: todayX, x2: todayX, y1: M.top, y2: H - M.bottom, class: "chart-today-rule" }));
+    const cur = PLAN.stages.find((s) => dayIndex(s.start) <= dayIndex(PLAN.today) && dayIndex(PLAN.today) <= dayIndex(s.end));
+    if (cur) svg.appendChild(el("circle", { cx: todayX, cy: Y(cur.pouches), r: 4.5, class: "chart-today-dot" }));
+    const tl = el("text", { x: todayX, y: M.top - 10, "text-anchor": "middle", class: "chart-today-label" });
+    tl.textContent = "Today";
+    svg.appendChild(tl);
+
+    // end flag
+    const last = PLAN.stages[PLAN.stages.length - 1];
+    const ex = X(PLAN.end);
+    const ey = Y(last.pouches);
+    svg.appendChild(el("line", { x1: ex, x2: ex, y1: ey - 16, y2: ey, class: "chart-flag-pole" }));
+    svg.appendChild(el("path", { d: `M ${ex} ${ey - 16} l 10 4 l -10 4 Z`, class: "chart-flag" }));
+    const fl = el("text", { x: Math.min(ex + 10, W - 4), y: ey - 24, "text-anchor": "end", class: "chart-flag-label" });
+    fl.textContent = fmtDay(PLAN.end) + " · " + last.pouches + " pouches";
+    svg.appendChild(fl);
+
+    // screen-reader stage table
+    PLAN.stages.forEach((st) => {
+      const tr = document.createElement("tr");
+      const th = document.createElement("th");
+      th.scope = "row";
+      th.textContent = fmtDay(st.start) + " to " + fmtDay(st.end);
+      tr.appendChild(th);
+      [st.pouches + " pouches", st.mg + " mg", "Revision " + st.revision].forEach((txt) => {
+        const td = document.createElement("td");
+        td.textContent = txt;
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+  }
+
+  /* ---------- Milestone tooltip ---------- */
+  const tip = document.querySelector("[data-chart-tooltip]");
+  let pinned = false;
+  const showTip = (g) => {
+    tip.textContent = g.dataset.tipText;
+    const x = +g.dataset.tipX;
+    const y = +g.dataset.tipY;
+    const tw = 220;
+    tip.style.left = Math.min(Math.max(8, x - tw / 2), 760 - tw - 8) + "px";
+    tip.style.top = Math.max(0, y - 66) + "px";
+    tip.hidden = false;
+  };
+  const hideTip = () => { tip.hidden = true; pinned = false; };
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") hideTip(); });
+  document.addEventListener("pointerdown", (e) => {
+    if (pinned && !(e.target.closest && e.target.closest(".path-hotspot"))) hideTip();
+  });
+
+  window.JOURNEY = { plan: PLAN, preview: null, renderChart };
+  renderChart();
+
+  /* ---------- Derived copy (kept honest after a confirmed revision) ---------- */
+  const MONTHS_LONG = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const fmtDayLong = (s) => {
+    const d = new Date(parseDay(s));
+    return d.getUTCDate() + " " + MONTHS_LONG[d.getUTCMonth()];
+  };
+  const fmtRange = (a, b) => {
+    const da = new Date(parseDay(a));
+    const db = new Date(parseDay(b));
+    if (da.getUTCMonth() === db.getUTCMonth()) {
+      return da.getUTCDate() + "–" + db.getUTCDate() + " " + MONTHS_LONG[db.getUTCMonth()];
+    }
+    return fmtDayLong(a) + " – " + fmtDayLong(b);
+  };
+  const PACE_LABELS = { gentle: "Gentle pace", steady: "Steady pace", focused: "Focused pace" };
+  const heroTarget = document.querySelector("[data-hero-target]");
+  const heroDate = document.querySelector("[data-hero-date]");
+  const heroStatus = document.querySelector("[data-hero-status]");
+  const todayStageEl = document.querySelector("[data-today-stage]");
+  const todayProgress = document.querySelector("[data-today-progress]");
+  const nextChangeEl = document.querySelector("[data-next-change]");
+  const dateInput = document.querySelector("[data-adjust-date]");
+
+  function renderDerivedTexts() {
+    const last = PLAN.stages[PLAN.stages.length - 1];
+    heroTarget.textContent = last.pouches;
+    heroDate.textContent = fmtDayLong(PLAN.end).replace(" ", " ");
+    heroStatus.textContent = "Day " + (dayIndex(PLAN.today) + 1) + " of " + (dayIndex(PLAN.end) + 1) + " · " + PACE_LABELS[PLAN.pace || "steady"];
+    const cur = PLAN.stages.find((s) => s.start <= PLAN.today && PLAN.today <= s.end);
+    if (cur) {
+      const stageDays = dayIndex(cur.end) - dayIndex(cur.start) + 1;
+      const dayIn = dayIndex(PLAN.today) - dayIndex(cur.start) + 1;
+      todayStageEl.textContent = "Stage of " + fmtRange(cur.start, cur.end) + " · day " + dayIn + " of " + stageDays;
+      todayProgress.setAttribute("aria-valuemax", String(stageDays));
+      todayProgress.setAttribute("aria-valuenow", String(dayIn));
+      todayProgress.setAttribute("aria-label", "Day " + dayIn + " of " + stageDays + " in this stage");
+      todayProgress.firstElementChild.style.inlineSize = (dayIn / stageDays * 100).toFixed(1) + "%";
+    }
+    const next = PLAN.stages.find((s) => dayIndex(s.start) > dayIndex(PLAN.today));
+    if (next) {
+      nextChangeEl.innerHTML = "On <time datetime=\"" + next.start + "\">" + fmtDayLong(next.start) + "</time> your target steps down to " + next.pouches + " pouches. It will surface in Today when it arrives.";
+    } else {
+      nextChangeEl.textContent = "No more step-downs are scheduled — you’re on the final stage.";
+    }
+    const first = PLAN.stages[0];
+    svg.setAttribute("aria-label",
+      "Stepped chart of daily pouch targets from " + first.pouches + " on " + fmtDayLong(first.start) +
+      " down to " + last.pouches + " on " + fmtDayLong(PLAN.end) + ". Today, " + fmtDayLong(PLAN.today) +
+      ", sits on the " + (cur ? cur.pouches : last.pouches) + "-pouch step.");
+    if (dateInput) dateInput.max = PLAN.end;
+  }
+  renderDerivedTexts();
+
+  /* ---------- Adjust future days (preview → confirm → discard) ---------- */
+  const pouchesAt = (stages, date) => {
+    const st = stages.find((s) => s.start <= date && date <= s.end);
+    return st ? st.pouches : null;
+  };
+  function mergeStages(stages) {
+    const out = [];
+    stages.forEach((st) => {
+      const prev = out[out.length - 1];
+      if (prev && prev.pouches === st.pouches && dayIndex(st.start) === dayIndex(prev.end) + 1) {
+        prev.end = st.end;
+        prev.mg = st.mg;
+      } else {
+        out.push({ ...st });
+      }
+    });
+    return out;
+  }
+  function computePreview({ effectiveDate, pace, endTarget }) {
+    const targetDate = pace === "focused" ? "2026-08-29" : pace === "gentle" ? "2026-09-12" : PLAN.end;
+    const et = endTarget === "" || endTarget == null ? PLAN.endTarget : Number(endTarget);
+    const prevDay = new Date(parseDay(effectiveDate) - DAY).toISOString().slice(0, 10);
+    const startPouches = pouchesAt(PLAN.stages, prevDay) ?? PLAN.stages[0].pouches;
+    const totalDays = Math.round((parseDay(targetDate) - parseDay(effectiveDate)) / DAY) + 1;
+    const values = [];
+    for (let p = Math.max(startPouches, et); p >= et; p--) values.push(p);
+    const n = Math.max(1, values.length);
+    const base = Math.max(1, Math.floor(totalDays / n));
+    const extra = Math.max(0, totalDays - base * n);
+    let cursor = parseDay(effectiveDate);
+    const revision = PLAN.stages[PLAN.stages.length - 1].revision + 1;
+    const stages = values.map((p, i) => {
+      const len = base + (i === 0 ? extra : 0);
+      const start = new Date(cursor).toISOString().slice(0, 10);
+      const end = new Date(cursor + (len - 1) * DAY).toISOString().slice(0, 10);
+      cursor += len * DAY;
+      return { start, end, pouches: p, mg: p * 6, revision };
+    });
+    let firstDifference = null;
+    const changedOld = new Set();
+    const scanEnd = targetDate > PLAN.end ? targetDate : PLAN.end;
+    for (let d = parseDay(effectiveDate); d <= parseDay(scanEnd); d += DAY) {
+      const iso = new Date(d).toISOString().slice(0, 10);
+      if (pouchesAt(PLAN.stages, iso) !== pouchesAt(stages, iso)) {
+        if (!firstDifference) firstDifference = iso;
+        const oldSt = PLAN.stages.find((s) => s.start <= iso && iso <= s.end);
+        if (oldSt) changedOld.add(oldSt.start);
+      }
+    }
+    return { stages, targetDate, endTarget: et, pace: pace || null, firstDifference, changedStages: changedOld.size };
+  }
+  JOURNEY.computePreview = computePreview;
+
+  const adjustToggle = document.querySelector("[data-adjust-toggle]");
+  const adjustBody = document.getElementById("adjust-body");
+  const adjustForm = document.querySelector("[data-adjust-form]");
+  const paceSelect = document.querySelector("[data-adjust-pace]");
+  const targetInput = document.querySelector("[data-adjust-target]");
+  const hintEl = document.querySelector("[data-adjust-hint]");
+  const HINT_DEFAULT = hintEl.textContent;
+  const previewRegion = document.querySelector("[data-preview-region]");
+  const summaryEl = document.querySelector("[data-preview-summary]");
+  const diffEl = document.querySelector("[data-preview-diff]");
+  const confirmBtn = document.querySelector("[data-adjust-confirm]");
+  const discardBtn = document.querySelector("[data-adjust-discard]");
+  const statusEl = document.querySelector("[data-adjust-status]");
+  let pending = null;
+
+  adjustToggle.addEventListener("click", () => {
+    const open = adjustToggle.getAttribute("aria-expanded") === "true";
+    adjustToggle.setAttribute("aria-expanded", String(!open));
+    adjustBody.classList.toggle("is-open", !open);
+  });
+
+  const hintAlert = (msg) => {
+    hintEl.textContent = msg;
+    hintEl.setAttribute("role", "alert");
+  };
+  const hintReset = () => {
+    hintEl.textContent = HINT_DEFAULT;
+    hintEl.removeAttribute("role");
+  };
+  const addDiff = (text) => {
+    const li = document.createElement("li");
+    li.textContent = text;
+    diffEl.appendChild(li);
+  };
+
+  adjustForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    hintReset();
+    statusEl.hidden = true;
+    const effectiveDate = dateInput.value;
+    const pace = paceSelect.value;
+    const targetRaw = targetInput.value;
+    if (!effectiveDate) { hintAlert("Choose an effective date first."); return; }
+    if (effectiveDate <= PLAN.today) { hintAlert("Pick a date after today — only future days can change."); return; }
+    if (!pace && targetRaw === "") { hintAlert("Choose a pace or an end target — at least one change is needed for a preview."); return; }
+    const pv = computePreview({ effectiveDate, pace: pace || null, endTarget: targetRaw });
+    pending = { effectiveDate };
+    diffEl.textContent = "";
+    if (!pv.firstDifference) {
+      JOURNEY.preview = null;
+      renderChart();
+      summaryEl.textContent = "This matches your current schedule — nothing to change.";
+      confirmBtn.disabled = true;
+      previewRegion.hidden = false;
+      return;
+    }
+    confirmBtn.disabled = false;
+    JOURNEY.preview = { stages: pv.stages, meta: pv };
+    renderChart();
+    summaryEl.textContent = pv.changedStages + " stage" + (pv.changedStages === 1 ? "" : "s") + " change · first difference " + fmtDayLong(pv.firstDifference);
+    if (pv.targetDate !== PLAN.end) addDiff("Target date: " + fmtDayLong(PLAN.end) + " → " + fmtDayLong(pv.targetDate));
+    if (pv.endTarget !== PLAN.endTarget) addDiff("End target: " + PLAN.endTarget + " → " + pv.endTarget + " pouches a day");
+    pv.stages.forEach((st) => addDiff(fmtRange(st.start, st.end) + ": " + st.pouches + " pouches a day · " + st.mg + " mg ceiling"));
+    previewRegion.hidden = false;
+  });
+
+  confirmBtn.addEventListener("click", () => {
+    if (!JOURNEY.preview || !pending) return;
+    const pv = JOURNEY.preview.meta;
+    const effectiveDate = pending.effectiveDate;
+    const oldEndTarget = PLAN.endTarget;
+    const kept = PLAN.stages.filter((s) => s.end < effectiveDate);
+    const overlap = PLAN.stages.find((s) => s.start < effectiveDate && s.end >= effectiveDate);
+    if (overlap) {
+      kept.push({ ...overlap, end: new Date(parseDay(effectiveDate) - DAY).toISOString().slice(0, 10) });
+    }
+    PLAN.stages = mergeStages([...kept, ...pv.stages.map((s) => ({ ...s }))]);
+    PLAN.end = pv.targetDate;
+    PLAN.endTarget = pv.endTarget;
+    if (pv.pace) PLAN.pace = pv.pace;
+    JOURNEY.preview = null;
+    pending = null;
+    renderChart();
+    renderDerivedTexts();
+    const list = document.querySelector("[data-history-list]");
+    if (list) {
+      const parts = [];
+      if (pv.pace) parts.push("pace changed to " + pv.pace);
+      if (pv.endTarget !== oldEndTarget) parts.push("end target now " + pv.endTarget);
+      const li = document.createElement("li");
+      li.innerHTML = "<span class=\"history__when\">" + fmtDay(effectiveDate) + "</span><span><strong>Revision " +
+        PLAN.stages[PLAN.stages.length - 1].revision + "</strong> · " + (parts.join(" · ") || "schedule adjusted") +
+        " · confirmed by you, just now</span>";
+      list.prepend(li);
+    }
+    previewRegion.hidden = true;
+    statusEl.textContent = "Revision confirmed — future days updated. Every past day is unchanged.";
+    statusEl.hidden = false;
+  });
+
+  discardBtn.addEventListener("click", () => {
+    JOURNEY.preview = null;
+    pending = null;
+    renderChart();
+    previewRegion.hidden = true;
+    statusEl.textContent = "Preview discarded. Nothing changed.";
+    statusEl.hidden = false;
+  });
+
+})();
+</script>
+</body>
+</html>

@@ -240,6 +240,68 @@ def _plan_presentation(plan, today):
         and plan.baseline_source == 'observe'
         and not revisions
     )
+    start_date = plan.start_date
+    target_date = plan.target_date
+    schedule_start = stages[0]['start_date'] if stages else start_date
+    schedule_end = stages[-1]['end_date'] if stages else target_date
+    day_number = (
+        (today - schedule_start).days + 1
+        if schedule_start and schedule_end and schedule_start <= today <= schedule_end
+        else None
+    )
+    total_days = (
+        (schedule_end - schedule_start).days + 1
+        if schedule_start and schedule_end else None
+    )
+    stage_day_number = stage_day_count = None
+    if current_stage is not None:
+        stage_day_number = (today - current_stage['start_date']).days + 1
+        stage_day_count = len(current_stage['days'])
+    next_milestone = next(
+        (m for m in milestones if m['date'] > today), None
+    )
+    next_milestone_payload = None
+    if next_milestone is not None:
+        milestone_stage = next(
+            (s for s in stages
+             if s['start_date'] == next_milestone['date']), None
+        )
+        next_milestone_payload = {
+            'date': next_milestone['date'],
+            'label': next_milestone['label'],
+            'nicotine_ceiling_mg': (
+                milestone_stage['nicotine_ceiling_mg']
+                if milestone_stage else None
+            ),
+        }
+    end_mg = _decimal_display(plan.end_target_mg)
+    use_path_overview = (
+        plan.status == 'active'
+        and plan.mode != 'observe'
+        and not proposal
+        and bool(stages)
+        and all(stage['nicotine_ceiling_value'] is not None for stage in stages)
+    )
+    path_payload = {
+        'start': schedule_start.isoformat() if schedule_start else None,
+        'end': schedule_end.isoformat() if schedule_end else None,
+        'today': today.isoformat(),
+        'endTargetMg': end_mg,
+        'stages': [
+            dict({
+                'start': stage['start_date'].isoformat(),
+                'end': stage['end_date'].isoformat(),
+                'mg': stage['nicotine_ceiling_mg'],
+                'revision': stage['revision_id'],
+            }, **({
+                'milestoneLabel': next(
+                    milestone['label'] for milestone in milestones
+                    if milestone['date'] == stage['start_date']
+                )
+            } if index else {}))
+            for index, stage in enumerate(stages)
+        ],
+    }
     return {
         'row': plan,
         'baseline_source_label': _BASELINE_LABELS.get(
@@ -260,6 +322,14 @@ def _plan_presentation(plan, today):
         'intervals': intervals,
         'milestones': milestones,
         'is_observe_proposal': proposal,
+        'use_path_overview': use_path_overview,
+        'day_number': day_number,
+        'total_days': total_days,
+        'stage_day_number': stage_day_number,
+        'stage_day_count': stage_day_count,
+        'next_milestone': next_milestone_payload,
+        'end_mg': end_mg,
+        'path_payload': path_payload,
     }
 
 

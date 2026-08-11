@@ -1,0 +1,68 @@
+<section class="journey-overview" data-journey-deep-overview aria-labelledby="path-title">
+  <div class="section-heading">
+    <div>
+      <p class="eyebrow">The wider view</p>
+      <h2 id="path-title">The path you’re on</h2>
+    </div>
+    <p>Confirmed nicotine ceilings from the schedule above, grouped into stages.</p>
+  </div>
+
+  <div class="path-scroll" tabindex="0" role="region"
+       aria-label="Confirmed nicotine ceiling path — scroll horizontally to see every date">
+    <figure class="path-figure">
+      <svg data-path-chart viewBox="0 0 760 340" width="760" height="340" role="img"
+           aria-label="Stepped chart of confirmed daily nicotine ceilings"></svg>
+      <p class="path-tooltip" data-chart-tooltip hidden></p>
+      <figcaption class="sr-only">Confirmed nicotine ceiling stages. The same values are listed in the table below.</figcaption>
+    </figure>
+  </div>
+
+  <ul class="path-legend" aria-hidden="true">
+    <li><span class="mark mark--past"></span> Earlier</li>
+    <li><span class="mark mark--future"></span> Scheduled ahead</li>
+    <li><span class="mark mark--milestone"></span> Stage boundaries</li>
+    <li><span class="mark mark--today"></span> Today</li>
+  </ul>
+
+  <div class="sr-only">
+    <table data-stage-table>
+      <caption>Confirmed nicotine ceiling stages for this plan</caption>
+      <thead><tr><th scope="col">Dates</th><th scope="col">Nicotine ceiling</th><th scope="col">Revision</th></tr></thead>
+      <tbody>
+        {% for stage in plan.stages %}
+          <tr>
+            <th scope="row">{{ stage.start_date.isoformat() }} to {{ stage.end_date.isoformat() }}</th>
+            <td>{{ stage.nicotine_ceiling_mg }} mg</td>
+            <td>Revision {{ stage.revision_id }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <noscript>
+    <ol class="journey-stage-list">
+      {% for stage in plan.stages %}
+        <li><strong>{{ stage.start_date.isoformat() }} to {{ stage.end_date.isoformat() }}</strong> — {{ stage.nicotine_ceiling_mg }} mg · Revision {{ stage.revision_id }}</li>
+      {% endfor %}
+    </ol>
+  </noscript>
+
+  <p class="path-takeaway">
+    {% if plan.baseline_mg and plan.end_mg %}
+      From {{ plan.baseline_mg }} mg a day toward {{ plan.end_mg }} mg. The chart reflects confirmed days, not a prediction.
+    {% else %}
+      Every visible step comes from a confirmed schedule day.
+    {% endif %}
+  </p>
+
+  <p class="next-change">
+    {% if plan.next_milestone %}
+      <time datetime="{{ plan.next_milestone.date.isoformat() }}">{{ plan.next_milestone.date|human_date }}</time> — {{ plan.next_milestone.label }}.
+    {% else %}
+      No further ceiling change is confirmed in this schedule.
+    {% endif %}
+  </p>
+
+  <script type="application/json" data-path-data>{{ plan.path_payload|tojson }}</script>
+</section>
