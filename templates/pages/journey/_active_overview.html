@@ -108,45 +108,61 @@
     {% endif %}
   </p>
 
+  {% set adjust_open = editor.kind == 'revision' %}
   <section class="adjust rise" style="--i:4" aria-labelledby="adjust-title">
-    <button class="adjust__toggle" type="button" data-adjust-toggle aria-expanded="false" aria-controls="adjust-body">
+    <button class="adjust__toggle" type="button" data-adjust-toggle aria-expanded="{{ 'true' if adjust_open else 'false' }}" aria-controls="adjust-body">
       <span class="adjust__toggle-text">
         <span class="adjust__title" id="adjust-title">Adjust future days</span>
         <span class="adjust__promise">Preview first. Confirming is the only thing that changes your plan — past days are never rewritten.</span>
       </span>
       <svg class="c-icon adjust__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
     </button>
-    <div class="adjust__collapse" id="adjust-body">
+    <div class="adjust__collapse{% if adjust_open %} is-open{% endif %}" id="adjust-body">
       <div class="adjust__collapse-inner">
         <div class="adjust__body">
-          <section class="journey-editor" data-plan-editor="revision" data-plan-id="{{ plan.row.id }}" aria-labelledby="revise-plan-title">
-            <h3 id="revise-plan-title">Preview a future revision</h3>
-            <form method="post" action="{{ url_for('journey.revise_plan', plan_id=plan.row.id) }}" data-plan-editor-form>
+          <div data-path-editor data-plan-id="{{ plan.row.id }}">
+            <form method="post" action="{{ url_for('journey.revise_plan', plan_id=plan.row.id) }}" data-adjust-form novalidate>
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <label for="revision-effective-date">Effective date</label>
-              <input id="revision-effective-date" name="effective_date" type="date" required value="{{ editor['values'].effective_date if editor.kind == 'revision' else '' }}">
-              <label for="revision-pace">Pace change</label>
-              <select id="revision-pace" name="pace">
-                <option value="">Keep current pace</option>
-                {% for pace in ('gentle', 'steady', 'focused') %}<option value="{{ pace }}"{% if editor.kind == 'revision' and editor['values'].pace == pace %} selected{% endif %}>{{ pace|title }}</option>{% endfor %}
-              </select>
-              <label for="revision-duration">Duration days</label>
-              <input id="revision-duration" name="duration_days" type="number" min="1" max="365" value="{{ editor['values'].duration_days if editor.kind == 'revision' else '' }}">
-              <label for="revision-end-target">End target pouches</label>
-              <input id="revision-end-target" name="end_target_pouches" type="number" min="0" max="1000" value="{{ editor['values'].end_target_pouches if editor.kind == 'revision' else '' }}">
+              <div class="adjust__fields">
+                <div class="adjust__field">
+                  <label for="revision-effective-date">Effective date</label>
+                  <input id="revision-effective-date" name="effective_date" type="date" required value="{{ editor['values'].effective_date if editor.kind == 'revision' else '' }}">
+                </div>
+                <div class="adjust__field">
+                  <label for="revision-pace">Pace change</label>
+                  <select id="revision-pace" name="pace">
+                    <option value="">Keep current pace</option>
+                    {% for pace in ('gentle', 'steady', 'focused') %}<option value="{{ pace }}"{% if editor.kind == 'revision' and editor['values'].pace == pace %} selected{% endif %}>{{ pace|title }}</option>{% endfor %}
+                  </select>
+                </div>
+                <div class="adjust__field">
+                  <label for="revision-duration">Duration days</label>
+                  <input id="revision-duration" name="duration_days" type="number" min="1" max="365" value="{{ editor['values'].duration_days if editor.kind == 'revision' else '' }}">
+                </div>
+                <div class="adjust__field">
+                  <label for="revision-end-target">End target pouches</label>
+                  <input id="revision-end-target" name="end_target_pouches" type="number" min="0" max="1000" value="{{ editor['values'].end_target_pouches if editor.kind == 'revision' else '' }}">
+                </div>
+              </div>
               {% if editor.kind == 'revision' and editor.field_errors %}
                 <div role="alert"><p>Check these fields:</p><ul>{% for field, messages in editor.field_errors.items() %}<li>{{ field }}: {{ messages|join(' ') }}</li>{% endfor %}</ul></div>
               {% endif %}
-              <p>Choose at least one change. Previewing does not mutate any plan day.</p>
-              <input type="hidden" value="" data-plan-editor-digest>
-              <div class="journey-editor__buttons">
-                <button class="c-button c-button--primary" type="submit" name="form_action" value="preview" data-plan-editor-preview-button>Preview revision</button>
-                <button class="c-button c-button--primary" type="button" data-plan-editor-confirm hidden>Confirm revision</button>
+              <p class="adjust__hint" data-adjust-hint>Choose at least one change. Previewing does not change any plan day.</p>
+              <input type="hidden" value="" data-editor-digest>
+              <div class="adjust__buttons">
+                <button class="c-button c-button--primary" type="submit" name="form_action" value="preview" data-adjust-preview>Preview revision</button>
               </div>
             </form>
-            <p class="journey-editor__status" role="status" aria-live="polite" aria-atomic="true" data-plan-editor-status></p>
-            <div class="journey-editor__preview" data-plan-editor-preview hidden></div>
-          </section>
+            <div class="adjust__preview" data-preview-region hidden>
+              <p class="adjust__summary" data-preview-summary></p>
+              <ul class="adjust__diff" data-preview-diff></ul>
+              <div class="adjust__buttons">
+                <button class="c-button c-button--primary" type="button" data-adjust-confirm hidden>Confirm revision</button>
+                <button class="c-button c-button--ghost" type="button" data-adjust-discard>Discard preview</button>
+              </div>
+            </div>
+            <p class="adjust__status" role="status" data-adjust-status hidden></p>
+          </div>
 
           {% if editor and editor.plan_id == plan.row.id %}
             <section class="journey-editor-preview" aria-labelledby="editor-preview-title">

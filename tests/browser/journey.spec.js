@@ -64,14 +64,14 @@ async function createPlan(page) {
 }
 
 async function previewRevision(page, duration = '35') {
-  const editor = page.locator('[data-plan-editor="revision"]');
+  const editor = page.locator('[data-path-editor]');
   const toggle = page.locator('[data-adjust-toggle]');
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
   await editor.getByLabel('Effective date').fill(isoDate(1));
   await editor.getByLabel('Duration days').fill(duration);
   await editor.getByRole('button', { name: 'Preview revision' }).click();
-  await expect(editor.locator('[data-plan-editor-preview]')).toContainText(isoDate(1));
-  await expect(editor.locator('[data-plan-editor-preview] tbody tr')).not.toHaveCount(0);
+  await expect(page.locator('[data-preview-path]')).toBeAttached();
+  await expect(editor.locator('[data-preview-summary]')).toContainText(/stages? change/);
   await expect(editor.getByRole('status')).toContainText(/persisted plan is unchanged/i);
 }
 
@@ -148,7 +148,7 @@ test('Journey previews explicitly, mutates future rows only, and carries status 
       mutationRequests.push(request.url());
     }
   });
-  const revision = page.locator('[data-plan-editor="revision"]');
+  const revision = page.locator('[data-path-editor]');
   const adjustToggle = page.locator('[data-adjust-toggle]');
   if ((await adjustToggle.getAttribute('aria-expanded')) !== 'true') await adjustToggle.click();
   await revision.getByLabel('Duration days').fill('42');
@@ -209,7 +209,7 @@ test('stale revision preview refreshes and requires a second explicit confirmati
     await route.continue();
   });
 
-  const editor = page.locator('[data-plan-editor="revision"]');
+  const editor = page.locator('[data-path-editor]');
   await editor.getByRole('button', { name: 'Confirm revision' }).click();
   await expect(editor.getByRole('status')).toContainText(/fresh preview.*confirm again/i);
   await expect(page).toHaveURL(/\/journey\/?$/);

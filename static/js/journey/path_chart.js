@@ -29,6 +29,8 @@ const fmtLong = (s) => {
   return `${d.getUTCDate()} ${MONTHS_LONG[d.getUTCMonth()]}`;
 };
 
+export { fmtShort as fmtDayShort, fmtLong as fmtDayLong, parseDay as parseISODay };
+
 function el(tag, attrs) {
   const node = document.createElementNS(SVGNS, tag);
   for (const key in attrs) node.setAttribute(key, attrs[key]);

@@ -232,8 +232,12 @@ class TestJourneyComposition:
         assert soup.select_one('form[action$="/pause"]') is not None
         assert soup.select_one('form[action$="/complete"]') is not None
         assert soup.select_one('form[action$="/archive"]') is not None
-        # old editor internals still live inside the adjust shell
-        assert soup.select_one('[data-plan-editor="revision"]') is not None
+        # adjust shell carries the editor root with production field names
+        editor = soup.select_one('[data-path-editor]')
+        assert editor is not None
+        assert editor['data-plan-id'] == str(plan.id)
+        for name in ('effective_date', 'pace', 'duration_days', 'end_target_pouches'):
+            assert editor.select_one(f'[name="{name}"]') is not None
         assert 'preview_digest' not in text
 
     def test_null_observe_values_are_unknown_and_proposal_needs_review(
