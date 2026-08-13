@@ -28,30 +28,31 @@ async function expectThemeContract(page, { saved, effective }) {
 
 
 async function readLandingEditorialGeometry(page) {
-  return page.locator('.landing-next').evaluate((next) => {
-    const note = next.querySelector('.landing-next__note');
-    const bodyCopy = next.querySelector(':scope > p:not(.landing-next__note)');
-    const nextRect = next.getBoundingClientRect();
-    const noteRect = note.getBoundingClientRect();
-    const bodyCopyRect = bodyCopy.getBoundingClientRect();
-    const style = getComputedStyle(next);
+  return page.locator('.landing-sketch').evaluate((sketch) => {
+    const hero = sketch.closest('.landing-hero');
+    const sketchColumn = sketch.parentElement;
+    const caption = sketchColumn.querySelector('.landing-sketch__caption');
+    const how = document.querySelector('#how');
+    const sketchRect = sketch.getBoundingClientRect();
+    const captionRect = caption.getBoundingClientRect();
+    const heroRect = hero.getBoundingClientRect();
+    const style = getComputedStyle(sketch);
     return {
-      afterContent: getComputedStyle(next, '::after').content,
-      borderBottomStyle: style.borderBottomStyle,
-      borderBottomWidth: parseFloat(style.borderBottomWidth),
-      borderTopStyle: style.borderTopStyle,
-      borderTopWidth: parseFloat(style.borderTopWidth),
+      afterContent: getComputedStyle(sketch, '::after').content,
+      borderStyle: style.borderTopStyle,
+      borderWidth: parseFloat(style.borderTopWidth),
+      borderRadius: parseFloat(style.borderTopLeftRadius),
       documentHorizontalOverflow: document.documentElement.scrollWidth
         - document.documentElement.clientWidth,
-      heroHorizontalOverflow: next.closest('.landing-hero').scrollWidth
-        - next.closest('.landing-hero').clientWidth,
-      heroVerticalOverflow: next.closest('.landing-hero').scrollHeight
-        - next.closest('.landing-hero').clientHeight,
-      nextHorizontalOverflow: next.scrollWidth - next.clientWidth,
-      nextVerticalOverflow: next.scrollHeight - next.clientHeight,
-      noteFollowsCopy: noteRect.top >= bodyCopyRect.bottom,
-      noteIsLast: next.lastElementChild === note,
-      noteAboveLowerRule: noteRect.bottom <= nextRect.bottom - parseFloat(style.borderBottomWidth) + 1,
+      heroHorizontalOverflow: hero.scrollWidth - hero.clientWidth,
+      sketchHorizontalOverflow: sketch.scrollWidth - sketch.clientWidth,
+      sketchVerticalOverflow: sketch.scrollHeight - sketch.clientHeight,
+      captionFollowsSketch: captionRect.top >= sketchRect.bottom,
+      captionIsLast: sketchColumn.lastElementChild === caption,
+      sketchInsideHero: sketchRect.left >= heroRect.left - 1
+        && sketchRect.right <= heroRect.right + 1,
+      heroPrecedesHow: Boolean(hero.compareDocumentPosition(how)
+        & Node.DOCUMENT_POSITION_FOLLOWING),
     };
   });
 }
@@ -71,7 +72,7 @@ for (const [name, path] of PUBLIC_ROUTES) {
 }
 
 
-test('landing keeps both editorial rules and note ordering without a generated step number', async ({ page }, testInfo) => {
+test('landing sketch keeps current editorial ordering, theme, and bounded geometry', async ({ page }, testInfo) => {
   const mobile = testInfo.project.name.includes('mobile');
   await page.setViewportSize(mobile
     ? { width: 390, height: 844 }
@@ -88,18 +89,17 @@ test('landing keeps both editorial rules and note ordering without a generated s
     const geometry = await readLandingEditorialGeometry(page);
     const message = `${theme} ${mobile ? 'mobile' : 'desktop'}: ${JSON.stringify(geometry)}`;
     expect.soft(geometry.afterContent, message).toBe('none');
-    expect.soft(geometry.borderTopStyle, message).toBe('double');
-    expect.soft(geometry.borderBottomStyle, message).toBe('double');
-    expect.soft(geometry.borderTopWidth, message).toBeGreaterThanOrEqual(3);
-    expect.soft(geometry.borderBottomWidth, message).toBeGreaterThanOrEqual(3);
-    expect.soft(geometry.noteFollowsCopy, message).toBe(true);
-    expect.soft(geometry.noteIsLast, message).toBe(true);
-    expect.soft(geometry.noteAboveLowerRule, message).toBe(true);
+    expect.soft(geometry.borderStyle, message).toBe('solid');
+    expect.soft(geometry.borderWidth, message).toBeGreaterThanOrEqual(1);
+    expect.soft(geometry.borderRadius, message).toBeGreaterThan(0);
+    expect.soft(geometry.captionFollowsSketch, message).toBe(true);
+    expect.soft(geometry.captionIsLast, message).toBe(true);
+    expect.soft(geometry.sketchInsideHero, message).toBe(true);
+    expect.soft(geometry.heroPrecedesHow, message).toBe(true);
     expect.soft(geometry.documentHorizontalOverflow, message).toBeLessThanOrEqual(1);
     expect.soft(geometry.heroHorizontalOverflow, message).toBeLessThanOrEqual(1);
-    expect.soft(geometry.heroVerticalOverflow, message).toBeLessThanOrEqual(1);
-    expect.soft(geometry.nextHorizontalOverflow, message).toBeLessThanOrEqual(1);
-    expect.soft(geometry.nextVerticalOverflow, message).toBeLessThanOrEqual(1);
+    expect.soft(geometry.sketchHorizontalOverflow, message).toBeLessThanOrEqual(1);
+    expect.soft(geometry.sketchVerticalOverflow, message).toBeLessThanOrEqual(1);
   }
 });
 
