@@ -280,12 +280,6 @@ document.addEventListener('submit', function(event) {
     }
 });
 
-// Global promise rejection handler
-window.addEventListener('unhandledrejection', function(event) {
-    console.error('Unhandled promise rejection:', event.reason);
-    showNotification('An unexpected error occurred. Please try again.', 'error');
-});
-
 // Auto-save functionality for forms (optional)
 function enableAutoSave(formSelector, saveEndpoint) {
     const form = document.querySelector(formSelector);

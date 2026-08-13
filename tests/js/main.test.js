@@ -9,6 +9,7 @@ const projectRoot = path.resolve(__dirname, '..', '..');
 
 function loadMainScript({ fetchImpl = async () => ({ json: async () => ({}) }) } = {}) {
   const listeners = {};
+  const windowListeners = {};
   let timers = 0;
   const body = { appendChild(element) { element.parentNode = body; } };
   const document = {
@@ -29,7 +30,7 @@ function loadMainScript({ fetchImpl = async () => ({ json: async () => ({}) }) }
     querySelectorAll() { return []; },
   };
   const window = {
-    addEventListener() {},
+    addEventListener(type, listener) { windowListeners[type] = listener; },
     location: { reload() {} },
   };
   const source = fs.readFileSync(path.join(projectRoot, 'static', 'js', 'main.js'), 'utf8');
@@ -43,7 +44,7 @@ function loadMainScript({ fetchImpl = async () => ({ json: async () => ({}) }) }
     window,
   };
   vm.runInNewContext(source, context);
-  return { context, document, listeners, timerCount: () => timers };
+  return { context, document, listeners, windowListeners, timerCount: () => timers };
 }
 
 
@@ -94,6 +95,13 @@ test('global loading state ignores a submission canceled by an earlier handler',
   assert.equal(button.textContent, 'Delete goal');
   assert.equal(button.disabled, false);
   assert.equal(fixture.timerCount(), 0);
+});
+
+
+test('unrelated promise rejections never become application error notifications', () => {
+  const fixture = loadMainScript();
+
+  assert.equal(fixture.windowListeners.unhandledrejection, undefined);
 });
 
 
