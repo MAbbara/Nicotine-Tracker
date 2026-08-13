@@ -60,7 +60,10 @@ test('package.json exposes the documented script contract', () => {
   for (const script of ['build', 'build:css', 'watch:css', 'test', 'test:e2e', 'test:e2e:update']) {
     assert.ok(pkg.scripts?.[script], `missing npm script "${script}"`);
   }
-  assert.equal(pkg.scripts['build:css'], 'node ./scripts/build-production-css.js');
+  assert.equal(
+    pkg.scripts['build:css'],
+    'tailwindcss -i ./static/css/tailwind.css -o ./static/css/style.css --minify',
+  );
   assert.ok(pkg.devDependencies?.['@playwright/test'], 'missing @playwright/test devDependency');
   assert.ok(pkg.devDependencies?.['@axe-core/playwright'], 'missing @axe-core/playwright devDependency');
   assert.ok(pkg.devDependencies?.['@tailwindcss/forms'], 'missing @tailwindcss/forms devDependency');
