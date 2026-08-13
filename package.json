@@ -2,7 +2,7 @@
   "name": "NicotineTracker",
   "scripts": {
     "build": "npm run build:css",
-    "build:css": "tailwindcss -i ./static/css/tailwind.css -o ./static/css/style.css --minify",
+    "build:css": "node ./scripts/build-production-css.js",
     "watch:css": "tailwindcss -i ./static/css/tailwind.css -o ./static/css/style.css --watch",
     "test": "node --test \"tests/js/*.test.js\"",
     "test:e2e": "playwright test",

@@ -1,5 +1,13 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
 @custom-variant dark (&:where(.dark, .dark *));
+
+/* Production utility discovery is deliberately limited to runtime class sources. */
+@source "../../templates/**/*.html";
+@source "../js/**/*.js";
+@source "../../app.py";
+@source "../../routes/**/*.py";
+@source "../../services/**/*.py";
+@source "../../models/**/*.py";
 
 /* Preline is retained for legacy pages during the staged shell migration. */
 @source "../../node_modules/preline/dist/*.js";
