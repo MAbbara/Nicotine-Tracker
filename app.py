@@ -14,10 +14,10 @@ from services.request_context import REQUEST_ID_HEADER, get_request_id, init_req
 from flask_wtf.csrf import CSRFError
 import logging
 import math
+import sys
 import time
-from logging.handlers import RotatingFileHandler
-import os
 from datetime import date
+from ipaddress import ip_address
 from urllib.parse import urlsplit
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -32,11 +32,19 @@ def create_app(config_name=None):
         app.config.from_object(get_config())
 
     _validate_rate_limit_config(app)
+    _validate_production_config(app)
     trusted_proxy_count = int(
         app.config.get('RATELIMIT_TRUSTED_PROXY_COUNT', 0) or 0
     )
-    if trusted_proxy_count > 0:
-        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=trusted_proxy_count)
+    trusted_proto_count = int(
+        app.config.get('PROXY_FIX_X_PROTO_COUNT', 0) or 0
+    )
+    if trusted_proxy_count > 0 or trusted_proto_count > 0:
+        app.wsgi_app = ProxyFix(
+            app.wsgi_app,
+            x_for=trusted_proxy_count,
+            x_proto=trusted_proto_count,
+        )
     
     # Initialize configuration-specific setup
     config_class = app.config.__class__
@@ -69,16 +77,10 @@ def create_app(config_name=None):
         ReductionPlan, User,
     )
     
-    # Setup error logging to file
+    # Production processes write to stdout/stderr so the process manager owns
+    # rotation and multiple workers never contend for a local file.
     if not app.debug:
-        if not os.path.exists('logs'):
-            os.mkdir('logs')
-        file_handler = RotatingFileHandler('logs/nicotine_tracker.log', maxBytes=10240, backupCount=10)
-        file_handler.setFormatter(logging.Formatter(
-            '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'))
-        file_handler.setLevel(logging.INFO)
-        app.logger.addHandler(file_handler)
-        app.logger.setLevel(logging.INFO)
+        _configure_stdout_logging(app)
         app.logger.info('Nicotine Tracker startup')
     
     # Register blueprints
@@ -224,11 +226,17 @@ def _validate_rate_limit_config(app):
             'Production rate limits require a concrete Redis endpoint.'
         ) from exc
     database = endpoint.path.removeprefix('/')
+    redis_host = endpoint.hostname or ''
+    approved_single_host_redis = storage_uri == 'redis://127.0.0.1:6379/4'
+    try:
+        redis_is_loopback = ip_address(redis_host).is_loopback
+    except ValueError:
+        redis_is_loopback = redis_host.casefold() == 'localhost'
     if (
         endpoint.scheme not in {'redis', 'rediss'}
-        or not endpoint.hostname
+        or not redis_host
         or redis_port is None
-        or endpoint.hostname.casefold() in {'localhost', '127.0.0.1', '::1'}
+        or (redis_is_loopback and not approved_single_host_redis)
         or not database.isdigit()
         or endpoint.query
         or endpoint.fragment
@@ -245,6 +253,7 @@ def _validate_rate_limit_config(app):
     if (
         len(secret) < 32
         or len(set(secret)) < 12
+        or 'change_me' in secret.casefold()
         or secret.casefold() in predictable_secrets
         or secret == app.config.get('SECRET_KEY')
     ):
@@ -254,13 +263,105 @@ def _validate_rate_limit_config(app):
     disallowed_prefixes = {
         '', 'local', 'default', 'nicotine-tracker-local', 'prod',
     }
-    if len(prefix) < 8 or prefix.casefold() in disallowed_prefixes:
+    if (
+        len(prefix) < 8
+        or 'change_me' in prefix.casefold()
+        or prefix.casefold() in disallowed_prefixes
+    ):
         raise RuntimeError(
             'Production rate limits require a deployment-unique key prefix.'
         )
     proxy_count = app.config.get('RATELIMIT_TRUSTED_PROXY_COUNT', 0)
     if not isinstance(proxy_count, int) or isinstance(proxy_count, bool) or proxy_count < 0:
-        raise RuntimeError('Production trusted proxy count must be zero or greater.')
+        raise RuntimeError(
+            'Production trusted proxy hops (proxy count) must be zero or greater.'
+        )
+
+
+def _validate_production_config(app):
+    """Fail closed when a production process has an unsafe origin/runtime."""
+    if not app.config.get('PRODUCTION'):
+        return
+
+    secret = (app.config.get('SECRET_KEY') or '').strip()
+    predictable = {
+        'dev-secret-key-change-in-production',
+        'change-me-change-me-change-me-change-me',
+        'your-strong-and-unique-secret-key-for-production',
+    }
+    if (
+        len(secret) < 32
+        or len(set(secret)) < 12
+        or 'change_me' in secret.casefold()
+        or secret.casefold() in predictable
+    ):
+        raise RuntimeError(
+            'Production requires a strong session secret of at least 32 characters.'
+        )
+
+    database_uri = (app.config.get('SQLALCHEMY_DATABASE_URI') or '').strip()
+    try:
+        database = urlsplit(database_uri)
+        database_port = database.port
+    except ValueError as exc:
+        raise RuntimeError(
+            'Production requires a named MySQL database.'
+        ) from exc
+    database_name = database.path.removeprefix('/')
+    if (
+        database.scheme != 'mysql+pymysql'
+        or not database.hostname
+        or not database_name
+        or '/' in database_name
+        or database.fragment
+        or database_port is not None and database_port <= 0
+    ):
+        raise RuntimeError('Production requires a named MySQL database.')
+
+    server_name = (app.config.get('SERVER_NAME') or '').strip()
+    origin = urlsplit(f'//{server_name}')
+    if (
+        app.config.get('PREFERRED_URL_SCHEME') != 'https'
+        or not server_name
+        or '://' in server_name
+        or not origin.hostname
+        or origin.hostname.casefold() in {'localhost', '127.0.0.1', '::1'}
+        or origin.path
+        or origin.query
+        or origin.fragment
+        or origin.username
+        or origin.password
+    ):
+        raise RuntimeError(
+            'Production requires a canonical HTTPS origin in SERVER_NAME.'
+        )
+
+    x_for = app.config.get('RATELIMIT_TRUSTED_PROXY_COUNT')
+    x_proto = app.config.get('PROXY_FIX_X_PROTO_COUNT')
+    if any(
+        not isinstance(value, int) or isinstance(value, bool) or value < 1
+        for value in (x_for, x_proto)
+    ):
+        raise RuntimeError(
+            'Production trusted proxy hops must explicitly cover both '
+            'forwarded address and scheme headers.'
+        )
+    if not app.config.get('LOG_TO_STDOUT'):
+        raise RuntimeError('Production logging must use stdout/stderr.')
+
+
+def _configure_stdout_logging(app):
+    level_name = str(app.config.get('LOG_LEVEL', 'INFO')).upper()
+    level = getattr(logging, level_name, logging.INFO)
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(level)
+    handler.setFormatter(logging.Formatter(
+        '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+    ))
+    app.logger.handlers.clear()
+    app.logger.addHandler(handler)
+    app.logger.setLevel(level)
+    app.logger.propagate = False
 
 
 def _wants_json_response():

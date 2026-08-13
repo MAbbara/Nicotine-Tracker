@@ -8,34 +8,23 @@ Usage:
 
 This should be run as a separate process or scheduled as a cron job.
 """
-import os
 import sys
 import logging
 from app import create_app
 from services.background_tasks import run_background_tasks
 
 def setup_background_logger():
-    """Sets up a dedicated logger for background tasks."""
+    """Log to stdout; the process manager owns persistence and rotation."""
     logger = logging.getLogger('background_tasks')
     logger.setLevel(logging.DEBUG)
 
     if not logger.handlers:
-        log_dir = 'logs'
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
-        
-        # File handler for debug logs
-        file_handler = logging.FileHandler(os.path.join(log_dir, 'background_tasks.log'))
-        file_handler.setLevel(logging.DEBUG)
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
-
-        # Console handler for info logs
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(logging.INFO)
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
+        logger.propagate = False
 
     return logger
 

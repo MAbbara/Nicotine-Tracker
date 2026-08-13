@@ -78,6 +78,7 @@ def test_production_rejects_disabled_limiter_or_negative_proxy_trust(monkeypatch
     'redis:///0',
     'redis://localhost:6379/0',
     'redis://127.0.0.1:6379/0',
+    'redis://127.0.0.2:6379/0',
     'redis://cache.internal/0',
     'redis://cache.internal:6379',
     'redis://cache.internal:6379/not-a-db',
@@ -94,9 +95,38 @@ def test_production_rejects_ambiguous_or_local_redis_endpoints(
         create_app('production')
 
 
+def test_production_accepts_the_approved_single_host_redis_endpoint(monkeypatch):
+    """Catch regressions that reject the production host's loopback Redis DB."""
+    monkeypatch.setattr(
+        ProductionConfig,
+        'SQLALCHEMY_DATABASE_URI',
+        'mysql+pymysql://app:password@db.internal/nicotine_tracker',
+    )
+    monkeypatch.setattr(
+        ProductionConfig, 'SECRET_KEY', 'test-only-session-' + ('Z7!' * 12)
+    )
+    monkeypatch.setattr(ProductionConfig, 'SERVER_NAME', 'nicotinetracker.example')
+    monkeypatch.setattr(ProductionConfig, 'PREFERRED_URL_SCHEME', 'https')
+    monkeypatch.setattr(
+        ProductionConfig,
+        'RATELIMIT_STORAGE_URI',
+        'redis://127.0.0.1:6379/4',
+    )
+    monkeypatch.setattr(ProductionConfig, 'RATELIMIT_KEY_PREFIX', TEST_PROD_PREFIX)
+    monkeypatch.setattr(ProductionConfig, 'RATELIMIT_HMAC_SECRET', TEST_PROD_SECRET)
+    monkeypatch.setattr(ProductionConfig, 'RATELIMIT_TRUSTED_PROXY_COUNT', 1)
+    monkeypatch.setattr(ProductionConfig, 'PROXY_FIX_X_PROTO_COUNT', 1)
+    monkeypatch.setattr(ProductionConfig, 'LOG_TO_STDOUT', True)
+
+    app = create_app('production')
+
+    assert app.config['RATELIMIT_STORAGE_URI'] == 'redis://127.0.0.1:6379/4'
+
+
 @pytest.mark.parametrize('secret', [
     '', 'short-secret', 'change-me-change-me-change-me-change-me',
     'dev-secret-key-change-in-production', 'a' * 32,
+    'CHANGE_ME_INDEPENDENT_HIGH_ENTROPY_SECRET',
     '1234567890' * 4,
 ])
 def test_production_rejects_missing_weak_or_predictable_limiter_secret(
@@ -132,6 +162,7 @@ def test_production_rejects_limiter_secret_equal_to_session_secret(monkeypatch):
 
 @pytest.mark.parametrize('prefix', [
     '', 'local', 'default', 'nicotine-tracker-local', 'prod',
+    'CHANGE_ME_UNIQUE_DEPLOYMENT_PREFIX',
 ])
 def test_production_rejects_default_local_or_ambiguous_prefix(
         monkeypatch, prefix):

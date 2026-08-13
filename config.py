@@ -117,13 +117,18 @@ class Config:
     TESTING = False
 
 class ProductionConfig(Config):
+    PRODUCTION = True
     DEBUG = False
     SESSION_COOKIE_SECURE = True
+    LOG_TO_STDOUT = os.environ.get('LOG_TO_STDOUT', 'True').lower() == 'true'
     RATELIMIT_STORAGE_URI = os.environ.get('RATELIMIT_STORAGE_URI')
     RATELIMIT_KEY_PREFIX = os.environ.get('RATELIMIT_KEY_PREFIX')
     RATELIMIT_HMAC_SECRET = os.environ.get('RATELIMIT_HMAC_SECRET')
     RATELIMIT_TRUSTED_PROXY_COUNT = int(
         os.environ.get('RATELIMIT_TRUSTED_PROXY_COUNT', 0)
+    )
+    PROXY_FIX_X_PROTO_COUNT = int(
+        os.environ.get('PROXY_FIX_X_PROTO_COUNT', 0)
     )
     RATELIMIT_REQUIRE_SHARED_STORAGE = True
 
