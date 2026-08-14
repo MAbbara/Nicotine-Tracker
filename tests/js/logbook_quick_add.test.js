@@ -50,6 +50,7 @@ async function makeFixture() {
     window.__requests = [];
     window.__uuidCalls = 0;
     window.__timerDelays = [];
+    window.__timerCallbacks = [];
     window.__activationResult = 'pending';
     window.__releaseRequest = (status, body, headers = {}) => {
       releaseRequest(new Response(JSON.stringify(body), {
@@ -120,7 +121,11 @@ test('real DOM transaction is single, authoritative, highlighted, and injection-
     window.__controller = window.__quickAddModule.createLogbookQuickAddController({
       fetchImpl: (...args) => { window.__requests.push(args); return gate; },
       uuid: () => { window.__uuidCalls += 1; return '018f3f5c-68af-7e4d-bf5d-0123456789ab'; },
-      setTimeoutImpl: (_callback, delay) => { window.__timerDelays.push(delay); return 1; },
+      setTimeoutImpl: (callback, delay) => {
+        window.__timerDelays.push(delay);
+        window.__timerCallbacks.push([callback, delay]);
+        return 1;
+      },
     });
   }, quickAddSource);
   await page.locator('#quick-add').focus();
@@ -166,11 +171,17 @@ test('real DOM transaction is single, authoritative, highlighted, and injection-
     buttonEnabled: !document.querySelector('#quick-add').disabled,
   }));
   assert.equal(completed.rowHighlighted, true);
-  assert.deepEqual(completed.timerDelays, [700]);
+  assert.deepEqual(completed.timerDelays, [700, 5000]);
   assert.equal(completed.message, '<img src=x onerror=alert(1)>');
   assert.equal(completed.injectedImageCount, 0);
   assert.equal(completed.buttonFocused, true);
   assert.equal(completed.buttonEnabled, true);
+
+  await page.evaluate(() => {
+    const dismissal = window.__timerCallbacks.find(([, delay]) => delay === 5000);
+    dismissal[0]();
+  });
+  assert.equal(await page.locator('[data-logbook-quick-notification]').count(), 0);
 });
 
 test('pending live filter values, focus, selection, and user scroll survive replacement', async (t) => {

@@ -2,6 +2,7 @@ const HISTORY_SELECTOR = '[data-logbook-history]';
 const FILTER_CONTROL_SELECTOR = '[data-logbook-filters] input[name], [data-logbook-filters] select[name], [data-logbook-filters] textarea[name]';
 const FRAGMENT_VERSION = 'logbook-history-v1';
 const HIGHLIGHT_MS = 700;
+const NOTIFICATION_DURATION_MS = 5000;
 
 function currentView(locationObject) {
   const url = new URL(locationObject.href);
@@ -14,7 +15,7 @@ function currentView(locationObject) {
   };
 }
 
-function announce(documentRef, message, type) {
+function announce(documentRef, message, type, setTimeoutImpl) {
   documentRef.querySelector('[data-logbook-quick-notification]')?.remove();
   const notification = documentRef.createElement('div');
   notification.className = `logbook-notification logbook-notification--${type}`;
@@ -27,6 +28,9 @@ function announce(documentRef, message, type) {
   messageNode.textContent = message;
   notification.appendChild(messageNode);
   documentRef.body.appendChild(notification);
+  setTimeoutImpl(() => {
+    if (notification.isConnected) notification.remove();
+  }, NOTIFICATION_DURATION_MS);
   return notification;
 }
 
@@ -199,7 +203,7 @@ export function createLogbookQuickAddController({
           body = null;
         }
         if (!response.ok || body?.success !== true) {
-          announce(documentRef, responseErrorMessage(response, body), 'error');
+          announce(documentRef, responseErrorMessage(response, body), 'error', setTimeoutImpl);
           return false;
         }
         const currentHistory = documentRef.querySelector(HISTORY_SELECTOR);
@@ -215,6 +219,7 @@ export function createLogbookQuickAddController({
               ? body.message
               : 'The log was saved, but history could not refresh. Reload when convenient.',
             'error',
+            setTimeoutImpl,
           );
           return false;
         }
@@ -233,13 +238,14 @@ export function createLogbookQuickAddController({
             setTimeoutImpl(() => row.classList.remove('logbook-row--new'), HIGHLIGHT_MS);
           }
         }
-        announce(documentRef, body.message, 'success');
+        announce(documentRef, body.message, 'success', setTimeoutImpl);
         return true;
       } catch (_) {
         announce(
           documentRef,
           'Could not save this log. Check your connection and try again.',
           'error',
+          setTimeoutImpl,
         );
         return false;
       } finally {

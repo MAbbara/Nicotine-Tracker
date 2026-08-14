@@ -75,6 +75,9 @@ test('usual-product add replaces server history without navigation, focus loss, 
     'data-fragment-version',
     'logbook-history-v1',
   );
+  await expect(page.locator('[data-logbook-quick-notification]')).toHaveCount(0, {
+    timeout: 6_500,
+  });
 });
 
 
