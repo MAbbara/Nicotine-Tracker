@@ -401,9 +401,12 @@ def test_insights_renders_local_enhancement_and_semantic_values(
         [cell.get_text(strip=True) for cell in row.select("th, td")]
         for row in trend.select("tbody tr")
     ]
-    assert [logged_at.date().isoformat(), "13"] in trend_rows
+    assert [logged_at.date().isoformat(), "52.0"] in trend_rows
+    assert [cell.get_text(" ", strip=True) for cell in trend.select("thead th")] == [
+        "Date", "Nicotine (mg)",
+    ]
     assert trend.select_one("table caption").get_text(" ", strip=True) == "Consumption trend data"
-    heatmap = soup.select_one("[role='region'][aria-label='Consumption heatmap data'] table")
+    heatmap = soup.select_one("[role='region'][aria-label='Nicotine heatmap data'] table")
     assert [cell.get_text(strip=True) for cell in heatmap.select("thead th")] == [
         "Day", *(f"{hour:02d}:00" for hour in range(24))
     ]
@@ -412,8 +415,8 @@ def test_insights_renders_local_enhancement_and_semantic_values(
         if row.select_one("th").get_text(strip=True) == logged_at.strftime("%A")
     )
     hourly_values = [cell.get_text(strip=True) for cell in weekday_row.select("td")]
-    assert hourly_values[10] == "13"
-    assert sum(map(int, hourly_values)) == 13
+    assert hourly_values[10] == "52.0"
+    assert sum(map(float, hourly_values)) == 52.0
 
     api_response = logged_in_client.get("/insights/api/insights?days=7")
     assert api_response.status_code == 200
@@ -427,8 +430,8 @@ def test_insights_renders_local_enhancement_and_semantic_values(
         "plan_context",
         "craving_pattern",
         "total_pouches",
-        "consumption_trend",
-        "heatmap_data",
+        "nicotine_trend",
+        "nicotine_heatmap",
     } <= payload.keys()
     assert payload["range_days"] == 7
     assert "plan_adherence" in payload["data_sufficiency"]

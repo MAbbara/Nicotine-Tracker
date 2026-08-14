@@ -40,33 +40,41 @@ function leadingHeatmapEntry(series) {
 
 function comparisonHeadline(data, rangeDays) {
   const comparison = data.comparison || {};
-  const total = finiteNumber(comparison.current_total, finiteNumber(data.total_pouches));
+  const total = finiteNumber(comparison.current_total, finiteNumber(data.total_nicotine));
   const observedDays = finiteNumber(data.observed_days);
 
   if (!comparison.available) {
-    return `You logged ${pluralize(total, 'pouch', 'pouches')} across ${pluralize(observedDays, 'day')}.`;
+    return `You logged ${formatNumber(total)} mg of known nicotine across ${pluralize(observedDays, 'day')}.`;
   }
 
   if (comparison.direction === 'steady') {
-    return `Your use was steady compared with the previous ${pluralize(rangeDays, 'day')}.`;
+    return `You used ${formatNumber(total)} mg, the same as the previous ${pluralize(rangeDays, 'day')}.`;
   }
 
   const percent = Number(comparison.percent_change);
   if (comparison.percent_change != null && Number.isFinite(percent)) {
     const direction = comparison.direction === 'down' ? 'less' : 'more';
-    return `You used ${formatNumber(Math.abs(percent))}% ${direction} than the previous ${pluralize(rangeDays, 'day')}.`;
+    return `You used ${formatNumber(total)} mg — ${formatNumber(Math.abs(percent))}% ${direction} than ${formatNumber(comparison.previous_total)} mg in the previous ${pluralize(rangeDays, 'day')}.`;
   }
 
   if (finiteNumber(comparison.previous_total) === 0 && total > 0) {
-    return `You logged ${pluralize(total, 'pouch', 'pouches')}; the previous ${pluralize(rangeDays, 'day')} had none.`;
+    return `You used ${formatNumber(total)} mg; the previous ${pluralize(rangeDays, 'day')} had none.`;
   }
 
-  return `You logged ${pluralize(total, 'pouch', 'pouches')} across ${pluralize(observedDays, 'day')}.`;
+  return `You logged ${formatNumber(total)} mg of known nicotine across ${pluralize(observedDays, 'day')}.`;
 }
 
 function comparisonInterpretation(data) {
   const comparison = data.comparison || {};
   if (!comparison.available) {
+    const currentUnknown = finiteNumber(comparison.current_unknown_strength_count);
+    const previousUnknown = finiteNumber(comparison.previous_unknown_strength_count);
+    if (currentUnknown || previousUnknown) {
+      const notes = [];
+      if (currentUnknown) notes.push(`${pluralize(currentUnknown, 'current-range log')} ${currentUnknown === 1 ? 'has' : 'have'} no saved strength`);
+      if (previousUnknown) notes.push(`${pluralize(previousUnknown, 'previous-range log')} ${previousUnknown === 1 ? 'has' : 'have'} no saved strength`);
+      return `${notes.join('; ')}. A nicotine comparison needs complete strength data in both ranges.`;
+    }
     return 'This range gives you a useful baseline. Another complete range will make direction clearer.';
   }
   if (comparison.direction === 'down') {
@@ -234,7 +242,7 @@ function nicotineDistributionModel(values = {}, coverage = {}) {
 
 export function buildInsightsViewModel(data = {}, rangeDays = 30) {
   const range = Math.max(1, Math.trunc(finiteNumber(data.range_days, rangeDays || 30)));
-  const total = finiteNumber(data.comparison?.current_total, finiteNumber(data.total_pouches));
+  const total = finiteNumber(data.total_nicotine);
   const observedDays = finiteNumber(data.observed_days);
   const logCount = finiteNumber(data.log_count);
   const sufficiency = data.data_sufficiency || {};
@@ -247,7 +255,7 @@ export function buildInsightsViewModel(data = {}, rangeDays = 30) {
     interpretation = 'Start with one honest entry. Insights becomes more useful as your day-to-day pattern takes shape.';
   } else if (state === 'sparse') {
     headline = 'Keep logging to reveal a reliable direction.';
-    interpretation = `You logged ${pluralize(total, 'pouch', 'pouches')} across ${pluralize(observedDays, 'day')}. Continue logging so this view can compare complete patterns.`;
+    interpretation = `You logged ${formatNumber(total)} mg of known nicotine across ${pluralize(observedDays, 'day')}. Continue logging so this view can compare complete patterns.`;
   } else {
     headline = comparisonHeadline(data, range);
     interpretation = comparisonInterpretation(data);
@@ -269,13 +277,13 @@ export function buildInsightsViewModel(data = {}, rangeDays = 30) {
   });
   const weeklyPattern = patternSection({
     available: Boolean(sufficiency.trend),
-    values: data.consumption_by_day_of_week,
+    values: data.nicotine_by_day_of_week,
     heading: 'Weekly pattern',
-    availableCopy: ({ label }) => `${label} has the most logged pouches in this range. Use it as a cue to plan support, not a verdict.`,
+    availableCopy: ({ label }) => `${label} has the most known nicotine in this range. Use it as a cue to plan support, not a verdict.`,
     unavailableCopy: 'Log across more complete days to reveal a dependable weekly pattern.',
   });
   const hourlyLeader = sufficiency.heatmap
-    ? leadingHeatmapEntry(data.heatmap_data)
+    ? leadingHeatmapEntry(data.nicotine_heatmap)
     : null;
   const hourlyDetail = {
     available: Boolean(hourlyLeader),
@@ -283,7 +291,7 @@ export function buildInsightsViewModel(data = {}, rangeDays = 30) {
     leadingLabel: hourlyLeader ? `${hourlyLeader.day} at ${hourlyLeader.hour}` : null,
     leadingValue: hourlyLeader?.value || 0,
     interpretation: hourlyLeader
-      ? `${hourlyLeader.day} around ${hourlyLeader.hour} has the highest logged use in this detail. Consider support before that time.`
+      ? `${hourlyLeader.day} around ${hourlyLeader.hour} has the highest known nicotine in this detail. Consider support before that time.`
       : 'Log across more days and times to reveal a dependable hourly pattern.',
   };
   const planContext = planContextModel(data.plan_context);
@@ -333,13 +341,13 @@ export function buildInsightsViewModel(data = {}, rangeDays = 30) {
     metrics: [
       {
         key: 'current-use',
-        label: `Pouches in ${pluralize(range, 'day')}`,
-        value: formatNumber(total),
+        label: `Nicotine in ${pluralize(range, 'day')}`,
+        value: `${formatNumber(total)} mg`,
       },
       {
         key: 'daily-average',
-        label: 'Daily average',
-        value: formatNumber(data.daily_average),
+        label: 'Daily average nicotine',
+        value: `${formatNumber(data.daily_average_mg)} mg`,
       },
       {
         key: 'days-observed',

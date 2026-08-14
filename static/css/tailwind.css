@@ -5791,7 +5791,34 @@
 }
 
 .analytics-figure__table {
+  min-width: 0;
+  max-width: 100%;
   border-block-start: 1px solid var(--color-border);
+}
+
+.analytics-disclosure__content {
+  display: grid;
+  min-width: 0;
+  max-width: 100%;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--duration-panel) var(--ease-out-expo);
+}
+
+:is(.analytics-figure__table, .analytics-details)[open] > .analytics-disclosure__content {
+  grid-template-rows: 1fr;
+}
+
+.analytics-disclosure__inner {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.analytics-disclosure__inner > .analytics-data {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
 }
 
 .analytics-figure__table > summary,
@@ -5822,6 +5849,12 @@
 .analytics-figure__table[open] > summary::after,
 .analytics-details[open] > summary::after {
   content: '−';
+  transform: rotate(180deg);
+}
+
+.analytics-figure__table > summary::after,
+.analytics-details > summary::after {
+  transition: transform var(--duration-feedback) var(--ease-out-expo);
 }
 
 .insights-patterns {

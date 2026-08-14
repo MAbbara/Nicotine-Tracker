@@ -25,8 +25,8 @@ function aggregateToWeekly(points) {
 
 export function buildTrendModel(data = {}, trendType = 'daily') {
   const points = trendType === 'weekly'
-    ? aggregateToWeekly(data.consumption_trend)
-    : data.consumption_trend || [];
+    ? aggregateToWeekly(data.nicotine_trend)
+    : data.nicotine_trend || [];
   return points.map((point) => ({
     label: point.date,
     value: Number(point.value) || 0,
@@ -67,7 +67,7 @@ export function buildInsightsAlternativeModel(data = {}, trendType = 'daily') {
     timeOfDay: pairs(data.consumption_by_time_of_day),
     dayOfWeek: DAYS.map((label) => ({
       label,
-      value: Number(data.consumption_by_day_of_week?.[label]) || 0,
+      value: Number(data.nicotine_by_day_of_week?.[label]) || 0,
     })),
     brands: pairs(data.brand_analysis),
     timeOfDayMg,
@@ -80,7 +80,7 @@ export function buildInsightsAlternativeModel(data = {}, trendType = 'daily') {
       known_logs: 0, unknown_logs: 0, total_logs: 0,
       known_percent: 0, complete: true,
     },
-    heatmap: (data.heatmap_data || []).flatMap((series) => (
+    heatmap: (data.nicotine_heatmap || []).flatMap((series) => (
       (series.data || []).map((point, index) => ({
         day: series.name,
         hour: typeof point === 'object' && point.x != null
@@ -180,7 +180,7 @@ function renderHeatmapRows(root, rows) {
 
 function updateAlternatives(root, data, trendType) {
   const model = buildInsightsAlternativeModel(data, trendType);
-  renderRows(root, 'trend', model.trend, 'No consumption logged in this range.');
+  renderRows(root, 'trend', model.trend, 'No known nicotine logged in this range.');
   renderRows(root, 'timeOfDay', model.timeOfDayTable, 'No known-strength nicotine logged in this range.');
   renderRows(root, 'dayOfWeek', model.dayOfWeek, 'No weekly pattern available.');
   renderRows(root, 'brands', model.productTable, 'No known-strength product data in this range.');
@@ -322,7 +322,7 @@ export function chartDefinitions(data, trendType) {
   return [
     ['consumption-trend-chart', {
       ...commonChart('line', 250, theme),
-      series: [{ name: trendType === 'weekly' ? 'Weekly pouches' : 'Daily pouches', data: model.trend.map((point) => ({ x: point.label, y: point.value })) }],
+      series: [{ name: trendType === 'weekly' ? 'Weekly nicotine (mg)' : 'Daily nicotine (mg)', data: model.trend.map((point) => ({ x: point.label, y: point.value })) }],
       colors: ['#55755F'],
       stroke: { curve: 'smooth', width: 3 },
       dataLabels: { enabled: shouldShowTrendDataLabels(model.trend.length) },
@@ -353,7 +353,7 @@ export function chartDefinitions(data, trendType) {
     }],
     ['day-of-week-chart', {
       ...commonChart('bar', 250, theme),
-      series: [{ name: 'Pouches', data: model.dayOfWeek.map((row) => row.value) }],
+      series: [{ name: 'Nicotine (mg)', data: model.dayOfWeek.map((row) => row.value) }],
       colors: ['#B76343'],
       xaxis: { categories: model.dayOfWeek.map((row) => row.label.slice(0, 3)), labels: { style: { colors: theme.foreColor } } },
       yaxis: { min: 0, labels: { style: { colors: theme.foreColor } } },
@@ -382,7 +382,7 @@ export function chartDefinitions(data, trendType) {
     }],
     ['heatmap-chart', {
       ...commonChart('heatmap', 310, theme),
-      series: data.heatmap_data || [],
+      series: data.nicotine_heatmap || [],
       colors: ['#55755F'],
       xaxis: { labels: { style: { colors: theme.foreColor } } },
     }],
@@ -392,7 +392,7 @@ export function chartDefinitions(data, trendType) {
 function updateMetrics(root, data, viewModel) {
   const values = {
     'total-pouches': data.total_pouches ?? 0,
-    'daily-average': data.daily_average ?? 0,
+    'daily-average': `${data.daily_average_mg ?? 0} mg`,
     'peak-day': data.peak_day ?? '--',
     'avg-time-between': data.average_time_between_pouches ?? '--',
     'total-nicotine': data.total_nicotine ?? 0,

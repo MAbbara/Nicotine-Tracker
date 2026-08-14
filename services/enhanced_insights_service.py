@@ -55,16 +55,35 @@ def get_user_logs_df(
     return pd.DataFrame(rows)
 
 
+def _known_nicotine_total(df):
+    if df.empty:
+        return Decimal('0.00'), 0
+
+    total = Decimal('0.00')
+    unknown_strength_count = 0
+    for row in df.itertuples(index=False):
+        if pd.isna(row.nicotine_mg):
+            unknown_strength_count += 1
+            continue
+        total += Decimal(int(row.quantity or 0)) * Decimal(str(row.nicotine_mg))
+    return total.quantize(Decimal('0.01')), unknown_strength_count
+
+
 def _comparison_metadata(current_df, previous_df, days):
-    current_total = int(current_df['quantity'].sum()) if not current_df.empty else 0
-    previous_total = int(previous_df['quantity'].sum()) if not previous_df.empty else 0
+    current_total, current_unknown = _known_nicotine_total(current_df)
+    previous_total, previous_unknown = _known_nicotine_total(previous_df)
     observed_days = (
         int(current_df['user_time'].dt.date.nunique())
         if not current_df.empty
         else 0
     )
     log_count = int(len(current_df))
-    comparison_available = not current_df.empty and not previous_df.empty
+    comparison_available = (
+        not current_df.empty
+        and not previous_df.empty
+        and current_unknown == 0
+        and previous_unknown == 0
+    )
     absolute_change = current_total - previous_total if comparison_available else None
     percent_change = None
     direction = None
@@ -83,12 +102,15 @@ def _comparison_metadata(current_df, previous_df, days):
         'observed_days': observed_days,
         'log_count': log_count,
         'comparison': {
+            'metric': 'nicotine_mg',
             'available': comparison_available,
-            'current_total': current_total,
-            'previous_total': previous_total,
+            'current_total': float(current_total),
+            'previous_total': float(previous_total),
             'absolute_change': absolute_change,
             'percent_change': percent_change,
             'direction': direction,
+            'current_unknown_strength_count': current_unknown,
+            'previous_unknown_strength_count': previous_unknown,
         },
         'data_sufficiency': {
             'trend': observed_days >= 3 and log_count >= 3,
@@ -404,7 +426,7 @@ def get_enhanced_insights(user_id: int, days: int = 30):
     if df.empty:
         return {
             'total_pouches': 0,
-            'daily_average': 0,
+            'daily_average_mg': 0,
             'peak_day': '--',
             'average_time_between_pouches': '--',
             'total_nicotine': 0,
@@ -413,13 +435,13 @@ def get_enhanced_insights(user_id: int, days: int = 30):
             'consistency_score': 0,
             'trend_direction': '--',
             'consumption_by_time_of_day': {},
-            'consumption_by_day_of_week': {},
+            'nicotine_by_day_of_week': {},
             'brand_analysis': {},
             'nicotine_by_time_of_day': {},
             'nicotine_by_product': {},
             'strength_coverage': _nicotine_distribution(df)[2],
-            'consumption_trend': [],
-            'heatmap_data': [],
+            'nicotine_trend': [],
+            'nicotine_heatmap': [],
             'ai_insights': [],
             'plan_context': plan_context,
             'craving_pattern': craving_pattern,
@@ -428,7 +450,6 @@ def get_enhanced_insights(user_id: int, days: int = 30):
 
     # Basic metrics - convert numpy types to Python native types
     total_pouches = int(df['quantity'].sum())
-    daily_average = float(total_pouches / days)
     known_strengths = df['nicotine_mg'].notna()
     total_nicotine = float(
         sum(
@@ -440,36 +461,40 @@ def get_enhanced_insights(user_id: int, days: int = 30):
         )
     )
     unknown_strength_count = int((~known_strengths).sum())
+    daily_average_mg = total_nicotine / days
     
-    # Daily aggregation
+    # Daily event aggregation remains available for event-specific legacy helpers.
     df['date'] = df['user_time'].dt.date
     daily_consumption = df.groupby('date')['quantity'].sum()
-    
-    peak_day = int(daily_consumption.max()) if not daily_consumption.empty else 0
-    best_day = int(daily_consumption.min()) if not daily_consumption.empty else 0
+
+    known_nicotine = _with_known_nicotine(df)
+    known_nicotine['date'] = known_nicotine['user_time'].dt.date
+    daily_nicotine = known_nicotine.groupby('date')['known_nicotine_mg'].sum()
+    peak_day = round(float(daily_nicotine.max()), 2) if not daily_nicotine.empty else 0
+    best_day = round(float(daily_nicotine.min()), 2) if not daily_nicotine.empty else 0
     
     # Consistency score (inverse of coefficient of variation)
     consistency_score = 0.0
-    if len(daily_consumption) > 1 and daily_consumption.std() > 0:
-        cv = daily_consumption.std() / daily_consumption.mean()
+    if len(daily_nicotine) > 1 and daily_nicotine.std() > 0:
+        cv = daily_nicotine.std() / daily_nicotine.mean()
         consistency_score = float(max(0, 100 - (cv * 100)))
 
     # Trend analysis
-    trend_direction = calculate_trend_direction(daily_consumption)
+    trend_direction = calculate_trend_direction(daily_nicotine)
     
     # Time patterns
     consumption_by_time = get_consumption_by_time_of_day_enhanced(df)
-    consumption_by_day_week = get_consumption_by_day_of_week_enhanced(df)
+    nicotine_by_day_week = get_nicotine_by_day_of_week(df)
     
     # Brand analysis
     brand_analysis = get_brand_analysis(df)
     nicotine_by_time, nicotine_by_product, strength_coverage = _nicotine_distribution(df)
     
     # Consumption trend data for charts
-    consumption_trend = get_consumption_trend(daily_consumption)
+    nicotine_trend = get_nicotine_trend(df)
     
     # Heatmap data
-    heatmap_data = get_consumption_heatmap(df)
+    nicotine_heatmap = get_nicotine_heatmap(df)
     
     # AI insights
     ai_insights = generate_ai_insights(df, daily_consumption, user_timezone)
@@ -479,7 +504,7 @@ def get_enhanced_insights(user_id: int, days: int = 30):
 
     return {
         'total_pouches': total_pouches,
-        'daily_average': round(daily_average, 1),
+        'daily_average_mg': round(daily_average_mg, 1),
         'peak_day': peak_day,
         'average_time_between_pouches': avg_time_between,
         'total_nicotine': round(total_nicotine, 1),
@@ -488,13 +513,13 @@ def get_enhanced_insights(user_id: int, days: int = 30):
         'consistency_score': round(consistency_score, 1),
         'trend_direction': trend_direction,
         'consumption_by_time_of_day': consumption_by_time,
-        'consumption_by_day_of_week': consumption_by_day_week,
+        'nicotine_by_day_of_week': nicotine_by_day_week,
         'brand_analysis': brand_analysis,
         'nicotine_by_time_of_day': nicotine_by_time,
         'nicotine_by_product': nicotine_by_product,
         'strength_coverage': strength_coverage,
-        'consumption_trend': consumption_trend,
-        'heatmap_data': heatmap_data,
+        'nicotine_trend': nicotine_trend,
+        'nicotine_heatmap': nicotine_heatmap,
         'ai_insights': ai_insights,
         'plan_context': plan_context,
         'craving_pattern': craving_pattern,
@@ -516,17 +541,29 @@ def get_consumption_by_time_of_day_enhanced(df):
     consumption_by_time = df.groupby('time_of_day', observed=False)['quantity'].sum().to_dict()
     return {str(k): int(v) if pd.notna(v) else 0 for k, v in consumption_by_time.items() if pd.notna(k)}
 
-def get_consumption_by_day_of_week_enhanced(df):
-    """Enhanced day of week analysis"""
+def _with_known_nicotine(df):
+    known = df[df['nicotine_mg'].notna()].copy()
+    if known.empty:
+        known['known_nicotine_mg'] = pd.Series(dtype=float)
+        return known
+    known['known_nicotine_mg'] = (
+        known['quantity'].astype(float) * known['nicotine_mg'].astype(float)
+    )
+    return known
+
+
+def get_nicotine_by_day_of_week(df):
+    """Aggregate known nicotine exposure by local weekday."""
     if df.empty:
         return {}
 
-    df['day_of_week'] = df['user_time'].dt.day_name()
-    consumption_by_day = df.groupby('day_of_week')['quantity'].sum().reindex([
+    known = _with_known_nicotine(df)
+    known['day_of_week'] = known['user_time'].dt.day_name()
+    nicotine_by_day = known.groupby('day_of_week')['known_nicotine_mg'].sum().reindex([
         'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
     ]).fillna(0).to_dict()
 
-    return {k: int(v) if pd.notna(v) else 0 for k, v in consumption_by_day.items()}
+    return {k: round(float(v), 2) if pd.notna(v) else 0 for k, v in nicotine_by_day.items()}
 
 def get_brand_analysis(df):
     """Analyze brand preferences"""
@@ -536,29 +573,31 @@ def get_brand_analysis(df):
     brand_consumption = df.groupby('brand')['quantity'].sum().sort_values(ascending=False)
     return {str(k): int(v) if pd.notna(v) else 0 for k, v in brand_consumption.head(5).items() if pd.notna(k)}
 
-def get_consumption_trend(daily_consumption):
-    """Get consumption trend data for charts"""
-    if daily_consumption.empty:
-        return []
-    
-    trend_data = []
-    for date, value in daily_consumption.items():
-        trend_data.append({
-            'date': date.isoformat(),
-            'value': int(value) if pd.notna(value) else 0
-        })
-    
-    return trend_data
-
-def get_consumption_heatmap(df):
-    """Generate heatmap data (hour vs day of week)"""
+def get_nicotine_trend(df):
+    """Aggregate known nicotine exposure by local date for charts."""
     if df.empty:
         return []
-    
-    df['hour'] = df['user_time'].dt.hour
-    df['day_of_week'] = df['user_time'].dt.day_name()
-    
-    heatmap = df.groupby(['day_of_week', 'hour'])['quantity'].sum().reset_index()
+
+    known = _with_known_nicotine(df)
+    known['date'] = known['user_time'].dt.date
+    daily_nicotine = known.groupby('date')['known_nicotine_mg'].sum()
+    return [
+        {
+            'date': date.isoformat(),
+            'value': round(float(value), 2) if pd.notna(value) else 0,
+        }
+        for date, value in daily_nicotine.items()
+    ]
+
+def get_nicotine_heatmap(df):
+    """Aggregate known nicotine exposure by local hour and weekday."""
+    if df.empty:
+        return []
+
+    known = _with_known_nicotine(df)
+    known['hour'] = known['user_time'].dt.hour
+    known['day_of_week'] = known['user_time'].dt.day_name()
+    heatmap = known.groupby(['day_of_week', 'hour'])['known_nicotine_mg'].sum().reset_index()
     
     days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
     heatmap_data = []
@@ -567,8 +606,8 @@ def get_consumption_heatmap(df):
         day_data = heatmap[heatmap['day_of_week'] == day]
         hourly_data = []
         for hour in range(24):
-            value = day_data[day_data['hour'] == hour]['quantity'].sum()
-            hourly_data.append(int(value) if pd.notna(value) else 0)
+            value = day_data[day_data['hour'] == hour]['known_nicotine_mg'].sum()
+            hourly_data.append(round(float(value), 2) if pd.notna(value) else 0)
         heatmap_data.append({
             'name': day,
             'data': hourly_data

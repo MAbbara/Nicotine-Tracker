@@ -132,10 +132,13 @@ const SPACED_PRODUCT = ' Exact snapshot ';
 const INSIGHTS_FIXTURES = {
   7: {
     range_days: 7, observed_days: 0, log_count: 0,
-    total_pouches: 0, daily_average: 0, total_nicotine: 0,
+    total_pouches: 0, daily_average_mg: 0, total_nicotine: 0,
     best_day: '--', consistency_score: 0, trend_direction: 'stable',
     peak_day: '--', average_time_between_pouches: '--',
-    comparison: { available: false, current_total: 0, previous_total: 0 },
+    comparison: {
+      metric: 'nicotine_mg', available: false, current_total: 0, previous_total: 0,
+      current_unknown_strength_count: 0, previous_unknown_strength_count: 0,
+    },
     data_sufficiency: {
       trend: false, time_pattern: false, brand_pattern: false, heatmap: false,
     },
@@ -143,8 +146,8 @@ const INSIGHTS_FIXTURES = {
       state: 'active_targeted', adherence_available: false, compared_days: 0,
     },
     craving_pattern: { available: false },
-    consumption_trend: [], consumption_by_time_of_day: {},
-    consumption_by_day_of_week: {}, brand_analysis: {}, heatmap_data: [],
+    nicotine_trend: [], consumption_by_time_of_day: {},
+    nicotine_by_day_of_week: {}, brand_analysis: {}, nicotine_heatmap: [],
     nicotine_by_time_of_day: {}, nicotine_by_product: {},
     strength_coverage: {
       known_logs: 0, unknown_logs: 0, total_logs: 0,
@@ -165,12 +168,13 @@ const INSIGHTS_FIXTURES = {
   },
   30: {
     range_days: 30, observed_days: 3, log_count: 5,
-    total_pouches: 15, daily_average: 5, total_nicotine: 60,
+    total_pouches: 15, daily_average_mg: 2, total_nicotine: 60,
     best_day: 'Wednesday', consistency_score: 80, trend_direction: 'decreasing',
     peak_day: 'Thursday', average_time_between_pouches: '2h 10m',
     comparison: {
-      available: true, current_total: 15, previous_total: 18,
+      metric: 'nicotine_mg', available: true, current_total: 60, previous_total: 72,
       direction: 'down', percent_change: -16.7,
+      current_unknown_strength_count: 0, previous_unknown_strength_count: 0,
     },
     data_sufficiency: {
       trend: true, time_pattern: true, brand_pattern: true, heatmap: true,
@@ -183,14 +187,14 @@ const INSIGHTS_FIXTURES = {
       available: true, leading_trigger: 'Stress', leading_trigger_count: 2,
       resolved_count: 3, non_nicotine_rate: 66.7,
     },
-    consumption_trend: [
-      { date: '2026-07-22', value: 5 }, { date: '2026-07-23', value: 7 },
-      { date: '2026-07-24', value: 3 },
+    nicotine_trend: [
+      { date: '2026-07-22', value: 20 }, { date: '2026-07-23', value: 28 },
+      { date: '2026-07-24', value: 12 },
     ],
     consumption_by_time_of_day: { Morning: 15, Afternoon: 0 },
-    consumption_by_day_of_week: { Wednesday: 5, Thursday: 7, Friday: 3 },
+    nicotine_by_day_of_week: { Wednesday: 20, Thursday: 28, Friday: 12 },
     brand_analysis: { Main: 10, Backup: 5 },
-    heatmap_data: [{ name: 'Monday', data: [{ x: '10:00', y: 15 }] }],
+    nicotine_heatmap: [{ name: 'Monday', data: [{ x: '10:00', y: 60 }] }],
     nicotine_by_time_of_day: { Morning: 60, Afternoon: 0 },
     nicotine_by_product: { Main: 36, Backup: 24, 'Known zero': 0 },
     strength_coverage: {
@@ -198,41 +202,42 @@ const INSIGHTS_FIXTURES = {
       known_percent: 100, complete: true,
     },
     expectedCopy: {
-      headline: 'You used 16.7% less than the previous 30 days.',
+      headline: 'You used 60 mg — 16.7% less than 72 mg in the previous 30 days.',
       interpretation: 'This lower total is useful context. Notice what changed in this range and what you may want to repeat.',
       plan: 'Across 3 matched plan days, you logged 15 pouches against a target of 18. 2 of 3 days were on or below target.',
       time: 'Morning is your most active part of the day. Plan support just before it begins.',
       timeNicotine: 'Leading category Morning accounts for 60 mg (100% of known nicotine). 5 of 5 logs include nicotine strength.',
-      weekly: 'Thursday has the most logged pouches in this range. Use it as a cue to plan support, not a verdict.',
+      weekly: 'Thursday has the most known nicotine in this range. Use it as a cue to plan support, not a verdict.',
       product: 'Main appears most often in this range. Use that context when you adjust your plan.',
       productNicotine: 'Leading category Main accounts for 36 mg (60% of known nicotine). 5 of 5 logs include nicotine strength.',
       craving: 'Stress appeared in 2 of 3 resolved cravings. You chose a non-nicotine response 66.7% of the time.',
-      hourly: 'Monday around 10:00 has the highest logged use in this detail. Consider support before that time.',
+      hourly: 'Monday around 10:00 has the highest known nicotine in this detail. Consider support before that time.',
       nextStep: ['Plan for Morning', '/journey/'],
     },
   },
   90: {
     range_days: 90, observed_days: 7, log_count: 8,
-    total_pouches: 42, daily_average: 6, total_nicotine: 180,
+    total_pouches: 42, daily_average_mg: 2, total_nicotine: 180,
     best_day: 'Tuesday', consistency_score: 72, trend_direction: 'increasing',
     peak_day: 'Friday', average_time_between_pouches: '1h 45m',
     comparison: {
-      available: true, current_total: 42, previous_total: 30,
-      direction: 'up', percent_change: 40,
+      metric: 'nicotine_mg', available: false, current_total: 180, previous_total: 120,
+      direction: null, percent_change: null,
+      current_unknown_strength_count: 1, previous_unknown_strength_count: 0,
     },
     data_sufficiency: {
       trend: true, time_pattern: true, brand_pattern: true, heatmap: true,
     },
     plan_context: { state: 'active_observe', adherence_available: false, compared_days: 0 },
     craving_pattern: { available: false },
-    consumption_trend: [
-      { date: '2026-05-04', value: 8 }, { date: '2026-05-11', value: 14 },
-      { date: '2026-05-18', value: 20 },
+    nicotine_trend: [
+      { date: '2026-05-04', value: 32 }, { date: '2026-05-11', value: 56 },
+      { date: '2026-05-18', value: 92 },
     ],
     consumption_by_time_of_day: { Morning: 12, Afternoon: 30 },
-    consumption_by_day_of_week: { Monday: 8, Wednesday: 14, Friday: 20 },
+    nicotine_by_day_of_week: { Monday: 32, Wednesday: 56, Friday: 92 },
     brand_analysis: { Third: 20, Main: 12, Backup: 10 },
-    heatmap_data: [{ name: 'Tuesday', data: [{ x: '18:00', y: 20 }] }],
+    nicotine_heatmap: [{ name: 'Tuesday', data: [{ x: '18:00', y: 92 }] }],
     nicotine_by_time_of_day: { Morning: 48, Afternoon: 132 },
     nicotine_by_product: {
       'Third product': 30, [SPACED_PRODUCT]: 60, [LONG_PRODUCT]: 90,
@@ -243,16 +248,16 @@ const INSIGHTS_FIXTURES = {
       known_percent: 87.5, complete: false,
     },
     expectedCopy: {
-      headline: 'You used 40% more than the previous 90 days.',
-      interpretation: 'This is useful context, not a verdict. Look for what made this range harder, then choose one adjustment.',
+      headline: 'You logged 180 mg of known nicotine across 7 days.',
+      interpretation: '1 current-range log has no saved strength. A nicotine comparison needs complete strength data in both ranges.',
       plan: '',
       time: 'Afternoon is your most active part of the day. Plan support just before it begins.',
       timeNicotine: 'Leading category Afternoon accounts for 132 mg (73.3% of known nicotine). 7 of 8 logs include nicotine strength. Nicotine totals are incomplete.',
-      weekly: 'Friday has the most logged pouches in this range. Use it as a cue to plan support, not a verdict.',
+      weekly: 'Friday has the most known nicotine in this range. Use it as a cue to plan support, not a verdict.',
       product: 'Third appears most often in this range. Use that context when you adjust your plan.',
       productNicotine: `Leading category ${LONG_PRODUCT} accounts for 90 mg (50% of known nicotine). 7 of 8 logs include nicotine strength. Nicotine totals are incomplete.`,
       craving: '',
-      hourly: 'Tuesday around 18:00 has the highest logged use in this detail. Consider support before that time.',
+      hourly: 'Tuesday around 18:00 has the highest known nicotine in this detail. Consider support before that time.',
       nextStep: ['Review your observations', '/journey/'],
     },
   },
@@ -392,8 +397,8 @@ function weeklyTrend(points) {
 function expectedSemanticSnapshot(payload, days, trendType = 'daily') {
   const copy = INSIGHTS_FIXTURES[days].expectedCopy;
   const trend = trendType === 'weekly'
-    ? weeklyTrend(payload.consumption_trend)
-    : payload.consumption_trend;
+    ? weeklyTrend(payload.nicotine_trend)
+    : payload.nicotine_trend;
   const pairs = (value) => Object.entries(value).map(([label, amount]) => [label, String(Number(amount))]);
   const nicotinePairs = (value) => {
     const total = Object.values(value).reduce((sum, amount) => sum + Math.max(0, Number(amount)), 0);
@@ -409,7 +414,7 @@ function expectedSemanticSnapshot(payload, days, trendType = 'daily') {
     .sort((a, b) => b.amount - a.amount);
   const timeBars = bars(payload.nicotine_by_time_of_day);
   const productBars = bars(payload.nicotine_by_product);
-  const weekdays = DAYS.map((label) => Number(payload.consumption_by_day_of_week[label]) || 0);
+  const weekdays = DAYS.map((label) => Number(payload.nicotine_by_day_of_week[label]) || 0);
   const eligible = {
     'consumption-trend-chart': payload.data_sufficiency.trend && trend.some(({ value }) => Number(value) > 0),
     'time-of-day-chart': payload.data_sufficiency.time_pattern && timeBars.length > 0,
@@ -428,8 +433,8 @@ function expectedSemanticSnapshot(payload, days, trendType = 'daily') {
     config: eligible[id] ? config : null,
   });
   const emptyRow = (message) => [[message]];
-  const heatmapRows = payload.heatmap_data.length
-    ? payload.heatmap_data.map((series) => [
+  const heatmapRows = payload.nicotine_heatmap.length
+    ? payload.nicotine_heatmap.map((series) => [
       series.name, ...series.data.map((point) => String(Number(point.y ?? point))),
     ])
     : emptyRow('No hourly pattern available.');
@@ -441,7 +446,7 @@ function expectedSemanticSnapshot(payload, days, trendType = 'daily') {
       busy: null, pendingDays: null,
     },
     metrics: {
-      lead: [String(payload.comparison.current_total), String(payload.daily_average), String(payload.observed_days)],
+      lead: [`${payload.total_nicotine} mg`, `${payload.daily_average_mg} mg`, String(payload.observed_days)],
       totalNicotine: String(payload.total_nicotine), bestDay: String(payload.best_day),
       consistency: `${payload.consistency_score}%`, trendDirection: String(payload.trend_direction),
       peakDay: String(payload.peak_day), averageTimeBetween: String(payload.average_time_between_pouches),
@@ -457,7 +462,7 @@ function expectedSemanticSnapshot(payload, days, trendType = 'daily') {
       nonNicotine: payload.craving_pattern.available ? `${payload.craving_pattern.non_nicotine_rate}%` : '',
     },
     tables: {
-      trend: trend.length ? trend.map(({ date, value }) => [date, String(value)]) : emptyRow('No consumption logged in this range.'),
+      trend: trend.length ? trend.map(({ date, value }) => [date, String(value)]) : emptyRow('No known nicotine logged in this range.'),
       timeOfDay: Object.keys(payload.nicotine_by_time_of_day).length ? nicotinePairs(payload.nicotine_by_time_of_day) : emptyRow('No known-strength nicotine logged in this range.'),
       dayOfWeek: DAYS.map((label, index) => [label, String(weekdays[index])]),
       brands: Object.keys(payload.nicotine_by_product).length ? nicotinePairs(payload.nicotine_by_product) : emptyRow('No known-strength product data in this range.'),
@@ -466,7 +471,7 @@ function expectedSemanticSnapshot(payload, days, trendType = 'daily') {
     charts: {
       'consumption-trend-chart': chart('consumption-trend-chart', {
         type: 'line', horizontal: false,
-        series: [{ name: trendType === 'weekly' ? 'Weekly pouches' : 'Daily pouches', data: trend.map(({ date, value }) => ({ x: date, y: Number(value) })) }],
+        series: [{ name: trendType === 'weekly' ? 'Weekly nicotine (mg)' : 'Daily nicotine (mg)', data: trend.map(({ date, value }) => ({ x: date, y: Number(value) })) }],
         categories: null,
       }),
       'time-of-day-chart': chart('time-of-day-chart', {
@@ -475,7 +480,7 @@ function expectedSemanticSnapshot(payload, days, trendType = 'daily') {
         categories: timeBars.map(({ label }) => label),
       }),
       'day-of-week-chart': chart('day-of-week-chart', {
-        type: 'bar', horizontal: false, series: [{ name: 'Pouches', data: weekdays }],
+        type: 'bar', horizontal: false, series: [{ name: 'Nicotine (mg)', data: weekdays }],
         categories: DAYS.map((label) => label.slice(0, 3)),
       }),
       'brand-chart': chart('brand-chart', {

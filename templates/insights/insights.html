@@ -13,7 +13,7 @@
 {% set sufficiency = initial_insights.get('data_sufficiency', {}) %}
 {% set log_count = initial_insights.get('log_count', 0) %}
 {% set observed_days = initial_insights.get('observed_days', 0) %}
-{% set current_total = comparison.get('current_total', initial_insights.get('total_pouches', 0)) %}
+{% set current_total = comparison.get('current_total', initial_insights.get('total_nicotine', 0)) %}
 {% set range_days = initial_insights.get('range_days', 30) %}
 {% set plan_context = initial_insights.get('plan_context', {}) %}
 {% set craving_pattern = initial_insights.get('craving_pattern', {}) %}
@@ -41,14 +41,14 @@
     {% endfor %}
 {% endif %}
 {% set weekly_leader = namespace(label=none, value=0) %}
-{% for label, value in initial_insights.get('consumption_by_day_of_week', {}).items() %}
+{% for label, value in initial_insights.get('nicotine_by_day_of_week', {}).items() %}
     {% if value|float > weekly_leader.value %}
         {% set weekly_leader.label = label %}
         {% set weekly_leader.value = value|float %}
     {% endif %}
 {% endfor %}
 {% set hourly_leader = namespace(day=none, hour=none, value=0) %}
-{% for series in initial_insights.get('heatmap_data', []) %}
+{% for series in initial_insights.get('nicotine_heatmap', []) %}
     {% for point in series.data %}
         {% set point_value = point.y if point is mapping else point %}
         {% set point_hour = point.x if point is mapping else "%02d:00"|format(loop.index0) %}
@@ -95,13 +95,13 @@
                 {% elif insight_state == 'sparse' %}
                     Keep logging to reveal a reliable direction.
                 {% elif not comparison.get('available') %}
-                    You logged {{ current_total }} pouches across {{ observed_days }} days.
+                    You logged {{ current_total }} mg of known nicotine across {{ observed_days }} days.
                 {% elif comparison.get('direction') == 'steady' %}
-                    Your use was steady compared with the previous {{ range_days }} days.
+                    You used {{ current_total }} mg, the same as the previous {{ range_days }} days.
                 {% elif comparison.get('percent_change') is not none %}
-                    You used {{ comparison.get('percent_change')|abs }}% {{ 'less' if comparison.get('direction') == 'down' else 'more' }} than the previous {{ range_days }} days.
+                    You used {{ current_total }} mg — {{ comparison.get('percent_change')|abs }}% {{ 'less' if comparison.get('direction') == 'down' else 'more' }} than {{ comparison.get('previous_total') }} mg in the previous {{ range_days }} days.
                 {% else %}
-                    You logged {{ current_total }} pouches in this range.
+                    You logged {{ current_total }} mg of known nicotine in this range.
                 {% endif %}
             </p>
             <p class="insights-lead__interpretation" data-insights-interpretation>
@@ -109,6 +109,8 @@
                     Start with one honest entry. This page becomes more useful as your day-to-day pattern takes shape.
                 {% elif insight_state == 'sparse' %}
                     You have {{ observed_days }} {{ 'day' if observed_days == 1 else 'days' }} with logs. Continue at your own pace so comparisons stay honest.
+                {% elif comparison.get('current_unknown_strength_count', 0) or comparison.get('previous_unknown_strength_count', 0) %}
+                    Strength is missing from {{ comparison.get('current_unknown_strength_count', 0) }} current-range and {{ comparison.get('previous_unknown_strength_count', 0) }} previous-range logs. A nicotine comparison needs complete strength data in both ranges.
                 {% elif comparison.get('direction') == 'down' %}
                     This lower total is useful context. Notice what changed in this range and what you may want to repeat.
                 {% elif comparison.get('direction') == 'up' %}
@@ -153,8 +155,8 @@
         </div>
 
         <dl class="insights-measures" aria-label="Current range summary">
-            <div><dt>Pouches in range</dt><dd id="total-pouches">{{ initial_insights.get('total_pouches', 0) }}</dd></div>
-            <div><dt>Daily average</dt><dd id="daily-average">{{ initial_insights.get('daily_average', 0) }}</dd></div>
+            <div><dt>Nicotine in {{ range_days }} days</dt><dd id="total-nicotine-primary">{{ initial_insights.get('total_nicotine', 0) }} mg</dd></div>
+            <div><dt>Daily average nicotine</dt><dd id="daily-average">{{ initial_insights.get('daily_average_mg', 0) }} mg</dd></div>
             <div><dt>Days with logs</dt><dd>{{ observed_days }}</dd></div>
         </dl>
 
@@ -170,11 +172,13 @@
             <p class="analytics-chart__status" role="status" aria-live="polite" hidden></p>
             <details class="analytics-figure__table">
                 <summary>View consumption trend data</summary>
-                <div class="analytics-data" tabindex="0" role="region" aria-label="Consumption trend data">
-                    <table><caption>Consumption trend data</caption><thead><tr><th scope="col">Date</th><th scope="col">Pouches</th></tr></thead>
-                        <tbody data-analytics-key="trend">{% for point in initial_insights.get('consumption_trend', []) %}<tr><th scope="row">{{ point.date }}</th><td>{{ point.value }}</td></tr>{% else %}<tr><td colspan="2">No consumption logged in this range.</td></tr>{% endfor %}</tbody>
-                    </table>
-                </div>
+                <div class="analytics-disclosure__content"><div class="analytics-disclosure__inner">
+                    <div class="analytics-data" tabindex="0" role="region" aria-label="Consumption trend data">
+                        <table><caption>Consumption trend data</caption><thead><tr><th scope="col">Date</th><th scope="col">Nicotine (mg)</th></tr></thead>
+                            <tbody data-analytics-key="trend">{% for point in initial_insights.get('nicotine_trend', []) %}<tr><th scope="row">{{ point.date }}</th><td>{{ point.value }}</td></tr>{% else %}<tr><td colspan="2">No known nicotine logged in this range.</td></tr>{% endfor %}</tbody>
+                        </table>
+                    </div>
+                </div></div>
             </details>
         </div>
     </section>
@@ -193,14 +197,14 @@
                 <p class="analytics-chart__status" role="status" aria-live="polite" hidden></p>
                 <details class="analytics-figure__table">
                     <summary>View time-of-day data</summary>
-                    <div class="analytics-data" tabindex="0" role="region" aria-label="Time of day nicotine data"><table><caption>Known nicotine by time of day</caption><thead><tr><th scope="col">Time</th><th scope="col">Nicotine (mg)</th><th scope="col">Share of known nicotine</th></tr></thead><tbody data-analytics-key="timeOfDay">{% for label, value in initial_insights.get('nicotine_by_time_of_day', {}).items() %}<tr><th scope="row">{{ label }}</th><td>{{ value }}</td><td>{{ ((value|float / time_nicotine.total) * 100)|round(1) if time_nicotine.total and value|float > 0 else 0 }}%</td></tr>{% else %}<tr><td colspan="3">No known-strength nicotine logged in this range.</td></tr>{% endfor %}</tbody></table></div>
+                    <div class="analytics-disclosure__content"><div class="analytics-disclosure__inner"><div class="analytics-data" tabindex="0" role="region" aria-label="Time of day nicotine data"><table><caption>Known nicotine by time of day</caption><thead><tr><th scope="col">Time</th><th scope="col">Nicotine (mg)</th><th scope="col">Share of known nicotine</th></tr></thead><tbody data-analytics-key="timeOfDay">{% for label, value in initial_insights.get('nicotine_by_time_of_day', {}).items() %}<tr><th scope="row">{{ label }}</th><td>{{ value }}</td><td>{{ ((value|float / time_nicotine.total) * 100)|round(1) if time_nicotine.total and value|float > 0 else 0 }}%</td></tr>{% else %}<tr><td colspan="3">No known-strength nicotine logged in this range.</td></tr>{% endfor %}</tbody></table></div></div></div>
                 </details>
             </div>
             <div class="insights-figure insights-figure--secondary">
                 <h3 id="day-of-week-title">Weekly pattern</h3>
                 <p data-insights-weekly-copy>
                     {% if sufficiency.get('trend') and weekly_leader.label %}
-                        {{ weekly_leader.label }} has the most logged pouches in this range. Use it as a cue to plan support, not a verdict.
+                        {{ weekly_leader.label }} has the most known nicotine in this range. Use it as a cue to plan support, not a verdict.
                     {% else %}
                         Log across more complete days to reveal a dependable weekly pattern.
                     {% endif %}
@@ -209,7 +213,7 @@
                 <p class="analytics-chart__status" role="status" aria-live="polite" hidden></p>
                 <details class="analytics-figure__table">
                     <summary>View weekly pattern data</summary>
-                    <div class="analytics-data" tabindex="0" role="region" aria-label="Weekly pattern data"><table><caption>Weekly pattern data</caption><thead><tr><th scope="col">Day</th><th scope="col">Pouches</th></tr></thead><tbody data-analytics-key="dayOfWeek">{% for label, value in initial_insights.get('consumption_by_day_of_week', {}).items() %}<tr><th scope="row">{{ label }}</th><td>{{ value }}</td></tr>{% else %}<tr><td colspan="2">No weekly pattern available.</td></tr>{% endfor %}</tbody></table></div>
+                    <div class="analytics-disclosure__content"><div class="analytics-disclosure__inner"><div class="analytics-data" tabindex="0" role="region" aria-label="Weekly pattern data"><table><caption>Weekly pattern data</caption><thead><tr><th scope="col">Day</th><th scope="col">Nicotine (mg)</th></tr></thead><tbody data-analytics-key="dayOfWeek">{% for label, value in initial_insights.get('nicotine_by_day_of_week', {}).items() %}<tr><th scope="row">{{ label }}</th><td>{{ value }}</td></tr>{% else %}<tr><td colspan="2">No weekly pattern available.</td></tr>{% endfor %}</tbody></table></div></div></div>
                 </details>
             </div>
         </section>
@@ -227,7 +231,7 @@
                 <p class="analytics-chart__status" role="status" aria-live="polite" hidden></p>
                 <details class="analytics-figure__table">
                     <summary>View product data</summary>
-                    <div class="analytics-data" tabindex="0" role="region" aria-label="Product nicotine data"><table><caption>Known nicotine by product</caption><thead><tr><th scope="col">Product</th><th scope="col">Nicotine (mg)</th><th scope="col">Share of known nicotine</th></tr></thead><tbody data-analytics-key="brands">{% for label, value in initial_insights.get('nicotine_by_product', {}).items() %}<tr><th scope="row">{{ label }}</th><td>{{ value }}</td><td>{{ ((value|float / product_nicotine.total) * 100)|round(1) if product_nicotine.total and value|float > 0 else 0 }}%</td></tr>{% else %}<tr><td colspan="3">No known-strength product data in this range.</td></tr>{% endfor %}</tbody></table></div>
+                    <div class="analytics-disclosure__content"><div class="analytics-disclosure__inner"><div class="analytics-data" tabindex="0" role="region" aria-label="Product nicotine data"><table><caption>Known nicotine by product</caption><thead><tr><th scope="col">Product</th><th scope="col">Nicotine (mg)</th><th scope="col">Share of known nicotine</th></tr></thead><tbody data-analytics-key="brands">{% for label, value in initial_insights.get('nicotine_by_product', {}).items() %}<tr><th scope="row">{{ label }}</th><td>{{ value }}</td><td>{{ ((value|float / product_nicotine.total) * 100)|round(1) if product_nicotine.total and value|float > 0 else 0 }}%</td></tr>{% else %}<tr><td colspan="3">No known-strength product data in this range.</td></tr>{% endfor %}</tbody></table></div></div></div>
                 </details>
             </div>
         </section>
@@ -266,12 +270,12 @@
 
         <details class="analytics-details">
             <summary>Open hourly detail and supporting measures</summary>
-            <div class="analytics-details__body">
+            <div class="analytics-disclosure__content"><div class="analytics-disclosure__inner"><div class="analytics-details__body">
                 <div class="insights-figure insights-figure--heatmap">
                     <h3 id="heatmap-title">Day and hour detail</h3>
                     <p data-insights-hourly-copy>
                         {% if sufficiency.get('heatmap') and hourly_leader.day %}
-                            {{ hourly_leader.day }} around {{ hourly_leader.hour }} has the highest logged use in this detail. Consider support before that time.
+                            {{ hourly_leader.day }} around {{ hourly_leader.hour }} has the highest known nicotine in this detail. Consider support before that time.
                         {% else %}
                             Log across more days and times to reveal a dependable hourly pattern.
                         {% endif %}
@@ -280,19 +284,19 @@
                     <p class="analytics-chart__status" role="status" aria-live="polite" hidden></p>
                     <details class="analytics-figure__table">
                         <summary>View day-and-hour data</summary>
-                        <div class="analytics-data" tabindex="0" role="region" aria-label="Consumption heatmap data"><table><caption>Consumption heatmap data</caption><thead><tr><th scope="col">Day</th>{% for hour in range(24) %}<th scope="col">{{ "%02d:00"|format(hour) }}</th>{% endfor %}</tr></thead><tbody data-analytics-key="heatmap">{% for series in initial_insights.get('heatmap_data', []) %}<tr><th scope="row">{{ series.name }}</th>{% for value in series.data %}<td>{{ value.y if value is mapping else value }}</td>{% endfor %}</tr>{% else %}<tr><td colspan="25">No hourly pattern available.</td></tr>{% endfor %}</tbody></table></div>
+                        <div class="analytics-disclosure__content"><div class="analytics-disclosure__inner"><div class="analytics-data" tabindex="0" role="region" aria-label="Nicotine heatmap data"><table><caption>Known nicotine by day and hour</caption><thead><tr><th scope="col">Day</th>{% for hour in range(24) %}<th scope="col">{{ "%02d:00"|format(hour) }}</th>{% endfor %}</tr></thead><tbody data-analytics-key="heatmap">{% for series in initial_insights.get('nicotine_heatmap', []) %}<tr><th scope="row">{{ series.name }}</th>{% for value in series.data %}<td>{{ value.y if value is mapping else value }}</td>{% endfor %}</tr>{% else %}<tr><td colspan="25">No hourly pattern available.</td></tr>{% endfor %}</tbody></table></div></div></div>
                     </details>
                 </div>
 
                 <dl class="insights-supporting-measures">
                     <div><dt>Total nicotine</dt><dd><span id="total-nicotine">{{ initial_insights.get('total_nicotine', 0) }}</span> mg</dd></div>
-                    <div><dt>Lowest-use day</dt><dd id="best-day">{{ initial_insights.get('best_day', '--') }}</dd></div>
+                    <div><dt>Lowest known nicotine day</dt><dd><span id="best-day">{{ initial_insights.get('best_day', '--') }}</span> mg</dd></div>
                     <div><dt>Consistency</dt><dd id="consistency-score">{{ initial_insights.get('consistency_score', 0) }}%</dd></div>
-                    <div><dt>Legacy trend signal</dt><dd id="trend-direction">{{ initial_insights.get('trend_direction', '--') }}</dd></div>
-                    <div><dt>Peak day</dt><dd id="peak-day">{{ initial_insights.get('peak_day', '--') }}</dd></div>
+                    <div><dt>Nicotine trend signal</dt><dd id="trend-direction">{{ initial_insights.get('trend_direction', '--') }}</dd></div>
+                    <div><dt>Peak known nicotine day</dt><dd><span id="peak-day">{{ initial_insights.get('peak_day', '--') }}</span> mg</dd></div>
                     <div><dt>Average time between</dt><dd id="avg-time-between">{{ initial_insights.get('average_time_between_pouches', '--') }}</dd></div>
                 </dl>
-            </div>
+            </div></div></div>
         </details>
     </section>
 </div>

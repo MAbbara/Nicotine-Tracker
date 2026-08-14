@@ -26,12 +26,15 @@ function readyInsights(days = 7, total = 24) {
     observed_days: 7,
     log_count: 7,
     comparison: {
+      metric: 'nicotine_mg',
       available: true,
-      current_total: total,
-      previous_total: 30,
-      absolute_change: total - 30,
-      percent_change: ((total - 30) / 30) * 100,
+      current_total: total * 6,
+      previous_total: 180,
+      absolute_change: (total * 6) - 180,
+      percent_change: (((total * 6) - 180) / 180) * 100,
       direction: total < 30 ? 'down' : total > 30 ? 'up' : 'steady',
+      current_unknown_strength_count: 0,
+      previous_unknown_strength_count: 0,
     },
     data_sufficiency: {
       trend: true,
@@ -40,7 +43,7 @@ function readyInsights(days = 7, total = 24) {
       heatmap: true,
     },
     total_pouches: total,
-    daily_average: Number((total / days).toFixed(1)),
+    daily_average_mg: Number(((total * 6) / days).toFixed(1)),
     peak_day: 13,
     average_time_between_pouches: '2h',
     total_nicotine: 144,
@@ -57,14 +60,14 @@ function readyInsights(days = 7, total = 24) {
     trend_direction: 'Stable',
     consumption_by_time_of_day: { Morning: total },
     nicotine_by_time_of_day: { Morning: total * 6 },
-    consumption_by_day_of_week: { Monday: 11, Tuesday: 13 },
+    nicotine_by_day_of_week: { Monday: 66, Tuesday: 78 },
     brand_analysis: { 'Range Mint': total },
     nicotine_by_product: { 'Range Mint': total * 6 },
-    consumption_trend: [
-      { date: '2026-07-27', value: 11 },
-      { date: '2026-07-28', value: 13 },
+    nicotine_trend: [
+      { date: '2026-07-27', value: 66 },
+      { date: '2026-07-28', value: 78 },
     ],
-    heatmap_data: [{ name: 'Monday', data: [0, 11] }, { name: 'Tuesday', data: [0, 13] }],
+    nicotine_heatmap: [{ name: 'Monday', data: [0, 66] }, { name: 'Tuesday', data: [0, 78] }],
     ai_insights: [],
   };
 }
@@ -114,6 +117,26 @@ test('Insights sparse state keeps guidance and tables without blank chart frames
   expect(runtimeErrors).toEqual([]);
 });
 
+test('Insights disclosures animate without widening a narrow mobile page', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  await login(page);
+  await page.goto('/insights/');
+
+  const disclosure = page.locator('.analytics-figure__table').filter({
+    has: page.getByText('View time-of-day data', { exact: true }),
+  });
+  const content = disclosure.locator('.analytics-disclosure__content');
+  await expect(content).toHaveCSS('grid-template-rows', '0px');
+  await disclosure.locator('summary').click();
+  await expect(disclosure).toHaveAttribute('open', '');
+  await expect(content).not.toHaveCSS('transition-duration', '0s');
+  await expect.poll(() => page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  )).toBeLessThanOrEqual(1);
+  await disclosure.locator('summary').click();
+  await expect(disclosure).not.toHaveAttribute('open', '');
+});
+
 
 test.describe('when the local chart library cannot load', () => {
   test.beforeEach(async ({ page }) => {
@@ -155,23 +178,25 @@ test('Insights range response updates narrative controls export chart and table 
   await page.getByRole('link', { name: '7 days', exact: true }).click();
 
   await expect(page.locator('[data-insights-root]')).toHaveAttribute('data-insights-state', 'ready');
-  await expect(page.locator('[data-insights-headline]')).toHaveText('You used 20% less than the previous 7 days.');
+  await expect(page.locator('[data-insights-headline]')).toHaveText(
+    'You used 144 mg — 20% less than 180 mg in the previous 7 days.',
+  );
   await expect(page.getByRole('link', { name: '7 days', exact: true })).toHaveAttribute('aria-current', 'true');
   await expect(page.locator('#export-data')).toHaveAttribute('data-export-href', '/insights/api/export?days=7');
   const tableBody = page.locator('[data-analytics-key="trend"]');
   await expect(tableBody.locator('tr')).toHaveText([
-    '2026-07-2711',
-    '2026-07-2813',
+    '2026-07-2766',
+    '2026-07-2878',
   ]);
   expect((await page.locator('#consumption-trend-chart .apexcharts-data-labels text').allTextContents()).filter(Boolean))
-    .toEqual(['11', '13']);
+    .toEqual(['66', '78']);
 
   await expect(page.getByRole('button', { name: 'Daily', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Weekly', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Weekly', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect(tableBody.locator('tr')).toHaveText(['2026-07-2724']);
+  await expect(tableBody.locator('tr')).toHaveText(['2026-07-27144']);
   expect((await page.locator('#consumption-trend-chart .apexcharts-data-labels text').allTextContents()).filter(Boolean))
-    .toEqual(['24']);
+    .toEqual(['144']);
 
   await page.getByText('Open hourly detail and supporting measures', { exact: true }).click();
   await expect(page.locator('#heatmap-chart .apexcharts-canvas')).toBeVisible();
@@ -200,11 +225,11 @@ test('Insights can transition from sparse to empty without leaving a chart frame
       brand_pattern: false,
       heatmap: false,
     },
-    consumption_trend: [],
+    nicotine_trend: [],
     consumption_by_time_of_day: {},
-    consumption_by_day_of_week: {},
+    nicotine_by_day_of_week: {},
     brand_analysis: {},
-    heatmap_data: [],
+    nicotine_heatmap: [],
   };
   await page.route('**/insights/api/insights?days=90', (route) => route.fulfill({ json: empty }));
   await login(page);

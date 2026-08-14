@@ -12,7 +12,7 @@ from services import log_service
 
 LEGACY_KEYS = {
     "total_pouches",
-    "daily_average",
+    "daily_average_mg",
     "peak_day",
     "average_time_between_pouches",
     "total_nicotine",
@@ -21,10 +21,10 @@ LEGACY_KEYS = {
     "consistency_score",
     "trend_direction",
     "consumption_by_time_of_day",
-    "consumption_by_day_of_week",
+    "nicotine_by_day_of_week",
     "brand_analysis",
-    "consumption_trend",
-    "heatmap_data",
+    "nicotine_trend",
+    "nicotine_heatmap",
     "ai_insights",
 }
 
@@ -137,6 +137,32 @@ def test_nicotine_distributions_preserve_fractional_snapshot_precision_and_unkno
     }
     assert sum(result["nicotine_by_product"].values()) == Decimal("5.60")
     assert result["strength_coverage"]["known_logs"] == 3
+
+
+def test_daily_summary_measures_follow_nicotine_exposure_not_pouch_count(
+        db_session, test_user, test_pouch, monkeypatch):
+    boundary = datetime(2026, 8, 8, 0, 0)
+    _freeze_utcnow(monkeypatch, boundary)
+    stronger_day = _add_log(
+        db_session, test_user, test_pouch,
+        at=boundary - timedelta(days=2), quantity=1,
+    )
+    stronger_day.nicotine_mg_snapshot = Decimal("12.00")
+    weaker_day = _add_log(
+        db_session, test_user, test_pouch,
+        at=boundary - timedelta(days=1), quantity=2,
+    )
+    weaker_day.nicotine_mg_snapshot = Decimal("3.00")
+    db_session.commit()
+
+    result = insights_service.get_enhanced_insights(test_user.id, 7)
+
+    assert result["peak_day"] == 12.0
+    assert result["best_day"] == 6.0
+    assert result["nicotine_trend"] == [
+        {"date": (boundary - timedelta(days=2)).date().isoformat(), "value": 12.0},
+        {"date": (boundary - timedelta(days=1)).date().isoformat(), "value": 6.0},
+    ]
 
 
 def test_nicotine_distribution_preserves_distinct_nonblank_snapshot_whitespace(
@@ -754,12 +780,25 @@ def test_equal_adjacent_windows_produce_exact_comparison_and_sufficiency(
     assert result["observed_days"] == 7
     assert result["log_count"] == 7
     assert result["comparison"] == {
+        "metric": "nicotine_mg",
         "available": True,
-        "current_total": 21,
-        "previous_total": 28,
-        "absolute_change": -7,
+        "current_total": 84.0,
+        "previous_total": 112.0,
+        "absolute_change": -28.0,
         "percent_change": -25.0,
         "direction": "down",
+        "current_unknown_strength_count": 0,
+        "previous_unknown_strength_count": 0,
+    }
+    assert result["daily_average_mg"] == 12.0
+    assert result["nicotine_trend"] == [
+        {"date": (current_start + timedelta(days=offset)).date().isoformat(), "value": 12.0}
+        for offset in range(7)
+    ]
+    assert result["nicotine_by_day_of_week"] == {
+        "Monday": 12.0, "Tuesday": 12.0, "Wednesday": 12.0,
+        "Thursday": 12.0, "Friday": 12.0, "Saturday": 12.0,
+        "Sunday": 12.0,
     }
     assert result["data_sufficiency"] == {
         "trend": True,
@@ -796,12 +835,46 @@ def test_previous_zero_is_available_without_infinite_percent(
     comparison = insights_service.get_enhanced_insights(test_user.id, 7)["comparison"]
 
     assert comparison == {
+        "metric": "nicotine_mg",
         "available": True,
-        "current_total": 2,
+        "current_total": 8.0,
         "previous_total": 0,
-        "absolute_change": 2,
+        "absolute_change": 8.0,
         "percent_change": None,
         "direction": "up",
+        "current_unknown_strength_count": 0,
+        "previous_unknown_strength_count": 0,
+    }
+
+
+def test_unknown_strength_in_either_window_withholds_nicotine_comparison(
+        db_session, test_user, test_pouch, monkeypatch):
+    boundary = datetime(2026, 8, 1, 0, 0)
+    _freeze_utcnow(monkeypatch, boundary)
+    current = _add_log(
+        db_session, test_user, test_pouch,
+        at=boundary - timedelta(days=1), quantity=2,
+    )
+    current.nicotine_mg_snapshot = None
+    _add_log(
+        db_session, test_user, test_pouch,
+        at=boundary - timedelta(days=8), quantity=3,
+    )
+    db_session.commit()
+
+    result = insights_service.get_enhanced_insights(test_user.id, 7)
+
+    assert result["total_nicotine"] == 0
+    assert result["comparison"] == {
+        "metric": "nicotine_mg",
+        "available": False,
+        "current_total": 0,
+        "previous_total": 12.0,
+        "absolute_change": None,
+        "percent_change": None,
+        "direction": None,
+        "current_unknown_strength_count": 1,
+        "previous_unknown_strength_count": 0,
     }
 
 
@@ -847,7 +920,7 @@ def test_sparse_and_empty_current_ranges_never_invent_a_trend(
     assert empty["log_count"] == 0
     assert empty["comparison"]["available"] is False
     assert empty["comparison"]["current_total"] == 0
-    assert empty["comparison"]["previous_total"] == 2
+    assert empty["comparison"]["previous_total"] == 8.0
     assert empty["data_sufficiency"] == {
         "trend": False,
         "time_pattern": False,
@@ -906,6 +979,6 @@ def test_exact_shared_boundary_belongs_only_to_current_window(
 
     comparison = insights_service.get_enhanced_insights(test_user.id, 7)["comparison"]
 
-    assert comparison["current_total"] == 5
-    assert comparison["previous_total"] == 2
-    assert comparison["absolute_change"] == 3
+    assert comparison["current_total"] == 20.0
+    assert comparison["previous_total"] == 8.0
+    assert comparison["absolute_change"] == 12.0

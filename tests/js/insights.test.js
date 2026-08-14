@@ -109,7 +109,7 @@ test('chart render rejection exposes fallback without throwing', async () => {
 test('insights alternatives preserve the same labels and values as chart series', async () => {
   const { buildInsightsAlternativeModel } = await importModule('static/js/insights.js');
   const model = buildInsightsAlternativeModel({
-    consumption_trend: [
+    nicotine_trend: [
       { date: '2026-07-30', value: 2 },
       { date: '2026-07-31', value: 5 },
     ],
@@ -117,7 +117,7 @@ test('insights alternatives preserve the same labels and values as chart series'
       'Morning (6AM-12PM)': 4,
       'Evening (6PM-12AM)': 3,
     },
-    consumption_by_day_of_week: { Monday: 2, Tuesday: 5 },
+    nicotine_by_day_of_week: { Monday: 2, Tuesday: 5 },
     brand_analysis: { 'Steady Mint': 7 },
   });
 
@@ -258,28 +258,79 @@ test('nicotine distribution copy distinguishes no logs, unknown-only, known zero
 test('weekly trend model is the single source for chart and alternative rows', async () => {
   const { buildTrendModel } = await importModule('static/js/insights.js');
   const data = {
-    consumption_trend: [
-      { date: '2026-07-27', value: 2 },
-      { date: '2026-07-28', value: 5 },
-      { date: '2026-08-03', value: 11 },
+    nicotine_trend: [
+      { date: '2026-07-27', value: 8.5 },
+      { date: '2026-07-28', value: 20 },
+      { date: '2026-08-03', value: 44 },
     ],
   };
 
   assert.deepEqual(buildTrendModel(data, 'weekly'), [
-    { label: '2026-07-27', value: 7 },
-    { label: '2026-08-03', value: 11 },
+    { label: '2026-07-27', value: 28.5 },
+    { label: '2026-08-03', value: 44 },
   ]);
   assert.deepEqual(buildTrendModel(data, 'daily'), [
-    { label: '2026-07-27', value: 2 },
-    { label: '2026-07-28', value: 5 },
-    { label: '2026-08-03', value: 11 },
+    { label: '2026-07-27', value: 8.5 },
+    { label: '2026-07-28', value: 20 },
+    { label: '2026-08-03', value: 44 },
   ]);
+});
+
+test('nicotine-first comparison names both mg totals and primary measures', async () => {
+  const { buildInsightsViewModel } = await importModule('static/js/insights/view_model.js');
+  const model = buildInsightsViewModel({
+    total_pouches: 223,
+    total_nicotine: 1338,
+    daily_average_mg: 44.6,
+    observed_days: 30,
+    log_count: 223,
+    data_sufficiency: { trend: true },
+    comparison: {
+      metric: 'nicotine_mg', available: true,
+      current_total: 1338, previous_total: 372,
+      absolute_change: 966, percent_change: 259.7, direction: 'up',
+      current_unknown_strength_count: 0,
+      previous_unknown_strength_count: 0,
+    },
+  }, 30);
+
+  assert.equal(
+    model.headline,
+    'You used 1,338 mg — 259.7% more than 372 mg in the previous 30 days.',
+  );
+  assert.deepEqual(model.metrics, [
+    { key: 'current-use', label: 'Nicotine in 30 days', value: '1,338 mg' },
+    { key: 'daily-average', label: 'Daily average nicotine', value: '44.6 mg' },
+    { key: 'days-observed', label: 'Days with logs', value: '30' },
+  ]);
+});
+
+test('unknown strength reports a known subtotal without claiming a comparison', async () => {
+  const { buildInsightsViewModel } = await importModule('static/js/insights/view_model.js');
+  const model = buildInsightsViewModel({
+    total_pouches: 5,
+    total_nicotine: 16,
+    daily_average_mg: 2.3,
+    observed_days: 4,
+    log_count: 5,
+    data_sufficiency: { trend: true },
+    comparison: {
+      metric: 'nicotine_mg', available: false,
+      current_total: 16, previous_total: 28,
+      current_unknown_strength_count: 1,
+      previous_unknown_strength_count: 0,
+    },
+  }, 7);
+
+  assert.equal(model.headline, 'You logged 16 mg of known nicotine across 4 days.');
+  assert.match(model.interpretation, /1 current-range log has no saved strength/);
+  assert.doesNotMatch(model.headline, /more|less|%/);
 });
 
 test('heatmap alternatives preserve every day hour and value', async () => {
   const { buildInsightsAlternativeModel } = await importModule('static/js/insights.js');
   const model = buildInsightsAlternativeModel({
-    heatmap_data: [
+    nicotine_heatmap: [
       { name: 'Monday', data: [0, 3, 0] },
       { name: 'Tuesday', data: [{ x: '00:00', y: 2 }, { x: '01:00', y: 5 }] },
     ],
@@ -308,7 +359,8 @@ test('progress-first model separates period direction from active plan evidence'
   const { buildInsightsViewModel } = await importModule('static/js/insights/view_model.js');
   const model = buildInsightsViewModel({
     total_pouches: 21,
-    daily_average: 0.7,
+    total_nicotine: 21,
+    daily_average_mg: 0.7,
     observed_days: 30,
     log_count: 30,
     comparison: {
@@ -345,7 +397,7 @@ test('progress-first model separates period direction from active plan evidence'
   }, 30);
 
   assert.equal(model.state, 'ready');
-  assert.equal(model.headline, 'You used 25% less than the previous 30 days.');
+  assert.equal(model.headline, 'You used 21 mg — 25% less than 28 mg in the previous 30 days.');
   assert.doesNotMatch(model.interpretation, /your plan/i);
   assert.equal(model.planContext.visible, true);
   assert.match(model.planContext.interpretation, /15 pouches against a target of 18/i);
@@ -522,8 +574,8 @@ test('weekly and hourly figures receive honest sufficiency-gated interpretations
     observed_days: 7,
     log_count: 12,
     data_sufficiency: { trend: true, time_pattern: true, brand_pattern: true, heatmap: true },
-    consumption_by_day_of_week: { Monday: 2, Friday: 6, Sunday: 4 },
-    heatmap_data: [
+    nicotine_by_day_of_week: { Monday: 2, Friday: 6, Sunday: 4 },
+    nicotine_heatmap: [
       { name: 'Monday', data: [{ x: '08:00', y: 2 }] },
       { name: 'Friday', data: [{ x: '18:00', y: 6 }] },
     ],
@@ -533,12 +585,12 @@ test('weekly and hourly figures receive honest sufficiency-gated interpretations
     observed_days: 1,
     log_count: 2,
     data_sufficiency: { trend: false, heatmap: false },
-    consumption_by_day_of_week: { Friday: 2 },
-    heatmap_data: [{ name: 'Friday', data: [{ x: '18:00', y: 2 }] }],
+    nicotine_by_day_of_week: { Friday: 2 },
+    nicotine_heatmap: [{ name: 'Friday', data: [{ x: '18:00', y: 2 }] }],
   }, 7);
 
   assert.equal(ready.sections.weeklyPattern.leadingLabel, 'Friday');
-  assert.match(ready.sections.weeklyPattern.interpretation, /Friday has the most logged pouches/i);
+  assert.match(ready.sections.weeklyPattern.interpretation, /Friday has the most known nicotine/i);
   assert.equal(ready.sections.hourlyDetail.leadingLabel, 'Friday at 18:00');
   assert.match(ready.sections.hourlyDetail.interpretation, /Friday around 18:00/i);
   assert.equal(sparse.sections.weeklyPattern.available, false);
@@ -551,6 +603,8 @@ test('progress-first model uses candid neutral language for higher and steady us
   const { buildInsightsViewModel } = await importModule('static/js/insights/view_model.js');
   const base = {
     total_pouches: 28,
+    total_nicotine: 28,
+    daily_average_mg: 4,
     observed_days: 7,
     log_count: 7,
     data_sufficiency: { trend: true, time_pattern: false, brand_pattern: false },
@@ -576,9 +630,9 @@ test('progress-first model uses candid neutral language for higher and steady us
     },
   }, 7);
 
-  assert.equal(higher.headline, 'You used 12% more than the previous 7 days.');
+  assert.equal(higher.headline, 'You used 28 mg — 12% more than 25 mg in the previous 7 days.');
   assert.doesNotMatch(`${higher.headline} ${higher.interpretation}`, /fail/i);
-  assert.equal(steady.headline, 'Your use was steady compared with the previous 7 days.');
+  assert.equal(steady.headline, 'You used 28 mg, the same as the previous 7 days.');
   assert.equal(higher.sections.timePattern.available, false);
   assert.equal(higher.sections.productPattern.available, false);
 });
@@ -587,6 +641,7 @@ test('sparse and empty models invite continued logging without inventing directi
   const { buildInsightsViewModel } = await importModule('static/js/insights/view_model.js');
   const sparse = buildInsightsViewModel({
     total_pouches: 4,
+    total_nicotine: 16,
     observed_days: 2,
     log_count: 2,
     comparison: { available: false, current_total: 4 },
@@ -602,7 +657,7 @@ test('sparse and empty models invite continued logging without inventing directi
 
   assert.equal(sparse.state, 'sparse');
   assert.equal(sparse.headline, 'Keep logging to reveal a reliable direction.');
-  assert.match(sparse.interpretation, /4 pouches across 2 days/i);
+  assert.match(sparse.interpretation, /16 mg of known nicotine across 2 days/i);
   assert.doesNotMatch(sparse.interpretation, /less|more|steady/i);
   assert.equal(sparse.nextStep.href, '/today/');
   assert.equal(empty.state, 'empty');
@@ -614,7 +669,8 @@ test('missing comparison reports the observed fact without claiming a trend', as
   const { buildInsightsViewModel } = await importModule('static/js/insights/view_model.js');
   const model = buildInsightsViewModel({
     total_pouches: 18,
-    daily_average: 4.5,
+    total_nicotine: 18,
+    daily_average_mg: 4.5,
     observed_days: 4,
     log_count: 6,
     comparison: { available: false, current_total: 18 },
@@ -624,7 +680,7 @@ test('missing comparison reports the observed fact without claiming a trend', as
   }, 7);
 
   assert.equal(model.state, 'ready');
-  assert.equal(model.headline, 'You logged 18 pouches across 4 days.');
+  assert.equal(model.headline, 'You logged 18 mg of known nicotine across 4 days.');
   assert.doesNotMatch(`${model.headline} ${model.interpretation}`, /less|more|steady/i);
   assert.equal(model.sections.timePattern.leadingLabel, 'Evening');
   assert.equal(model.sections.productPattern.leadingLabel, 'Citrus');
@@ -634,6 +690,7 @@ test('a zero previous total never becomes a false zero-percent comparison', asyn
   const { buildInsightsViewModel } = await importModule('static/js/insights/view_model.js');
   const model = buildInsightsViewModel({
     total_pouches: 2,
+    total_nicotine: 2,
     observed_days: 3,
     log_count: 3,
     comparison: {
@@ -646,7 +703,7 @@ test('a zero previous total never becomes a false zero-percent comparison', asyn
     data_sufficiency: { trend: true, time_pattern: false, brand_pattern: false },
   }, 7);
 
-  assert.equal(model.headline, 'You logged 2 pouches; the previous 7 days had none.');
+  assert.equal(model.headline, 'You used 2 mg; the previous 7 days had none.');
   assert.doesNotMatch(model.headline, /0%/);
 });
 
@@ -654,13 +711,13 @@ test('chart eligibility follows sufficiency, non-zero data, and visible detail',
   const { renderInsights, selectEligibleChartIds } = await importModule('static/js/insights.js');
   assert.equal(typeof renderInsights, 'function');
   const ready = {
-    consumption_trend: [{ date: '2026-08-01', value: 2 }],
+    nicotine_trend: [{ date: '2026-08-01', value: 2 }],
     consumption_by_time_of_day: { Morning: 2 },
     nicotine_by_time_of_day: { Morning: 8 },
-    consumption_by_day_of_week: { Monday: 2 },
+    nicotine_by_day_of_week: { Monday: 2 },
     brand_analysis: { Mint: 2 },
     nicotine_by_product: { Mint: 8 },
-    heatmap_data: [{ name: 'Monday', data: [0, 2] }],
+    nicotine_heatmap: [{ name: 'Monday', data: [0, 2] }],
     data_sufficiency: {
       trend: true,
       time_pattern: true,
@@ -684,13 +741,13 @@ test('chart eligibility follows sufficiency, non-zero data, and visible detail',
   ]);
   assert.deepEqual(selectEligibleChartIds({
     ...ready,
-    consumption_trend: [{ date: '2026-08-01', value: 0 }],
+    nicotine_trend: [{ date: '2026-08-01', value: 0 }],
     consumption_by_time_of_day: { Morning: 0 },
     nicotine_by_time_of_day: { Morning: 0 },
-    consumption_by_day_of_week: { Monday: 0 },
+    nicotine_by_day_of_week: { Monday: 0 },
     brand_analysis: { Mint: 0 },
     nicotine_by_product: { Mint: 0 },
-    heatmap_data: [{ name: 'Monday', data: [0, 0] }],
+    nicotine_heatmap: [{ name: 'Monday', data: [0, 0] }],
   }, 'daily', { detailsOpen: true }), []);
 });
 
