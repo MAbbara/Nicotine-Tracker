@@ -77,7 +77,9 @@ export function buildInsightsAlternativeModel(data = {}, trendType = 'daily') {
     trend: buildTrendModel(data, trendType),
     trendTable,
     timeOfDay: pairs(data.consumption_by_time_of_day),
-    dayOfWeek: DAYS.map((label) => ({
+    dayOfWeek: DAYS.filter((label) => (
+      Object.prototype.hasOwnProperty.call(data.nicotine_by_day_of_week || {}, label)
+    )).map((label) => ({
       label,
       value: Number(data.nicotine_by_day_of_week?.[label]) || 0,
     })),
@@ -118,7 +120,7 @@ export function selectEligibleChartIds(data = {}, trendType = 'daily', { details
   if (sufficient.time_pattern && hasPositive(model.timeOfDayBars.map((row) => row.mg))) {
     eligible.push('time-of-day-chart');
   }
-  if (sufficient.trend && hasPositive(model.dayOfWeek.map((row) => row.value))) {
+  if (sufficient.weekday_pattern && hasPositive(model.dayOfWeek.map((row) => row.value))) {
     eligible.push('day-of-week-chart');
   }
   if (sufficient.brand_pattern && hasPositive(model.productBars.map((row) => row.mg))) {

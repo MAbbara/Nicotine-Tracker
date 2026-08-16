@@ -140,7 +140,7 @@ const INSIGHTS_FIXTURES = {
       current_unknown_strength_count: 0, previous_unknown_strength_count: 0,
     },
     data_sufficiency: {
-      trend: false, time_pattern: false, brand_pattern: false, heatmap: false,
+      trend: false, weekday_pattern: false, time_pattern: false, brand_pattern: false, heatmap: false,
     },
     plan_context: {
       state: 'active_targeted', adherence_available: false, compared_days: 0,
@@ -177,7 +177,7 @@ const INSIGHTS_FIXTURES = {
       current_unknown_strength_count: 0, previous_unknown_strength_count: 0,
     },
     data_sufficiency: {
-      trend: true, time_pattern: true, brand_pattern: true, heatmap: true,
+      trend: true, weekday_pattern: true, time_pattern: true, brand_pattern: true, heatmap: true,
     },
     plan_context: {
       state: 'active_targeted', adherence_available: true, compared_days: 3,
@@ -226,7 +226,7 @@ const INSIGHTS_FIXTURES = {
       current_unknown_strength_count: 1, previous_unknown_strength_count: 0,
     },
     data_sufficiency: {
-      trend: true, time_pattern: true, brand_pattern: true, heatmap: true,
+      trend: true, weekday_pattern: true, time_pattern: true, brand_pattern: true, heatmap: true,
     },
     plan_context: { state: 'active_observe', adherence_available: false, compared_days: 0 },
     craving_pattern: { available: false },
@@ -414,11 +414,13 @@ function expectedSemanticSnapshot(payload, days, trendType = 'daily') {
     .sort((a, b) => b.amount - a.amount);
   const timeBars = bars(payload.nicotine_by_time_of_day);
   const productBars = bars(payload.nicotine_by_product);
-  const weekdays = DAYS.map((label) => Number(payload.nicotine_by_day_of_week[label]) || 0);
+  const weekdays = DAYS
+    .filter((label) => Object.hasOwn(payload.nicotine_by_day_of_week, label))
+    .map((label) => ({ label, value: Number(payload.nicotine_by_day_of_week[label]) || 0 }));
   const eligible = {
     'consumption-trend-chart': payload.data_sufficiency.trend && trend.some(({ value }) => Number(value) > 0),
     'time-of-day-chart': payload.data_sufficiency.time_pattern && timeBars.length > 0,
-    'day-of-week-chart': payload.data_sufficiency.trend && weekdays.some((value) => value > 0),
+    'day-of-week-chart': payload.data_sufficiency.weekday_pattern && weekdays.some(({ value }) => value > 0),
     'brand-chart': payload.data_sufficiency.brand_pattern && productBars.length > 0,
     'heatmap-chart': false,
   };
@@ -464,7 +466,9 @@ function expectedSemanticSnapshot(payload, days, trendType = 'daily') {
     tables: {
       trend: trend.length ? trend.map(({ date, value }) => [date, String(value)]) : emptyRow('No known nicotine logged in this range.'),
       timeOfDay: Object.keys(payload.nicotine_by_time_of_day).length ? nicotinePairs(payload.nicotine_by_time_of_day) : emptyRow('No known-strength nicotine logged in this range.'),
-      dayOfWeek: DAYS.map((label, index) => [label, String(weekdays[index])]),
+      dayOfWeek: weekdays.length
+        ? weekdays.map(({ label, value }) => [label, String(value)])
+        : emptyRow('No weekly pattern available.'),
       brands: Object.keys(payload.nicotine_by_product).length ? nicotinePairs(payload.nicotine_by_product) : emptyRow('No known-strength product data in this range.'),
       heatmap: heatmapRows,
     },
@@ -480,8 +484,8 @@ function expectedSemanticSnapshot(payload, days, trendType = 'daily') {
         categories: timeBars.map(({ label }) => label),
       }),
       'day-of-week-chart': chart('day-of-week-chart', {
-        type: 'bar', horizontal: false, series: [{ name: 'Average nicotine per complete-strength logged day (mg)', data: weekdays }],
-        categories: DAYS.map((label) => label.slice(0, 3)),
+        type: 'bar', horizontal: false, series: [{ name: 'Average nicotine per complete-strength logged day (mg)', data: weekdays.map(({ value }) => value) }],
+        categories: weekdays.map(({ label }) => label.slice(0, 3)),
       }),
       'brand-chart': chart('brand-chart', {
         type: 'bar', horizontal: true,

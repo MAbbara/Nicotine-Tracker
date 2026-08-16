@@ -452,6 +452,35 @@ def test_insights_renders_local_enhancement_and_semantic_values(
     assert "craving_pattern" in payload["data_sufficiency"]
 
 
+def test_insights_zero_weekday_pattern_is_sufficient_without_a_leader(
+        logged_in_client, monkeypatch):
+    import routes.insights as insights_routes
+
+    original = insights_routes.get_enhanced_insights
+
+    def zero_weekday_pattern(user_id, days):
+        payload = original(user_id, days)
+        payload["data_sufficiency"]["weekday_pattern"] = True
+        payload["nicotine_by_day_of_week"] = {
+            "Monday": 0,
+            "Tuesday": 0,
+            "Wednesday": 0,
+        }
+        return payload
+
+    monkeypatch.setattr(
+        insights_routes,
+        "get_enhanced_insights",
+        zero_weekday_pattern,
+    )
+
+    soup = _soup(logged_in_client.get("/insights/"))
+
+    copy = soup.select_one("[data-insights-weekly-copy]").get_text(" ", strip=True)
+    assert "averaged 0 mg" in copy
+    assert "more complete days" not in copy
+
+
 def test_insights_uses_editorial_structure_and_retired_legacy_dashboard(
         logged_in_client):
     soup = _soup(logged_in_client.get("/insights/"))

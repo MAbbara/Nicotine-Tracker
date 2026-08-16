@@ -275,13 +275,21 @@ export function buildInsightsViewModel(data = {}, rangeDays = 30) {
     availableCopy: ({ label }) => `${label} appears most often in this range. Use that context when you adjust your plan.`,
     unavailableCopy: 'A few more product logs will reveal what you reach for most often.',
   });
-  const weeklyPattern = patternSection({
-    available: Boolean(sufficiency.trend),
-    values: data.nicotine_by_day_of_week,
+  const weeklyValues = data.nicotine_by_day_of_week || {};
+  const weeklySufficient = Boolean(sufficiency.weekday_pattern)
+    && Object.keys(weeklyValues).length > 0;
+  const weeklyLeader = weeklySufficient ? leadingEntry(weeklyValues) : null;
+  const weeklyPattern = {
+    available: weeklySufficient,
     heading: 'Weekly pattern',
-    availableCopy: ({ label }) => `Complete-strength logged ${label}s average the most known nicotine in this range. Use it as a cue to plan support, not a verdict.`,
-    unavailableCopy: 'Log across more complete days to reveal a dependable weekly pattern.',
-  });
+    leadingLabel: weeklyLeader?.label || null,
+    leadingValue: weeklyLeader?.value || 0,
+    interpretation: weeklyLeader
+      ? `Complete-strength logged ${weeklyLeader.label}s average the most known nicotine in this range. Use it as a cue to plan support, not a verdict.`
+      : weeklySufficient
+        ? 'Complete-strength logged days in this range averaged 0 mg of known nicotine.'
+        : 'Log across more complete days to reveal a dependable weekly pattern.',
+  };
   const hourlyLeader = sufficiency.heatmap
     ? leadingHeatmapEntry(data.nicotine_heatmap)
     : null;

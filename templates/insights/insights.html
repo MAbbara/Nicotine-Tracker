@@ -203,8 +203,10 @@
             <div class="insights-figure insights-figure--secondary">
                 <h3 id="day-of-week-title">Weekly pattern</h3>
                 <p data-insights-weekly-copy>
-                    {% if sufficiency.get('trend') and weekly_leader.label %}
+                    {% if sufficiency.get('weekday_pattern') and weekly_leader.label %}
                         Complete-strength logged {{ weekly_leader.label }}s average the most known nicotine in this range. Use it as a cue to plan support, not a verdict.
+                    {% elif sufficiency.get('weekday_pattern') and initial_insights.get('nicotine_by_day_of_week', {}) %}
+                        Complete-strength logged days in this range averaged 0 mg of known nicotine.
                     {% else %}
                         Log across more complete days to reveal a dependable weekly pattern.
                     {% endif %}

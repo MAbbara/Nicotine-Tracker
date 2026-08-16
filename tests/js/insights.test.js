@@ -310,6 +310,20 @@ test('weekly charts distinguish totals from weekday daily averages', async () =>
   }
 });
 
+test('weekday alternatives preserve observed zero without inventing missing weekdays', async () => {
+  const { buildInsightsAlternativeModel } = await importModule('static/js/insights.js');
+
+  assert.deepEqual(
+    buildInsightsAlternativeModel({
+      nicotine_by_day_of_week: { Monday: 0, Tuesday: 12 },
+    }).dayOfWeek,
+    [
+      { label: 'Monday', value: 0 },
+      { label: 'Tuesday', value: 12 },
+    ],
+  );
+});
+
 test('nicotine-first comparison names both mg totals and primary measures', async () => {
   const { buildInsightsViewModel } = await importModule('static/js/insights/view_model.js');
   const model = buildInsightsViewModel({
@@ -406,6 +420,7 @@ test('progress-first model separates period direction from active plan evidence'
     },
     data_sufficiency: {
       trend: true,
+      weekday_pattern: true,
       time_pattern: true,
       brand_pattern: true,
       heatmap: true,
@@ -607,7 +622,10 @@ test('weekly and hourly figures receive honest sufficiency-gated interpretations
     total_pouches: 12,
     observed_days: 7,
     log_count: 12,
-    data_sufficiency: { trend: true, time_pattern: true, brand_pattern: true, heatmap: true },
+    data_sufficiency: {
+      trend: true, weekday_pattern: true,
+      time_pattern: true, brand_pattern: true, heatmap: true,
+    },
     nicotine_by_day_of_week: { Monday: 2, Friday: 6, Sunday: 4 },
     nicotine_heatmap: [
       { name: 'Monday', data: [{ x: '08:00', y: 2 }] },
@@ -622,6 +640,20 @@ test('weekly and hourly figures receive honest sufficiency-gated interpretations
     nicotine_by_day_of_week: { Friday: 2 },
     nicotine_heatmap: [{ name: 'Friday', data: [{ x: '18:00', y: 2 }] }],
   }, 7);
+  const incomplete = buildInsightsViewModel({
+    total_pouches: 3,
+    observed_days: 3,
+    log_count: 3,
+    data_sufficiency: { trend: true, weekday_pattern: false },
+    nicotine_by_day_of_week: { Monday: 6 },
+  }, 7);
+  const knownZero = buildInsightsViewModel({
+    total_pouches: 3,
+    observed_days: 3,
+    log_count: 3,
+    data_sufficiency: { trend: true, weekday_pattern: true },
+    nicotine_by_day_of_week: { Monday: 0, Tuesday: 0, Wednesday: 0 },
+  }, 7);
 
   assert.equal(ready.sections.weeklyPattern.leadingLabel, 'Friday');
   assert.match(ready.sections.weeklyPattern.interpretation, /Complete-strength logged Fridays average the most known nicotine/i);
@@ -629,6 +661,11 @@ test('weekly and hourly figures receive honest sufficiency-gated interpretations
   assert.match(ready.sections.hourlyDetail.interpretation, /Friday around 18:00/i);
   assert.equal(sparse.sections.weeklyPattern.available, false);
   assert.match(sparse.sections.weeklyPattern.interpretation, /more complete days/i);
+  assert.equal(incomplete.sections.weeklyPattern.available, false);
+  assert.match(incomplete.sections.weeklyPattern.interpretation, /more complete days/i);
+  assert.equal(knownZero.sections.weeklyPattern.available, true);
+  assert.equal(knownZero.sections.weeklyPattern.leadingLabel, null);
+  assert.match(knownZero.sections.weeklyPattern.interpretation, /averaged 0 mg/i);
   assert.equal(sparse.sections.hourlyDetail.available, false);
   assert.match(sparse.sections.hourlyDetail.interpretation, /more days and times/i);
 });
@@ -754,6 +791,7 @@ test('chart eligibility follows sufficiency, non-zero data, and visible detail',
     nicotine_heatmap: [{ name: 'Monday', data: [0, 2] }],
     data_sufficiency: {
       trend: true,
+      weekday_pattern: true,
       time_pattern: true,
       brand_pattern: true,
       heatmap: true,

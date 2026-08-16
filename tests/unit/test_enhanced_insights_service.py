@@ -183,12 +183,39 @@ def test_weekday_pattern_averages_each_weekday_occurrence_in_the_range():
     assert insights_service.get_nicotine_by_day_of_week(logs) == {
         "Monday": 33.0,
         "Tuesday": 18.0,
-        "Wednesday": 0,
-        "Thursday": 0,
-        "Friday": 0,
-        "Saturday": 0,
-        "Sunday": 0,
     }
+
+
+def test_weekday_pattern_omits_days_without_complete_strength_observations():
+    logs = pd.DataFrame({
+        "user_time": pd.to_datetime([
+            "2026-08-03T10:00:00Z",
+            "2026-08-04T10:00:00Z",
+        ], utc=True),
+        "quantity": [1, 1],
+        "nicotine_mg": [6, None],
+    })
+
+    assert insights_service.get_nicotine_by_day_of_week(logs) == {
+        "Monday": 6.0,
+    }
+
+
+def test_weekday_pattern_requires_three_complete_strength_local_days():
+    logs = pd.DataFrame({
+        "user_time": pd.to_datetime([
+            "2026-08-03T10:00:00Z",
+            "2026-08-04T10:00:00Z",
+            "2026-08-05T10:00:00Z",
+        ], utc=True),
+        "quantity": [1, 1, 1],
+        "nicotine_mg": [6, None, None],
+    })
+
+    metadata = insights_service._comparison_metadata(logs, pd.DataFrame(), 7)
+
+    assert metadata["data_sufficiency"]["trend"] is True
+    assert metadata["data_sufficiency"]["weekday_pattern"] is False
 
 
 def test_nicotine_distribution_preserves_distinct_nonblank_snapshot_whitespace(
@@ -828,6 +855,7 @@ def test_equal_adjacent_windows_produce_exact_comparison_and_sufficiency(
     }
     assert result["data_sufficiency"] == {
         "trend": True,
+        "weekday_pattern": True,
         "time_pattern": True,
         "brand_pattern": True,
         "heatmap": True,
@@ -930,6 +958,7 @@ def test_sparse_and_empty_current_ranges_never_invent_a_trend(
     assert sparse["log_count"] == 2
     assert sparse["data_sufficiency"] == {
         "trend": False,
+        "weekday_pattern": False,
         "time_pattern": False,
         "brand_pattern": False,
         "heatmap": False,
@@ -949,6 +978,7 @@ def test_sparse_and_empty_current_ranges_never_invent_a_trend(
     assert empty["comparison"]["previous_total"] == 8.0
     assert empty["data_sufficiency"] == {
         "trend": False,
+        "weekday_pattern": False,
         "time_pattern": False,
         "brand_pattern": False,
         "heatmap": False,

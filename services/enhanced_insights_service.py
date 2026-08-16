@@ -69,6 +69,17 @@ def _known_nicotine_total(df):
     return total.quantize(Decimal('0.01')), unknown_strength_count
 
 
+def _complete_strength_local_days(df):
+    """Return logs from local days where every saved strength is known."""
+    if df.empty:
+        return df.copy()
+    dated = df.assign(date=df['user_time'].dt.date)
+    complete_dates = dated.groupby('date')['nicotine_mg'].apply(
+        lambda strengths: strengths.notna().all()
+    )
+    return dated[dated['date'].isin(complete_dates[complete_dates].index)]
+
+
 def _comparison_metadata(current_df, previous_df, days):
     current_total, current_unknown = _known_nicotine_total(current_df)
     previous_total, previous_unknown = _known_nicotine_total(previous_df)
@@ -78,6 +89,9 @@ def _comparison_metadata(current_df, previous_df, days):
         else 0
     )
     log_count = int(len(current_df))
+    complete_strength_days = int(
+        _complete_strength_local_days(current_df)['date'].nunique()
+    ) if not current_df.empty else 0
     comparison_available = (
         not current_df.empty
         and not previous_df.empty
@@ -114,6 +128,7 @@ def _comparison_metadata(current_df, previous_df, days):
         },
         'data_sufficiency': {
             'trend': observed_days >= 3 and log_count >= 3,
+            'weekday_pattern': complete_strength_days >= 3,
             'time_pattern': log_count >= 5,
             'brand_pattern': log_count >= 3,
             'heatmap': observed_days >= 7 and log_count >= 7,
@@ -557,19 +572,15 @@ def get_nicotine_by_day_of_week(df):
     if df.empty:
         return {}
 
-    dated = df.assign(date=df['user_time'].dt.date)
-    complete_dates = dated.groupby('date')['nicotine_mg'].apply(
-        lambda strengths: strengths.notna().all()
-    )
-    complete = dated[dated['date'].isin(complete_dates[complete_dates].index)]
+    complete = _complete_strength_local_days(df)
     known = _with_known_nicotine(complete)
     known['day_of_week'] = known['user_time'].dt.day_name()
     daily_nicotine = known.groupby(['date', 'day_of_week'])['known_nicotine_mg'].sum()
     nicotine_by_day = daily_nicotine.groupby('day_of_week').mean().reindex([
         'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
-    ]).fillna(0).to_dict()
+    ]).dropna().to_dict()
 
-    return {k: round(float(v), 2) if pd.notna(v) else 0 for k, v in nicotine_by_day.items()}
+    return {k: round(float(v), 2) for k, v in nicotine_by_day.items()}
 
 def get_brand_analysis(df):
     """Analyze brand preferences"""
