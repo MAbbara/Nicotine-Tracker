@@ -165,6 +165,32 @@ def test_daily_summary_measures_follow_nicotine_exposure_not_pouch_count(
     ]
 
 
+def test_weekday_pattern_averages_each_weekday_occurrence_in_the_range():
+    logs = pd.DataFrame({
+        "user_time": pd.to_datetime([
+            "2026-07-26T22:30:00Z",  # Local Monday: 12 mg
+            "2026-07-27T10:00:00Z",  # Same local Monday: 6 mg
+            "2026-08-03T10:00:00Z",  # Local Monday: 48 mg
+            "2026-08-04T10:00:00Z",  # Local Tuesday: 18 mg
+            "2026-08-10T10:00:00Z",  # Unknown-only Monday: excluded
+            "2026-08-17T10:00:00Z",  # Incomplete Monday: excluded
+            "2026-08-17T11:00:00Z",
+        ], utc=True).tz_convert("Asia/Riyadh"),
+        "quantity": [2, 1, 4, 3, 1, 5, 1],
+        "nicotine_mg": [6, 6, 12, 6, None, 12, None],
+    })
+
+    assert insights_service.get_nicotine_by_day_of_week(logs) == {
+        "Monday": 33.0,
+        "Tuesday": 18.0,
+        "Wednesday": 0,
+        "Thursday": 0,
+        "Friday": 0,
+        "Saturday": 0,
+        "Sunday": 0,
+    }
+
+
 def test_nicotine_distribution_preserves_distinct_nonblank_snapshot_whitespace(
         db_session, test_user, test_pouch, monkeypatch):
     boundary = datetime(2026, 8, 8, 0, 0)

@@ -165,7 +165,7 @@
                 <h3 id="consumption-trend-title">Consumption Trend</h3>
                 <div class="insights-toggle" aria-label="Trend grouping">
                     <button class="trend-toggle is-active" type="button" data-type="daily">Daily</button>
-                    <button class="trend-toggle" type="button" data-type="weekly">Weekly</button>
+                    <button class="trend-toggle" type="button" data-type="weekly">Weekly sums</button>
                 </div>
             </div>
             <div id="consumption-trend-chart" class="analytics-chart" role="img" aria-labelledby="consumption-trend-title"></div>
@@ -204,7 +204,7 @@
                 <h3 id="day-of-week-title">Weekly pattern</h3>
                 <p data-insights-weekly-copy>
                     {% if sufficiency.get('trend') and weekly_leader.label %}
-                        {{ weekly_leader.label }} has the most known nicotine in this range. Use it as a cue to plan support, not a verdict.
+                        Complete-strength logged {{ weekly_leader.label }}s average the most known nicotine in this range. Use it as a cue to plan support, not a verdict.
                     {% else %}
                         Log across more complete days to reveal a dependable weekly pattern.
                     {% endif %}
@@ -213,7 +213,7 @@
                 <p class="analytics-chart__status" role="status" aria-live="polite" hidden></p>
                 <details class="analytics-figure__table">
                     <summary>View weekly pattern data</summary>
-                    <div class="analytics-disclosure__content"><div class="analytics-disclosure__inner"><div class="analytics-data" tabindex="0" role="region" aria-label="Weekly pattern data"><table><caption>Weekly pattern data</caption><thead><tr><th scope="col">Day</th><th scope="col">Nicotine (mg)</th></tr></thead><tbody data-analytics-key="dayOfWeek">{% for label, value in initial_insights.get('nicotine_by_day_of_week', {}).items() %}<tr><th scope="row">{{ label }}</th><td>{{ value }}</td></tr>{% else %}<tr><td colspan="2">No weekly pattern available.</td></tr>{% endfor %}</tbody></table></div></div></div>
+                    <div class="analytics-disclosure__content"><div class="analytics-disclosure__inner"><div class="analytics-data" tabindex="0" role="region" aria-label="Weekly pattern data"><table><caption>Average nicotine by weekday</caption><thead><tr><th scope="col">Day</th><th scope="col">Average per complete-strength logged day (mg)</th></tr></thead><tbody data-analytics-key="dayOfWeek">{% for label, value in initial_insights.get('nicotine_by_day_of_week', {}).items() %}<tr><th scope="row">{{ label }}</th><td>{{ value }}</td></tr>{% else %}<tr><td colspan="2">No weekly pattern available.</td></tr>{% endfor %}</tbody></table></div></div></div>
                 </details>
             </div>
         </section>

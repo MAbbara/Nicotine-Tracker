@@ -207,7 +207,7 @@ const INSIGHTS_FIXTURES = {
       plan: 'Across 3 matched plan days, you logged 15 pouches against a target of 18. 2 of 3 days were on or below target.',
       time: 'Morning is your most active part of the day. Plan support just before it begins.',
       timeNicotine: 'Leading category Morning accounts for 60 mg (100% of known nicotine). 5 of 5 logs include nicotine strength.',
-      weekly: 'Thursday has the most known nicotine in this range. Use it as a cue to plan support, not a verdict.',
+      weekly: 'Complete-strength logged Thursdays average the most known nicotine in this range. Use it as a cue to plan support, not a verdict.',
       product: 'Main appears most often in this range. Use that context when you adjust your plan.',
       productNicotine: 'Leading category Main accounts for 36 mg (60% of known nicotine). 5 of 5 logs include nicotine strength.',
       craving: 'Stress appeared in 2 of 3 resolved cravings. You chose a non-nicotine response 66.7% of the time.',
@@ -253,7 +253,7 @@ const INSIGHTS_FIXTURES = {
       plan: '',
       time: 'Afternoon is your most active part of the day. Plan support just before it begins.',
       timeNicotine: 'Leading category Afternoon accounts for 132 mg (73.3% of known nicotine). 7 of 8 logs include nicotine strength. Nicotine totals are incomplete.',
-      weekly: 'Friday has the most known nicotine in this range. Use it as a cue to plan support, not a verdict.',
+      weekly: 'Complete-strength logged Fridays average the most known nicotine in this range. Use it as a cue to plan support, not a verdict.',
       product: 'Third appears most often in this range. Use that context when you adjust your plan.',
       productNicotine: `Leading category ${LONG_PRODUCT} accounts for 90 mg (50% of known nicotine). 7 of 8 logs include nicotine strength. Nicotine totals are incomplete.`,
       craving: '',
@@ -471,7 +471,7 @@ function expectedSemanticSnapshot(payload, days, trendType = 'daily') {
     charts: {
       'consumption-trend-chart': chart('consumption-trend-chart', {
         type: 'line', horizontal: false,
-        series: [{ name: trendType === 'weekly' ? 'Weekly nicotine (mg)' : 'Daily nicotine (mg)', data: trend.map(({ date, value }) => ({ x: date, y: Number(value) })) }],
+        series: [{ name: trendType === 'weekly' ? 'Weekly sum within selected range (mg)' : 'Daily nicotine (mg)', data: trend.map(({ date, value }) => ({ x: date, y: Number(value) })) }],
         categories: null,
       }),
       'time-of-day-chart': chart('time-of-day-chart', {
@@ -480,7 +480,7 @@ function expectedSemanticSnapshot(payload, days, trendType = 'daily') {
         categories: timeBars.map(({ label }) => label),
       }),
       'day-of-week-chart': chart('day-of-week-chart', {
-        type: 'bar', horizontal: false, series: [{ name: 'Nicotine (mg)', data: weekdays }],
+        type: 'bar', horizontal: false, series: [{ name: 'Average nicotine per complete-strength logged day (mg)', data: weekdays }],
         categories: DAYS.map((label) => label.slice(0, 3)),
       }),
       'brand-chart': chart('brand-chart', {
@@ -768,17 +768,24 @@ test('Insights presentation commits preserve owned focus without stealing moved 
   await login(page, 'insights-range@example.com');
   await page.goto('/insights/?days=30');
 
-  const weekly = page.getByRole('button', { name: 'Weekly' });
+  const weekly = page.getByRole('button', { name: 'Weekly sums' });
   await weekly.focus();
   await page.keyboard.press('Enter');
   await expect(weekly).toHaveAttribute('aria-pressed', 'true');
   await expect(weekly).toBeFocused();
+  const trendTable = page.locator('[data-analytics-key="trend"]').locator('xpath=ancestor::table');
+  await expect(trendTable.locator('caption')).toHaveText('Known nicotine grouped by calendar week');
+  await expect(trendTable.locator('thead th')).toHaveText([
+    'Week starting', 'Sum within selected range (mg)',
+  ]);
 
   const daily = page.getByRole('button', { name: 'Daily' });
   await daily.focus();
   await page.keyboard.press('Enter');
   await expect(daily).toHaveAttribute('aria-pressed', 'true');
   await expect(daily).toBeFocused();
+  await expect(trendTable.locator('caption')).toHaveText('Consumption trend data');
+  await expect(trendTable.locator('thead th')).toHaveText(['Date', 'Nicotine (mg)']);
 
   let releaseNinety;
   const ninetyHeld = new Promise((resolve) => { releaseNinety = resolve; });

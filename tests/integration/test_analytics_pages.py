@@ -406,6 +406,20 @@ def test_insights_renders_local_enhancement_and_semantic_values(
         "Date", "Nicotine (mg)",
     ]
     assert trend.select_one("table caption").get_text(" ", strip=True) == "Consumption trend data"
+    assert [
+        control.get_text(" ", strip=True)
+        for control in soup.select(".trend-toggle")
+    ] == ["Daily", "Weekly sums"]
+    weekday_table = soup.select_one(
+        "[role='region'][aria-label='Weekly pattern data'] table"
+    )
+    assert weekday_table.select_one("caption").get_text(" ", strip=True) == (
+        "Average nicotine by weekday"
+    )
+    assert [
+        cell.get_text(" ", strip=True)
+        for cell in weekday_table.select("thead th")
+    ] == ["Day", "Average per complete-strength logged day (mg)"]
     heatmap = soup.select_one("[role='region'][aria-label='Nicotine heatmap data'] table")
     assert [cell.get_text(strip=True) for cell in heatmap.select("thead th")] == [
         "Day", *(f"{hour:02d}:00" for hour in range(24))

@@ -62,8 +62,20 @@ export function buildInsightsAlternativeModel(data = {}, trendType = 'daily') {
   };
   const timeOfDayMg = mgRows(data.nicotine_by_time_of_day);
   const productMg = mgRows(data.nicotine_by_product);
+  const trendTable = trendType === 'weekly'
+    ? {
+      caption: 'Known nicotine grouped by calendar week',
+      labelHeading: 'Week starting',
+      valueHeading: 'Sum within selected range (mg)',
+    }
+    : {
+      caption: 'Consumption trend data',
+      labelHeading: 'Date',
+      valueHeading: 'Nicotine (mg)',
+    };
   return {
     trend: buildTrendModel(data, trendType),
+    trendTable,
     timeOfDay: pairs(data.consumption_by_time_of_day),
     dayOfWeek: DAYS.map((label) => ({
       label,
@@ -181,6 +193,14 @@ function renderHeatmapRows(root, rows) {
 function updateAlternatives(root, data, trendType) {
   const model = buildInsightsAlternativeModel(data, trendType);
   renderRows(root, 'trend', model.trend, 'No known nicotine logged in this range.');
+  const trendTable = root.querySelector('[data-analytics-key="trend"]')?.closest('table');
+  const trendHeadings = trendTable?.querySelectorAll('thead th');
+  const trendCaption = trendTable?.querySelector('caption');
+  if (trendCaption) trendCaption.textContent = model.trendTable.caption;
+  if (trendHeadings?.length >= 2) {
+    trendHeadings[0].textContent = model.trendTable.labelHeading;
+    trendHeadings[1].textContent = model.trendTable.valueHeading;
+  }
   renderRows(root, 'timeOfDay', model.timeOfDayTable, 'No known-strength nicotine logged in this range.');
   renderRows(root, 'dayOfWeek', model.dayOfWeek, 'No weekly pattern available.');
   renderRows(root, 'brands', model.productTable, 'No known-strength product data in this range.');
@@ -322,7 +342,7 @@ export function chartDefinitions(data, trendType) {
   return [
     ['consumption-trend-chart', {
       ...commonChart('line', 250, theme),
-      series: [{ name: trendType === 'weekly' ? 'Weekly nicotine (mg)' : 'Daily nicotine (mg)', data: model.trend.map((point) => ({ x: point.label, y: point.value })) }],
+      series: [{ name: trendType === 'weekly' ? 'Weekly sum within selected range (mg)' : 'Daily nicotine (mg)', data: model.trend.map((point) => ({ x: point.label, y: point.value })) }],
       colors: ['#55755F'],
       stroke: { curve: 'smooth', width: 3 },
       dataLabels: { enabled: shouldShowTrendDataLabels(model.trend.length) },
@@ -353,7 +373,7 @@ export function chartDefinitions(data, trendType) {
     }],
     ['day-of-week-chart', {
       ...commonChart('bar', 250, theme),
-      series: [{ name: 'Nicotine (mg)', data: model.dayOfWeek.map((row) => row.value) }],
+      series: [{ name: 'Average nicotine per complete-strength logged day (mg)', data: model.dayOfWeek.map((row) => row.value) }],
       colors: ['#B76343'],
       xaxis: { categories: model.dayOfWeek.map((row) => row.label.slice(0, 3)), labels: { style: { colors: theme.foreColor } } },
       yaxis: { min: 0, labels: { style: { colors: theme.foreColor } } },

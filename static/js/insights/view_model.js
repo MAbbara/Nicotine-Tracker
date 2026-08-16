@@ -279,7 +279,7 @@ export function buildInsightsViewModel(data = {}, rangeDays = 30) {
     available: Boolean(sufficiency.trend),
     values: data.nicotine_by_day_of_week,
     heading: 'Weekly pattern',
-    availableCopy: ({ label }) => `${label} has the most known nicotine in this range. Use it as a cue to plan support, not a verdict.`,
+    availableCopy: ({ label }) => `Complete-strength logged ${label}s average the most known nicotine in this range. Use it as a cue to plan support, not a verdict.`,
     unavailableCopy: 'Log across more complete days to reveal a dependable weekly pattern.',
   });
   const hourlyLeader = sufficiency.heatmap

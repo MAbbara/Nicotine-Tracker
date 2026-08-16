@@ -553,13 +553,19 @@ def _with_known_nicotine(df):
 
 
 def get_nicotine_by_day_of_week(df):
-    """Aggregate known nicotine exposure by local weekday."""
+    """Average known exposure across complete-strength local logged days."""
     if df.empty:
         return {}
 
-    known = _with_known_nicotine(df)
+    dated = df.assign(date=df['user_time'].dt.date)
+    complete_dates = dated.groupby('date')['nicotine_mg'].apply(
+        lambda strengths: strengths.notna().all()
+    )
+    complete = dated[dated['date'].isin(complete_dates[complete_dates].index)]
+    known = _with_known_nicotine(complete)
     known['day_of_week'] = known['user_time'].dt.day_name()
-    nicotine_by_day = known.groupby('day_of_week')['known_nicotine_mg'].sum().reindex([
+    daily_nicotine = known.groupby(['date', 'day_of_week'])['known_nicotine_mg'].sum()
+    nicotine_by_day = daily_nicotine.groupby('day_of_week').mean().reindex([
         'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
     ]).fillna(0).to_dict()
 

@@ -256,7 +256,7 @@ test('nicotine distribution copy distinguishes no logs, unknown-only, known zero
 });
 
 test('weekly trend model is the single source for chart and alternative rows', async () => {
-  const { buildTrendModel } = await importModule('static/js/insights.js');
+  const { buildInsightsAlternativeModel, buildTrendModel } = await importModule('static/js/insights.js');
   const data = {
     nicotine_trend: [
       { date: '2026-07-27', value: 8.5 },
@@ -274,6 +274,40 @@ test('weekly trend model is the single source for chart and alternative rows', a
     { label: '2026-07-28', value: 20 },
     { label: '2026-08-03', value: 44 },
   ]);
+  assert.deepEqual(buildInsightsAlternativeModel(data, 'weekly').trendTable, {
+    caption: 'Known nicotine grouped by calendar week',
+    labelHeading: 'Week starting',
+    valueHeading: 'Sum within selected range (mg)',
+  });
+});
+
+test('weekly charts distinguish totals from weekday daily averages', async () => {
+  const previousWindow = global.window;
+  const previousDocument = global.document;
+  global.window = { matchMedia: () => ({ matches: false }), innerWidth: 1280 };
+  global.document = { documentElement: { dataset: { theme: 'light' } } };
+  try {
+    const { chartDefinitions } = await importModule('static/js/insights.js');
+    const definitions = new Map(chartDefinitions({
+      nicotine_trend: [
+        { date: '2026-07-27', value: 12 },
+        { date: '2026-07-28', value: 18 },
+      ],
+      nicotine_by_day_of_week: { Monday: 12, Tuesday: 18 },
+    }, 'weekly'));
+
+    assert.equal(
+      definitions.get('consumption-trend-chart').series[0].name,
+      'Weekly sum within selected range (mg)',
+    );
+    assert.equal(
+      definitions.get('day-of-week-chart').series[0].name,
+      'Average nicotine per complete-strength logged day (mg)',
+    );
+  } finally {
+    global.window = previousWindow;
+    global.document = previousDocument;
+  }
 });
 
 test('nicotine-first comparison names both mg totals and primary measures', async () => {
@@ -590,7 +624,7 @@ test('weekly and hourly figures receive honest sufficiency-gated interpretations
   }, 7);
 
   assert.equal(ready.sections.weeklyPattern.leadingLabel, 'Friday');
-  assert.match(ready.sections.weeklyPattern.interpretation, /Friday has the most known nicotine/i);
+  assert.match(ready.sections.weeklyPattern.interpretation, /Complete-strength logged Fridays average the most known nicotine/i);
   assert.equal(ready.sections.hourlyDetail.leadingLabel, 'Friday at 18:00');
   assert.match(ready.sections.hourlyDetail.interpretation, /Friday around 18:00/i);
   assert.equal(sparse.sections.weeklyPattern.available, false);
