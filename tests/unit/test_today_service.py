@@ -494,18 +494,18 @@ def test_non_midnight_reset_derives_local_day_and_excludes_exact_end_boundary(
     assert [item.id for item in summary.timeline] == [included.id]
 
 
-def test_ranked_preferred_pouch_wins_over_more_recent_eligible_log(
+def test_recent_exact_strength_wins_over_same_brand_preferred_pouch(
     db_session, test_user
 ):
-    """Choosing recency first must ignore the user's explicit exact preference."""
+    """Brand-only recency must not substitute another saved strength."""
     preferred = Pouch(
-        brand="Preferred",
-        nicotine_mg=Decimal("4.50"),
+        brand="Same brand",
+        nicotine_mg=Decimal("3.00"),
         is_default=True,
         created_by=None,
     )
     recent = Pouch(
-        brand="Recent",
+        brand="Same brand",
         nicotine_mg=Decimal("6.00"),
         is_default=False,
         created_by=test_user.id,
@@ -521,7 +521,7 @@ def test_ranked_preferred_pouch_wins_over_more_recent_eligible_log(
         test_user,
         occurred_at=datetime(2026, 7, 29, 20),
         strength="6.00",
-        brand="Recent",
+        brand="Same brand",
         pouch_id=recent.id,
     )
 
@@ -532,10 +532,10 @@ def test_ranked_preferred_pouch_wins_over_more_recent_eligible_log(
     )
 
     assert summary.smart_default is not None
-    assert summary.smart_default.pouch_id == preferred.id
-    assert summary.smart_default.brand == "Preferred"
-    assert summary.smart_default.nicotine_mg == Decimal("4.50")
-    assert summary.smart_default.source == "preferred"
+    assert summary.smart_default.pouch_id == recent.id
+    assert summary.smart_default.brand == "Same brand"
+    assert summary.smart_default.nicotine_mg == Decimal("6.00")
+    assert summary.smart_default.source == "recent"
 
 
 def test_recent_default_skips_a_newer_foreign_custom_pouch(

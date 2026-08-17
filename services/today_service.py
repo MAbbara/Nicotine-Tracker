@@ -212,6 +212,20 @@ class TodayService:
     @staticmethod
     def _smart_default(user_id: int) -> SmartDefault | None:
         eligible = or_(Pouch.created_by.is_(None), Pouch.created_by == user_id)
+        recent = (
+            Pouch.query.join(Log, Log.pouch_id == Pouch.id)
+            .filter(Log.user_id == user_id, eligible)
+            .order_by(Log.log_time.desc(), Log.id.desc())
+            .first()
+        )
+        if recent is not None:
+            return SmartDefault(
+                pouch_id=recent.id,
+                brand=recent.brand,
+                nicotine_mg=Decimal(recent.nicotine_mg),
+                source="recent",
+            )
+
         preferred = (
             Pouch.query.join(
                 UserPreferredPouch,
@@ -231,21 +245,7 @@ class TodayService:
                 nicotine_mg=Decimal(preferred.nicotine_mg),
                 source="preferred",
             )
-
-        recent = (
-            Pouch.query.join(Log, Log.pouch_id == Pouch.id)
-            .filter(Log.user_id == user_id, eligible)
-            .order_by(Log.log_time.desc(), Log.id.desc())
-            .first()
-        )
-        if recent is None:
-            return None
-        return SmartDefault(
-            pouch_id=recent.id,
-            brand=recent.brand,
-            nicotine_mg=Decimal(recent.nicotine_mg),
-            source="recent",
-        )
+        return None
 
     @staticmethod
     def _review_recommended(
