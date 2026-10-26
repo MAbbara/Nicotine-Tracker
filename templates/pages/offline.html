@@ -1,3 +1,4 @@
+{% from "components/icon.html" import icon %}
 <!doctype html>
 <html lang="en" data-theme="system">
 <head>
@@ -8,37 +9,68 @@
   <script src="/static/js/shell/theme_bootstrap.js"></script>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
-<body class="app-shell">
+<body class="app-shell today-shell">
   <a class="skip-link" href="#main-content">Skip to main content</a>
   <div class="app-frame">
-    <header class="app-topbar"><a class="wordmark" href="/today/">Nicotine Tracker</a></header>
+    <header class="app-topbar">
+      <a class="wordmark" href="/today/" aria-label="Nicotine Tracker home"><img src="/static/brand/nicotine-tracker-two-point-n-symbol.png" alt="" aria-hidden="true"><span>Nicotine Tracker</span></a>
+      <a class="app-account-link" href="/you/">You</a>
+    </header>
+    <nav class="primary-nav" aria-label="Primary">
+      <a class="primary-nav__link" href="/today/" aria-current="page">{{ icon('today') }}<span>Today</span></a>
+      {% for name, symbol in [('Logbook', 'clock'), ('Journey', 'journey'), ('Insights', 'insights'), ('You', 'you')] %}
+        <span class="primary-nav__link" aria-disabled="true" title="Available when connected">{{ icon(symbol) }}<span>{{ name }}</span></span>
+      {% endfor %}
+    </nav>
     <main id="main-content" class="app-content" tabindex="-1">
       <div class="today-home">
         <header class="today-home__intro">
-          <p class="eyebrow">Keep the day current</p>
-          <h1>Today, offline</h1>
-          <p>You can save a log here and sync it when you reconnect.</p>
+          <p class="eyebrow">Offline</p>
+          <h1>Today</h1>
+          <p>Keep logging. Your records will sync when you reconnect.</p>
         </header>
-        <p id="offline-status" class="c-status" role="status" aria-live="polite">Checking this device’s saved choices…</p>
-        <form id="offline-log" class="today-actions space-y-6" hidden>
-          <div class="c-field">
-            <label class="c-field__label" for="offline-product">Saved product</label>
-            <select class="c-field__control" id="offline-product" required></select>
+        <section class="today-actions" aria-labelledby="offline-log-title">
+          <div class="today-actions__heading">
+            <p class="eyebrow">Next useful action</p>
+            <h2 id="offline-log-title">Keep the day current</h2>
           </div>
-          <div class="c-field">
-            <label class="c-field__label" for="offline-quantity">Number of pouches</label>
-            <input class="c-field__control" id="offline-quantity" type="number" inputmode="numeric" min="1" max="100" step="1" value="1" required>
-          </div>
-          <button class="c-button c-button--primary" type="submit">Save log on this device</button>
-          <p class="c-field__description">Uses the current time. Notes, new products, cravings, and plan changes need a connection.</p>
-        </form>
-        <section class="today-timeline" aria-labelledby="pending-title">
-          <h2 id="pending-title">Waiting to sync</h2>
-          <ul id="offline-pending"></ul>
+          <form id="offline-log" hidden>
+            <div class="quick-log__fields">
+              <div class="quick-log__field">
+                <label for="offline-product">Saved product</label>
+                <select id="offline-product" required></select>
+              </div>
+              <div class="quick-log__field">
+                <label for="offline-quantity">Number of pouches</label>
+                <input id="offline-quantity" type="number" inputmode="numeric" min="1" max="100" step="1" value="1" required>
+              </div>
+            </div>
+            <div class="today-actions__links">
+              <button class="today-action today-action--primary c-button c-button--primary" type="submit" aria-label="Save log on this device">
+                {{ icon('add') }}<span><strong>Log nicotine use</strong><small>Save on this device · current time</small></span>
+              </button>
+            </div>
+          </form>
+          <p id="offline-status" class="c-field__description" role="status" aria-live="polite">Checking this device’s saved choices…</p>
         </section>
-        <p>Live totals and your plan will return when you reconnect. Keep this app open or reopen it to sync.</p>
-        <a class="c-button c-button--secondary" href="/today/">Reconnect to Today</a>
-        <p class="c-field__description">Saved logs stay in this browser until synced. Clearing website data removes unsynced logs.</p>
+        <section class="today-timeline" aria-labelledby="pending-title">
+          <div class="today-timeline__heading">
+            <p class="eyebrow">Your day</p>
+            <h2 id="pending-title">Waiting to sync</h2>
+            <p id="offline-count" class="c-field__description">On this device</p>
+          </div>
+          <ul id="offline-pending" class="today-timeline__list"></ul>
+        </section>
+        <section class="today-coaching" aria-labelledby="offline-reconnect-title">
+          <p class="eyebrow">When you’re connected</p>
+          <h2 id="offline-reconnect-title">Pick up where you left off</h2>
+          <p>Your plan and full timeline are available online.</p>
+          <a class="text-link" href="/today/">Reconnect to Today</a>
+          <details>
+            <summary>About offline use</summary>
+            <p>Logs sync with the app open. Notes, new products, cravings, and plan changes need a connection. Clearing website data removes unsynced logs.</p>
+          </details>
+        </section>
       </div>
     </main>
   </div>

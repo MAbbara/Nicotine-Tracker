@@ -1,10 +1,12 @@
 import { createIndexedDbStore } from './static/js/today/offline_queue.js';
 
-const SHELL = 'nicotine-offline-shell-v1';
+const SHELL = 'nicotine-offline-shell-v2';
 const PRIVATE = 'nicotine-offline-context-v1';
 const CONTEXT = '/api/offline-context';
 const ASSETS = [
   '/offline',
+  '/static/brand/nicotine-tracker-two-point-n-symbol.png',
+  '/static/icons/lucide/sprite.svg',
   '/static/css/style.css',
   '/static/fonts/newsreader-variable.woff2',
   '/static/fonts/dm-sans-variable.woff2',

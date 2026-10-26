@@ -63,7 +63,7 @@ def test_manifest_scope_covers_primary_navigation(logged_in_client):
 def test_offline_shell_is_public_and_contains_no_account_data(client):
     response = client.get('/offline')
     assert response.status_code == 200
-    assert b'Today, offline' in response.data
+    assert b'<h1>Today</h1>' in response.data
     assert b'csrf-token' not in response.data
 
 

@@ -19,7 +19,7 @@ test('home-screen URL reopens offline, queues a log and syncs once online', asyn
   await prepare(page);
   await context.setOffline(true);
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Today, offline' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Today', exact: true })).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await page.getByLabel('Number of pouches').fill('2');
   await page.getByRole('button', { name: 'Save log on this device' }).click();

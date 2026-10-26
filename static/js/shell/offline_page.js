@@ -58,15 +58,31 @@ async function initialize() {
   async function renderPending() {
     const records = await runtime.list();
     pending.replaceChildren();
+    document.querySelector('#offline-count').textContent = `${records.length} pending`;
     for (const record of records) {
       const item = document.createElement('li');
       const product = context.pouches.find((pouch) => pouch.id === record.pouch_id);
-      item.textContent = `${product?.brand || 'Saved product'} · ${record.quantity} pouch${record.quantity === 1 ? '' : 'es'} · ${new Date(record.occurred_at_local).toLocaleString()} — waiting to sync`;
+      const label = document.createElement('strong');
+      label.textContent = product?.brand || 'Saved product';
+      const detail = document.createElement('small');
+      detail.textContent = `${record.quantity} pouch${record.quantity === 1 ? '' : 'es'} · ${new Date(record.occurred_at_local).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`;
+      item.className = 'today-timeline__item';
+      const time = document.createElement('time');
+      time.dateTime = record.occurred_at_local;
+      time.textContent = new Date(record.occurred_at_local).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const marker = document.createElement('span');
+      marker.className = 'today-timeline__marker';
+      marker.setAttribute('aria-hidden', 'true');
+      const copy = document.createElement('span');
+      copy.className = 'today-timeline__copy';
+      copy.append(label, detail);
+      item.append(time, marker, copy);
       pending.append(item);
     }
     if (!records.length) {
       const empty = document.createElement('li');
-      empty.textContent = 'No logs waiting on this device.';
+      empty.className = 'today-timeline__empty';
+      empty.textContent = 'Nothing waiting yet. Saved logs will appear here.';
       pending.append(empty);
     }
   }
@@ -74,7 +90,7 @@ async function initialize() {
   form.hidden = context.pouches.length === 0;
   status.textContent = form.hidden
     ? 'Connect to add a product before logging offline.'
-    : 'Your saved products are ready. Logs will wait here until you reconnect.';
+    : 'Saved here first. Synced when you reconnect.';
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (saving) return;
