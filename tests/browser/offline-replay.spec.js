@@ -74,6 +74,11 @@ async function setReplayFixtureTime(page, dialog) {
   );
 }
 
+test.beforeEach(async ({ page }) => {
+  const response = await page.request.get('/__test__/release-clock');
+  await page.clock.install({ time: new Date((await response.json()).fixed_now) });
+});
+
 test.afterEach(async ({ page, context }) => {
   await context.setOffline(false);
   await page.unrouteAll({ behavior: 'wait' });
@@ -159,9 +164,15 @@ test('real IndexedDB queues a private structured log offline and reconciles it o
 
   const browserStorage = await page.evaluate(async () => ({
     serviceWorkers: (await navigator.serviceWorker.getRegistrations()).length,
-    cacheNames: await caches.keys(),
+    cachedPaths: await Promise.all((await caches.keys()).map(async (name) => {
+      const cache = await caches.open(name);
+      return (await cache.keys()).map((request) => new URL(request.url).pathname);
+    })),
   }));
-  expect(browserStorage).toEqual({ serviceWorkers: 1, cacheNames: [] });
+  expect(browserStorage.serviceWorkers).toBe(1);
+  for (const path of browserStorage.cachedPaths.flat()) {
+    expect(path === '/offline' || path === '/api/offline-context' || path.startsWith('/static/')).toBe(true);
+  }
 });
 
 test('a response lost after commit replays the same UUID into one canonical row', async ({ page, context }) => {
@@ -373,18 +384,16 @@ test('logout clears queued storage before another account can replay it', async 
   expect(postCount).toBe(beforeYou);
   expect(settledPostCount).toBe(1);
   const beforeLogout = postCount;
-  const logoutResponsePending = page.waitForResponse((response) => (
-    new URL(response.url()).pathname === '/auth/logout'
-    && response.request().isNavigationRequest()
+  const logoutRequestPending = context.waitForEvent('request', (request) => (
+    new URL(request.url()).pathname === '/auth/logout'
   ));
   const signOut = page.getByRole('link', { name: 'Sign out' });
   await signOut.focus();
   await expect(signOut).toBeFocused();
   await page.keyboard.press('Enter');
-  const logoutResponse = await logoutResponsePending;
-  expect(logoutResponse.request().method()).toBe('GET');
-  expect(logoutResponse.request().postData()).toBeNull();
-  expect(logoutResponse.status()).toBe(302);
+  const logoutRequest = await logoutRequestPending;
+  expect(logoutRequest.method()).toBe('GET');
+  expect(logoutRequest.postData()).toBeNull();
   await expect.poll(() => new URL(page.url()).pathname).toBe('/');
   await expect.poll(async () => (await pendingEvents(page)).length).toBe(0);
 

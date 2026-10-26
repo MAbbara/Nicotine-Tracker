@@ -7,6 +7,7 @@ export function createOfflineStatusController({
   region,
   queueRuntime = null,
   doc = null,
+  replayOnStart = false,
   navigate = (href) => win.location.assign(href),
 } = {}) {
   if (!win || !region) throw new TypeError('Window and live region are required');
@@ -85,7 +86,11 @@ export function createOfflineStatusController({
     win.addEventListener('online', handleOnline);
     win.addEventListener('offline', handleOffline);
     if (queueRuntime?.subscribe) queueUnsubscribe = queueRuntime.subscribe(handleQueueResult);
-    if (queueRuntime?.start) queueRuntime.start();
+    if (queueRuntime?.start) {
+      Promise.resolve(queueRuntime.start()).then(() => {
+        if (initialized && lastOnline && replayOnStart) queueRuntime.replay?.();
+      }).catch(() => {});
+    }
     if (doc?.addEventListener) {
       doc.addEventListener('click', handleDocumentClick);
       doc.addEventListener('submit', handleDocumentSubmit);
@@ -123,6 +128,7 @@ export function initOfflineStatus(doc = globalThis.document, win = globalThis.wi
   const queueRuntime = getOfflineQueueRuntime({ doc, win });
   const controller = createOfflineStatusController({
     win, region, queueRuntime, doc,
+    replayOnStart: Boolean(doc.querySelector('[data-today-root]')),
   }).initialize();
   controllerRegistry.set(win, controller);
   return controller;

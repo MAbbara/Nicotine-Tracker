@@ -5,6 +5,28 @@ cravings, following a nicotine-first reduction plan, and reviewing trends. The
 daily experience is built around Today, while Journey and Insights provide
 progressive planning and analysis.
 
+## Home-screen and offline use
+
+On iOS, open the HTTPS site in Safari and choose **Share → Add to Home Screen**.
+Open Today in the installed app while connected, with **Settings → Data & Privacy →
+Save actions for offline use** enabled. This prepares that browser's offline screen
+and saved product choices. Safari and the installed app may have separate storage.
+
+Without a connection, reopening or refreshing shows a focused logging screen.
+Existing products and quantities can be logged at the current time; pending logs
+survive reloads and use the existing idempotent replay queue. Reconnect with the app
+open, reopen it, or use **Reconnect to Today** to sync through a fresh authenticated
+page. iOS background delivery while the app is closed is not guaranteed.
+
+Only the public offline interface and minimal account-scoped product choices are
+cached; authenticated pages, history, notes, and CSRF tokens are not cached. Live
+totals, cravings, new products, and plan changes require a connection. Logout,
+account changes, disabling offline use, and authentication rejection clear private
+offline data. Offline logout clears this device immediately and finishes server
+logout on reconnect. Clearing browser data or browser storage eviction can remove
+unsynced logs; this storage is not a backup. Service-worker shell changes must bump
+the shell cache version in `static/service-worker.js` to retire superseded assets.
+
 ## Runtime
 
 - Python 3.11 and Flask 2.3

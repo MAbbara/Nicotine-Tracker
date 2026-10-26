@@ -284,6 +284,15 @@ def update_craving_api(craving_id):
 @canonical_write_limit()
 @login_required
 def create_log_api():
+    offline_identity = request.headers.get('X-Offline-Queue-ID')
+    if offline_identity is not None:
+        preferences = get_current_user().preferences
+        if (not preferences or not preferences.offline_queue_enabled
+                or offline_identity != preferences.offline_queue_id):
+            return error_response(
+                403, 'offline_account_changed',
+                'These saved logs do not belong to the current offline session.',
+            )
     try:
         payload = parse_create_log_request(request.get_json(silent=True))
     except InvalidLocalTimeError as exc:

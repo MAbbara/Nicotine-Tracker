@@ -1486,4 +1486,6 @@ def release_catalog_edit():
 
 
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=5000, use_reloader=False)
+    # In-memory SQLite shares one connection; concurrent request teardown can
+    # roll back another request's transaction. Keep this disposable server serial.
+    app.run(host='127.0.0.1', port=5000, use_reloader=False, threaded=False)

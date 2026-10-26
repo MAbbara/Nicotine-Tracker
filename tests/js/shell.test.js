@@ -270,19 +270,20 @@ test('offline shell initializes one queue runtime and online joins replay', asyn
     invalidateBufferedResults() { invalidationCount += 1; },
     subscribe(handler) { subscriber = handler; return () => { subscriber = null; }; },
   };
-  const controller = createOfflineStatusController({ win, region, queueRuntime });
+  const controller = createOfflineStatusController({ win, region, queueRuntime, replayOnStart: true });
 
   controller.initialize();
   controller.initialize();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(startCount, 1);
+  assert.equal(replayCount, 1);
 
   subscriber({ type: 'pending', record: { client_event_id: 'event-one' } });
   assert.match(region.textContent, /1 saved log.*waiting/i);
   for (const handler of listeners.offline) handler();
   for (const handler of listeners.online) handler();
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(replayCount, 1);
+  assert.equal(replayCount, 2);
 
   controller.cleanup();
   assert.equal(subscriber, null);
@@ -354,4 +355,25 @@ test('logout and account deletion clear once but continue when browser clearing 
   controller.cleanup();
   assert.equal(docListeners.click.size, 0);
   assert.equal(docListeners.submit.size, 0);
+});
+
+test('PWA preparation waits for an updating worker to activate', async () => {
+  const { registerServiceWorker } = await importBrowserModule('static/js/shell/pwa.js');
+  let stateChanged;
+  const worker = {
+    state: 'installing',
+    addEventListener(_name, handler) { stateChanged = handler; },
+    removeEventListener() {},
+  };
+  const registration = { installing: worker };
+  let ready = false;
+  const pending = registerServiceWorker({ serviceWorker: {
+    register: async () => registration,
+  } }).then(() => { ready = true; });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(ready, false);
+  worker.state = 'activated';
+  stateChanged();
+  await pending;
+  assert.equal(ready, true);
 });

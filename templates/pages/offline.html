@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en" data-theme="system">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#F5F1E7">
+  <title>Today, offline — Nicotine Tracker</title>
+  <script src="/static/js/shell/theme_bootstrap.js"></script>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="app-shell">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="app-frame">
+    <header class="app-topbar"><a class="wordmark" href="/today/">Nicotine Tracker</a></header>
+    <main id="main-content" class="app-content" tabindex="-1">
+      <div class="today-home">
+        <header class="today-home__intro">
+          <p class="eyebrow">Keep the day current</p>
+          <h1>Today, offline</h1>
+          <p>You can save a log here and sync it when you reconnect.</p>
+        </header>
+        <p id="offline-status" class="c-status" role="status" aria-live="polite">Checking this device’s saved choices…</p>
+        <form id="offline-log" class="today-actions space-y-6" hidden>
+          <div class="c-field">
+            <label class="c-field__label" for="offline-product">Saved product</label>
+            <select class="c-field__control" id="offline-product" required></select>
+          </div>
+          <div class="c-field">
+            <label class="c-field__label" for="offline-quantity">Number of pouches</label>
+            <input class="c-field__control" id="offline-quantity" type="number" inputmode="numeric" min="1" max="100" step="1" value="1" required>
+          </div>
+          <button class="c-button c-button--primary" type="submit">Save log on this device</button>
+          <p class="c-field__description">Uses the current time. Notes, new products, cravings, and plan changes need a connection.</p>
+        </form>
+        <section class="today-timeline" aria-labelledby="pending-title">
+          <h2 id="pending-title">Waiting to sync</h2>
+          <ul id="offline-pending"></ul>
+        </section>
+        <p>Live totals and your plan will return when you reconnect. Keep this app open or reopen it to sync.</p>
+        <a class="c-button c-button--secondary" href="/today/">Reconnect to Today</a>
+        <p class="c-field__description">Saved logs stay in this browser until synced. Clearing website data removes unsynced logs.</p>
+      </div>
+    </main>
+  </div>
+  <script type="module" src="/static/js/shell/offline_page.js"></script>
+</body>
+</html>

@@ -1199,3 +1199,19 @@ test('response without a canonical log becomes one sanitized attention result', 
   }]);
   assert.doesNotMatch(JSON.stringify(results), /private_response_detail|must not escape/);
 });
+
+test('account mismatch clears only the rejected scope, preserving a newer account queue', async () => {
+  const { createOfflineQueueRuntime } = await importOfflineQueue();
+  const newer = storedRecord({ offlineQueueId: 'newer-account' });
+  const store = createMemoryStore([storedRecord()]);
+  const runtime = createOfflineQueueRuntime({
+    config: { enabled: true, offlineQueueId: 'opaque-account-scope' },
+    store,
+    fetchImpl: async () => {
+      await store.put(newer);
+      return jsonResponse(403, { error: { code: 'offline_account_changed' } });
+    },
+  });
+  await runtime.replay();
+  assert.deepEqual(store.snapshot(), [newer]);
+});

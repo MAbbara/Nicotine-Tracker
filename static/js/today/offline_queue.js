@@ -483,6 +483,7 @@ export function createOfflineQueueRuntime({
           headers: {
             'Content-Type': 'application/json',
             'X-CSRFToken': csrfToken,
+            'X-Offline-Queue-ID': offlineQueueId,
           },
           body: JSON.stringify({
             client_event_id: record.client_event_id,
@@ -530,7 +531,9 @@ export function createOfflineQueueRuntime({
         return false;
       }
       if ([401, 403].includes(response.status)) {
-        const cleared = await clearAll();
+        const cleared = body?.error?.code === 'offline_account_changed'
+          ? await clearCurrent()
+          : await clearAll();
         if (cleared) {
           publish({ type: 'auth_cleared' }, replayGeneration);
         } else {
